@@ -73,7 +73,7 @@ CWD0=$(printf '%s' "$IN" | sed -n 's/.*"cwd" *: *"\([^"]*\)".*/\1/p' | head -1)
 GD=$(git -C "${CWD0:-${CLAUDE_PROJECT_DIR:-$PWD}}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
 if [ -z "$GD" ] || [ -f "$GD/agent_main.closed" ]; then
   roots_read "$CWD0" 2>/dev/null
-  if [ -f "$PROJECT_ROOT/agent.conf" ] && [ -f "$PROJECT_GITDIR/agent_main.closed" ]; then
+  if repo_set_up && [ -f "$PROJECT_GITDIR/agent_main.closed" ]; then
     role_read
     if [ "$role" = closed ] && [ ! -f "$PROJECT_GITDIR/agent_main.told_$ME" ]; then
       closed_lines "NOTICE:"

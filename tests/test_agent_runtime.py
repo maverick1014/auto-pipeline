@@ -258,8 +258,8 @@ class TestKindAuto(RuntimeCase):
         self.repo.set_conf("runtime", "banana")
         self.assertEqual(self.kind(), "orca")
 
-    def test_no_agent_conf_at_all_still_answers(self):
-        os.remove(self.repo.path("agent.conf"))
+    def test_no_settings_at_all_still_answers(self):
+        self.repo.unset_conf("runtime")
         self.assertIn(self.kind(), KINDS)
 
     def test_no_orca_on_path_is_plain(self):

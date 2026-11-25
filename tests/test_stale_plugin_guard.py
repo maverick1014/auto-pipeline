@@ -313,9 +313,9 @@ class TestHook(Versions, ScriptCase):
                 out = self.hook(stdin)
                 self.assertIn(out, ("", self.line(cache, None)))
 
-    def test_no_agent_conf_is_silent(self):
+    def test_a_repo_not_set_up_is_silent(self):
         self.stale_setup()
-        os.remove(self.repo.path("agent.conf"))
+        os.remove(self.repo.path("agent_todo.txt"))   # settings-configure: the set-up mark
         self.assertEqual(self.hook(self.payload()), "")
 
     def test_current_is_silent_and_cheap(self):
@@ -382,71 +382,74 @@ class TestStartText(Versions, ScriptCase):
     def start(self, env=None, cwd=None):
         return self.assertOk(self.repo.run("agent-start.sh", env=env or {}, cwd=cwd))
 
-    def old_lines(self, out):
-        return [l for l in out.splitlines() if l.startswith("OLD PLUGIN:")]
+    # settings-configure / plugin-scope-sync (owner 3A 2026-11-25): the start now runs
+    # `claude plugin update` for a stale scope of this folder (agent_update.py sync), every
+    # role; the claude stub of the test fixture logs the call. Was: an OLD PLUGIN line.
+    def sync_lines(self, out):
+        return [l for l in out.splitlines() if l.startswith(("updated ", "STALE SCOPE:", "OLD PLUGIN:"))]
 
-    def project_line(self, path, old, new="0.35.0", scope="project"):
-        return ("OLD PLUGIN: the %s scope of %s runs %s, %s is installed. Update it: cd %s && "
-                "claude plugin update auto-pipeline@auto-pipeline --scope %s, then restart the "
-                "session." % (scope, path, old, new, path, scope))
-
-    def user_line(self, old, new="0.35.0"):
-        return ("OLD PLUGIN: the user scope runs %s, %s is installed. Update it: claude plugin "
-                "update auto-pipeline@auto-pipeline --scope user, then restart the session."
-                % (old, new))
+    def updates(self):
+        return [c for c in self.repo.claude_calls() if c["args"][:2] == ["plugin", "update"]]
 
     def setUp(self):
         super().setUp()
-        # the running plugin is the newest: only the scope entries are old
+        # the running plugin is the newest installed: a cache folder with its plugin.json
         self.cache = self.stale_setup("0.35.0", None)
+        os.makedirs(os.path.join(self.repo.plugin, ".claude-plugin"), exist_ok=True)
+        with open(os.path.join(self.repo.plugin, ".claude-plugin", "plugin.json"), "w") as fh:
+            json.dump({"name": "auto-pipeline", "version": "0.35.0"}, fh)
 
     def test_an_old_project_scope(self):
         self.installed([self.entry("project", "0.32.0", self.repo.dir),
                         self.entry("user", "0.35.0")])
-        self.assertEqual(self.old_lines(self.start()), [self.project_line(self.repo.dir, "0.32.0")])
+        self.assertEqual(self.sync_lines(self.start()),
+                         ["updated project %s: 0.32.0 -> 0.35.0, restart to apply" % self.repo.dir])
+        self.assertEqual([c["args"][-1] for c in self.updates()], ["project"])
 
     def test_an_old_user_scope(self):
         self.installed([self.entry("user", "0.34.1")])
-        self.assertEqual(self.old_lines(self.start()), [self.user_line("0.34.1")])
+        self.assertEqual(self.sync_lines(self.start()), ["updated user: 0.34.1 -> 0.35.0, restart to apply"])
 
     def test_both_old(self):
         self.installed([self.entry("user", "0.34.1"),
                         self.entry("project", "0.32.0", self.repo.dir)])
-        self.assertEqual(sorted(self.old_lines(self.start())),
-                         sorted([self.user_line("0.34.1"),
-                                 self.project_line(self.repo.dir, "0.32.0")]))
+        self.assertEqual(sorted(self.sync_lines(self.start())),
+                         sorted(["updated user: 0.34.1 -> 0.35.0, restart to apply",
+                                 "updated project %s: 0.32.0 -> 0.35.0, restart to apply" % self.repo.dir]))
 
     def test_a_local_scope(self):
         self.installed([self.entry("local", "0.31.0", self.repo.dir)])
-        self.assertEqual(self.old_lines(self.start()),
-                         [self.project_line(self.repo.dir, "0.31.0", scope="local")])
+        self.assertEqual(self.sync_lines(self.start()),
+                         ["updated local %s: 0.31.0 -> 0.35.0, restart to apply" % self.repo.dir])
 
     def test_a_worktree_entry_counts_from_inside_it(self):
         wt = self.repo.detach_scripts_to_worktree()
         self.installed([self.entry("project", "0.29.0", wt)])
-        self.assertEqual(self.old_lines(self.start(cwd=wt)), [self.project_line(wt, "0.29.0")])
+        self.assertEqual(self.sync_lines(self.start(cwd=wt)),
+                         ["updated project %s: 0.29.0 -> 0.35.0, restart to apply" % os.path.realpath(wt)])
 
     def test_other_repos_and_current_entries_say_nothing(self):
         other = self.repo.make_project("other")
         self.installed([self.entry("project", "0.32.0", other),
                         self.entry("project", "0.35.0", self.repo.dir),
                         self.entry("user", "0.35.0")])
-        self.assertEqual(self.old_lines(self.start()), [])
+        self.assertEqual(self.sync_lines(self.start()), [])
+        self.assertEqual(self.updates(), [])
 
     def test_a_broken_or_missing_file_says_nothing(self):
-        self.assertEqual(self.old_lines(self.start()), [])
+        self.assertEqual(self.sync_lines(self.start()), [])
         self.installed(None, raw="{not json")
-        self.assertEqual(self.old_lines(self.start()), [])
+        self.assertEqual(self.sync_lines(self.start()), [])
 
-    def test_a_spawned_agent_is_never_told(self):
-        self.installed([self.entry("user", "0.34.1"),
-                        self.entry("project", "0.32.0", self.repo.dir)])
-        self.assertEqual(self.old_lines(self.start({"AGENT_ROLE": "task-manager"})), [])
-
-    def test_scopes_cli(self):
+    def test_a_spawned_agent_syncs_its_own_folder_too(self):
         self.installed([self.entry("project", "0.32.0", self.repo.dir)])
-        out = self.assertOk(self.ver("scopes", self.repo.dir))
-        self.assertEqual(out.splitlines(), [self.project_line(self.repo.dir, "0.32.0")])
+        out = self.start({"AGENT_ROLE": "task-manager"})
+        self.assertEqual(self.sync_lines(out),
+                         ["updated project %s: 0.32.0 -> 0.35.0, restart to apply" % self.repo.dir])
+
+    def test_the_scopes_cli_is_gone(self):
+        r = self.ver("scopes", self.repo.dir)
+        self.assertNotEqual(r.returncode, 0)
 
 
 # ------------------------------------------------------------ 4: old-writer guard

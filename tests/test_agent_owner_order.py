@@ -507,13 +507,6 @@ class TestTimeAndMany(OwnerOrderCase):
         path = self.write([owner(QUOTE, dt)])
         self.assertVerified(self.verify(), path, dt)
 
-    def test_owner_order_hours_from_agent_conf(self):
-        self.repo.set_conf("owner_order_hours", "2")
-        dt = ago(hours=3)
-        self.write([owner(QUOTE, dt)])
-        self.assertRefused(self.verify(),
-                           "OWNER ORDER not verified: older than 2h (newest %s)" % minute(dt))
-
     def test_h14_several_minutes_need_time(self):
         a, b = ago(40), ago(35)
         path = self.write([owner(QUOTE, a), owner("again: " + QUOTE, b)])
@@ -576,22 +569,6 @@ class TestShortAndUsage(OwnerOrderCase):
 
     def test_c3_width_counts_after_normalise(self):
         self.assertRefused(self.verify("  rules     yes   "),
-                           "OWNER ORDER not verified: quote too short (9 < 20)")
-
-    def test_c3_min_chars_from_agent_conf(self):
-        self.repo.set_conf("owner_order_min_chars", "8")
-        dt = ago(30)
-        path = self.write([owner("rules yes", dt)])
-        self.assertVerified(self.verify("rules yes"), path, dt)
-
-    def test_l7_a_bad_conf_value_gives_the_default(self):
-        self.repo.set_conf("owner_order_min_chars", "abc")
-        self.assertRefused(self.verify("rules yes"),
-                           "OWNER ORDER not verified: quote too short (9 < 20)")
-
-    def test_l7_an_out_of_range_conf_value_gives_the_default(self):
-        self.repo.set_conf("owner_order_min_chars", "3")
-        self.assertRefused(self.verify("rules yes"),
                            "OWNER ORDER not verified: quote too short (9 < 20)")
 
     def test_c4_empty_quote_is_a_usage_error(self):
@@ -725,18 +702,18 @@ class TestLine(OwnerOrderCase):
         r = self.line(pid_args=("--model", "fable", "--effort", "high"))
         self.assertTrue(self.out_lines(r)[0].startswith("OWNER ORDER [fable high] repo "), r.stdout)
 
-    def test_e4_unknown(self):
+    def test_e4_nothing_known_is_the_setting_default(self):
+        # settings-configure: the Main manager model setting always has a value (default opus-5.5:high)
         dt = ago(30)
         self.write([owner(QUOTE, dt)])
         r = self.line()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertTrue(self.out_lines(r)[0].startswith("OWNER ORDER [unknown unknown] repo "), r.stdout)
+        self.assertTrue(self.out_lines(r)[0].startswith("OWNER ORDER [opus-5.5 high] repo "), r.stdout)
 
-    def test_e4_agent_conf_main_manager(self):
+    def test_e4_the_main_manager_setting(self):
         dt = ago(30)
         self.write([owner(QUOTE, dt)])
-        with open(os.path.join(self.sender, "agent.conf"), "w") as fh:
-            fh.write("main_manager=opus-5.5:xhigh\n")
+        self.repo.set_conf("main_manager", "opus-5.5:xhigh")
         r = self.line()
         self.assertTrue(self.out_lines(r)[0].startswith("OWNER ORDER [opus-5.5 xhigh] repo "), r.stdout)
 
@@ -965,14 +942,6 @@ class TestReviewBounce1(OwnerOrderCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertNotIn("Traceback", r.stderr)
         self.assertTrue(r.stdout.startswith("OWNER ORDER not verified: sender on another machine ("), r.stdout)
-
-    def test_l7_out_of_range_hours_gives_the_default(self):
-        for value in ("0", "721"):
-            with self.subTest(value=value):
-                self.repo.set_conf("owner_order_hours", value)
-                dt = ago(hours=3)
-                path = self.write([owner(QUOTE, dt)])
-                self.assertVerified(self.verify(), path, dt)
 
     def test_c1_a_quote_over_two_owner_lines_is_not_found(self):
         self.write([owner("keep it, this features", ago(31)), owner("is needed ya", ago(30))])

@@ -273,8 +273,8 @@ class TestInstall(InstallCase):
             self.assertEqual(json.load(fh), {"statusLine": self.ours})
         self.assertFalse(os.path.exists(self.settings))
 
-    def test_no_agent_conf_needed(self):
-        os.remove(self.repo.path("agent.conf"))
+    def test_no_task_file_needed(self):
+        os.remove(self.repo.path("agent_todo.txt"))
         self.assertOk(self.run_settings("on"))
         self.assertEqual(self.load()["statusLine"], self.ours)
 

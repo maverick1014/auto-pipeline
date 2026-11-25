@@ -237,11 +237,11 @@ class TestStartWarning(ClearCase):
                 out = self.assertOk(self.hook(source, sid="w-" + source, runtime="plain", handle=None))
                 self.assertIn(self.warn(301), out.splitlines())
 
-    def test_state_warn_lines_sets_the_limit(self):
-        self.repo.set_conf("state_warn_lines", "10")
-        self.lines_file(11)
+    def test_the_limit_is_the_fixed_300(self):
+        # settings-configure: state_warn_lines is a fixed constant (300)
+        self.lines_file(300)
         out = self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"}))
-        self.assertIn(self.warn(11, 10), out.splitlines())
+        self.assertFalse([l for l in out.splitlines() if l.startswith("STATE LONG")], out)
 
     def test_it_still_fits_the_preview(self):
         self.lines_file(1500)
@@ -325,24 +325,6 @@ class TestCompactionBranch(ClearCase):
         self.assertIn("COMPACTED 1 time(s) this session", out)
         self.assertNotIn("LIMIT", out)
 
-    def test_compact_clear_at_0_is_off(self):
-        self.repo.set_conf("compact_clear_at", "0")
-        self.assertOk(self.hook("compact"))
-        out = self.assertOk(self.hook("compact"))
-        self.assertIn(LIMIT_OLD % 2, out.splitlines())
-        self.assertNotIn("Save agent_state.txt now", out)
-        time.sleep(1)
-        self.assertFalse(os.path.exists(self.pid_file()))
-        self.assertEqual(self.calls(), [])
-
-    def test_compact_clear_at_sets_the_count(self):
-        self.repo.set_conf("compact_clear_at", "3")
-        self.assertOk(self.hook("compact", runtime="plain", handle=None))
-        out = self.assertOk(self.hook("compact", runtime="plain", handle=None))
-        self.assertNotIn("LIMIT", out)
-        out = self.assertOk(self.hook("compact", runtime="plain", handle=None))
-        self.assertIn(LIMIT_NO_PANE % 3, out.splitlines())
-
     def test_old_waiter_pid_files_are_cleaned_like_the_other_markers(self):
         old = self.pid_file("ancient")
         with open(old, "w") as fh:
@@ -361,7 +343,10 @@ class TestWaiter(ClearCase):
 
     def setUp(self):
         super().setUp()
-        self.repo.set_conf("compact_clear_check_sec", "1")
+        # settings-configure: compact_clear_check_sec is a fixed 30 s; a `sleep` stub on PATH
+        # keeps the waiter fast (was: set_conf compact_clear_check_sec 1)
+        # only the waiter's own 30 s pause shrinks (to 1 s); any other sleep stays real
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
 
     def test_the_whole_run_with_a_goal_line(self):
         self.write_state(["ROLE: x", "GOAL: an older goal", "GOAL: " + GOAL, ""])
@@ -482,7 +467,7 @@ class TestWaiter(ClearCase):
 
     def test_a_term_signal_leaves_a_line_at_once(self):
         self.write_state(["ROLE: x", ""])
-        self.stub_file("wait_sleep", "30")
+        self.stub_file("wait_sleep", "40")
         proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", env={"AGENT_FAKE_NOW": NOW})
         self.assertTrue(self.wait_for(lambda: "wait" in self.verbs(), 10))
         time.sleep(0.5)

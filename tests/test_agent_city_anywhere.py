@@ -434,11 +434,8 @@ class OutsideCase(ScriptCase):
         self.addCleanup(stop_server, self.city)
 
     def set_default(self, key, value):
-        """Change the plugin copy's own bin/agent.conf.default."""
-        path = self.repo.plugin_path("bin", "agent.conf.default")
-        rows = [l for l in read_text(path).splitlines() if l.split("=", 1)[0] != key]
-        rows.append("%s=%s" % (key, value))
-        write_text(path, "\n".join(rows) + "\n")
+        """settings-configure: the settings are user level (Configure), inside a repo or not."""
+        self.repo.set_conf(key, value)
 
     def city_env(self, extra=None):
         env = {"AGENT_CITY_DIR": self.city, "AGENT_CITY_HOME": self.cityhome,
@@ -451,43 +448,47 @@ class OutsideCase(ScriptCase):
                              cwd=cwd or self.plain, stdin=stdin, timeout=30)
 
 class TestStartOutsideARepo(OutsideCase):
-    def test_plugin_defaults_and_zh(self):
+    def test_the_settings_apply_outside_a_repo(self):
+        # settings-configure: Language is a user-level setting (default en)
         result = self.city_run("start")
         self.assertOk(result)
         self.assertIn("CITY: http://127.0.0.1:%d" % self.port, result.stdout)
         args = server_args(self.city)
         self.assertIn("--port %d" % self.port, args)
-        self.assertIn("--lang zh", args)
+        self.assertIn("--lang en", args)
+        self.repo.set_conf("language", "zh")
+        self.assertOk(self.city_run("stop"))
+        self.assertOk(self.city_run("start"))
+        self.assertIn("--lang zh", server_args(self.city))
 
     def test_an_agent_conf_in_a_plain_folder_is_never_read(self):
         write_text(os.path.join(self.plain, "agent.conf"),
-                   "city_port=%d\nlanguage=en\n" % free_port())
+                   "city_port=%d\nlanguage=zh\n" % free_port())
         self.assertOk(self.city_run("start"))
         args = server_args(self.city)
         self.assertIn("--port %d" % self.port, args)
-        self.assertIn("--lang zh", args)
+        self.assertIn("--lang en", args)
 
     def test_agent_city_lang_en(self):
         self.assertOk(self.city_run("start", extra={"AGENT_CITY_LANG": "en"}))
         self.assertIn("--lang en", server_args(self.city))
 
-    def test_agent_city_lang_unknown_is_zh(self):
+    def test_agent_city_lang_unknown_is_the_setting(self):
         self.assertOk(self.city_run("start", extra={"AGENT_CITY_LANG": "fr"}))
-        self.assertIn("--lang zh", server_args(self.city))
+        self.assertIn("--lang en", server_args(self.city))
 
     def test_demo_is_the_same(self):
         result = self.city_run("demo")
         self.assertOk(result)
         self.assertIn("CITY: http://127.0.0.1:%d/#demo" % self.port, result.stdout)
         args = server_args(self.city)
-        self.assertIn("--lang zh", args)
+        self.assertIn("--lang en", args)
 
-    def test_inside_a_repo_is_as_today(self):
-        self.repo.set_conf("city_port", str(self.port))
+    def test_inside_a_repo_agent_city_lang_overrides_too(self):
+        # settings-configure: one user-level Language, so AGENT_CITY_LANG overrides it everywhere
         self.repo.set_conf("language", "en")
         self.assertOk(self.city_run("start", cwd=self.repo.dir, extra={"AGENT_CITY_LANG": "zh"}))
-        args = server_args(self.city)
-        self.assertIn("--lang en", args)
+        self.assertIn("--lang zh", server_args(self.city))
 
 class TestPort(OutsideCase):
     def test_agent_city_port_outside_a_repo(self):
@@ -497,7 +498,7 @@ class TestPort(OutsideCase):
         self.assertIn("CITY: http://127.0.0.1:%d" % port, result.stdout)
         self.assertIn("--port %d" % port, server_args(self.city))
 
-    def test_agent_city_port_wins_over_agent_conf_inside_a_repo(self):
+    def test_agent_city_port_wins_over_the_setting_inside_a_repo(self):
         port = free_port()
         self.repo.set_conf("city_port", str(free_port()))
         result = self.city_run("start", cwd=self.repo.dir, extra={"AGENT_CITY_PORT": str(port)})
@@ -555,6 +556,7 @@ class TestStatusOutsideARepo(OutsideCase):
 class TestShimRunsTheRealCity(OutsideCase):
     def test_from_a_plain_folder(self):
         home = self.repo.fake_home()
+        self.set_default("city_port", str(self.port))   # Configure of the fake home
         cache = os.path.join(home, *CACHE_PARTS)
         shutil.copytree(self.repo.plugin, os.path.join(cache, "0.99.0"))
         old = os.path.join(cache, "0.9.0", "bin", "agent-city.sh")
@@ -574,7 +576,7 @@ class TestShimRunsTheRealCity(OutsideCase):
         start = shim("start")
         self.assertOk(start)
         self.assertIn("CITY: http://127.0.0.1:%d" % self.port, start.stdout)
-        self.assertIn("--lang zh", server_args(self.city))
+        self.assertIn("--lang en", server_args(self.city))
         self.assertIn("CITY: running", shim("status").stdout)
         self.assertOk(shim("stop"))
         self.assertIn("CITY: not running", shim("status").stdout)

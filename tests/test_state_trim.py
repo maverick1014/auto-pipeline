@@ -293,14 +293,6 @@ class TestHeader(TrimCase):
         self.assertEqual(self.state_lines(), rows[:40])
         self.assertEqual(self.day_lines(), rows[40:])
 
-    def test_state_header_lines_sets_the_cap(self):
-        self.repo.set_conf("state_header_lines", "0")
-        rows = ["brief line %d | %s" % (i, OLD) for i in range(1, 4)]
-        write(self.state_path, "\n".join(rows) + "\n")
-        self.trim()
-        self.assertEqual(self.state_lines(), [])
-        self.assertEqual(self.day_lines(), rows)
-
     def test_a_brief_is_kept_whole(self):
         brief = ["[Opus 5.5 xhigh] Brief from the main manager: you are the task manager for \"goal-probe\".",
                  "TODO LINE: goal-probe | big | Test /goal | est 30m",
@@ -457,11 +449,6 @@ class TestAge(TrimCase):
     def test_exactly_24_hours_is_old(self):
         self.assertSplit(["edge | 2026-11-19 12:00", "edge2 | 2026-11-19 12:01"],
                          keep=["edge2 | 2026-11-19 12:01"])
-
-    def test_state_keep_hours(self):
-        self.repo.set_conf("state_keep_hours", "48")
-        self.assertSplit(["two days | 2026-11-18 12:30", "older | 2026-11-18 11:59"],
-                         keep=["two days | 2026-11-18 12:30"])
 
     def test_a_stamp_in_the_future_is_young(self):
         self.assertSplit(["future | 2026-11-21 09:00"], keep=["future | 2026-11-21 09:00"])
@@ -809,53 +796,21 @@ class TestTodoDone(TrimCase):
         self.assertIn("state trim: refused", r.stderr)
         self.assertIn("goal-x", read(self.repo.path("agent_completed.txt")))
 
-    def test_state_trim_auto_off(self):
-        self.repo.set_conf("state_trim_auto", "off")
-        rows = self.write_state(["DECIDED goal-x: ship it | %s" % OLD])
-        out = self.assertOk(self.done())
-        self.assertNotIn("state trim", out)
-        self.assertEqual(self.state_lines(), rows)
-        self.trim()
-        self.assertEqual(self.day_lines(), ["DECIDED goal-x: ship it | %s" % OLD])
-
-
 # =============================================================== config keys (A7)
 
 
-class TestConfigKeys(ScriptCase):
-    script = "agent-settings.sh"
+class TestConfigKeys(unittest.TestCase):
+    """settings-configure: the state numbers are fixed constants now, never set anywhere."""
 
-    DEFAULTS = {"state_keep_hours": "24", "state_warn_lines": "300", "state_header_lines": "40",
-                "state_trim_auto": "on", "compact_clear_at": "2", "compact_clear_check_sec": "30"}
+    DEFAULTS = {"state_keep_hours": 24, "state_warn_lines": 300, "state_header_lines": 40,
+                "state_trim_auto": "on", "compact_clear_at": 2, "compact_clear_check_sec": 30}
 
-    def test_the_template_has_the_keys(self):
-        with open(os.path.join(os.path.dirname(HERE), "bin", "agent.conf.default")) as fh:
-            rows = [l.strip() for l in fh]
+    def test_the_constants(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_conf
         for key, value in self.DEFAULTS.items():
             with self.subTest(key=key):
-                self.assertIn("%s=%s" % (key, value), rows)
-
-    def test_good_values_are_written(self):
-        for key, value in (("state_keep_hours", "48"), ("state_warn_lines", "500"),
-                           ("state_header_lines", "0"), ("state_trim_auto", "off"),
-                           ("compact_clear_at", "0"), ("compact_clear_check_sec", "1")):
-            with self.subTest(key=key):
-                self.assertOk(self.repo.run("agent-settings.sh", key, value))
-                with open(self.repo.path("agent.conf")) as fh:
-                    self.assertIn("%s=%s" % (key, value), [l.strip() for l in fh])
-
-    def test_bad_values_are_refused(self):
-        for key, value in (("state_keep_hours", "0"), ("state_keep_hours", "721"),
-                           ("state_warn_lines", "9"), ("state_header_lines", "501"),
-                           ("state_trim_auto", "maybe"), ("compact_clear_at", "21"),
-                           ("compact_clear_check_sec", "0"), ("compact_clear_check_sec", "601")):
-            with self.subTest(key=key, value=value):
-                with open(self.repo.path("agent.conf")) as fh:
-                    before = fh.read()
-                r = self.repo.run("agent-settings.sh", key, value)
-                self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
-                with open(self.repo.path("agent.conf")) as fh:
-                    self.assertEqual(fh.read(), before)
+                self.assertEqual(agent_conf.CONSTANTS[key], value)
 
 
 # =============================================================== housekeep (T10)
@@ -888,14 +843,6 @@ class TestHousekeepTrims(HousekeepCase):
         self.listing()
         self.assertFalse(os.path.exists(self.repo.path(HK_DAY)))
         self.assertIn("old note", self.state())
-
-    def test_state_trim_auto_off(self):
-        self.repo.set_conf("state_trim_auto", "off")
-        write(self.repo.path("agent_state.txt"), "ROLE: main\n\nold note | 2026-11-10 09:00\n")
-        self.apply()
-        self.assertFalse(os.path.exists(self.repo.path(HK_DAY)))
-        self.assertIn("old note", self.state())
-
 
 # =============================================================== --clean (T9, A8)
 

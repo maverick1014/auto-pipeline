@@ -1319,7 +1319,7 @@ class TestStartWiring(CleanupCase):
         # the lines a start never drops to make room, however long the path
         lines = self.lines(out)
         for prefix in ("ROLE:", "PROJECT:", "RESOURCES:", "LANGUAGE:",
-                       "PERMISSION:", "YOU:", "AUTO UPDATE:", "RULES:", "QUIZ:"):
+                       "PERMISSION:", "YOU:", "RULES:", "QUIZ:"):   # settings-configure: no AUTO UPDATE line
             self.assertTrue(any(l.startswith(prefix) for l in lines),
                             "%s line missing\n%s" % (prefix, out))
         # S8: the state file is at least pointed to: its pointer line, or its

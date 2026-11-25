@@ -4,7 +4,7 @@ description: List every question that waits on the owner (chat list, or an Artif
 ---
 # /question — list the questions, read the answers (PRINCIPLES.md W18)
 
-Words to the human: the language of `agent.conf`. Headings: `## To decide` (zh: `## 要你决定`), recommended mark `(recommended)` (zh: `(建议)`), done word `done` (zh: `答完了`). A spawned worker, deputy or reviewer never runs this: do nothing.
+Words to the human: the Language setting. Headings: `## To decide` (zh: `## 要你决定`), recommended mark `(recommended)` (zh: `(建议)`), done word `done` (zh: `答完了`). A spawned worker, deputy or reviewer never runs this: do nothing.
 
 Your role, from the `YOU:` line of your start text: main manager (`<repo> Manager`) → `Q=""`, every question of the whole repo. Task manager, human-direct Helper, or no live main manager → `Q=" --self"`, the questions of your own task only. `AF=${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh`.
 

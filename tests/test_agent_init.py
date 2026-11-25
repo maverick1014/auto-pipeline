@@ -1,4 +1,8 @@
-"""Failing tests for bin/agent-init.sh. Written by the task manager, before any code.
+"""UPDATE settings-configure (2026-11-25): init writes no agent.conf and reads no
+CLAUDE_PLUGIN_OPTION_*; settings live in /plugin -> Installed -> auto-pipeline ->
+Configure. The agent.conf and template lines below are history.
+
+Failing tests for bin/agent-init.sh. Written by the task manager, before any code.
 
 CONTRACT:
 
@@ -68,7 +72,7 @@ if HERE not in sys.path:
 
 from scripthelp import ScriptCase, ScriptRepo
 
-MADE_FILES = ["agent.conf", "agent_todo.txt", "agent_completed.txt",
+MADE_FILES = ["agent_todo.txt", "agent_completed.txt",
               "agent_ideas.txt", "agent_worktree.txt", "AGENTS.md"]
 
 GITIGNORE_LINES = [".secrets/", "agent_state.txt", "agent_monitor.txt",
@@ -128,11 +132,10 @@ class TestCreatesTheFiles(InitCase):
         self.assertOk(self.init())
         self.assertTrue(os.path.isdir(os.path.join(self.project, ".secrets")))
 
-    def test_agent_conf_is_the_template(self):
+    def test_no_settings_file_is_made(self):
+        # settings-configure 2026-11-25: settings live in Configure, never in the repo
         self.assertOk(self.init())
-        with open(self.repo.plugin_path("bin", "agent.conf.default")) as fh:
-            template = fh.read()
-        self.assertEqual(self.read("agent.conf"), template)
+        self.assertFalse(os.path.exists(os.path.join(self.project, "agent.conf")))
 
     def test_it_makes_nothing_else(self):
         self.assertOk(self.init())
@@ -227,7 +230,7 @@ class TestIdempotent(InitCase):
         self.assertOk(self.init())
         self.assertEqual(self.snapshot(), before)
 
-    def test_an_existing_conf_is_kept(self):
+    def test_an_old_conf_is_never_changed(self):
         with open(os.path.join(self.project, "agent.conf"), "w") as fh:
             fh.write("max_agents=9\n")
         self.assertOk(self.init())
@@ -243,22 +246,22 @@ class TestIdempotent(InitCase):
         self.assertOk(self.init())
         out = self.assertOk(self.init())
         self.assertIn("kept", out)
-        self.assertIn("agent.conf", out)
+        self.assertIn("agent_todo.txt", out)
 
 
 class TestWhereItRuns(InitCase):
     def test_it_takes_a_directory_argument(self):
         other = self.repo.make_project("elsewhere")
         self.assertOk(self.init(other, cwd=self.repo.plugin))
-        self.assertTrue(os.path.exists(os.path.join(other, "agent.conf")))
-        self.assertFalse(os.path.exists(os.path.join(self.project, "agent.conf")))
+        self.assertTrue(os.path.exists(os.path.join(other, "agent_todo.txt")))
+        self.assertFalse(os.path.exists(os.path.join(self.project, "agent_todo.txt")))
 
     def test_it_uses_the_project_root_from_a_subdirectory(self):
         sub = os.path.join(self.project, "src", "deep")
         os.makedirs(sub)
         self.assertOk(self.init(cwd=sub))
-        self.assertTrue(os.path.exists(os.path.join(self.project, "agent.conf")))
-        self.assertFalse(os.path.exists(os.path.join(sub, "agent.conf")))
+        self.assertTrue(os.path.exists(os.path.join(self.project, "agent_todo.txt")))
+        self.assertFalse(os.path.exists(os.path.join(sub, "agent_todo.txt")))
 
     def test_it_works_in_a_plain_directory_that_is_not_a_repo(self):
         plain = self.repo.make_project("plain")
@@ -310,26 +313,6 @@ class TestUsage(InitCase):
         self.assertFalse(os.path.exists(os.path.join(self.project, "agent.conf")))
 
 
-class TestTemplate(InitCase):
-    """bin/agent.conf.default is the one place the defaults live."""
-
-    def test_the_template_has_every_key(self):
-        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
-        import agent_conf
-
-        conf = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
-        for key in list(agent_conf.NUMBER_BOUNDS) + agent_conf.ROLE_KEYS \
-                + ["permission_mode", "runtime", "language", "auto_resume"]:
-            with self.subTest(key=key):
-                self.assertIn(key, conf)
-
-    def test_the_template_is_valid(self):
-        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
-        import agent_conf
-
-        conf = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
-        self.assertEqual(agent_conf.validate(conf), {})
-
 
 class TestCloudBlock(InitCase):
     """A cloud session needs a headless browser, and only its Setup script
@@ -379,126 +362,16 @@ class TestCloudBlock(InitCase):
         self.assertEqual(block["permissions"]["allow"], ALLOW_RULES)
 
 
-class TestUserConfigSeeding(InitCase):
-    """Zero-touch setup: what Claude Code asked at enable time lands in
-    agent.conf, so nobody has to open a settings script."""
 
-    ENV = {
-        "CLAUDE_PLUGIN_OPTION_RUNTIME": "plain",
-        "CLAUDE_PLUGIN_OPTION_LANGUAGE": "zh",
-        "CLAUDE_PLUGIN_OPTION_MAX_AGENTS": "6",
-    }
-
-    def conf(self, **kwargs):
-        self.assertOk(self.init(**kwargs))
-        out = {}
-        for line in self.read("agent.conf").splitlines():
-            if "=" in line:
-                key, value = line.split("=", 1)
-                out[key.strip()] = value.strip()
-        return out
-
-    def template(self):
-        out = {}
-        with open(self.repo.plugin_path("bin", "agent.conf.default")) as fh:
-            for line in fh:
-                if "=" in line:
-                    key, value = line.split("=", 1)
-                    out[key.strip()] = value.strip()
-        return out
-
-    def test_each_answer_is_written(self):
-        conf = self.conf(env=dict(self.ENV))
-        self.assertEqual(conf["runtime"], "plain")
-        self.assertEqual(conf["language"], "zh")
-        self.assertEqual(conf["max_agents"], "6")
-
-    def test_one_answer_alone_still_works(self):
-        conf = self.conf(env={"CLAUDE_PLUGIN_OPTION_LANGUAGE": "ms"})
-        self.assertEqual(conf["language"], "ms")
-        self.assertEqual(conf["runtime"], self.template()["runtime"])
-
-    def test_nothing_set_leaves_the_template_alone(self):
-        self.assertEqual(self.conf(), self.template())
-
-    def test_an_empty_answer_counts_as_unset(self):
-        conf = self.conf(env={"CLAUDE_PLUGIN_OPTION_LANGUAGE": ""})
-        self.assertEqual(conf["language"], self.template()["language"])
-
-    def test_no_other_key_is_touched(self):
-        conf = self.conf(env=dict(self.ENV))
-        template = self.template()
-        for key, value in template.items():
-            if key in ("runtime", "language", "max_agents", "main_manager", "task_manager"):
-                continue
-            with self.subTest(key=key):
-                self.assertEqual(conf[key], value)
-
-    def test_the_key_order_does_not_change(self):
-        conf = self.conf(env=dict(self.ENV))
-        self.assertEqual(list(conf), list(self.template()))
-
-    def test_an_existing_conf_is_never_overwritten(self):
-        with open(os.path.join(self.project, "agent.conf"), "w") as fh:
-            fh.write("max_agents=9\n")
-        self.assertOk(self.init(env=dict(self.ENV)))
-        self.assertEqual(self.read("agent.conf"), "max_agents=9\n")
-
-    def test_the_seeded_conf_is_valid(self):
-        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
-        import agent_conf
-
-        self.assertOk(self.init(env=dict(self.ENV)))
-        conf = agent_conf.load(os.path.join(self.project, "agent.conf"))
-        self.assertEqual(agent_conf.validate(conf), {})
-
-
-class TestRuntimeKeyInTheTemplate(InitCase):
-    def test_the_template_starts_on_auto(self):
-        with open(self.repo.plugin_path("bin", "agent.conf.default")) as fh:
-            self.assertIn("runtime=auto", fh.read())
-
-    def test_a_fresh_project_starts_on_auto(self):
-        self.assertOk(self.init())
-        self.assertIn("runtime=auto", self.read("agent.conf"))
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-
-class TestManagerDefaultsAndSeed(InitCase):
-    def conf(self, env=None):
-        self.assertOk(self.init(env=env) if env else self.init())
-        out = {}
-        for line in self.read("agent.conf").splitlines():
-            if "=" in line:
-                k, v = line.split("=", 1)
-                out[k.strip()] = v.strip()
-        return out
-
-    def test_managers_default_to_high(self):
-        conf = self.conf()
-        self.assertEqual(conf["main_manager"], "opus-5.5:high")
-        self.assertEqual(conf["task_manager"], "opus-5.5:high")
-
-    def test_manager_model_answer_sets_both(self):
-        conf = self.conf({"CLAUDE_PLUGIN_OPTION_MANAGER_MODEL": "opus-5.5:xhigh"})
-        self.assertEqual(conf["main_manager"], "opus-5.5:xhigh")
-        self.assertEqual(conf["task_manager"], "opus-5.5:xhigh")
-
-    def test_bad_manager_model_is_ignored(self):
-        conf = self.conf({"CLAUDE_PLUGIN_OPTION_MANAGER_MODEL": "sonnet-5:medium"})
-        self.assertEqual(conf["main_manager"], "opus-5.5:high")
 
 
 class TestEndLines(InitCase):
     def test_it_ends_with_how_to_change_and_the_main_commands(self):
         out = self.assertOk(self.init())
-        tail = out.strip().splitlines()[-2:]
-        self.assertIn("/auto-pipeline:settings language en", tail[0])
-        self.assertIn("/auto-pipeline:todo", tail[1])
-        self.assertIn("/auto-pipeline:question", tail[1])
+        lines = out.strip().splitlines()
+        self.assertIn("settings: /plugin -> Installed -> auto-pipeline -> Configure", lines)
+        self.assertIn("/auto-pipeline:todo", lines[-1])
+        self.assertIn("/auto-pipeline:question", lines[-1])
 
     def test_it_points_at_add_permissions(self):
         self.assertIn("--add-permissions", self.assertOk(self.init()))

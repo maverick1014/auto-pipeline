@@ -1088,7 +1088,7 @@ class TestCityScriptVerbs(ScriptCase):
         self.home = os.path.join(self.repo.base, "cityhome")
         self.port = free_port()
         self.repo.set_conf("city_port", str(self.port))
-        self.repo.set_conf("city_governor_wait_sec", "7")
+        # settings-configure: city_governor_wait_sec is a fixed constant (60)
 
     def tearDown(self):
         on = os.path.join(self.city, "on")
@@ -1127,7 +1127,7 @@ class TestCityScriptVerbs(ScriptCase):
         self.started()
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         conn.request("GET", "/health")
-        self.assertEqual(json.loads(conn.getresponse().read())["gov_wait_sec"], 7)
+        self.assertEqual(json.loads(conn.getresponse().read())["gov_wait_sec"], 60)
         conn.close()
         ask_id = self.api("POST", "/api/ask", q_body())[1]["id"]
         self.assertEqual(self.city_run("answer", ask_id, "4791").returncode, 0)

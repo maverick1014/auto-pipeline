@@ -1,4 +1,8 @@
-"""Failing tests for the two roots. Written by the task manager, before any code.
+"""UPDATE settings-configure (2026-11-25): no settings file in either root; settings are
+user level (Configure), agent_todo.txt marks a set-up project. agent.conf lines below
+are history.
+
+Failing tests for the two roots. Written by the task manager, before any code.
 
 CONTRACT. Every script in bin/ is started by its absolute path, from any
 directory, and must tell two roots apart:
@@ -54,8 +58,8 @@ class RootsCase(ScriptCase):
         for txt in ("agent_todo.txt", "agent_completed.txt", "agent_ideas.txt",
                     "agent_worktree.txt"):
             open(os.path.join(path, txt), "w").close()
-        with open(os.path.join(path, "agent.conf"), "w") as fh:
-            fh.write("max_usage_percent=%d\n" % (cap if cap else 80))
+        if cap:   # settings-configure: settings are user level, the cap is set in Configure
+            self.repo.set_conf("max_usage_percent", cap)
         with open(os.path.join(path, "agent_todo.txt"), "w") as fh:
             fh.write("only-in-%s | big | marker line\n" % name)
         self.repo.git_init(path)
@@ -102,7 +106,7 @@ class TestProjectFromCwd(RootsCase):
                                                     self.repo.plugin), out)
         self.assertIn("agent_todo.txt: 1 lines", out)
 
-    def test_the_cap_comes_from_the_project_conf(self):
+    def test_the_cap_comes_from_configure(self):
         self.repo.set_conf("max_usage_percent", "30")
         out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "40"}))
         self.assertIn("(cap 30%) -> OVER CAP", out)
@@ -139,7 +143,7 @@ class TestProjectFromHookStdin(RootsCase):
         self.assertFalse(os.path.exists(self.repo.path(".git",
                                                        "agent_main.lock")))
 
-    def test_the_conf_of_that_project_is_used(self):
+    def test_the_configure_cap_holds_for_that_project_too(self):
         other = self.second_project(cap=25)
         out = self.assertOk(self.start(cwd=self.repo.plugin,
                                        stdin=self.hook_json(other),
@@ -251,26 +255,19 @@ class TestAgentFileFromAnywhere(RootsCase):
 class TestSettingsFromAnywhere(RootsCase):
     script = "agent-settings.sh"
 
-    def test_show_reads_the_project_conf(self):
+    def test_show_reads_configure(self):
         self.repo.set_conf("max_agents", "7")
         out = self.assertOk(self.repo.run("agent-settings.sh"))
-        self.assertIn("max_agents", out)
+        self.assertIn("Max agents", out)
         self.assertIn("7", out)
 
-    def test_set_writes_the_project_conf(self):
-        self.assertOk(self.repo.run("agent-settings.sh", "max_agents", "6"))
-        self.assertIn("max_agents=6", self.repo.read("agent.conf"))
-
-    def test_the_template_in_the_plugin_is_not_touched(self):
-        template = self.repo.plugin_path("bin", "agent.conf.default")
-        with open(template) as fh:
-            before = fh.read()
-        self.assertOk(self.repo.run("agent-settings.sh", "max_agents", "6"))
-        with open(template) as fh:
-            self.assertEqual(fh.read(), before)
+    def test_set_is_refused_and_writes_nothing(self):
+        r = self.repo.run("agent-settings.sh", "max_agents", "6")
+        self.assertEqual(r.returncode, 1)
+        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
 
 
-class TestProjectWithoutAgentConf(RootsCase):
+class TestProjectNotSetUp(RootsCase):
     """A project that has not run agent-init.sh yet is the first thing the
     plugin meets. Nothing may fail silently there: the scripts fall back to
     their built-in defaults, and the one script that needs a real file says so.
@@ -282,15 +279,16 @@ class TestProjectWithoutAgentConf(RootsCase):
 
     def setUp(self):
         super().setUp()
-        os.remove(self.repo.path("agent.conf"))
+        os.remove(self.repo.path("agent_todo.txt"))   # settings-configure: the set-up mark
         self.repo.enable_plugin()
 
     def test_agent_start_sets_it_up_and_then_runs_normally(self):
         out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "90"}))
-        self.assertIn("first run, created agent.conf", out)
+        self.assertIn("first run, created the task files", out)
         self.assertIn("(cap 80%) -> OVER CAP", out)
         self.assertIn("QUIZ:", out)
-        self.assertTrue(os.path.exists(self.repo.path("agent.conf")))
+        self.assertTrue(os.path.exists(self.repo.path("agent_todo.txt")))
+        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
 
     def test_agent_resume_runs(self):
         result = self.repo.run("agent-resume.sh", "--dry-run")
@@ -303,12 +301,10 @@ class TestProjectWithoutAgentConf(RootsCase):
         self.assertOk(self.repo.run("agent-file.sh", "idea", "add", "no-conf"))
         self.assertIn("no-conf", self.repo.read("agent_ideas.txt"))
 
-    def test_agent_settings_says_what_is_missing(self):
+    def test_agent_settings_shows_the_defaults(self):
         result = self.repo.run("agent-settings.sh")
-        self.assertEqual(result.returncode, 2)
-        message = result.stdout + result.stderr
-        self.assertIn("agent.conf", message)
-        self.assertIn("agent-init.sh", message)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("change: /plugin -> Installed -> auto-pipeline -> Configure", result.stdout)
 
     def test_nothing_fails_without_a_word(self):
         """A non-zero exit with an empty output is the worst case of all."""

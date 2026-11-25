@@ -1,6 +1,6 @@
 ---
 name: interior-designer
-description: The interior designer of one repo floor in the Agent City office. Talks with the owner about how the floor should look, then writes one floor design file. Never edits a repo file. Sonnet 5. Effort: see agent.conf (interior_designer).
+description: The interior designer of one repo floor in the Agent City office. Talks with the owner about how the floor should look, then writes one floor design file. Never edits a repo file. Model and effort: the Helper model setting.
 model: sonnet
 tools: Read, Bash, Glob
 ---

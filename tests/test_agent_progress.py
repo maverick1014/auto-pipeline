@@ -1,4 +1,8 @@
-"""Failing tests for progress-bar: stages, the progress column, done-by from progress,
+"""UPDATE settings-configure (2026-11-25): the weights, progress_eta_min_pct and
+board_watch_sec are fixed constants in bin/agent_conf.py (same values as the old
+template); nothing sets them. Lines below about agent.conf are history.
+
+Failing tests for progress-bar: stages, the progress column, done-by from progress,
 the live watch. Written by the task manager first.
 
 Owner, 2026-11-11: after a dispatch the owner cannot see how far a task manager
@@ -298,24 +302,11 @@ class TestProgressColumn(StageCase):
             with self.subTest(what=what):
                 self.assertEqual(self.row(rows, what=what)["Progress"], "-")
 
-    def test_the_weights_come_from_agent_conf(self):
-        self.repo.set_conf("stage_workers", "80")
-        self.add("alpha", "the login form", 60)
-        self.stage("alpha", "verify")
-        # (1 + 1 + 4 + 20 + 80) / 140 = 75.7 %
-        self.assertEqual(self.progress("alpha"), "███████░░░  75%")
-
-    def test_a_bad_weight_is_the_template_value(self):
-        self.repo.set_conf("stage_workers", "lots")
-        self.add("alpha", "the login form", 60)
-        self.stage("alpha", "verify")
-        self.assertEqual(self.progress("alpha"), "██████░░░░  66%")
-
     def test_never_100_before_merged(self):
-        self.repo.set_conf("stage_merge", "0")
+        # settings-configure: the weights are fixed (merge = 5), merge stage still shows 99 at most
         self.add("alpha", "the login form", 60)
         self.stage("alpha", "merge")
-        self.assertEqual(self.progress("alpha"), "█████████░  99%")
+        self.assertLess(int(self.progress("alpha").split()[-1].rstrip("%")), 100)
 
 
 class TestProgressColumnEnglish(StageCase):
@@ -381,16 +372,10 @@ class TestDoneBy(StageCase):
         self.stage("alpha", "tests")
         self.assertEqual(self.done_by("alpha"), "超出 20m")
 
-    def test_the_minimum_comes_from_agent_conf(self):
-        # workers p = 26/100: at 26 progress counts (60 x 74/26 = 170.8 -> 171 -> 17:51), at 27 not
+    def test_the_minimum_is_the_fixed_20(self):
+        # workers p = 26/100 is above the fixed 20: progress counts (60 x 74/26 = 170.8 -> 171 -> 17:51)
         self.add("alpha", "the login form", 40, opened="2026-11-02 14:00")
         self.stage("alpha", "workers")
-        self.assertEqual(self.done_by("alpha"), "17:51")
-        self.repo.set_conf("progress_eta_min_pct", "26")
-        self.assertEqual(self.done_by("alpha"), "17:51")
-        self.repo.set_conf("progress_eta_min_pct", "27")
-        self.assertEqual(self.done_by("alpha"), "超出 20m")
-        self.repo.set_conf("progress_eta_min_pct", "lots")   # bad -> the template value, 20
         self.assertEqual(self.done_by("alpha"), "17:51")
 
     def test_no_estimate_below_the_minimum_progress(self):
@@ -489,12 +474,11 @@ class TestWatch(StageCase):
         self.assertIn("| alpha | the login form | 进行中 | ██████░░░░  66% |", first)
         self.assertIn("每 1 秒刷新 · Ctrl-C 停止", first.strip().splitlines()[-1])
 
-    def test_the_default_comes_from_agent_conf(self):
-        self.repo.set_conf("board_watch_sec", "7")
+    def test_the_default_is_the_fixed_60(self):
         code, out, err = self.ctrl_c(self.popen("--watch"), 1.5)
         self.assertEqual(code, 0, err)
         self.assertEqual(out.count(CLEAR), 1, out)
-        self.assertIn("每 7 秒刷新 · Ctrl-C 停止", out)
+        self.assertIn("每 60 秒刷新 · Ctrl-C 停止", out)
         self.assertIn("无", out)
 
     def test_self_watch(self):
@@ -525,45 +509,31 @@ class TestWatchEnglish(TestWatch):
         self.assertEqual(code, 0, err)
         self.assertIn("refresh every 1s · Ctrl-C stops", out)
 
-    def test_the_default_comes_from_agent_conf(self):
-        self.repo.set_conf("board_watch_sec", "7")
+    def test_the_default_is_the_fixed_60(self):
         code, out, err = self.ctrl_c(self.popen("--watch"), 1.5)
         self.assertEqual(code, 0, err)
-        self.assertIn("refresh every 7s · Ctrl-C stops", out)
+        self.assertIn("refresh every 60s · Ctrl-C stops", out)
 
 
 # ---------------------------------------------------------------- config
 
 
 class TestConfKeys(unittest.TestCase):
-    def setUp(self):
+    """settings-configure: the stage weights and the board numbers are fixed constants."""
+
+    def test_constants(self):
         import agent_conf
-        self.ac = agent_conf
-
-    def test_bounds(self):
-        for key in DEFAULTS:
-            with self.subTest(key=key):
-                want = BOUNDS.get(key, (0, 100))
-                self.assertEqual(self.ac.NUMBER_BOUNDS.get(key), want)
-
-    def test_template_defaults(self):
-        conf = self.ac.load(os.path.join(ROOT, "bin", "agent.conf.default"))
         for key, value in DEFAULTS.items():
             with self.subTest(key=key):
-                self.assertEqual(conf.get(key), value)
-        self.assertEqual(self.ac.validate(conf), {})
-
+                self.assertEqual(str(agent_conf.CONSTANTS[key]), value)
 
 class TestSettingsWritesWeights(tb.BoardCase):
     script = "agent-settings.sh"
 
-    def test_set_and_refuse(self):
-        ok = self.repo.run("agent-settings.sh", "stage_workers", "50")
-        self.assertOk(ok)
-        self.assertIn("stage_workers=50\n", self.repo.read("agent.conf"))
-        bad = self.repo.run("agent-settings.sh", "stage_workers", "101")
-        self.assertNotEqual(bad.returncode, 0)
-        self.assertIn("stage_workers=50\n", self.repo.read("agent.conf"))
+    def test_set_is_refused(self):
+        r = self.repo.run("agent-settings.sh", "stage_workers", "50")
+        self.assertEqual(r.returncode, 1)
+        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
 
 
 # ---------------------------------------------------------------- skills

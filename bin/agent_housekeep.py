@@ -245,9 +245,8 @@ class Housekeep(object):
 
     def interval(self):
         try:
-            conf = agent_conf.load(self.path("agent.conf"))
-            val = int(conf.get("housekeep_interval_min", "0"))
-        except (OSError, ValueError):
+            val = int(agent_conf.get("housekeep_interval_min"))
+        except Exception:
             return 120
         return val if val > 0 else 120
 

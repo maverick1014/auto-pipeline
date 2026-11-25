@@ -14,7 +14,7 @@ claude plugin install auto-pipeline@auto-pipeline
 
 Or inside Claude Code: `/plugin marketplace add maverick1014/auto-pipeline`, then `/plugin install auto-pipeline`. That one lets you pick the scope: all your repos, or only this project.
 
-Answer the three questions (runtime `auto`, your language, max agents). Open Claude Code in that
+Set your Language in Configure; the defaults fit the other settings. Open Claude Code in that
 repo. Run `/auto-pipeline:init` once, then paste the permissions block it prints into
 `.claude/settings.json` (a plugin cannot add permission rules for you):
 
@@ -41,7 +41,7 @@ Cloud sessions (claude.ai/code): the agent handles them with cloud-pack. Nothing
 | Command | What it does |
 |---|---|
 | `/auto-pipeline:init` | One-time project setup. Prints the permissions block. |
-| `/auto-pipeline:settings` | Show the settings, or change one ("language en", "max_agents 3"). |
+| `/auto-pipeline:settings` | Show the settings as a table. |
 | `/auto-pipeline:todo` | Show every open task, wait, to-do and parked question in one table. |
 | `/auto-pipeline:question` | List the questions waiting for you and take your answers. |
 | `/auto-pipeline:close-case` | Settle one finished case, or wrap up the whole repo. |
@@ -62,4 +62,4 @@ You can also just type a keyword instead of the command (case does not matter):
 
 ## Change settings
 
-`/auto-pipeline:settings`, or `bin/agent-settings.sh <key> <value>` (for example `bin/agent-settings.sh language zh`).
+Settings change only in /plugin -> Installed -> auto-pipeline -> Configure. `/auto-pipeline:settings` shows them and never changes them.

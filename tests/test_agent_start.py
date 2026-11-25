@@ -229,8 +229,7 @@ class TestTheRootsLine(StartCase):
         # A project that is already set up, so the scope guard stays out of the
         # way and this test keeps proving the one thing it is about: the roots
         # follow the hook's cwd, not the process's.
-        with open(os.path.join(other, "agent.conf"), "w") as fh:
-            fh.write("language=en\n")
+        open(os.path.join(other, "agent_todo.txt"), "w").close()
         out = self.assertOk(self.start(
             cwd=self.repo.plugin,
             stdin='{"cwd": "%s", "source": "startup"}' % other))
@@ -868,13 +867,13 @@ class TestMarkerCleanup(StartCase):
         self.assertTrue(os.path.exists(old))
 
 
-SETUP_LINE = ("auto-pipeline: first run, created agent.conf and the task files")
+SETUP_LINE = ("auto-pipeline: first run, created the task files")   # settings-configure: no agent.conf
 POINTER_LINE = ("auto-pipeline: run /auto-pipeline:init once to see the "
                 "permission block and the cloud setup line to paste")
 NOT_HERE_LINE = ("auto-pipeline: not set up in this repo, "
                  "run /auto-pipeline:init to enable")
 
-MADE_FILES = ["agent.conf", "agent_todo.txt", "agent_completed.txt",
+MADE_FILES = ["agent_todo.txt", "agent_completed.txt",
               "agent_ideas.txt", "agent_worktree.txt", "AGENTS.md", ".secrets"]
 
 
@@ -924,7 +923,8 @@ class TestFirstRunInAnEnabledRepo(BareProjectCase):
     def test_settings_local_json_counts_too(self):
         self.repo.enable_plugin(local=True)
         self.assertOk(self.start())
-        self.assertTrue(os.path.exists(self.repo.path("agent.conf")))
+        self.assertTrue(os.path.exists(self.repo.path("agent_todo.txt")))
+        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
 
     def test_it_says_what_it_did(self):
         self.repo.enable_plugin()
@@ -970,17 +970,16 @@ class TestFirstRunInAnEnabledRepo(BareProjectCase):
                  for n in MADE_FILES if os.path.isfile(self.repo.path(n))}
         self.assertEqual(after, before)
 
-    def test_an_existing_conf_stops_it_firing(self):
+    def test_an_existing_task_file_stops_it_firing(self):
         self.repo.enable_plugin()
-        with open(self.repo.path("agent.conf"), "w") as fh:
-            fh.write("max_agents=9\n")
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("alpha | big | keep\n")
         out = self.assertOk(self.start())
         self.assertNotIn(SETUP_LINE, out)
-        self.assertEqual(open(self.repo.path("agent.conf")).read(),
-                         "max_agents=9\n")
+        self.assertEqual(open(self.repo.path("agent_todo.txt")).read(), "alpha | big | keep\n")
 
     def test_the_new_conf_is_used_at_once(self):
-        """language is read from the conf the same run that created it."""
+        """language: a hook's CLAUDE_PLUGIN_OPTION_LANGUAGE counts when Configure has none."""
         self.repo.enable_plugin()
         out = self.assertOk(self.start(
             env={"CLAUDE_PLUGIN_OPTION_LANGUAGE": "zh"}))
@@ -1027,10 +1026,10 @@ class TestUserScopeLeavesTheRepoAlone(BareProjectCase):
             fh.write('{"enabledPlugins": {"something-else@market": true}}')
         self.assertIn(NOT_HERE_LINE, self.assertOk(self.start()))
 
-    def test_an_agent_conf_beats_the_scope_check(self):
-        """A repo set up by hand keeps working, whatever the scope is."""
-        with open(self.repo.path("agent.conf"), "w") as fh:
-            fh.write("language=en\n")
+    def test_a_task_file_beats_the_scope_check(self):
+        """A repo set up by hand keeps working, whatever the scope is (settings-configure:
+        agent_todo.txt is the set-up mark, agent.conf is gone)."""
+        open(self.repo.path("agent_todo.txt"), "w").close()
         out = self.assertOk(self.start())
         self.assertNotIn(NOT_HERE_LINE, out)
         self.assertIn("QUIZ:", out)

@@ -481,15 +481,11 @@ class TestBacktestBlend(BlendCase):
         self.assertRegex(rows[-1], TARGET)
         self.assertFalse([r for r in rows if r.startswith("target 5m")], out)
 
-    def test_the_big_line_follows_the_config(self):
+    def test_the_big_line_is_the_fixed_120(self):
+        # settings-configure: estimate_big_min is a fixed constant (120)
         self.completed(steady(40))
-        self.repo.set_conf("estimate_big_min", "50")
         rows = self.lines(self.assertOk(self.af("backtest")))
-        self.assertIn("work >= 50m: 15 tasks", rows)
-        self.repo.set_conf("estimate_big_min", "500")
-        out = self.assertOk(self.af("backtest"))
-        self.assertIn("work >= 500m: 0 tasks", self.lines(out))
-        self.assertEqual(len(self.zero_rows(out)), 5, out)
+        self.assertTrue([r for r in rows if r.startswith("work >= 120m: ")], rows)
 
     def test_no_guess_the_blend_is_the_estimator(self):
         self.completed(alt(30, 50, 100, "none"))
@@ -569,17 +565,6 @@ class TestBacktestBlend(BlendCase):
         self.assertGreater(int(t["blend+repo"].group(3)), int(t["blend"].group(3)))
         self.assertEqual(self.winner(out), "blend+repo")
 
-    def test_the_bias_count_follows_the_config(self):
-        self.completed(two_repos(40))
-        self.repo.set_conf("estimate_bias_min", "3")
-        shop = [m for m in self.rows3(self.assertOk(self.af("backtest", "--tasks"))) if m.group(2) == "100"]
-        self.assertEqual([m.group(10) == m.group(7) for m in shop][:4], [True, True, True, False])
-        self.repo.set_conf("estimate_bias_min", "1000")
-        out = self.assertOk(self.af("backtest", "--tasks"))
-        for m in self.rows3(out):
-            self.assertEqual(m.group(10), m.group(7), m.group(0))
-        self.assertNotEqual(self.winner(out), "blend+repo")
-
     def test_the_target_is_the_winner_row_against_the_config(self):
         self.completed(varied(40))
         out = self.assertOk(self.af("backtest"))
@@ -592,14 +577,6 @@ class TestBacktestBlend(BlendCase):
             self.assertEqual(m.group(4), str(p))
         else:
             self.assertEqual((m.group(2), m.group(3)), (str(p), str(50 - p)))
-        self.repo.set_conf("estimate_target_pct", "1")
-        self.assertEqual(self.lines(self.assertOk(self.af("backtest")))[-1],
-                         "target within 30% 1%: met ({}%)".format(p) if p >= 1 else
-                         "target within 30% 1%: 0%, gap 1 points")
-        self.repo.set_conf("estimate_target_pct", "100")
-        last = self.lines(self.assertOk(self.af("backtest")))[-1]
-        self.assertEqual(last, "target within 30% 100%: met (100%)" if p == 100 else
-                         "target within 30% 100%: {}%, gap {} points".format(p, 100 - p))
 
 
 # ---------------------------------------------------------------- retrain
@@ -719,45 +696,12 @@ def load_conf_module():
 
 
 class TestEstimateConf(unittest.TestCase):
+    """settings-configure: the estimator numbers are fixed constants."""
 
-    KEYS = {"estimate_target_pct": ("50", 1, 100), "estimate_bias_min": ("5", 1, 1000),
-            "estimate_big_min": ("120", 1, 10000)}
-
-    def setUp(self):
-        self.ac = load_conf_module()
-
-    def test_bounds_and_hints(self):
-        for key, (_, low, high) in self.KEYS.items():
-            with self.subTest(key=key):
-                self.assertIsNone(self.ac.validate_value(key, str(low)))
-                self.assertIsNone(self.ac.validate_value(key, str(high)))
-                self.assertTrue(self.ac.validate_value(key, str(low - 1)))
-                self.assertTrue(self.ac.validate_value(key, str(high + 1)))
-                self.assertTrue(self.ac.HINTS.get(key, "").strip())
-
-    def test_template_defaults_after_the_status_line_key(self):
-        with open(os.path.join(BIN, "agent.conf.default")) as fh:
-            keys = [l.split("=", 1)[0] for l in fh.read().splitlines() if "=" in l]
-        conf = self.ac.load(os.path.join(BIN, "agent.conf.default"))
-        for key, (default, _, _) in self.KEYS.items():
-            self.assertEqual(conf.get(key), default, key)
-        # appended last, after statusline_refresh_sec and housekeep-2h's housekeep_interval_min (merged first)
-        at = keys.index("statusline_refresh_sec")
-        # test-levels (2026-11-20) appended level3_paths and level4_paths after them
-        self.assertEqual(keys[at + 1:], ["housekeep_interval_min",
-                                         "estimate_target_pct", "estimate_bias_min", "estimate_big_min",
-                                         "level3_paths", "level4_paths",
-                                         # state-trim (2026-11-20) appended its 6 keys last
-                                         "state_keep_hours", "state_warn_lines", "state_header_lines",
-                                         "state_trim_auto", "compact_clear_at", "compact_clear_check_sec",
-                                         # board-trust (2026-11-23) appended board_guard
-                                         "board_guard",
-                                         # one-watcher (2026-11-24) appended watch_quiet_min last
-                                         "watch_quiet_min",
-                                         # clean-up (2026-11-24) appended cleanup_days, docs_keep
-                                         "cleanup_days", "docs_keep",
-                                         # owner-relay (2026-11-24) appended its 2 keys last
-                                         "owner_order_hours", "owner_order_min_chars"])
+    def test_the_constants(self):
+        ac = load_conf_module()
+        self.assertEqual((ac.CONSTANTS["estimate_target_pct"], ac.CONSTANTS["estimate_bias_min"],
+                          ac.CONSTANTS["estimate_big_min"]), (50, 5, 120))
 
 
 # ---------------------------------------------------------------- wired in

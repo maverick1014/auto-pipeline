@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """agent_level.py - the risk type of each file and task part of a diff (R8). Python 3.9, stdlib only.
 
-Started by agent-level.sh:  agent_level.py <agent.conf path> <cwd> check --base <ref> [--declared <A-D>]
+Started by agent-level.sh:  agent_level.py <cwd> check --base <ref> [--declared <A-D>]
 """
 
 import fnmatch
@@ -1118,14 +1118,14 @@ def component_level(path, status, chk):
     return 1, "component file"
 
 
-TYPES = "ABCCD"   # old level 0 1 2 3 4 -> type; level 3 (level3_paths) is C too
+TYPES = "ABCCD"   # old level 0 1 2 3 4 -> type; level 3 is no longer made by a path (C comes from the logic check only)
 
 
 def type_of(level):
     return TYPES[level]
 
 
-def level_of(path, status, chk, l3, l4):
+def level_of(path, status, chk):
     name = os.path.basename(path)
     if name == "package.json":
         if package_deps_changed(chk.top, chk.mb, path, status):
@@ -1134,12 +1134,6 @@ def level_of(path, status, chk, l3, l4):
         kind = builtin_l4(path)
         if kind:
             return 4, "built-in D: %s" % kind
-    glob = first_glob(l4, path)
-    if glob is not None:
-        return 4, "level4_paths %s" % glob
-    glob = first_glob(l3, path)
-    if glob is not None:
-        return 3, "level3_paths %s" % glob
     ext = ext_of(path)
     if ext in STYLE_EXT:
         return 1, "style file"
@@ -1194,29 +1188,40 @@ def parse(argv):
     return base, declared
 
 
-def run(argv):
-    if len(argv) < 2:
-        raise Stop("usage: agent_level.py <agent.conf> <cwd> check --base <ref> [--declared <A-D>]")
-    conf_path, cwd = argv[0], argv[1]
-    base, declared = parse(argv[2:])
+def main_root(top):
+    """The main repo root: the parent of the common git dir (a worktree gives its main repo)."""
+    proc = git(top, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False)
+    common = text_of(proc.stdout).strip()
+    if proc.returncode == 0 and common.endswith("/.git"):
+        return common[:-len("/.git")]
+    return top
 
-    l3, l4, notes = [], [], []
-    if os.path.isfile(conf_path):
-        conf = agent_conf.load(conf_path)
-        for key in ("level3_paths", "level4_paths"):
-            msg = agent_conf.validate_value(key, conf.get(key, ""))
-            if msg:
-                raise Stop("agent.conf %s is invalid: %s" % (key, msg))
-        l3 = split_globs(conf.get("level3_paths", ""))
-        l4 = split_globs(conf.get("level4_paths", ""))
-    else:
-        notes.append("no agent.conf: built-in D paths only")
+
+def core_globs(top):
+    """The core-path hint globs: level3_paths + level4_paths of the main repo's agent_repo.conf."""
+    values, warns = agent_conf.repo_paths(main_root(top))
+    for line in warns:
+        sys.stderr.write(line + "\n")
+    out = []
+    for key in agent_conf.REPO_KEYS:
+        out += split_globs(values.get(key, ""))
+    return out
+
+
+def run(argv):
+    if len(argv) < 1:
+        raise Stop("usage: agent_level.py <cwd> check --base <ref> [--declared <A-D>]")
+    cwd = argv[0]
+    base, declared = parse(argv[1:])
+
+    notes = []
 
     proc = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if proc.returncode != 0:
         raise Stop("not in a git repo: %s" % cwd)
     top = text_of(proc.stdout).strip()
+    danger = core_globs(top)
     ok = git(top, "rev-parse", "--verify", "--quiet", base + "^{commit}", check=False)
     if ok.returncode != 0:
         raise Stop("git does not know the ref: %s" % base)
@@ -1235,9 +1240,12 @@ def run(argv):
             changed[path] = "A"
 
     chk = Checker(top, mb)
-    lines, parts = [], {}
+    lines, parts, hints = [], {}, []
     for path in sorted(changed):
-        lvl, why = level_of(path, changed[path], chk, l3, l4)
+        lvl, why = level_of(path, changed[path], chk)
+        if first_glob(danger, path) is not None:
+            # a hint only (owner 2A): the type stays what the content gives; the manager judges from the brief
+            hints.append("touches core path %s: judge from the brief whether it is D" % path)
         typ = type_of(lvl)
         parts.setdefault(typ, []).append(path)
         lines.append("%s: %s %s" % (path, typ, why))
@@ -1247,7 +1255,7 @@ def run(argv):
     out = ["REQUIRED TYPE %s" % "+".join(sorted(parts) or ["A"])] + lines
     for typ in sorted(parts):
         out.append("PART %s: %s" % (typ, ", ".join(parts[typ])))
-    out += notes
+    out += hints + notes
     code = 0
     if declared is not None:
         # RAISE only for a C or D file above the declared type; A and B files never raise (R8)

@@ -365,11 +365,9 @@ class TestScope(ShapeCase):
         self.fresh()
         self.assertEqual(self.got("db/seed.sql", "-- a\nselect 1;\n", "-- b\nselect 1;\n"), ("D", "built-in D: schema"))
         self.fresh()
+        # owner 2A 2026-11-25: Danger paths is a hint, a comment-only change stays A there
         self.assertEqual(self.got("src/money/calc.py", "# a\nrun()\n", "# b\nrun()\n",
-                                  conf={"level3_paths": "src/money/"}), ("C", "level3_paths src/money/"))
-        self.fresh()
-        self.assertEqual(self.got("db/load.py", "# a\nrun()\n", "# b\nrun()\n", conf={"level4_paths": "db/"}),
-                         ("D", "level4_paths db/"))
+                                  conf={"level3_paths": "src/money/"}), ("A", "comment only"))
 
     def test_r22_new_deleted_and_binary_files(self):
         self.base({"app/a.py": "x\n"})

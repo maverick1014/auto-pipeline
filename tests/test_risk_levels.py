@@ -159,17 +159,18 @@ ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
            "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38A 39C")
 
 # Q38 and Q39 as the quiz prints them (the worker writes them into bin/agent-start.sh as is).
-QUIZ_Q38 = """Q38. A task changes one colour value in one component: #1e88e5 becomes #43a047. Its risk type:
-  A. A: text, style or simple move, the main manager reads the diff
+# owner 2A (2026-11-25, TELL 0d544056): the type comes from the brief; Danger paths is a hint
+QUIZ_Q38 = """Q38. A diff only rewords two lines in PRINCIPLES.md, a core path in agent_repo.conf. Its risk type:
+  A. A: doc or text only, even in PRINCIPLES.md; the main manager reads the diff
   B. B: UI, Chrome compare with the approved mock
   C. C: logic, failing tests first
-  D. D: danger, the owner signs before merge"""
+  D. D: it is a core path, the owner signs before merge"""
 
-QUIZ_Q39 = """Q39. The todo line says type B (UI). Before merge, agent-level.sh check --declared B prints REQUIRED TYPE B+C and RAISE: api/total.py is a C file. You:
-  A. Merge: the dispatch said UI
-  B. Raise the whole task to D and run the full suite
-  C. Raise the todo line to C, bounce it back, check the api/total.py part by type C (failing tests first, touched feature) and the UI part by type B
-  D. Run the check again without --declared"""
+QUIZ_Q39 = """Q39. agent-level.sh prints "touches core path bin/agent_conf.py: judge from the brief whether it is D". The brief adds one new setting. You:
+  A. Raise the task to D: it is a core path
+  B. Ignore the line: it is only a hint
+  C. Judge from the brief: a new feature is normally C, D only when core code many things depend on changes; a second read-only agent checks the type, a disagreement goes to the owner
+  D. Ask the owner before every task that touches a core path"""
 
 
 def read(*parts):
@@ -555,79 +556,107 @@ class TestBuiltInLevelFour(LevelCase):
                 self.tearDown_repo()
 
 
+HINT = "touches core path %s: judge from the brief whether it is D"
+
+
 class TestRepoPaths(LevelCase):
+    """Owner 2A (2026-11-25): the risk type is judged from the BRIEF, never from file paths alone.
+    Owner 1A (2026-11-25): core paths are facts of one repo: level3_paths and level4_paths in the
+    committed agent_repo.conf at the main repo root (read from a worktree too). A file on either
+    list keeps the type its content gives; the check prints one line per such file,
+    "touches core path <file>: judge from the brief whether it is D". It never raises, and a
+    doc/text-only diff is A even in PRINCIPLES.md. No file or no key: the built-in D kinds only."""
 
-    def test_a_level3_folder_beats_an_l0_shape(self):
-        need, lvl, why = self.one({"src/money/total.js": 'const t = "Total";\n'},
-                                  {"src/money/total.js": 'const t = "Sum";\n'}, "src/money/total.js",
-                                  conf={"level3_paths": "src/money/,lib/ledger/"})
-        self.assertEqual((need, lvl), ("C", "C"))
-        self.assertIn("level3_paths src/money/", why)
+    def test_a_core_path_is_a_hint_not_a_type(self):
+        for key in ("level3_paths", "level4_paths"):
+            with self.subTest(key=key):
+                need, typ, why = self.one({"src/money/total.js": "a()\n"}, {"src/money/total.js": "b()\n"},
+                                          "src/money/total.js", conf={key: "src/money/,lib/ledger/"})
+                self.assertEqual((need, typ), ("C", "C"))
+                self.assertNotIn("paths", why)
+                self.tearDown_repo()
 
-    def test_a_level3_css_file_is_3(self):
-        need, lvl, _ = self.one({"src/money/m.css": "a{}\n"}, {"src/money/m.css": "b{}\n"},
-                                "src/money/m.css", conf={"level3_paths": "src/money/"})
-        self.assertEqual((need, lvl), ("C", "C"))
+    def test_the_hint_line_names_the_file(self):
+        self.base({"src/money/total.js": "a()\n", "src/other.js": "a()\n"}, {"level4_paths": "src/money/"})
+        self.put({"src/money/total.js": "b()\n", "src/other.js": "b()\n"})
+        lines = self.ok().stdout.splitlines()
+        self.assertIn(HINT % "src/money/total.js", lines)
+        self.assertNotIn(HINT % "src/other.js", lines)
 
-    def test_level4_globs(self):
-        need, lvl, why = self.one({"firestore.rules": "allow read;\n", "db/seed.js": "x\n"},
-                                  {"firestore.rules": "allow write;\n"}, "firestore.rules",
-                                  conf={"level4_paths": "*.rules, db/"})
-        self.assertEqual((need, lvl), ("D", "D"))
-        self.assertIn("level4_paths *.rules", why)
+    def test_principles_wording_is_a_even_as_a_core_path(self):
+        self.base({"PRINCIPLES.md": "- old rule\n"}, {"level3_paths": "PRINCIPLES.md,skills/"})
+        self.put({"PRINCIPLES.md": "- new rule words\n"})
+        r = self.ok("--declared", "A")
+        self.assertEqual(self.required(r), "A")
+        self.assertEqual(self.files(r)["PRINCIPLES.md"][0], "A")
+        self.assertIn(HINT % "PRINCIPLES.md", r.stdout.splitlines())
+        self.assertNotIn("RAISE", r.stdout)
 
-    def test_level4_beats_level3(self):
-        need, lvl, why = self.one({"src/money/pay.js": "x()\n"}, {"src/money/pay.js": "y()\n"},
-                                  "src/money/pay.js",
-                                  conf={"level3_paths": "src/money/", "level4_paths": "src/money/pay.js"})
-        self.assertEqual((need, lvl), ("D", "D"))
+    def test_a_doc_only_diff_on_the_list_never_raises(self):
+        self.base({"skills/a/SKILL.md": "x\n", "agents/w.md": "x\n"}, {"level4_paths": "skills/,agents/"})
+        self.put({"skills/a/SKILL.md": "y\n", "agents/w.md": "y\n"})
+        r = self.ok("--declared", "A")
+        self.assertEqual(self.required(r), "A")
+        self.assertNotIn("RAISE", r.stdout)
 
-    def test_anchored_globs(self):
-        conf = {"level3_paths": "api/,src/*/ledger"}
-        self.base({"api/v1/h.py": "a = 1\n", "src/api/h.py": "a = 1\n", "src/a/ledger/x.ts": "a\n"}, conf)
-        self.put({"api/v1/h.py": "a = 2\n", "src/api/h.py": "a = 2\n", "src/a/ledger/x.ts": "b\n"})
-        got = self.files(self.ok())
-        self.assertIn("level3_paths", got["api/v1/h.py"][1])
-        self.assertNotIn("level3_paths", got["src/api/h.py"][1])
-        self.assertEqual(got["api/v1/h.py"][0], "C")
-        self.assertEqual(got["src/a/ledger/x.ts"][0], "C")
-        self.assertEqual(got["src/api/h.py"][0], "C")
+    def test_logic_on_the_list_is_c_and_raises_only_as_c(self):
+        self.base({"bin/agent_conf.py": "def f(a):\n    return a + 1\n"}, {"level3_paths": "bin/agent_conf.py"})
+        self.put({"bin/agent_conf.py": "def f(a):\n    return a * 2\n"})
+        r = self.check("--declared", "B")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(r.stdout.splitlines()[-1], "RAISE: declared B, needs C (bin/agent_conf.py)")
+        self.assertEqual(self.ok("--declared", "C").stdout.splitlines()[0], "REQUIRED TYPE C")
 
-    def test_a_glob_with_no_slash_matches_any_folder_or_name(self):
-        conf = {"level3_paths": "core,*.money.ts"}
-        self.base({"lib/core/x.py": "a = 1\n", "src/deep/a.money.ts": "a\n", "src/corex/y.py": "a = 1\n"}, conf)
-        self.put({"lib/core/x.py": "a = 2\n", "src/deep/a.money.ts": "b\n", "src/corex/y.py": "a = 2\n"})
-        got = self.files(self.ok())
-        self.assertEqual(got["lib/core/x.py"][0], "C")
-        self.assertEqual(got["src/deep/a.money.ts"][0], "C")
-        self.assertEqual(got["src/corex/y.py"][0], "C")
-        self.assertIn("level3_paths", got["lib/core/x.py"][1])
-        self.assertNotIn("level3_paths", got["src/corex/y.py"][1])
-
-    def test_an_invalid_conf_value_stops_the_check(self):
-        self.base({"src/a.js": "x\n"}, {"level3_paths": "/etc/,src/"})
-        self.put({"src/a.js": "y\n"})
-        r = self.check()
-        self.assertEqual(r.returncode, 2)
-        self.assertEqual(r.stdout, "")
-        self.assertIn("level3_paths", r.stderr)
-
-    def test_no_agent_conf_uses_the_built_ins_only(self):
-        self.base({"yarn.lock": "a\n", "src/a.js": "x\n"})
-        os.remove(self.repo.path("agent.conf"))
-        self.put({"yarn.lock": "b\n"})
+    def test_no_repo_file_is_built_ins_only(self):
+        self.base({"yarn.lock": "a\n", "skills/a/SKILL.md": "x\n"})
+        self.put({"yarn.lock": "b\n", "skills/a/SKILL.md": "y\n"})
         r = self.ok()
-        self.assertIn("D", self.required(r).split("+"))   # agent.conf itself is deleted: a C part too
-        self.assertIn("no agent.conf: built-in D paths only", r.stdout.splitlines())
+        got = self.files(r)
+        self.assertEqual(got["yarn.lock"][0], "D")
+        self.assertEqual(got["skills/a/SKILL.md"][0], "A")
+        self.assertFalse([l for l in r.stdout.splitlines() if l.startswith("touches core path")], r.stdout)
 
-    def test_a_worktree_reads_the_main_repos_agent_conf(self):
+    def test_globs_still_match_for_the_hint(self):
+        conf = {"level3_paths": "api/,src/*/ledger", "level4_paths": "*.money.ts"}
+        self.base({"api/v1/h.py": "a = 1\n", "src/api/h.py": "a = 1\n", "src/a/ledger/x.ts": "a\n",
+                   "deep/b.money.ts": "a\n"}, conf)
+        self.put({"api/v1/h.py": "a = 2\n", "src/api/h.py": "a = 2\n", "src/a/ledger/x.ts": "b\n",
+                  "deep/b.money.ts": "b\n"})
+        lines = self.ok().stdout.splitlines()
+        for hit in ("api/v1/h.py", "src/a/ledger/x.ts", "deep/b.money.ts"):
+            self.assertIn(HINT % hit, lines)
+        self.assertNotIn(HINT % "src/api/h.py", lines)
+
+    def test_a_bad_value_is_left_out_and_said(self):
+        self.base({"skills/a/SKILL.md": "x\n"}, {"level3_paths": "/etc/,src/", "level4_paths": "skills/"})
+        self.put({"skills/a/SKILL.md": "y\n"})
+        r = self.ok()
+        self.assertIn(HINT % "skills/a/SKILL.md", r.stdout.splitlines())
+        self.assertIn("level3_paths", r.stderr)
+        self.assertIn("agent_repo.conf", r.stderr)
+
+    def test_an_old_agent_conf_is_not_read(self):
+        self.base({"src/money/total.js": "a = 1\n"})
+        self.repo.set_old_conf("level3_paths=src/money/\nlevel4_paths=src/money/\n")
+        self.put({"src/money/total.js": "a = 2\n"})
+        r = self.ok()
+        self.assertEqual(self.files(r)["src/money/total.js"][0], "C")
+        self.assertNotIn(HINT % "src/money/total.js", r.stdout.splitlines())
+
+    def test_a_worktree_reads_the_main_repos_file(self):
         self.base({"src/money/total.js": "a = 1\n"})
         wt = os.path.join(self.repo.base, "wt_levels")
         self.git("worktree", "add", "-q", "-b", "feat", wt, "base")
-        self.repo.set_conf("level3_paths", "src/money/")     # the main copy only, not committed
+        self.repo.set_conf("level4_paths", "src/money/")     # the main copy only, not committed
         self.put({"src/money/total.js": "a = 2\n"}, cwd=wt)
         r = self.ok(cwd=wt)
-        self.assertEqual(self.required(r), "C")
+        self.assertIn(HINT % "src/money/total.js", r.stdout.splitlines())
+
+    def test_danger_paths_in_configure_is_ignored(self):
+        self.base({"src/money/total.js": "a = 1\n"})
+        self.repo._settings(lambda o: o.__setitem__("danger_paths", "src/money/"))
+        self.put({"src/money/total.js": "a = 2\n"})
+        self.assertNotIn(HINT % "src/money/total.js", self.ok().stdout.splitlines())
 
 
 class TestDiffScope(LevelCase):
@@ -745,14 +774,12 @@ class TestTypesPerPart(LevelCase):
         self.assertEqual((need, typ), ("B", "B"))
         self.assertIn("new component file", why)
 
-    def test_a_component_file_in_a_level3_or_level4_path_still_raises(self):
-        for key, want in (("level3_paths", "C"), ("level4_paths", "D")):
-            with self.subTest(key=key):
-                need, typ, why = self.one({"src/money/Total.tsx": "const a = 1;\n"},
-                                          {"src/money/Total.tsx": "const a = 2;\n"}, "src/money/Total.tsx",
-                                          conf={key: "src/money/"})
-                self.assertEqual((need, typ), (want, want), why)
-                self.tearDown_repo()
+    def test_a_component_file_in_a_danger_path_keeps_its_own_type(self):
+        # owner 2A 2026-11-25: Danger paths is a hint, never a forced type
+        need, typ, why = self.one({"src/money/Total.tsx": "const a = 1;\n"},
+                                  {"src/money/Total.tsx": "const a = 2;\n"}, "src/money/Total.tsx",
+                                  conf={"level4_paths": "src/money/"})
+        self.assertNotEqual(typ, "D", why)
 
     def test_a_mixed_diff_is_per_part(self):
         self.base({"src/Banner.tsx": "export const A = () => <b>hi</b>;\n", "src/calc.py": "def f(a):\n    return a + 1\n",
@@ -785,86 +812,52 @@ class TestTypesPerPart(LevelCase):
         self.assertEqual(self.required(r), "B")
         self.assertNotIn("RAISE", r.stdout)
 
-    def test_a_level4_path_is_d_for_that_file_only(self):
+    def test_a_danger_path_adds_a_hint_for_that_file_only(self):
         self.base({"db/seed.js": "x()\n", "docs/a.md": "x\n"}, {"level4_paths": "db/"})
         self.put({"db/seed.js": "y()\n", "docs/a.md": "y\n"})
         r = self.ok()
-        self.assertEqual(self.required(r), "A+D")
-        got = self.files(r)
-        self.assertEqual(got["db/seed.js"][0], "D")
-        self.assertIn("level4_paths db/", got["db/seed.js"][1])
-        self.assertEqual(got["docs/a.md"][0], "A")
+        self.assertEqual(self.required(r), "A+C")
+        lines = r.stdout.splitlines()
+        self.assertIn(HINT % "db/seed.js", lines)
+        self.assertNotIn(HINT % "docs/a.md", lines)
 
-    def test_a_level3_path_is_c(self):
+    def test_logic_outside_a_danger_path_is_c(self):
         need, typ, why = self.one({"src/money/total.js": "a()\n"}, {"src/money/total.js": "b()\n"},
-                                  "src/money/total.js", conf={"level3_paths": "src/money/"})
+                                  "src/money/total.js", conf={"level3_paths": ""})
         self.assertEqual((need, typ), ("C", "C"))
 
 
 # ---------------------------------------------------------------- 2. agent.conf keys
 
 
-class TestConfKeys(unittest.TestCase):
-    KEYS = ("level3_paths", "level4_paths")
-
-    def test_the_template_has_both_empty(self):
-        conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
-        for key in self.KEYS:
-            with self.subTest(key=key):
-                self.assertIn(key, conf)
-                self.assertEqual(conf[key], "")
+class TestRepoConfKeys(unittest.TestCase):
+    """level3_paths / level4_paths in agent_repo.conf: comma-separated globs (owner 1A 2026-11-25)."""
 
     def test_good_values(self):
         for value in ("", "src/core/", "src/core/,lib/money/**", "*.sql", " api/ , db/ ",
                       "core", "src/*/ledger"):
-            for key in self.KEYS:
+            for key in ("level3_paths", "level4_paths"):
                 with self.subTest(key=key, value=value):
                     self.assertIsNone(agent_conf.validate_value(key, value))
 
     def test_bad_values(self):
         for value in ("/etc/", "src/../x", "a b", "api/,,db/", ",", "api/, /db"):
-            for key in self.KEYS:
+            for key in ("level3_paths", "level4_paths"):
                 with self.subTest(key=key, value=value):
                     self.assertTrue(agent_conf.validate_value(key, value))
 
+    def test_they_are_no_settings(self):
+        for key in ("level3_paths", "level4_paths", "danger_paths"):
+            with self.assertRaises(KeyError):
+                agent_conf.get(key, {})
 
-class TestSettings(ScriptCase):
-    script = "agent-settings.sh"
-
-    def value(self, key):
-        for line in open(self.repo.path("agent.conf")):
-            if line.split("=", 1)[0].strip() == key:
-                return line.split("=", 1)[1].rstrip("\n")
-        return None
-
-    def test_a_good_value_is_saved(self):
-        self.assertOk(self.repo.run("agent-settings.sh", "level3_paths", "src/money/,lib/ledger/"))
-        self.assertEqual(self.value("level3_paths"), "src/money/,lib/ledger/")
-
-    def test_an_empty_value_is_saved(self):
-        self.repo.set_conf("level4_paths", "db/")
-        self.assertOk(self.repo.run("agent-settings.sh", "level4_paths", ""))
-        self.assertEqual(self.value("level4_paths"), "")
-
-    def test_a_bad_value_is_refused_and_not_saved(self):
-        before = self.repo.read("agent.conf")
-        r = self.repo.run("agent-settings.sh", "level4_paths", "/etc/")
-        self.assertNotEqual(r.returncode, 0)
-        self.assertEqual(self.repo.read("agent.conf"), before)
-
-    def test_sync_adds_both_keys_empty(self):
-        # own fixture: the temp conf is seeded from the live repo agent.conf, which sets level3_paths on
-        # purpose; drop both keys so sync has to add them back from the template
-        path = self.repo.path("agent.conf")
-        with open(path) as fh:
-            rows = [l for l in fh if l.split("=", 1)[0].strip() not in ("level3_paths", "level4_paths")]
-        with open(path, "w") as fh:
-            fh.writelines(rows)
-        self.assertIsNone(self.value("level3_paths"))
-        self.assertIsNone(self.value("level4_paths"))
-        self.assertOk(self.repo.run("agent-settings.sh", "sync"))
-        self.assertEqual(self.value("level3_paths"), "")
-        self.assertEqual(self.value("level4_paths"), "")
+    def test_this_repo_has_its_file(self):
+        text = read("agent_repo.conf")
+        rows = [l for l in text.splitlines() if l and not l.startswith("#")]
+        self.assertEqual(rows, ["level3_paths=PRINCIPLES.md,skills/,agents/,bin/agent_conf.py",
+                                "level4_paths=.claude-plugin/,hooks/"])
+        out = subprocess.run(["git", "-C", ROOT, "ls-files", "agent_repo.conf"], capture_output=True, text=True).stdout
+        self.assertEqual(out.strip(), "agent_repo.conf")
 
 
 # ---------------------------------------------------------------- 3. the todo line, done, board
@@ -1089,7 +1082,12 @@ class TestTheRule(unittest.TestCase):
         rule = self.rule().lower()
         for phrase in ("a = text, style, simple move", "b = ui", "c = logic", "d = danger",
                        "dispatch", "--level", "agent-level.sh check", "raise", "only goes up",
-                       "level3_paths", "level4_paths", "reads the diff", "e2e",
+                       "danger paths (d)", "reads the diff", "e2e",
+                       # owner 2A 2026-11-25, R8 text from main 85b99de
+                       "judge the type from the brief, never from file paths alone", "docs only",
+                       "a new feature = normally c", "core code that many other things depend on",
+                       "second opinion", "read-only agent", "not the manager's answer", "the owner decides",
+                       "a hint, not a verdict", "lowering a type needs the owner",
                        "mock", "phone", "console clean", "owner not seen",
                        "failing tests first", "touched features", "full suite only when really needed",
                        "dry-run", "rollback plan", "owner signs",
@@ -1143,6 +1141,15 @@ class TestDispatchSkill(unittest.TestCase):
 
     def test_it_names_the_rule(self):
         self.assertIn("R8", self.text())
+
+    def test_the_type_is_picked_from_the_brief_and_a_second_agent_checks_it(self):
+        # owner 2A 2026-11-25: a read-only second agent, given the brief and the code but not the
+        # manager's answer, reviews the type; a disagreement goes to the owner
+        text = self.text().lower()
+        for phrase in ("from the brief", "second agent", "read-only", "not the", "disagree", "owner",
+                       "touches core path"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
 
 
 class TestMergeSkill(unittest.TestCase):

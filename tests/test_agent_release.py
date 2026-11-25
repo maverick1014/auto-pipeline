@@ -743,7 +743,7 @@ class TestRealRepo(unittest.TestCase):
         self.assertIsNotNone(left, r.stdout)
         names = left.group(1).split()
         for name in ("tests", "mock", "requirements", "README.md", "CLAUDE.md", "AGENTS.md",
-                     "agent.conf", ".claude", ".gitignore", "agent_todo.txt",
+                     ".claude", ".gitignore", "agent_todo.txt",   # settings-configure: no agent.conf
                      "agent_completed.txt", "agent_ideas.txt", "agent_estimate.txt"):
             self.assertIn(name, names)
         for name in SHIP:
