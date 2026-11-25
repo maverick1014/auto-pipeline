@@ -625,6 +625,14 @@ class TestDiffScan(BlocksCase):
         self.assertIn("secret file: .env", got)
         self.assertNotIn(key, r.stdout)
 
+    def test_markers_inside_strings_or_comments_are_no_findings(self):
+        # the scanner's own pattern table and a test's fixture text are data, not leftovers
+        r = self.run_case({"bin/scan.py": "X = 1\n", "tests/test_x.py": "A = 1\n"},
+                          {"bin/scan.py": 'X = 1\nMARKERS = ("console.log(", "debugger", "breakpoint()")\n'
+                                          "# never leave a breakpoint() in\n",
+                           "tests/test_x.py": "A = 1\nFIXTURE = \"it.skip('a', f)\"\n"})
+        self.assertEqual(self.findings(r), [])
+
     def test_debug_leftovers_not_in_tests(self):
         r = self.run_case({"src/a.js": "x()\n", "src/a.test.js": "it('a')\n", "app/b.py": "x = 1\n"},
                           {"src/a.js": "x()\nconsole.log(x)\ndebugger\n", "src/a.test.js": "it('a')\nconsole.log(1)\n",
