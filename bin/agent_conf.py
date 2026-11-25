@@ -59,7 +59,7 @@ SETTINGS = [
        "Model and effort of the reviewer of every diff. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
        options=MANAGER_PICKS),
     _s("helper_model", "Models: Helper model", "string", "sonnet-5:medium",
-       "Model and effort of the fast-lane deputy, the merge deputy and every worker. Form: model-name:effort.",
+       "Model and effort of the fast-lane deputy, the merge deputy, the check deputy and every worker. Form: model-name:effort.",
        options=HELPER_PICKS),
     _s("max_usage_percent", "Load: Max memory %", "number", 80,
        "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.", min=1, max=100),

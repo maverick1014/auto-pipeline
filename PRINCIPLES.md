@@ -23,7 +23,7 @@ R1. One flow, two lanes
 - Before the flow: the main manager writes the requirement doc, the owner approves it
 - Full flow, in order:
   1. Todo line + estimate
-  2. Mock if the task has UI
+  2. Mock for a new page or a whole-page re-layout (W2)
   3. Worktree + task manager
   4. Failing tests first
   5. Workers build
@@ -61,7 +61,7 @@ R4. No changelog
 
 R5. Task files
 - `agent_todo.txt` = open tasks only, always current
-- Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, guess, work, wait, clock, level, bounces, workers, files, lines, tests, adds
+- Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, guess, work, wait, clock, level (old tasks only, - for new ones), bounces, workers, files, lines, tests, adds
 - No test results in it, that is report material
 - No other task tracking
 - The housekeep pass never closes a todo line: it flags one whose branch is merged into the working branch or the production branch
@@ -132,6 +132,7 @@ R8. Check blocks
 - The working branch (setting "Flow: Working branch", default `ap-main-<name>`) is only a branch
 - Everything merged or pushed lands there first, never on the production branch by accident: the main checkout is switched to the working branch
 - init switches the main checkout of a new repo to the working branch; in a repo that already uses the plugin the main manager switches it at a quiet point after the start's WORKING BRANCH line
+- A repo whose working branch exists but whose main checkout is not switched yet: merges go into the production branch as before (section 33)
 - The working branch is per person (<name> = the git user name in lower case, only letters, digits and "-"): worked out once per clone and stored, pushed to origin
 - A task manager or deputy on another machine never derives it again (git user names differ between machines); every brief names the branch
 - It belongs to that person: the sweep never deletes it, nobody else merges into it
@@ -151,7 +152,7 @@ R8. Check blocks
   - Urgent fix (production is broken): the URGENT FIX path above
   - Rollback: back to the last green commit; BUILD + RELATED TESTS of the reverted files; a database change follows its written rollback plan
   - Research only (no diff): no blocks; the report is the deliverable
-- Repo facts live in the committed `agent_repo.conf`, written by init and kept by agents, never by the user: core paths, guard tests, test commands, the edge list, real-data access
+- Repo facts live in the committed `agent_repo.conf`, written by init and kept by agents; a human may edit it, never has to: core paths, guard tests, test commands, the edge list, real-data access
 - After each bug fix the fixing agent asks "which example would have shown it" and adds one line with `agent-file.sh edge add "<text>"` when the list lacks it
 - Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed
 - A requirement table copies its defaults from the released template and lists every changed default for the owner
@@ -159,7 +160,7 @@ R8. Check blocks
 ## B. Work
 
 W1. Finish in one run
-- Never wait for the human
+- Never wait for the human, except: the kick-off round, a mock yes, an OWNER SIGN, NEEDS HUMAN E2E
 - Exception, kick-off round only: a task manager reads its brief and asks the main manager its questions before starting; the main manager answers what it can and asks the owner only the rest. During the work this rule holds again: default, log, continue
 - Unknown → pick default, log it, continue
 - Only owner-level or irreversible calls stop the line
@@ -206,14 +207,14 @@ W5. Web UI testing
 
 W6. Roles
 - Main manager (the "Main manager model" setting) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
-- Fast-lane deputy (Sonnet 5, medium) = `agents/fast-lane-deputy.md`, new one per small task: works in its own git worktree, writes the example tests of a small logic task, runs its blocks, pushes a branch
-- Merge deputy (Sonnet 5, medium) = `agents/merge-deputy.md`. Merges, then deletes branch and worktree
+- Fast-lane deputy (the "Helper model" setting) = `agents/fast-lane-deputy.md`, new one per small task: works in its own git worktree, writes the example tests of a small logic task, runs its blocks, pushes a branch
+- Merge deputy (the "Helper model" setting) = `agents/merge-deputy.md`. Merges, then deletes branch and worktree
 - Reviewer (Reviewer model, default opus-5.5:high) = `agents/reviewer.md`: PR REVIEW of every task and CORE REVIEW; read only; a fail is a fix order to the builder
-- Check deputy (Sonnet 5, medium) = `agents/check-deputy.md`, read and browser tools only: FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE; a verdict with evidence, the main manager decides
+- Check deputy (the "Helper model" setting) = `agents/check-deputy.md`, read and browser tools only: FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE; a verdict with evidence, the main manager decides
 - The main manager stays free for the human: it runs no long check itself; it sends the check deputy and gets a short verdict with evidence
 - Task manager (the "Task manager model" setting) = one agent per big feature, in its own worktree (exception: human-direct, W10)
 - It writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
-- Worker (Sonnet 5, medium) = `agents/worker.md`, subagent of a task manager. Writes code until the task manager's tests pass
+- Worker (the "Helper model" setting) = `agents/worker.md`, subagent of a task manager. Writes code until the task manager's tests pass
 - Managers never write product code. A defect goes back to the worker that wrote it, with evidence
 - A main manager fix order to a task manager has a fixed shape: where, what is seen, what is expected, evidence (screenshot). The task manager reassigns a subagent
 - Names: `bin/agent-name.sh` (SessionStart hook) shows `<repo> Manager`, `<feature> Task Manager`, `<repo> Helper - <Task Name>` (human-direct); it is the SendMessage address after `claude --name`, `/rename` or a resume. `Agent` descriptions: `<feature> Worker <n>: <slice>`, `<task> Deputy`, `<feature> Merge`
@@ -246,7 +247,8 @@ W8. Merge and cleanup
 - Never skip cleanup
 - Main manager verified + waiting for the owner's yes → agent-file.sh checks gather first, close the task manager pane, remove its worktree, keep the pushed branch, start the next task
 - Owner yes → merge deputy merges the branch. Owner no → a new task manager from that branch. Goal: work all night, RAM stays free
-- Clean up only after the merge is verified
+- Delete the branch and close the todo line only after the merge is verified
+- Meanwhile the pane and the worktree may go while waiting for the owner's yes; the pushed branch stays
 - Deputy runs `bin/agent-file.sh worktree rm <path>` and `bin/agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`
 - Sweep: `bin/agent-cleanup.sh --apply` after every merge, at session start and when the last open task closes (todo empty, no live worktree). The scripts run it, no loop
 - Housekeep: every housekeep_interval_min minutes (default 120, 0 = off) `agent-watch.sh --all` runs `bin/agent-housekeep.sh --apply`, then this sweep. Plain and cloud: no watch, run it by hand
@@ -361,7 +363,7 @@ W14. Todo board
 
 W15. Watch
 - After a watch wake the first action is to start the watch again, then handle the signal
-- The watch also wakes the main manager when there is room for a queued task (WATCH SLOT)
+- The watch also wakes the main manager when there is room for a queued task (WATCH ROOM)
 - A board warning (watch not running, not confirmed, a pane without a task line) reaches the main manager through `agent-file.sh next` and the board warning hook; it reacts in the same turn
 - Stall detection is the watch: each sweep reads the pane screen and the `agent_state.txt` file; 3 sweeps with neither changed = STALL. The same watch runs the housekeep timer (W8)
 - Verify every launch within 2 min
@@ -468,6 +470,7 @@ S1. Settings
 - Why: the plugin is a developer workflow, one setup for every repo
 - Configure holds the 17 settings
 - Repo facts (core paths, guard tests, test commands, edges, real-data access) live in the committed `agent_repo.conf` at the main repo root, not in Configure (R8)
+- New terminals use the "Permissions: Permission mode" setting, default bypassPermissions
 - `/auto-pipeline:settings` shows them as a table and never changes them
 - No settings file in a repo, none on a machine: start and init move an old repo or machine settings file into Configure once (keys still unset there only, a value the human set is never overwritten) and say each move
 - A cloud session (no plugin) runs the defaults
@@ -540,7 +543,8 @@ S9. Token guard (cost)
 
 E1. Shape
 - For every reply a human reads
-- Lead with the next action. A command, path or snippet goes first
+- Lead with the result
+- A command, path or snippet the human must use comes right after the result
 - Number multi-step work, fewest steps
 - End with one concrete next action
 - No tangents: finish one, offer the other as a separate question. A mid-work question you can answer yourself is not a tangent
@@ -593,14 +597,14 @@ Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge`
 Human
   │  task ↓   report ↑
 Main manager   (Main manager model · the main chat · free for the human)
-  ├── Fast-lane deputy   (Sonnet 5, medium)  one small task in its own git worktree, then gone
+  ├── Fast-lane deputy   (Helper model)  one small task in its own git worktree, then gone
   ├── Reviewer           (Opus 5.5, high)    PR review of every task, core review; read only
-  ├── Check deputy       (Sonnet 5, medium)  flow and UI checks, release smoke; one at a time on the browser
-  ├── Merge deputy       (Sonnet 5, medium)  merge → push → delete branch → remove worktree
+  ├── Check deputy       (Helper model)  flow and UI checks, release smoke; one at a time on the browser
+  ├── Merge deputy       (Helper model)  merge → push → delete branch → remove worktree
   └── Worktree, one per big feature
         └── Task manager (Task manager model)     writes the tests, briefs workers, verifies, never codes
-              ├── Worker (Sonnet 5, medium)  code until the tests pass, slice 1
-              └── Worker (Sonnet 5, medium)  code until the tests pass, slice 2
+              ├── Worker (Helper model)  code until the tests pass, slice 1
+              └── Worker (Helper model)  code until the tests pass, slice 2
 
 Scripts, not agents (cost no tokens):
   bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock

@@ -978,7 +978,7 @@ class Engine:
                 out(l)
         return events
 
-    # ---- the slot wake: a queued task that `agent-file.sh next` would start, said once
+    # ---- the room wake: a queued task that `agent-file.sh next` would start, said once
 
     def queued_names(self):
         """The names of the open todo lines with an open queue wait."""
@@ -1006,7 +1006,7 @@ class Engine:
                 name = line[6:].split(" | ")[0].strip()
                 if name in queued and name not in self.slots:
                     self.slots.append(name)
-                    events.append(("WATCH SLOT %s: can start (run agent-file.sh next)" % name, None))
+                    events.append(("WATCH ROOM %s: can start (run agent-file.sh next)" % name, None))
         except Exception:
             return
 

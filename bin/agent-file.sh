@@ -19,7 +19,7 @@
 #   agent-file.sh checks gather "<task>" --dir <path>         -> appends the task's CHECK lines of <path>/agent_state.txt to the main repo's agent_state.txt (lines already there skipped); prints "checks gather: <task> <n> lines"
 #   agent-file.sh checks gate "<task>" --dir <path> [--base <ref>] [--results <file>] [--checks "<list>"]
 #                                                             -> the merge guard: per planned block "<BLOCK>: pass (by <who>)|fail (by <who>)|missing", then "GATE PASS <task>" (exit 0) or "GATE REFUSED <task>: <BLOCK> missing, ..." (exit 1); no todo line and no --checks: exit 2
-#   agent-file.sh next                                        -> "NEXT: <n> can start (slots <free> of <max>, RAM <p>% under <cap>%)", then START / WAIT lines for the queued tasks
+#   agent-file.sh next                                        -> "NEXT: <n> can start (room <mb> MB under the <p>% limit)", then START / WAIT lines for the queued tasks
 #   agent-file.sh edge add "<text>"                           -> one "edge=<text>" line in agent_repo.conf of this folder's git toplevel; "edge add: already listed" when present
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
@@ -66,7 +66,7 @@
 #
 # todo done also closes the queue wait of every open line whose " | after <name>" field is that task, drops the after field, and prints "released: <line name>" per line.
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
-#   work = agent minutes. wait = minutes spent waiting (mock gate, owner, suite slot). Never mixed.
+#   work = agent minutes. wait = minutes spent waiting (mock gate, owner, suite run). Never mixed.
 #   <t> is one of: page server script docs cloud app data mixed.
 #   est comes from the todo line. clock = minutes from "opened" to now. repo = folder name of the main repo.
 #   files and lines (lines = added + deleted) are counted only when asked, in the main repo:

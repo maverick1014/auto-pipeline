@@ -731,10 +731,13 @@ class TestDispatchSkillTime(unittest.TestCase):
         self.assertIn("agent-file.sh time", step1)
 
     def test_a_fast_lane_task_is_closed_with_its_work_minutes(self):
+        # check-blocks section 42 B5: closed once, by the merge deputy, with the task's real lane and work minutes
         step2 = text_between(self.text(), "\n2. ", "\n3. ")
-        self.assertIn("todo done", step2)
-        self.assertIn("--lane fast", step2)
-        self.assertIn("--work", step2)
+        self.assertNotIn("todo done", step2)
+        with open(os.path.join(ROOT, "skills", "merge", "SKILL.md")) as fh:
+            merge = fh.read()
+        self.assertIn("--lane <full|fast>", merge)
+        self.assertIn("--work", merge)
 
     def test_the_brief_report_has_the_new_time_line(self):
         self.assertIn(TIME_LINE, self.brief())

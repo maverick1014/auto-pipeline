@@ -61,7 +61,7 @@
     "helper_model": {
       "type": "string",
       "title": "Models: Helper model",
-      "description": "Model and effort of the fast-lane deputy, the merge deputy and every worker. Form: model-name:effort.",
+      "description": "Model and effort of the fast-lane deputy, the merge deputy, the check deputy and every worker. Form: model-name:effort.",
       "options": [
         "sonnet-5:medium",
         "sonnet-5:low",

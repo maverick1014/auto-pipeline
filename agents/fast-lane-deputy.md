@@ -24,4 +24,4 @@ Never
 - Edit agent_*.txt by hand. Use `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh`.
 - `git stash` / `git stash pop`: the stash is shared by every worktree and session of the repo.
 
-Report (H3), first line exactly `DONE PASS` or `DONE FAIL: <why>`. Then: what changed (files), the branch pushed, the blocks you ran with their result, the blocks left for someone else. What to decide (or "nothing").
+Report (H3), first line exactly `DONE PASS` or `DONE FAIL: <why>`. Then: what changed (files), the branch pushed, the blocks you ran with their result, the blocks left for someone else. What to decide (or "nothing"). Then the task's TIME and FACTS lines, the same two lines as the dispatch brief's REPORT: `TIME: est <n>m, actual <n>m, wait <n>m` (actual = agent work only), and `FACTS: type <page|server|script|docs|cloud|app|data|mixed>, lane fast, mock <yes|no>, bounces <n>, workers 0, tests <n added>, scope adds <n>`.
