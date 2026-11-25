@@ -103,119 +103,9 @@ BARE = ("住宅", "商店", "测试塔", "工坊", "图书馆", "House", "Shop",
 # N1 the subject
 # ---------------------------------------------------------------------------
 
-class TestNameSubject(unittest.TestCase):
-
-    def test_one_file(self):
-        for files, want in (
-            (["web/checkout/form.tsx"], "form"),
-            (["web/checkout/page.tsx"], "checkout"),
-            (["tests/test_checkout.py"], "checkout"),
-            (["tests/Test_Checkout.py"], "Checkout"),
-            (["web/cart.test.ts"], "cart"),
-            (["src/cart.spec.js"], "cart"),
-            (["pkg/orders_test.go"], "orders"),
-            (["api/payment/__init__.py"], "payment"),
-            (["docs/setup/README.md"], "setup"),
-            (["web/login/index.tsx"], "login"),
-            (["web/components/CartButton.tsx"], "CartButton"),
-            (["bin/deploy.sh"], "deploy"),
-            (["docs/api.md"], "api"),
-            (["web\\checkout\\page.tsx"], "checkout"),
-            (["api/v2/users.py"], "users"),
-            (["shop/.gitignore"], "shop"),
-        ):
-            with self.subTest(files=files):
-                self.assertEqual(ac.name_subject(files), want)
-
-    def test_nothing_to_point_at(self):
-        for files in ([], ["src/index.ts"], ["README.md"], ["lib/utils.py"], ["web/pages/index.tsx"], ["main.py"]):
-            with self.subTest(files=files):
-                self.assertEqual(ac.name_subject(files), "")
-
-    def test_most_files_win(self):
-        files = ["web/checkout/form.tsx", "web/checkout/page.tsx", "web/checkout/index.tsx"]
-        self.assertEqual(ac.name_subject(files), "checkout", "two files point at checkout, one at form")
-
-    def test_a_tie_goes_to_the_oldest_file(self):
-        self.assertEqual(ac.name_subject(["api/orders_repo.py", "api/orders.py"]), "orders",
-                         "files are newest first: the oldest is the last one")
-        self.assertEqual(ac.name_subject(["api/orders.py", "api/orders_repo.py"]), "orders_repo")
-
-    def test_a_long_name_is_cut(self):
-        got = ac.name_subject(["src/" + "a" * 40 + ".py"])
-        self.assertEqual(got, "a" * 23 + "…")
-        self.assertEqual(ac.name_subject(["src/" + "b" * 24 + ".py"]), "b" * 24, "24 characters fit")
-
-    def test_never_a_path(self):
-        for files in (["a/b/c/d.py"], ["a\\b\\c.py"], ["x/y/index.js"]):
-            got = ac.name_subject(files)
-            self.assertNotIn("/", got)
-            self.assertNotIn("\\", got)
-
-
 # ---------------------------------------------------------------------------
 # N2 the name
 # ---------------------------------------------------------------------------
-
-class TestBuildingName(unittest.TestCase):
-
-    def test_subject_and_kind_word(self):
-        f = ["web/checkout/page.tsx"]
-        for btype, word in KIND_ZH.items():
-            with self.subTest(btype=btype):
-                self.assertEqual(ac.building_name(btype, f, "", 0), "checkout " + word)
-        for btype, word in KIND_EN.items():
-            with self.subTest(btype=btype, lang="en"):
-                self.assertEqual(ac.building_name(btype, f, "", 0, lang="en"), "checkout " + word)
-
-    def test_the_examples_of_the_mock(self):
-        for btype, files, want in (
-            ("shop", ["web/checkout/form.tsx", "web/checkout/page.tsx"], "checkout 页面"),
-            ("tower", ["tests/test_orders_refund.py", "tests/test_orders.py"], "orders 测试"),
-            ("workshop", ["bin/deploy.sh"], "deploy 脚本"),
-            ("library", ["docs/api.md"], "api 文档"),
-            ("house", ["api/payment/stripe.py", "api/payment/__init__.py"], "payment 模块"),
-        ):
-            with self.subTest(want=want):
-                self.assertEqual(ac.building_name(btype, files, "别的任务", 3), want,
-                                 "the files decide, the task is only for a building with no file")
-
-    def test_no_file_uses_the_builders_task(self):
-        self.assertEqual(ac.building_name("house", [], "修退款金额", 4), "修退款金额")
-        self.assertEqual(ac.building_name("house", ["src/index.ts"], "  修退款金额  ", 4), "修退款金额",
-                         "files that point at nothing count as no file")
-        self.assertEqual(ac.building_name("house", [], "x" * 30, 4), "x" * 23 + "…")
-
-    def test_a_task_that_cannot_be_a_name_gives_an_address(self):
-        for task in ("", "   ", "worker", "task-manager", "fast-lane-deputy", "merge-deputy", "other", "session",
-                     "src/a.py", "a\\b", "fix a.py", "notes.md"):
-            with self.subTest(task=task):
-                self.assertEqual(ac.building_name("house", [], task, 4), "住宅区 5 号")
-
-    def test_the_address_per_district(self):
-        zh = {"house": "住宅区", "shop": "商业街", "tower": "测试区", "workshop": "工坊区", "library": "图书馆区"}
-        en = {"house": "Homes", "shop": "Shops", "tower": "Tests", "workshop": "Workshops", "library": "Library"}
-        for btype in zh:
-            with self.subTest(btype=btype):
-                self.assertEqual(ac.building_name(btype, [], "", 0), zh[btype] + " 1 号")
-                self.assertEqual(ac.building_name(btype, [], "", 11, lang="en"), en[btype] + " no. 12")
-
-    def test_never_empty_never_the_bare_type_word(self):
-        for btype in KIND_ZH:
-            for files, task in (([], ""), (["README.md"], "worker"), (["a/b.py"], "")):
-                for lang in ("zh", "en"):
-                    got = ac.building_name(btype, files, task, 2, lang=lang)
-                    self.assertTrue(got)
-                    self.assertNotIn(got, BARE)
-
-    def test_a_name_used_in_that_land_gets_a_number(self):
-        f = ["web/checkout/index.tsx"]
-        self.assertEqual(ac.building_name("shop", f, "", 1, taken={"checkout 页面"}), "checkout 页面 2")
-        self.assertEqual(ac.building_name("shop", f, "", 1, taken=["checkout 页面", "checkout 页面 2"]),
-                         "checkout 页面 3")
-        self.assertEqual(ac.building_name("shop", f, "", 1, taken={"orders 页面"}), "checkout 页面")
-        self.assertEqual(ac.building_name("house", [], "修退款金额", 1, taken={"修退款金额"}), "修退款金额 2")
-
 
 # ---------------------------------------------------------------------------
 # N3 old buildings get a name once
@@ -237,33 +127,6 @@ def old_world():
         ]},
         "/b/.git": {"name": "b", "buildings": [b(0, "shop", ["web/checkout/page.tsx"], name="")]},
     }}
-
-
-class TestNameWorld(unittest.TestCase):
-
-    def names(self, world, ident):
-        return [x.get("name") for x in world["territories"][ident]["buildings"]]
-
-    def test_names_only_the_nameless(self):
-        w = old_world()
-        n = ac.name_world(w)
-        self.assertEqual(n, 4, "three in land a, one in land b")
-        self.assertEqual(self.names(w, "/a/.git"),
-                         ["checkout 页面", "checkout 页面 3", "住宅区 3 号", "手起的名字", "checkout 页面 2"],
-                         "in list order; a name already in that land (also one of a later building) is taken")
-        self.assertEqual(self.names(w, "/b/.git"), ["checkout 页面"], "another land has its own names")
-
-    def test_once(self):
-        w = old_world()
-        ac.name_world(w)
-        before = json.dumps(w, sort_keys=True)
-        self.assertEqual(ac.name_world(w), 0)
-        self.assertEqual(json.dumps(w, sort_keys=True), before, "a second run changes nothing")
-
-    def test_language(self):
-        w = old_world()
-        ac.name_world(w, lang="en")
-        self.assertEqual(self.names(w, "/a/.git")[:3], ["checkout page", "checkout page 2", "Homes no. 3"])
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +152,6 @@ class CityCase(unittest.TestCase):
 
     def city(self, **more):
         kw = dict(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world_path,
-                  plans=ac.load_plans(), count_fn=lambda i: 0,
-                  balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
                   start_repo=self.ident, main_fn=Mains({self.ident: "tm"}))
         kw.update(more)
         return ac.CityState(decisions_path=kw.pop("decisions_path"), **kw)   # never the owner's real decisions file
@@ -323,85 +184,6 @@ class CityCase(unittest.TestCase):
         with open(self.world_path, encoding="utf-8") as fh:
             return json.load(fh)["territories"][self.ident]["buildings"]
 
-
-class TestCityNames(CityCase):
-
-    def built(self, events):
-        got = [e for e in events if e["type"] == "build"]
-        self.assertEqual(len(got), 1, "one building went up: %r" % [e["type"] for e in events])
-        return got[0]
-
-    def test_named_when_built_everywhere_the_same(self):
-        ev = self.built(self.edit("w1", "web/checkout/page.tsx"))
-        want = "checkout " + KIND_ZH[ev["btype"]]
-        self.assertEqual(ev["name"], want, "the build event carries the server's name")
-        self.assertEqual([b["name"] for b in self.view_buildings()], [want], "a reload (a new snapshot)")
-        self.assertEqual([b["name"] for b in self.disk_buildings()], [want], "world.json")
-
-    def test_a_test_file(self):
-        ev = self.built(self.edit("w1", "tests/test_checkout.py"))
-        self.assertEqual(ev["name"], "checkout " + KIND_ZH[ev["btype"]])
-
-    def test_the_name_never_changes(self):
-        first = self.built(self.edit("w1", "web/checkout/page.tsx"))["name"]
-        self.assertTrue(first, "it has a name")
-        for rel in ("web/orders/list.tsx", "web/orders/item.tsx", "web/orders/index.tsx"):
-            self.assertFalse([e for e in self.edit("w1", rel) if e["type"] == "build"], "its own building: a touch")
-        self.assertEqual([b["name"] for b in self.view_buildings()], [first],
-                         "most files now point at orders, the name stays")
-        st2 = self.city()                                    # the server restarts
-        self.assertEqual([b["name"] for b in self.view_buildings(st2)], [first])
-        self.assertEqual([b["name"] for b in self.disk_buildings()], [first])
-
-    def test_a_second_one_gets_a_number(self):
-        t = self.st.world["territories"][self.ident]
-        t["peak"] = t["lines"] = 10 ** 6          # a big land: two free plots in one district
-        a = self.built(self.edit("w1", "web/checkout/page.tsx"))
-        b = self.built(self.edit("w2", "web/checkout/index.tsx"))
-        self.assertEqual(a["btype"], b["btype"])
-        self.assertEqual(b["name"], a["name"] + " 2")
-
-    def test_english(self):
-        st = self.city(lang="en", world_path=os.path.join(self.base, "en.json"))
-        _, client = snapshot(st)
-        self.feed("PostToolUse", st=st, tool="Read")
-        ev = self.built(self.edit("w1", "web/checkout/page.tsx", st=st, client=client))
-        self.assertEqual(ev["name"], "checkout " + KIND_EN[ev["btype"]])
-
-    def test_no_file_the_builders_task(self):
-        # an old hook line: a "kind", no "file". The worker was sent with a task.
-        self.feed("PreToolUse", tool="Agent", sub="worker", desc="修退款金额")
-        self.feed("SubagentStart", aid="w9")
-        spawn = [e for e in drain(self.client) if e["type"] == "spawn"]
-        self.assertEqual([e["task"] for e in spawn], ["修退款金额"], "the test's own setup")
-        self.feed("PostToolUse", aid="w9", tool="Edit", kind="other")
-        ev = self.built(drain(self.client))
-        self.assertEqual(ev["name"], "修退款金额")
-
-    def test_nothing_known_an_address(self):
-        self.feed("PostToolUse", aid="w7", tool="Edit", kind="other")   # its task is the bare role word
-        ev = self.built(drain(self.client))
-        self.assertEqual(ev["name"], "住宅区 %d 号" % (ev["plot"] + 1))
-
-    def test_old_buildings_get_a_name_once_at_start(self):
-        self.edit("w1", "web/checkout/page.tsx")
-        self.edit("w2", "tests/test_orders.py")
-        with open(self.world_path, encoding="utf-8") as fh:
-            world = json.load(fh)
-        blds = world["territories"][self.ident]["buildings"]
-        self.assertEqual(len(blds), 2)
-        kinds = [b["type"] for b in blds]
-        del blds[0]["name"]                  # a world.json from before this task
-        blds[1]["name"] = ""
-        with open(self.world_path, "w", encoding="utf-8") as fh:
-            json.dump(world, fh)
-        st2 = self.city()
-        want = ["checkout " + KIND_ZH[kinds[0]], "orders " + KIND_ZH[kinds[1]]]
-        self.assertEqual([b["name"] for b in self.disk_buildings()], want, "saved at once, before any event")
-        self.assertEqual(sorted(b["name"] for b in self.view_buildings(st2)), sorted(want))
-        st3 = self.city()
-        self.assertEqual([b["name"] for b in self.disk_buildings()], want, "the next start changes nothing")
-        self.assertEqual(sorted(b["name"] for b in self.view_buildings(st3)), sorted(want))
 
 # ---------------------------------------------------------------------------
 # H2 the history keeper

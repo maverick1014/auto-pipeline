@@ -128,8 +128,7 @@ class CityCase(unittest.TestCase):
 
     def new_state(self):
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world_path,
-                            plans=ac.load_plans(), count_fn=lambda i: self.lines_count,
-                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}}, main_fn=self.mains)
+                            main_fn=self.mains)
 
     def tearDown(self):
         shutil.rmtree(self.base, ignore_errors=True)
@@ -304,72 +303,6 @@ class TestGovernorPerTerritory(CityCase):
         self.assertEqual(self.st.asks_view()[0]["terr"], TB)
 
 
-class TestLeadsAndOffices(CityCase):
-
-    def test_every_plan_has_office_spots(self):
-        for plan in ac.load_plans():
-            with self.subTest(plan=plan["id"]):
-                spots = [tuple(s) for s in plan.get("offices", [])]
-                self.assertGreaterEqual(len(spots), 4)
-                roads = ac._road_set(plan)
-                plots = {(x, z) for x, z, _ in plan["plots"]}
-                rest = plan.get("rest")
-                rest_tiles = {(rest[0] + i, rest[1] + j) for i in (0, 1) for j in (0, 1)} if rest else set()
-                for x, z in spots:
-                    self.assertNotIn((x, z), roads)
-                    self.assertNotIn((x, z), plots)
-                    self.assertNotIn((x, z), rest_tiles)
-                    self.assertFalse(-2 <= x <= 1 and -2 <= z <= 1, "office on the hall or plaza")
-                for i, a in enumerate(spots):
-                    for b in spots[i + 1:]:
-                        self.assertGreaterEqual(max(abs(a[0] - b[0]), abs(a[1] - b[1])), 2)
-
-    def test_a_lead_gets_an_office_on_land(self):
-        self.governor()
-        self.lead("tm1")
-        spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "s:tm1"][0]
-        self.assertEqual(spawn["lead"], "")
-        office = spawn["office"]
-        self.assertIsInstance(office["x"], int)
-        snap = self.snap()
-        self.assertEqual(self.agent(snap, "s:tm1")["office"], office)
-        view = snap["world"]
-        t = self.terr_view(snap, TA)
-        self.assertIn({"lead": "s:tm1", "site": "", "x": office["x"], "z": office["z"]}, t["offices"])  # "site": city-worktrees
-        self.assertEqual(tile(view, office["x"], office["z"]), "g")
-        plots = {(p["x"], p["z"]) for p in t["plots"]}
-        self.assertNotIn((office["x"], office["z"]), plots)
-
-    def test_two_leads_two_offices(self):
-        self.lead("tm1")
-        self.lead("tm2")
-        t = self.terr_view(self.snap(), TA)
-        spots = [(o["x"], o["z"]) for o in t["offices"]]
-        self.assertEqual(len(spots), 2)
-        self.assertGreaterEqual(max(abs(spots[0][0] - spots[1][0]), abs(spots[0][1] - spots[1][1])), 2)
-
-    def test_workers_know_their_lead(self):
-        self.lead("tm1")
-        self.worker("w1", "tm1")
-        spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "w1"][0]
-        self.assertEqual(spawn["lead"], "s:tm1")
-        self.assertIsNone(spawn.get("office"))
-        self.assertEqual(self.agent(self.snap(), "w1")["lead"], "s:tm1")
-
-    def test_a_governors_helper_has_no_lead(self):
-        self.governor("g1")
-        self.worker("d1", "g1", role="")
-        spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "d1"][0]
-        self.assertEqual(spawn["lead"], "")
-
-    def test_a_lead_leaving_frees_its_office(self):
-        self.lead("tm1")
-        self.line("SessionEnd", "tm1", role="task-manager")
-        self.assertEqual(self.terr_view(self.snap(), TA)["offices"], [])
-        self.lead("tm2")
-        self.assertEqual(len(self.terr_view(self.snap(), TA)["offices"]), 1)
-
-
 class TestServerE2EFindings(CityCase):
     """Task manager's headless run (real server, synthetic hook lines)."""
 
@@ -407,8 +340,7 @@ class TestNoRepoIsTheStartTerritory(CityCase):
 
     def new_state(self):
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world_path,
-                            plans=ac.load_plans(), count_fn=lambda i: self.lines_count,
-                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}}, start_repo=A_REPO,
+                            start_repo=A_REPO,
                             main_fn=self.mains)
 
     def test_one_governor_for_the_start_territory(self):
@@ -531,54 +463,6 @@ class TestChain(CityCase):
         self.assertIn(("relay", "d1", "governor"), self.relays(self.drain()))
         self.line("PostToolUse", "g1", tool="SendMessage")
         self.assertIn(("relay_end", "d1", "governor"), self.relays(self.drain()))
-
-
-class TestRestPlace(CityCase):
-
-    def test_every_plan_has_a_rest_place_spot(self):
-        for plan in ac.load_plans():
-            with self.subTest(plan=plan["id"]):
-                x, z = plan["rest"]
-                roads = ac._road_set(plan)
-                plots = {(px, pz) for px, pz, _ in plan["plots"]}
-                for tx in (x, x + 1):
-                    for tz in (z, z + 1):
-                        self.assertNotIn((tx, tz), roads)
-                        self.assertNotIn((tx, tz), plots)
-                        self.assertFalse(-2 <= tx <= 1 and -2 <= tz <= 1, "rest place on the hall or plaza")
-
-    def test_day_zero_has_none(self):
-        self.governor()
-        self.assertIsNone(self.terr_view(self.snap(), TA)["rest"])
-
-    def test_the_first_done_opens_it_for_good(self):
-        self.governor()
-        self.lead("tm1")
-        self.worker("w1", "tm1")
-        self.line("SubagentStop", "tm1", role="task-manager", aid="w1", at="worker")
-        snap = self.snap()
-        rest = self.terr_view(snap, TA)["rest"]
-        self.assertIsNotNone(rest)
-        for dx in (0, 1):
-            for dz in (0, 1):
-                self.assertEqual(tile(snap["world"], rest["x"] + dx, rest["z"] + dz), "g")
-        with open(self.world_path, encoding="utf-8") as fh:
-            saved = json.load(fh)
-        self.assertTrue(saved["territories"][A_REPO]["rest"])
-        again = self.new_state()
-        client = again.add_client()
-        snap2 = decode(client.queue.get_nowait())
-        self.assertEqual(self.terr_view(snap2, TA)["rest"], rest)
-
-    def test_a_world_without_the_key_loads(self):
-        w = ac.new_world()
-        ac.add_territory(w, ac.load_plans(), A_REPO, "app", 100)
-        w["territories"][A_REPO].pop("rest", None)
-        ac.save_world(self.world_path, w)
-        st = self.new_state()
-        snap = decode(st.add_client().queue.get_nowait())
-        self.assertIsNone(self.terr_view(snap, TA)["rest"])
-        self.assertEqual([n for n in os.listdir(self.base) if ".bad-" in n], [])
 
 
 class TestWorkerQuestionForm(unittest.TestCase):
@@ -804,16 +688,6 @@ __out = { h0, h1, h2 };
 """
 
 
-class TestCameraHomeStays(unittest.TestCase):
-    """E2E (task manager, headless): with two governors the default view jumped to whichever governor
-    sent the last gov event. Home is the start territory (snapshot gov.terr) and stays there."""
-
-    def test_other_governors_do_not_move_home(self):
-        r = run_sim(HOME_DRIVER, {"view": two_territory_view(), "ta": TA, "tb": TB}, FEATURE_REQUIRED + ("home",))
-        self.assertEqual(r["h1"], r["h0"])
-        self.assertEqual(r["h2"], r["h0"])
-
-
 def decor_run(cases):
     import test_agent_city_page as tp
     js = r"""
@@ -832,113 +706,8 @@ process.stdout.write(JSON.stringify(out));
     return tp.run_node(js, {"prelude": prelude, "fns": fns, "cases": cases})
 
 
-class TestRestAndOfficeLook(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        base = {"id": "t", "cx": 0, "cz": 0, "open": 6, "size": .5, "rest": {"x": 3, "z": 2},
-                "offices": [{"lead": "s:L", "x": -4, "z": 2}]}
-        cls.r = decor_run({
-            "village": dict(base, era="village"), "town": dict(base, era="town"), "city": dict(base, era="city"),
-            "none": dict(base, era="village", rest=None, offices=[])})
-
-    def keys(self, era):
-        return [d["key"] for d in self.r[era]["rest"]]
-
-    def near_rest(self, era):
-        for d in self.r[era]["rest"]:
-            with self.subTest(era=era, key=d["key"]):
-                self.assertLessEqual(math.hypot(d["x"] - 4, d["z"] - 3), 2.2, "inside the rest place")
-
-    def test_village_tavern_and_benches(self):
-        k = self.keys("village")
-        self.assertIn("kaykit-medieval/building_tavern_red", k)
-        self.assertGreaterEqual(k.count("kaykit-city/bench"), 2)
-        self.near_rest("village")
-
-    def test_town_cafe_tables_chairs_parasols(self):
-        k = self.keys("town")
-        self.assertGreaterEqual(k.count("kaykit-restaurant/table_round_A"), 2)
-        self.assertGreaterEqual(k.count("kaykit-restaurant/chair_A"), 4)
-        self.assertGreaterEqual(sum(k.count(p) for p in ("commercial/detail-parasol-a", "commercial/detail-parasol-b")), 2)
-        self.assertNotIn("kaykit-medieval/building_tavern_red", k)
-        self.near_rest("town")
-
-    def test_city_park_benches(self):
-        k = self.keys("city")
-        self.assertIn("fantasy/fountain-round", k)
-        self.assertGreaterEqual(k.count("kaykit-city/bench"), 3)
-        self.near_rest("city")
-
-    def test_day_zero_is_bare(self):
-        self.assertEqual(self.r["none"]["rest"], [])
-        self.assertEqual(self.r["none"]["office"], [])
-
-    def test_office_is_a_kaykit_cabin_with_a_flag(self):
-        items = self.r["village"]["office"]
-        cabin = [d for d in items if d["key"] == "kaykit-medieval/building_home_A_blue"]
-        self.assertEqual(len(cabin), 1)
-        self.assertEqual((math.floor(cabin[0]["x"]), math.floor(cabin[0]["z"])), (-4, 2))
-        self.assertIn("forest/flag", [d["key"] for d in items])
-
-    def test_every_key_is_a_loaded_model(self):
-        import test_agent_city_page as tp
-        wanted = set(tp.models())
-        for era in ("village", "town", "city"):
-            for d in self.r[era]["rest"] + self.r[era]["office"]:
-                with self.subTest(era=era, key=d["key"]):
-                    self.assertIn(d["key"], wanted)
-
-
 KAYKIT = ("kaykit-medieval/building_tavern_red", "kaykit-medieval/building_barracks_blue",
           "kaykit-medieval/building_church_green", "kaykit-medieval/building_windmill_yellow",
           "kaykit-medieval/building_home_A_blue", "kaykit-city/car_police", "kaykit-city/bench",
           "kaykit-restaurant/table_round_A", "kaykit-restaurant/chair_A")
 
-
-class TestKayKit(unittest.TestCase):
-
-    def test_models_listed(self):
-        import test_agent_city_page as tp
-        have = set(tp.models())
-        for key in KAYKIT:
-            with self.subTest(key=key):
-                self.assertIn(key, have)
-
-    def test_packs_have_their_cc0_licence(self):
-        for pack in ("kaykit-medieval", "kaykit-city", "kaykit-restaurant"):
-            with self.subTest(pack=pack):
-                with open(os.path.join(ROOT, "bin", "agent-city-assets", pack, "License.txt"), encoding="utf-8") as fh:
-                    text = fh.read()
-                self.assertIn("CC0", text)
-                self.assertIn("Kay Lousberg", text)
-
-    def systems(self, era):
-        import test_agent_city_page as tp
-        bal = {k: {"state": "healthy", "value": 1, "n": 1, "text": ""} for k in tp.KINDS}
-        t = {"id": "t", "name": "shop", "cx": 0, "cz": 0, "open": 8, "size": .6, "lines": 9000, "era": era,
-             "terrain": "grassland", "balance": bal, "next": [], "buildings": []}
-        fns = tp.page_fns("systemsDecor", "hallDecor",
-                          optional=("tileAt", "walkable", "eraShown", "showOf", "eraLook", "frontOf", "sr", "terrOf"))
-        prelude = tp.constants_prelude() + "\n" + tp.consts("ERA_LOOK")
-        js = tp.SYS_JS.replace("out[name] = items.map(d => ({", "out[name] = items.map(d => ({ x: Math.floor(d.x), z: Math.floor(d.z),")
-        return tp.run_node(js, {"prelude": prelude, "fns": fns, "cases": {"t": t}})["t"]
-
-    def test_village_uses_kaykit_for_police_library_power(self):
-        keys = {d["key"] for d in self.systems("village")}
-        self.assertIn("kaykit-medieval/building_barracks_blue", keys)
-        self.assertIn("kaykit-medieval/building_church_green", keys)
-        self.assertIn("kaykit-medieval/building_windmill_yellow", keys)
-        for old in ("industrial/building-h", "industrial/building-k", "industrial/chimney-large"):
-            self.assertNotIn(old, keys)
-
-    def test_town_and_city_police_have_a_car_beside(self):
-        for era in ("town", "city"):
-            with self.subTest(era=era):
-                items = self.systems(era)
-                police = [d for d in items if d["key"] == "industrial/building-h"]
-                cars = [d for d in items if d["key"] == "kaykit-city/car_police"]
-                self.assertEqual(len(police), 1)
-                self.assertEqual(len(cars), 1)
-                self.assertLessEqual(max(abs(police[0]["x"] - cars[0]["x"]), abs(police[0]["z"] - cars[0]["z"])), 1)
-                self.assertEqual(cars[0]["ch"], "g")

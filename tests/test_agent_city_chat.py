@@ -318,7 +318,6 @@ class ChatCase(unittest.TestCase):
     def make(self):
         # city-roles: g1 (team()'s governor) holds the main manager lock of REPO
         return ac.CityState(decisions_path=self.decisions, world_path=None, chat_path=self.chat_path,
-                            count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []},
                             main_fn=Mains({REPO: "g1"}))
 
     def tearDown(self):
@@ -577,8 +576,7 @@ class TestWaitingSessionsKeepTheCityUp(ChatServerCase):
         base = tempfile.mkdtemp(prefix="city_chatmode_")
         try:
             path = os.path.join(base, "chat.jsonl")
-            st = ac.CityState(decisions_path=os.path.join(base, "d.jsonl"), world_path=None, chat_path=path,
-                              count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []})
+            st = ac.CityState(decisions_path=os.path.join(base, "d.jsonl"), world_path=None, chat_path=path)
             st.feed_line(line("UserPromptSubmit", "tm1", role="task-manager"), time.monotonic())
             st.feed_line(line("Stop", "tm1", role="task-manager"), time.monotonic())
             st.chat_send("s:tm1", "hi", 0)
@@ -716,7 +714,7 @@ process.stdout.write(JSON.stringify(['s:tm1', 'a9', 'gov:t1', 's:gone'].map(t =>
 """
         out = run_node(js, {"fns": constants_prelude() + "\n" + page_fns("chatDisplayName")})
         # city-polish P3: the page log mixes every repo, so it names the person with its repo (fullName)
-        self.assertEqual(out, ["repo · task-manager · shop", "repo · worker · form", "总督", "s:gone"],
+        self.assertEqual(out, ["repo · task-manager · shop", "repo · worker · form", "区经理", "s:gone"],
                          "E2E 2026-09-27: the log said 你 → tm1 instead of the name")
 
     def test_window_has_the_conversation_and_the_box(self):

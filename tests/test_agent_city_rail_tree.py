@@ -129,11 +129,12 @@ class TestUpOnSpawnS1(ServerCase):
         self.sub("d1", "g1", kind="fast-lane-deputy")
         self.assertEqual(self.spawn_of("d1")["up"], "gov:" + TA)
 
-    def test_a_helper_hangs_on_the_repo_and_its_subagent_on_it(self):
+    def test_a_helper_hangs_on_the_area_manager_and_its_subagent_on_it(self):
+        # city-office O2 (2026-11-24): the tree is 区经理 > 设计师, 助理, 经理 (was: a helper right under the repo)
         self.governor()
         self.events()
         self.helper()
-        self.assertEqual(self.spawn_of("s:h1")["up"], "")
+        self.assertEqual(self.spawn_of("s:h1")["up"], "gov:" + TA)
         self.sub("e1", "h1", kind="Explore")
         self.assertEqual(self.spawn_of("e1")["up"], "s:h1")
 
@@ -161,7 +162,7 @@ class TestUpInTheSnapshotS2(ServerCase):
         self.sub("w1", "tm1", role="task-manager")
         self.sub("d1", "g1", kind="fast-lane-deputy")
         agents = self.snap_agents()
-        for cid, want in (("s:tm1", "gov:" + TA), ("s:h1", ""), ("w1", "s:tm1"), ("d1", "gov:" + TA)):
+        for cid, want in (("s:tm1", "gov:" + TA), ("s:h1", "gov:" + TA), ("w1", "s:tm1"), ("d1", "gov:" + TA)):
             self.assertIn(cid, agents)
             self.assertIn("up", agents[cid], cid)
             self.assertEqual(agents[cid]["up"], want, cid)
@@ -182,10 +183,11 @@ class TestUpAfterRestartS3(RosterCase):
         self.restart()
         self.assertEqual(self.agents()["s:sid-tm"].get("up"), "gov:" + self.terr())
 
-    def test_a_restored_role_less_session_hangs_on_the_repo(self):
+    def test_a_restored_role_less_session_hangs_on_the_area_manager(self):
+        # city-office O2: a session with no role is 助理, under the area manager
         self.a_citizen("sid-h", role="")
         self.restart()
-        self.assertEqual(self.agents()["s:sid-h"].get("up"), "")
+        self.assertEqual(self.agents()["s:sid-h"].get("up"), "gov:" + self.terr())
 
 
 # ---------------------------------------------------------------------------

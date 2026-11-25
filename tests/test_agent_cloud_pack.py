@@ -105,7 +105,7 @@ ONE_SENTENCE = ("git clone https://github.com/maverick1014/auto-pipeline /tmp/ap
 
 PACKED_SKILLS = ["dispatch", "merge"]
 NOT_PACKED_SKILLS = ["init", "cloud-pack"]
-AGENT_FILES = ["fast-lane-deputy.md", "merge-deputy.md", "worker.md"]
+AGENT_FILES = ["fast-lane-deputy.md", "interior-designer.md", "merge-deputy.md", "worker.md"]
 SHELL_SCRIPTS = ["agent-start.sh", "agent-file.sh", "agent-settings.sh",
                  "agent-resume.sh", "agent-init.sh",
                  "agent-runtime.sh", "agent-cloud-pack.sh"]

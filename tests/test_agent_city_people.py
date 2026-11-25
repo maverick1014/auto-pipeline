@@ -351,8 +351,6 @@ class TestGovernorPresenceServerP0(unittest.TestCase):
         # city-roles: g1 is the main manager of /a/.git (the governor is the lock holder only)
         self.st = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"),
                                world_path=os.path.join(self.base, "world.json"),
-                               plans=ac.load_plans(), count_fn=lambda i: 0,
-                               balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
                                main_fn=lambda identity: (os.getpid(), "g1") if identity == "/a/.git" else None)
 
     def tearDown(self):

@@ -560,8 +560,6 @@ class TestStatusInTheCity(unittest.TestCase):
         self.base = tempfile.mkdtemp(prefix="city_status_")
         self.st = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"),
                                world_path=os.path.join(self.base, "world.json"),
-                               plans=ac.load_plans(), count_fn=lambda i: 0,
-                               balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
                                start_repo=self.A, main_fn=Mains({self.A: "g1", self.B: "g2"}))
         self.t = 1000.0
         self.line("UserPromptSubmit", "g1", self.A)

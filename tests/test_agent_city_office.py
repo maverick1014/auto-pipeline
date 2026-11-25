@@ -217,7 +217,6 @@ class OfficeCase(unittest.TestCase):
 
     def make(self, **kw):
         args = dict(world_path=self.world_file, token="tok", floors_dir=self.floors_dir,
-                    count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []},
                     main_fn=self.mains, open_fn=self.opener, kind_fn=lambda folder: self.kind,
                     resources_fn=lambda folder: dict(self.res), close_fn=lambda h: self.closed.append(h) or True)
         args.update(kw)

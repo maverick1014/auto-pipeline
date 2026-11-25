@@ -143,8 +143,6 @@ class TestUnknownGovernorAfterRestart(unittest.TestCase):
     def state(self):
         # city-roles: g1 holds A_REPO's main manager lock (alive), so it governs and is "unknown" after a restart
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world,
-                            plans=ac.load_plans(), count_fn=lambda i: 0,
-                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
                             main_fn=lambda identity: (os.getpid(), "g1") if identity == A_REPO else None)
 
     def line(self, st, ev, sid, repo=A_REPO):

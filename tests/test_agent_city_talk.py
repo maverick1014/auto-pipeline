@@ -1089,9 +1089,7 @@ class ServerCase(unittest.TestCase):
         os.makedirs(os.path.join(self.root, "-work-app"))
         self.mains = Mains()
         self.st = ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"),
-                               world_path=os.path.join(self.base, "world.json"), plans=ac.load_plans(),
-                               count_fn=lambda i: 6000, balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
-                               main_fn=self.mains, titles=ac.TitleReader(root=self.root))
+                               world_path=os.path.join(self.base, "world.json"), main_fn=self.mains, titles=ac.TitleReader(root=self.root))
         self.client = self.st.add_client()
         self.client.queue.get_nowait()
         self.now = 1000.0
