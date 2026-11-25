@@ -529,7 +529,7 @@ class TestSettingsScript(SettingsCase):
     def test_every_change_path_is_refused_and_writes_nothing(self):
         self.repo.set_conf("language", "zh")
         before = self.stored()
-        for args in (("language", "en"), ("max_agents", "3"), ("--user", "permission_mode", "auto"),
+        for args in (("language", "en"), ("max_usage_percent", "30"), ("--user", "permission_mode", "auto"),
                      ("menu",), ("sync",), ("set", "language", "en")):
             with self.subTest(args=args):
                 r = self.settings(*args)

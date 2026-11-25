@@ -156,7 +156,8 @@ class TestPrinciplesR8(unittest.TestCase):
         # never a rule line that the table of blocks does not back
         text = read("PRINCIPLES.md").split("## Notice")[0]
         found = set(re.findall(r"\b([A-Z]{2,}(?: [A-Z]{2,})+)\b", text))
-        extra = {"OWNER SIGN", "NIGHTLY RUN", "RELEASE RUN", "RELEASE SMOKE", "TEST RUN", "URGENT FIX",   # sign, net, runner
+        extra = {"OWNER SIGN", "NIGHTLY RUN", "RELEASE RUN", "RELEASE SMOKE", "TEST RUN", "URGENT FIX", "WORKING BRANCH",   # a start line, not a block (section 41 G9)
+                   # sign, net, runner
                  "DONE PASS", "DONE FAIL", "CLOSE CASE", "NEEDS HUMAN", "MOCK READY", "STALE PLUGIN",
                  "STATE LONG", "OWNER TODO", "QUESTIONS PAGE", "OWNER ORDER", "REPO TASK",   # report words
                  "GATE PASS", "GATE REFUSED", "CHECK PASS", "CHECK FAIL", "MERGE PASS", "MERGE FAIL",
