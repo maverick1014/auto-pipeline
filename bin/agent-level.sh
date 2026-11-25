@@ -5,7 +5,7 @@
 # stdout: REQUIRED TYPE <types joined by +>, one "<path>: <type> <reason>" per file, one "PART <type>: <paths>" per type,
 #   notes, a RAISE line when a C or D file is above the declared type. A and B files never raise.
 # Exit 0 ok, 1 RAISE, 2 usage or setup error (one stderr line).
-# Reads the danger_paths setting (D, plus the built-in D paths); C comes from the logic check only.
+# Core paths (hints only) come from level3_paths and level4_paths in the main repo's agent_repo.conf; C comes from the logic check only.
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 roots_read

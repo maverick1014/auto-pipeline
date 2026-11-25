@@ -1,4 +1,4 @@
-"""The one reader of the 17 auto-pipeline settings.
+"""The one reader of the 16 auto-pipeline settings.
 
 The settings live only in Claude Code: /plugin -> Installed -> auto-pipeline -> Configure.
 They are stored in <claude config dir>/settings.json under
@@ -22,7 +22,9 @@ import subprocess
 
 PLUGIN_ID = "auto-pipeline@auto-pipeline"
 CHANGE_LINE = "change: /plugin -> Installed -> auto-pipeline -> Configure"
-DEFAULT_DANGER = ".claude-plugin/,hooks/,PRINCIPLES.md,skills/,agents/,bin/agent_conf.py"
+REPO_FILE = "agent_repo.conf"
+REPO_KEYS = ("level3_paths", "level4_paths")
+CORE_LINE = "core paths of this repo: agent_repo.conf"
 PERMISSION_MODES = ["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"]
 RUNTIME_VALUES = ["auto", "orca", "plain", "cloud"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
@@ -79,8 +81,6 @@ SETTINGS = [
     _s("city_idle_min", "City: City auto close (min)", "number", 30,
        "Minutes the agent city keeps running with no browser open, then it stops by itself. 1 to 240.",
        min=1, max=240),
-    _s("danger_paths", "Risk: Danger paths (D)", "string", DEFAULT_DANGER,
-       "Paths that make a task type D (danger). Comma-separated globs, e.g. db/,*.rules. Empty = only the built-in ones."),
 ]
 
 CONSTANTS = {
@@ -260,7 +260,7 @@ def _string_problem(key, value):
         return _validate_role(value)
     if key == "language":
         return _validate_language(value)
-    if key == "danger_paths":
+    if key in REPO_KEYS:
         return _validate_globs(value)
     if setting is not None and "options" in setting:
         return _validate_picker(setting, value)
@@ -361,6 +361,29 @@ def warnings(env=None):
     return lines
 
 
+# ------------------------------------------------------------------ repo file
+
+def repo_paths(project_root):
+    """(dict, warnings) from <project root>/agent_repo.conf: level3_paths and level4_paths.
+    A missing file or key is not in the dict; a bad glob list is left out with one warning.
+    Never raises."""
+    found, notes = {}, []
+    try:
+        with open(os.path.join(project_root, REPO_FILE), "r", encoding="utf-8") as fh:
+            values = _parse_old(fh.read())
+    except Exception:
+        return found, notes
+    for key in REPO_KEYS:
+        if key not in values:
+            continue
+        why = _validate_globs(values[key])
+        if why:
+            notes.append("SETTINGS: %s=%s in %s is not valid (%s), left out" % (key, values[key], REPO_FILE, why))
+        else:
+            found[key] = values[key]
+    return found, notes
+
+
 # ------------------------------------------------------------------ show
 
 def show_lines(env=None):
@@ -374,7 +397,7 @@ def show_lines(env=None):
     widths = [max(len(r[i]) for r in rows) for i in range(3)]
     widths[2] = min(widths[2], 24)
     lines = ["  ".join(r[i].ljust(widths[i]) for i in range(3)) + "  " + r[3] for r in rows]
-    return lines + warnings(env) + [CHANGE_LINE]
+    return lines + warnings(env) + [CHANGE_LINE, CORE_LINE]
 
 
 # ------------------------------------------------------------------ migration
@@ -407,19 +430,6 @@ def _parse_old(body):
 
 def _split_items(value):
     return [i.strip() for i in value.split(",") if i.strip()]
-
-
-def _danger_candidate(values):
-    """(danger_paths value or None, notes) from level3_paths + level4_paths."""
-    items = _split_items(DEFAULT_DANGER)
-    new = []
-    for old in ("level3_paths", "level4_paths"):
-        if old not in values:
-            continue
-        for item in _split_items(values[old]):
-            if item not in items and item not in new:
-                new.append(item)
-    return (",".join(items + new), []) if new else (None, [])
 
 
 def _helper_candidate(values):
@@ -456,9 +466,6 @@ def _candidates(values, path, claimed):
     helper = _helper_candidate(values)
     if helper is not None:
         moves.append(("helper_model", helper, "worker"))
-    danger, _ = _danger_candidate(values)
-    if danger is not None:
-        moves.append(("danger_paths", danger, "level3_paths"))
     return moves, notes
 
 
@@ -576,6 +583,42 @@ def _user_claims(files, env):
     return set()
 
 
+def _move_levels(project_root, old_path, body):
+    """Old level3_paths / level4_paths into <project root>/agent_repo.conf. (lines, ok)."""
+    old = _parse_old(body)
+    lines, new = [], []
+    target = os.path.join(project_root, REPO_FILE)
+    try:
+        with open(target, "r", encoding="utf-8") as fh:
+            current = fh.read()
+    except FileNotFoundError:
+        current = ""
+    except Exception as exc:
+        return ["cannot read %s: %s" % (target, exc.strerror or exc.__class__.__name__)], False
+    have = _parse_old(current)
+    for key in REPO_KEYS:
+        value = old.get(key, "")
+        if not value:
+            continue
+        why = _validate_globs(value)
+        if why:
+            lines.append("skipped %s=%s from %s: %s" % (key, value, old_path, why))
+        elif key not in have:
+            new.append((key, value))
+        elif have[key] != value:
+            lines.append("kept %s=%s in %s, skipped %s=%s from %s" % (key, have[key], REPO_FILE, key, value, old_path))
+    if new:
+        text_out = current + ("" if not current or current.endswith("\n") else "\n")
+        text_out += "".join("%s=%s\n" % kv for kv in new)
+        try:
+            with open(target, "w", encoding="utf-8") as fh:
+                fh.write(text_out)
+        except Exception as exc:
+            return lines + ["cannot write %s: %s" % (target, exc.strerror or exc.__class__.__name__)], False
+        lines.append("moved %s to %s (repo file, commit it)" % (", ".join(k for k, _ in new), REPO_FILE))
+    return lines, True
+
+
 def migrate(project_root, env=None):
     """Move the old files' values into Configure, once. Returns the lines to print."""
     env = dict(os.environ if env is None else env)
@@ -591,6 +634,12 @@ def migrate(project_root, env=None):
         lines += part_lines
         if digest is not None:
             seen[path] = digest
+        if kind == "repo" and digest is not None:
+            body, _ = _read_old(path)
+            level_lines, level_ok = _move_levels(project_root, path, body or "")
+            lines += level_lines
+            if not level_ok:
+                seen.pop(path, None)
         for key, wire in part.items():
             payload[key] = wire
             moved.append("moved %s=%s from %s to Configure" % (key, wire, path))

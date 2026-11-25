@@ -140,12 +140,6 @@
       "min": 1,
       "max": 240,
       "default": 30
-    },
-    "danger_paths": {
-      "type": "string",
-      "title": "Risk: Danger paths (D)",
-      "description": "Paths that make a task type D (danger). Comma-separated globs, e.g. db/,*.rules. Empty = only the built-in ones.",
-      "default": ".claude-plugin/,hooks/,PRINCIPLES.md,skills/,agents/,bin/agent_conf.py"
     }
   }
 }

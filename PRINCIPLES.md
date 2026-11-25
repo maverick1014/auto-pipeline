@@ -78,7 +78,7 @@ R8. Risk types
 - RAISE (exit 1) only when a C or D file has a lower declared type. A UI component or style file is B at most, never auto-raised; a docs-only diff is never raised
 - On RAISE: raise the todo line, bounce, check that part by the higher type. A type only goes up, never down
 - Built-in D paths: lockfile, package.json deps, pubspec, dependency lists, migrations, schema files
-- Core paths (the "Risk: Danger paths (D)" setting) are a hint, not a verdict: the check prints them, the brief decides
+- Core paths (level4_paths, level3_paths; later the setting "Danger paths (D)") are a hint, not a verdict: the check prints them, the brief decides
 - The script cannot see a responsive effect: an A move prints "manager: check responsive"; unsure → B
 
 ## B. Work
@@ -353,6 +353,8 @@ H4. Tables
 S1. Settings
 - Settings live only in /plugin -> Installed -> auto-pipeline -> Configure, user level (Claude Code keeps them in `~/.claude/settings.json` `pluginConfigs`)
 - Why: the plugin is a developer workflow, one setup for every repo
+- Configure holds the 16 settings
+- Core paths of a repo (`level3_paths`, `level4_paths`) live in its committed `agent_repo.conf` at the main repo root, not in Configure
 - `/auto-pipeline:settings` shows them as a table and never changes them
 - No settings file in a repo, none on a machine: start and init move an old repo or machine settings file into Configure once (keys still unset there only, a value the human set is never overwritten) and say each move
 - A cloud session (no plugin) runs the defaults

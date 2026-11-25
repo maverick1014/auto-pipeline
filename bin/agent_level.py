@@ -1188,6 +1188,26 @@ def parse(argv):
     return base, declared
 
 
+def main_root(top):
+    """The main repo root: the parent of the common git dir (a worktree gives its main repo)."""
+    proc = git(top, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False)
+    common = text_of(proc.stdout).strip()
+    if proc.returncode == 0 and common.endswith("/.git"):
+        return common[:-len("/.git")]
+    return top
+
+
+def core_globs(top):
+    """The core-path hint globs: level3_paths + level4_paths of the main repo's agent_repo.conf."""
+    values, warns = agent_conf.repo_paths(main_root(top))
+    for line in warns:
+        sys.stderr.write(line + "\n")
+    out = []
+    for key in agent_conf.REPO_KEYS:
+        out += split_globs(values.get(key, ""))
+    return out
+
+
 def run(argv):
     if len(argv) < 1:
         raise Stop("usage: agent_level.py <cwd> check --base <ref> [--declared <A-D>]")
@@ -1195,19 +1215,13 @@ def run(argv):
     base, declared = parse(argv[1:])
 
     notes = []
-    try:
-        danger = split_globs(str(agent_conf.get("danger_paths")))
-        for line in agent_conf.warnings():
-            if "danger_paths" in line:
-                sys.stderr.write(line + "\n")
-    except Exception:
-        danger = split_globs(agent_conf.DEFAULT_DANGER)
 
     proc = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if proc.returncode != 0:
         raise Stop("not in a git repo: %s" % cwd)
     top = text_of(proc.stdout).strip()
+    danger = core_globs(top)
     ok = git(top, "rev-parse", "--verify", "--quiet", base + "^{commit}", check=False)
     if ok.returncode != 0:
         raise Stop("git does not know the ref: %s" % base)

@@ -18,7 +18,7 @@ Owner principle (2026-11-25, "1A"): this plugin is a developer workflow, not a p
 
 Pick: one reader, `bin/agent_conf.py`. Order: settings.json `pluginConfigs` -> `CLAUDE_PLUGIN_OPTION_<KEY>` env -> the plugin.json default. Hooks, Bash calls and subagents get the same answer. No plugin (cloud session, `cloud-pack`) -> the defaults. A stored value that fails its check -> the default, and one warning line; never silent.
 
-## 2. The 17 settings (plugin.json `userConfig`, in this order)
+## 2. The 16 settings (plugin.json `userConfig`, in this order)
 
 Groups cannot show, so the group is the first word of the title.
 
@@ -40,7 +40,6 @@ Groups cannot show, so the group is the first word of the title.
 | 14 | housekeep_interval_min | Stuck: Tidy every (min) | number 0-1440 | 120 | housekeep_interval_min |
 | 15 | city_port | City: City port | number 1024-65535 | 4777 | city_port |
 | 16 | city_idle_min | City: City auto close (min) | number 1-240 | 30 | city_idle_min |
-| 17 | danger_paths | Risk: Danger paths (D) | string, comma-separated globs | .claude-plugin/,hooks/,PRINCIPLES.md,skills/,agents/,bin/agent_conf.py | level3_paths + level4_paths |
 
 Rules and examples:
 
@@ -53,7 +52,7 @@ Rules and examples:
 | A manager below the decider floor | `main_manager = sonnet-5:high` | refused, default opus-5.5:high + one warning line |
 | Helper model | `helper_model = sonnet-5:high` | fast-lane deputy, merge deputy and worker all run sonnet-5:high |
 | Todo before agent off | false | launches are recorded, never refused (old `board_guard=record`) |
-| Danger path missing in a repo | `bin/agent_conf.py` in a product repo | matches nothing, no error |
+| Core path missing in a repo | `bin/agent_conf.py` in a product repo | matches nothing, no error |
 | Hook env and file disagree | env 4 (session start), file 6 (changed now) | 6: the file wins |
 
 ## 3. Fixed constants (not shown anywhere)
@@ -88,7 +87,7 @@ Rules and examples:
 - The type is judged from the brief: what changes and how much other code depends on it, never from file paths alone
 - Doc or text only (.md, comments, rule text, PRINCIPLES.md wording) = A, even in PRINCIPLES.md
 - A new feature is normally C; D only for core code many other things depend on
-- `danger_paths` ("Risk: Danger paths (D)") is a hint: `agent-level.sh` prints `touches core path <file>: judge from the brief whether it is D`; it never raises, never raises a doc-only diff
+- a core path (`level3_paths` / `level4_paths` of agent_repo.conf, see the next section) is a hint: `agent-level.sh` prints `touches core path <file>: judge from the brief whether it is D`; it never raises, never raises a doc-only diff
 - The built-in D kinds stay D: lockfile, dependency lists, migrations, schema
 - A second agent (read-only, given the brief and the code, not the manager's answer) reviews the picked type; a disagreement goes to the owner
 
@@ -98,6 +97,14 @@ Rules and examples:
 | logic in bin/agent_conf.py | C (from the code) | touches core path bin/agent_conf.py: ... |
 | yarn.lock | D (built-in) | - |
 | skills/x/SKILL.md text | A | touches core path skills/x/SKILL.md: ... |
+
+## 7a. Core paths (owner 1A 2026-11-25)
+
+- Core paths are facts of one repo, not a user setting. Configure holds 16 settings; there is no Danger paths item
+- `level3_paths` and `level4_paths` live in a small committed file `agent_repo.conf` at the main repo root (key=value, only these two keys). `bin/agent_level.py` reads it from the main repo root, also when run from a worktree. No file or no key = built-in paths only. A bad glob list is left out with one warning on stderr
+- Both lists are hints: a file on either keeps the type its content gives, and the check prints `touches core path <file>: judge from the brief whether it is D`
+- Migration: an old `agent.conf` with `level3_paths` or `level4_paths` (not empty) moves those lines into `agent_repo.conf` (created if missing, a key already there is never overwritten), one line `moved <keys> to agent_repo.conf (repo file, commit it)`; never into Configure
+- `agent_conf.py show` ends with the change line, then `core paths of this repo: agent_repo.conf`
 
 ## 8. plugin-scope-sync (owner answer Q2, 3A 2026-11-25)
 

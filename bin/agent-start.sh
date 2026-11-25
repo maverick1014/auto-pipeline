@@ -449,17 +449,17 @@ Q37. You are the main manager. The owner runs /auto-pipeline:question; agent-fil
   C. Run agent-file.sh questions --page, publish the page with the Artifact tool, then one line: the count, the link, "answer all, then tell me"
   D. Read every agent_state.txt and write your own summary
 
-Q38. A diff only rewords two lines in PRINCIPLES.md, a path on the Danger paths list. Its risk type:
+Q38. A diff only rewords two lines in PRINCIPLES.md, a core path in agent_repo.conf. Its risk type:
   A. A: doc or text only, even in PRINCIPLES.md; the main manager reads the diff
   B. B: UI, Chrome compare with the approved mock
   C. C: logic, failing tests first
-  D. D: it is on the Danger paths list, the owner signs before merge
+  D. D: it is a core path, the owner signs before merge
 
 Q39. agent-level.sh prints "touches core path bin/agent_conf.py: judge from the brief whether it is D". The brief adds one new setting. You:
-  A. Raise the task to D: the path is on the list
+  A. Raise the task to D: it is a core path
   B. Ignore the line: it is only a hint
   C. Judge from the brief: a new feature is normally C, D only when core code many things depend on changes; a second read-only agent checks the type, a disagreement goes to the owner
-  D. Ask the owner before every task that touches the list
+  D. Ask the owner before every task that touches a core path
 QUIZ
   exit 0
 fi
