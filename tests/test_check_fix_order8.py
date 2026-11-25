@@ -39,7 +39,7 @@ class TestA10FastLaneProduction(tp.PromoteCase):
         subprocess.run(["git", "-C", wt, "commit", "-q", "-m", "urgent fix"], check=True)
         subprocess.run(["git", "-C", wt, "push", "-q", "-u", "origin", "u1"], check=True, capture_output=True)
         r = self.repo.run("agent-file.sh", "todo", "add", "u1", "small", "urgent fix", "10", "--target", "production",
-                          "--owner-quote", "fix it now and publish it")
+                          "--owner-quote", "yes, publish u1 to production")   # section 51 H2: the exact sentence
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         head = subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         for block in ("DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "EXAMPLES TEST"):
@@ -75,7 +75,7 @@ class TestA11ToA18Texts(unittest.TestCase):
 
     def test_a15_dispatch_template(self):
         step2 = [l for l in read("skills", "dispatch", "SKILL.md").splitlines() if l.startswith("2. Small task")][0]
-        self.assertIn('[--target production --owner-quote "<the owner\'s words>"]', step2)
+        self.assertIn('--target production --owner-quote "yes, publish <task> to production"', step2)   # section 51 H2: the exact sentence
 
     def test_a16_no_diff_read(self):
         sys.path.insert(0, os.path.join(ROOT, "bin"))

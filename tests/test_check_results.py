@@ -118,7 +118,7 @@ class TestTargetAndBatch(Case):
     def test_target_and_batch_fields(self):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "add", "x1", "big", "x one", "60", "--target", "production", "--batch", "b1",
-                "--owner-quote", "publish x one")                     # section 44 F1
+                "--owner-quote", "yes, publish x1 to production")   # section 51 H2: the exact sentence
         f = self.fields("x1")
         self.assertIn("target production", f)
         self.assertIn("batch b1", f)
@@ -179,7 +179,7 @@ class TestTodoChecks(Case):
                                    "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\necho 'verified'\nexit 0\n" % log)
         # section 47 G1: PR REVIEW is never removed; another block when the words name it and leaving it out
         self.ok("todo", "checks", "t", "UI CHECK")
-        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "skip the ui check for this one")
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "yes, skip UI CHECK for t")   # section 51 H2: the exact sentence
         f = self.fields("t")
         self.assertFalse(any(x.startswith("checks ") and "UI CHECK" in x for x in f), f)
         self.assertTrue(any(re.fullmatch(r"removed UI CHECK \d{4}-\d{2}-\d{2} \d{2}:\d{2}", x) for x in f), f)
@@ -187,7 +187,7 @@ class TestTodoChecks(Case):
             args = fh.read().split("\n")
         self.assertEqual(args[0], "verify")
         self.assertIn("--quote", args)
-        self.assertIn("skip the ui check for this one", args)
+        self.assertIn("yes, skip UI CHECK for t", args)
         self.assertIn("--repo", args)
         # core review defect 1: agent-owner-order.sh verify wants an absolute folder
         repo_arg = args[args.index("--repo") + 1]
@@ -571,7 +571,7 @@ class TestGate(Case):
         self.git("push", "-q", "origin", "base:refs/heads/main")
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "add", "p", "small", "publish it", "10", "--target", "production",
-                "--owner-quote", "publish it")                        # section 44 F1
+                "--owner-quote", "yes, publish p to production")   # section 51 H2: the exact sentence
         main_launched(self.repo.dir, "p")
         for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
             self.ok("check", "p", b, "pass", "--by", "tm", "--evidence", "ok")
@@ -590,7 +590,7 @@ class TestGate(Case):
     def test_a_removed_brief_block_is_not_planned(self):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "checks", "t", "UI CHECK")
-        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "skip the ui check for this one")   # G1
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "yes, skip UI CHECK for t")   # section 51 H2: the exact sentence
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         self.assertEqual(self.gate().returncode, 0)
 
@@ -607,7 +607,7 @@ class TestGate(Case):
         # a removal is recorded, but the gate recomputes the tool blocks from the diff
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "checks", "t", "BUILD")
-        self.ok("todo", "checks", "t", "--remove", "BUILD", "--owner-quote", "skip the build")
+        self.ok("todo", "checks", "t", "--remove", "BUILD", "--owner-quote", "yes, skip BUILD for t")   # section 51 H2: the exact sentence
         self.ok("todo", "checks", "t", "BUILD")
         self.passes("DIFF SCAN", "RELATED TESTS", "PR REVIEW")
         r = self.gate()

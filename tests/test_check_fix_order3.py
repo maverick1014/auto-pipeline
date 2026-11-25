@@ -76,7 +76,7 @@ class TestF1DirectPath(tp.PromoteCase):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.verified(False)
         r = self.repo.run("agent-file.sh", "todo", "add", "feat-v", "small", "x", "10", "--target", "production",
-                          "--owner-quote", "publish it")
+                          "--owner-quote", "yes, publish feat-v to production")   # section 51 H2: the exact sentence
         self.assertEqual(r.returncode, 1, r.stdout)
         with open(os.path.join(self.repo.dir, "agent_todo.txt")) as fh:
             self.assertNotIn("feat-v", fh.read())
@@ -92,7 +92,7 @@ class TestF1DirectPath(tp.PromoteCase):
     def test_the_gate_runs_first(self):
         b = self.branch_from_main("feat-g")
         r = self.repo.run("agent-file.sh", "todo", "add", b, "small", "x", "10", "--target", "production",
-                          "--owner-quote", "fix the total and publish it")
+                          "--owner-quote", "yes, publish %s to production" % b)   # section 51 H2: the exact sentence
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         before = self.git("rev-parse", "origin/main")
         r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)     # no reviewer, no check lines
@@ -103,10 +103,10 @@ class TestF1DirectPath(tp.PromoteCase):
 
     def test_the_stored_words(self):
         b = self.branch_from_main("feat-k")
-        self.ready_direct(b, b, quote="fix the total and publish it")
+        self.ready_direct(b, b)
         gd = self.git("rev-parse", "--path-format=absolute", "--git-common-dir")
         with open(os.path.join(gd, "agent_owner_words.json")) as fh:
-            self.assertEqual(json.load(fh)[b]["quote"], "fix the total and publish it")
+            self.assertEqual(json.load(fh)[b]["quote"], "yes, publish %s to production" % b)
         r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
@@ -456,7 +456,7 @@ class TestF11Removals(tcr.TestGate):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
 
     def test_a_verified_removal_is_subtracted_by_the_gate(self):
-        r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "drop the related tests")   # G1: names it
+        r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "yes, skip RELATED TESTS for t")   # section 51 H2: the exact sentence
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.passes("DIFF SCAN", "BUILD")
         self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")

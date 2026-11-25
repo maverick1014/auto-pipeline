@@ -71,11 +71,12 @@ class PromoteCase(ScriptCase):
         self.commit_wb({}, "release build")
         return log
 
-    def ready_direct(self, task, branch, quote="fix the total and publish it"):
+    def ready_direct(self, task, branch, quote=None):
         """Section 44 F1: dispatch stores the owner's words with the target; the main manager's reviewer passed."""
         import time as _t
         sys.path.insert(0, HERE)
         import test_check_results as _tcr
+        quote = quote or "yes, publish %s to production" % task          # section 51 H2: the exact sentence
         r = self.repo.run("agent-file.sh", "todo", "add", task, "small", "publish " + task, "10",
                           "--target", "production", "--owner-quote", quote)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -202,7 +203,7 @@ class TestDirectToProduction(PromoteCase):
         b = self.task_branch({"src/total.py": "t = 1\n"})
         before = self.git("rev-parse", "origin/main")
         r = self.repo.run("agent-file.sh", "todo", "add", "feat-p", "small", "x", "10", "--target", "production",
-                          "--owner-quote", "publish it")
+                          "--owner-quote", "yes, publish feat-p to production")   # section 51 H2: the exact sentence
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertEqual(self.repo.run("agent-promote.sh", "--task", "feat-p", "--branch", b).returncode, 1)
         self.assertEqual(self.git("rev-parse", "origin/main"), before)

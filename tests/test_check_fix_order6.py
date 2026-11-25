@@ -80,23 +80,21 @@ class TestG1Removals(Gate):
         r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote",
                     "please fix the footer typo on the site")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("todo checks: the owner's words do not name RELATED TESTS and leaving it out", r.stdout + r.stderr)
+        self.assertIn("todo checks: ask the owner to type exactly: yes, skip RELATED TESTS for t", r.stdout + r.stderr)   # section 51 H2: the exact sentence
         self.all_pass_but("RELATED TESTS")
         self.assertEqual(self.gate().returncode, 1)
 
     def test_words_that_name_it_remove_it(self):
-        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "skip the related tests here")
+        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "yes, skip RELATED TESTS for t")
         self.all_pass_but("RELATED TESTS")
         self.assertEqual(self.gate().returncode, 0)
 
-    def test_the_word_lists_live_in_agent_conf(self):
+    def test_the_word_lists_are_gone(self):
+        # section 51 H2: word lists cannot read a sentence; the approval is one exact sentence
         sys.path.insert(0, BIN)
         import agent_conf
-        self.assertIn("review", agent_conf.BLOCK_WORDS["PR REVIEW"])
-        for w in ("skip", "without", "不用", "跳过"):
-            self.assertIn(w, agent_conf.SKIP_WORDS)
-        for w in ("publish", "production", "上线", "发布"):
-            self.assertIn(w, agent_conf.PUBLISH_WORDS)
+        for name in ("BLOCK_WORDS", "SKIP_WORDS", "PUBLISH_WORDS", "NEGATION_WORDS", "skip_before_name"):
+            self.assertFalse(hasattr(agent_conf, name), name)
 
 
 # ====================================================================== G2 one task instance
@@ -105,7 +103,7 @@ class TestG1Removals(Gate):
 @only_own
 class TestG2OneInstance(Gate):
     def test_a_removal_ends_with_its_task(self):
-        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "skip the related tests here")
+        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "yes, skip RELATED TESTS for t")
         self.ok("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
         self.ok("todo", "add", "t", "small", "task again", "10")
         tcr.main_launched(self.repo.dir, "t")
@@ -143,11 +141,11 @@ class TestG4PublishWords(tp.PromoteCase):
         r = self.repo.run("agent-file.sh", "todo", "add", "p", "small", "x", "10", "--target", "production",
                           "--owner-quote", "please fix the footer typo on the site")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("todo add: the owner's words do not name the publish", r.stdout + r.stderr)
+        self.assertIn("todo add: ask the owner to type exactly: yes, publish p to production", r.stdout + r.stderr)   # section 51 H2: the exact sentence
 
     def test_stored_words_end_with_their_task(self):
         r = self.repo.run("agent-file.sh", "todo", "add", "p", "small", "x", "10", "--target", "production",
-                          "--owner-quote", "fix it and publish it")
+                          "--owner-quote", "yes, publish p to production")   # section 51 H2: the exact sentence
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.repo.run("agent-file.sh", "todo", "done", "p", "--work", "5", "--type", "script", "--lane", "fast")
         with open(os.path.join(self.repo.dir, "agent_todo.txt"), "a") as fh:        # by hand, the same name

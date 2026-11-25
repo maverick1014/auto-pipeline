@@ -170,7 +170,7 @@ class TestW1PromoteSeesTheTasksLines(tp.PromoteCase):
         subprocess.run(["git", "-C", wt, "commit", "-q", "-m", "urgent fix"], check=True)
         subprocess.run(["git", "-C", wt, "push", "-q", "-u", "origin", "p1"], check=True, capture_output=True)
         r = self.repo.run("agent-file.sh", "todo", "add", "p1", "small", "publish p1", "10", "--target", "production",
-                          "--owner-quote", "fix it and publish it")
+                          "--owner-quote", "yes, publish p1 to production")   # section 51 H2: the exact sentence
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(os.path.join(self.repo.dir, "agent_worktree.txt"), "a") as fh:
             fh.write("%s | p1 | final | since %s\n" % (wt, _t.strftime("%Y-%m-%d %H:%M")))

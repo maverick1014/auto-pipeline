@@ -52,7 +52,7 @@ QUIZ_Q16 = """Q16. A small logic task (one function, about 30 minutes) needs a n
 
 QUIZ_Q23 = """Q23. One request has x1, x2, x3, x4; x1 and x2 are urgent ("after done direct merge"). You:
   A. Merge all four into your working branch, run the full suite, then publish them together
-  B. x1 and x2 branch from production and each merges straight into production when done (production merged back into your working branch after each); x3 and x4 branch from your working branch and merge there; one full suite there after both are in; first check that x1 and x2 need no code only x3 or x4 brings
+  B. The owner types "yes, publish x1 to production" and "yes, publish x2 to production"; x1 and x2 branch from production and each merges straight into production when done (production merged back into your working branch after each); x3 and x4 branch from your working branch and merge there; one full suite there after both are in; first check that x1 and x2 need no code only x3 or x4 brings
   C. Wait until all four are done, then merge them straight into production
   D. Branch all four from your working branch and push it to production after x1"""
 
@@ -76,7 +76,7 @@ QUIZ_Q38 = """Q38. A diff only changes one locale value. agent-level.sh check pr
 
 QUIZ_Q39 = """Q39. Production is broken and the owner wants it fixed now. You:
   A. Fix it on the working branch and wait for the next promote
-  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with his verified words from dispatch (no second yes; the release build runs by itself), then merge production back into the working branch
+  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with the sentence he typed at dispatch ("yes, publish <task> to production"; no second yes; the release build runs by itself), then merge production back into the working branch
   C. Push a fix straight to production with no check
   D. Wait for the nightly run"""
 

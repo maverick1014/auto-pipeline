@@ -21,7 +21,7 @@ import test_check_results as tcr  # noqa: E402
 
 only_own = fo3.only_own
 read = fo3.read
-ASK = "ask him one plain question and quote his answer"
+ASK = "ask the owner to type exactly: "   # section 51 H2 (was: ask him one plain question)
 
 
 # ====================================================================== G9 one task instance, own commits
@@ -71,16 +71,17 @@ class TestG10PublishWords(tp.PromoteCase):
             with self.subTest(words=words):
                 r = self.add(words)
                 self.assertEqual(r.returncode, 1, r.stdout)
-                self.assertIn("todo add: the owner's words do not clearly say publish now: " + ASK, r.stdout + r.stderr)
+                self.assertIn("todo add: " + ASK + "yes, publish p to production", r.stdout + r.stderr)
 
-    def test_a_plain_publish_is_accepted(self):
-        self.assertEqual(self.add("fix the total and publish it").returncode, 0)
+    def test_natural_sentences_are_refused(self):
+        # the reviewer's cases (section 51 H2): neither a non-approval nor a plain yes passes as words
+        for words in ("publish it next week", "is it ready to publish?", "下周再发布", "publish only if the tests pass",
+                      "fix the total and publish it", "after done direct merge"):
+            with self.subTest(words=words):
+                self.assertEqual(self.add(words).returncode, 1)
 
-    def test_the_list_lives_in_agent_conf(self):
-        sys.path.insert(0, os.path.join(ROOT, "bin"))
-        import agent_conf
-        for w in ("not", "wait", "later", "yet", "without", "不", "先", "等"):
-            self.assertIn(w, agent_conf.NEGATION_WORDS)
+    def test_the_exact_sentence_is_accepted(self):
+        self.assertEqual(self.add("Yes,  publish P to production.").returncode, 0)   # case, punctuation, spaces
 
 
 # ====================================================================== G11 the skip word before the block
@@ -97,12 +98,17 @@ class TestG11Removals(fo6.Gate):
                 self.assertEqual(r.returncode, 1, r.stdout)
                 self.assertIn(ASK, r.stdout + r.stderr)
 
-    def test_the_skip_word_right_before_the_name(self):
-        for block, words in (("BUILD", "skip the build check"), ("RELATED TESTS", "without the related tests"),
-                             ("BUILD", "不用 build")):
+    def test_the_exact_sentence(self):
+        # section 51 H2: only the exact sentence (case, punctuation and spaces aside)
+        for block, words in (("BUILD", "Yes, skip BUILD for t."), ("RELATED TESTS", "yes skip related tests for t")):
             with self.subTest(words=words):
                 r = self.af("todo", "checks", "t", "--remove", block, "--owner-quote", words)
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_the_task_request_itself_removes_nothing(self):
+        r = self.af("todo", "checks", "t", "--remove", "DB CHECK", "--owner-quote", "remove the db column legacy_note")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn(ASK + "yes, skip DB CHECK for t", r.stdout + r.stderr)
 
 
 # ====================================================================== G12 real locale files only
