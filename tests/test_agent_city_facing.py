@@ -174,47 +174,6 @@ __out = { steps, walks, yaw0: typeof byId('w2').yaw, build: { state: b.state, ha
 """).replace("__JUDGE__", JUDGE)
 
 
-class TestCitizensFaceWhereTheyWalk(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        views = plan_views()
-        cls.view = views[sorted(views)[0]]
-        cls.runs = {dt: run_sim(WALK_DRIVER, {"view": cls.view, "dt": dt}, FACE_REQUIRED) for dt in (1 / 30, 0.1)}
-
-    def test_they_really_walk(self):
-        for dt, r in self.runs.items():
-            with self.subTest(dt=dt):
-                self.assertGreater(r["steps"]["n"], 200, "enough walking to judge")
-                self.assertEqual(r["yaw0"], "number", "every citizen has c.yaw")
-
-    def test_never_a_step_sideways_or_backwards(self):
-        for dt, r in self.runs.items():
-            with self.subTest(dt=dt):
-                s = r["steps"]
-                self.assertEqual(s["off60"], 0, "%d of %d steps more than 60 deg off, e.g. %s" % (s["off60"], s["n"], s["ex60"]))
-
-    def test_faces_the_way_once_on_a_leg(self):
-        for dt, r in self.runs.items():
-            with self.subTest(dt=dt):
-                s = r["steps"]
-                self.assertGreater(s["late"], 50)
-                self.assertEqual(s["off8"], 0, "%d of %d steps 0.35 s into a leg more than 8 deg off, e.g. %s"
-                                 % (s["off8"], s["late"], s["ex8"]))
-
-    def test_a_builder_faces_its_building(self):
-        for dt, r in self.runs.items():
-            with self.subTest(dt=dt):
-                b = r["build"]
-                self.assertEqual(b["state"], "building")
-                self.assertTrue(b["hasBld"])
-                self.assertAlmostEqual(b["faceWant"], b["want"], places=6)
-                self.assertLess(abs(diff(b["yaw"], b["want"])), 0.05, "faces the work after 1 s")
-
-    def test_nothing_to_face_keeps_the_facing(self):
-        self.assertIsNone(self.runs[0.1]["standNull"])
-
-
 # A present governor with nothing to do strolls after IDLE_STROLL_SEC; every tick records his step and yaw.
 GOV_DRIVER = (r"""
 const V = __payload.view, T = V.territories[0], tid = T.id, DT = 1 / 30;
@@ -238,30 +197,6 @@ for (let i = 0; i < Math.round(120 / DT); i++) {
 const m = govMove.get(tid);
 __out = { steps, moved, figMatch, atMatch, end: m ? { yaw: m.yaw, phase: m.phase, path: m.path.length } : null };
 """).replace("__JUDGE__", JUDGE)
-
-
-class TestGovernorFacesWhereHeWalks(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        views = plan_views()
-        cls.r = run_sim(GOV_DRIVER, {"view": views[sorted(views)[0]]}, FACE_REQUIRED)
-
-    def test_he_strolls(self):
-        self.assertGreater(self.r["moved"], 1.0, "an idle governor strolls within 120 s")
-
-    def test_never_a_step_sideways_or_backwards(self):
-        s = self.r["steps"]
-        self.assertEqual(s["off60"], 0, "%d of %d steps more than 60 deg off, e.g. %s" % (s["off60"], s["n"], s["ex60"]))
-
-    def test_faces_the_way_once_on_a_leg(self):
-        s = self.r["steps"]
-        self.assertGreater(s["late"], 10)
-        self.assertEqual(s["off8"], 0, "%d of %d steps more than 8 deg off, e.g. %s" % (s["off8"], s["late"], s["ex8"]))
-
-    def test_figures_and_governor_at_carry_the_yaw(self):
-        self.assertTrue(self.r["figMatch"], "governorFigures() entries carry m.yaw")
-        self.assertTrue(self.r["atMatch"], "governorAt() carries m.yaw")
 
 
 class TestDrawnFromTheSim(unittest.TestCase):

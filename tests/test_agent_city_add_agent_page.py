@@ -112,7 +112,7 @@ KEYS = ("rail.none", "add.tip", "add.plus", "add.opening", "add.openingBare", "a
 # Two repos: A = auto-pipeline (a governor and one task manager), B = v4-plus (nobody online). Both are here.
 DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
-A.name = 'auto-pipeline'; B.name = 'v4-plus'; A.here = true; B.here = true;
+A.name = 'auto-pipeline'; B.name = 'v4-plus'; A.here = true; B.here = true; for (const t of [A, B]) Object.assign(V.repos.find(r => r.id === t.id), { name: t.name, here: t.here !== false });
 function buildLand(view){ officeState(view); }
 const ag = (id, label, task, terr, extra) => Object.assign({ id, role: 'task-manager', label, task, stuck: false, done: false,
   tools: {}, terr, lead: '', office: null, relay: '' }, extra || {});

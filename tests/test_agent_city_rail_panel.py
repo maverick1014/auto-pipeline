@@ -146,7 +146,7 @@ def decl(block, prop):
 
 DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
-A.name = 'v4-pospro'; B.name = 'v4-plus';
+A.name = 'v4-pospro'; B.name = 'v4-plus'; for (const t of [A, B]) Object.assign(V.repos.find(r => r.id === t.id), { name: t.name, here: t.here !== false });
 function buildLand(view){ officeState(view); }
 const ag = (id, label, task, terr, extra) => Object.assign({ id, role: 'task-manager', label, task, stuck: false, done: false,
   tools: {}, terr, lead: '', office: null, relay: '' }, extra || {});

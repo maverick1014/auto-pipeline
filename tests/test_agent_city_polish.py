@@ -45,6 +45,7 @@ TA, TB = ac.territory_id(A_REPO), ac.territory_id(B_REPO)
 
 
 def named_view():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cityoffice import office_view_of
     return office_view_of((A_REPO, "repoA"), (B_REPO, "repoB"))
 

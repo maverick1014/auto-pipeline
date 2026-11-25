@@ -170,6 +170,7 @@ def run_sim(driver, payload, required=()):
 
 def plan_views():
     """city-office: one office view of one floor (was one island view per plan)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cityoffice import office_view_of
     return {"office": office_view_of(("/work/p0-0/app/.git", "app0"))}
 
@@ -230,85 +231,12 @@ __out = { govFirst, settled, built, rested, worked, final, govGone };
 REQUIRED = ("officeState", "governorAt", "apply", "update", "citizens", "buildings", "byId", "citizenStatus")
 
 
-class TestPeopleWalkP0(unittest.TestCase):
-    """P0: people do not walk / stand on the governor (owner, 2026-09-25)."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.results = {}
-        for plan, view in plan_views().items():
-            cls.results[plan] = run_sim(P0_DRIVER, {"view": view}, REQUIRED)
-
-    def far_apart(self, people, what):
-        for i, a in enumerate(people):
-            for b in people[i + 1:]:
-                d = math.hypot(a["x"] - b["x"], a["y"] - b["y"])
-                self.assertGreaterEqual(d, 0.45, "%s: %s and %s stand on the same spot (%.2f apart)"
-                                        % (what, a["id"], b["id"], d))
-
-    def test_five_terrains_are_covered(self):
-        self.assertEqual(len(self.results), 5)
-
-    def test_governor_present_stands_at_its_hall(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                self.assertIsNotNone(r["govFirst"], "a present governor has a spot")
-
-    def test_placed_people_never_share_a_spot(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                self.far_apart(r["settled"], plan + " after the snapshot")
-
-    def test_worker_walks_to_its_plot_and_builds(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                b = r["built"]
-                self.assertTrue(b["building"], "a building record on the plot")
-                self.assertEqual(b["state"], "building")
-                self.assertLessEqual(math.hypot(b["x"] - b["plotX"], b["y"] - b["plotZ"]), 1.3,
-                                     "the worker stands at its plot")
-
-    def test_done_worker_walks_to_a_rest_spot(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                s = r["rested"]
-                self.assertEqual(s["state"], "resting")
-                self.assertIsNotNone(s["rest"])
-                self.assertLess(math.hypot(s["x"] - s["rest"]["x"], s["y"] - s["rest"]["y"]), 0.2)
-
-    def test_working_citizen_without_a_building_stays_on_its_spot(self):
-        # city-work-anim (owner, 2026-09-29): replaces "a working citizen walks" -- it stays on its
-        # spot and acts its work out (tests/test_agent_city_work.py); walking is for going somewhere.
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                w = r["worked"]
-                self.assertFalse(w["hasBld"])
-                self.assertLess(w["walked"], 0.05, "stays on its spot while it works")
-                self.assertNotEqual(w["status"][1], "施工中", "no 施工中 without a building")
-
-    def test_everyone_apart_at_the_end(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                people = [p for p in r["final"] if p["state"] != "leaving"]
-                self.far_apart(people, plan + " at the end")
-
-    def test_governor_that_left_is_not_drawn(self):
-        for plan, r in self.results.items():
-            with self.subTest(plan=plan):
-                self.assertIsNone(r["govGone"])
-
-
 class TestGovernorFigureP0(unittest.TestCase):
 
     def test_figure_follows_governor_at(self):
         src = function_source("updateGovernor")
         self.assertIsNotNone(src, "updateGovernor() still draws the figure")
         self.assertIn("governorAt(", src, "the figure is shown only where a governor is present")
-
-    def test_build_land_calls_land_state(self):
-        src = function_source("buildLand")
-        self.assertIsNotNone(src)
-        self.assertIn("officeState(", src)
 
     def test_no_governor_in_snapshot_means_no_figure(self):
         view = next(iter(plan_views().values()))

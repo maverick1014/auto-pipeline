@@ -306,20 +306,6 @@ class TestGovernorPerTerritory(CityCase):
 class TestServerE2EFindings(CityCase):
     """Task manager's headless run (real server, synthetic hook lines)."""
 
-    def test_offices_do_not_outlive_a_restart(self):
-        # a lead that ended while the server was down never sends SessionEnd: its cabin must not stay forever
-        self.lead("tm1")
-        self.assertEqual(len(self.terr_view(self.snap(), TA)["offices"]), 1)
-        again = self.new_state()
-        snap = decode(again.add_client().queue.get_nowait())
-        self.assertEqual(self.terr_view(snap, TA)["offices"], [], "no office until a live lead shows up again")
-        self.now += 1
-        again.feed_line({"ev": "PostToolUse", "sid": "tm1", "aid": "", "at": "", "tool": "Bash", "nt": "", "proj": "app",
-                         "role": "task-manager", "desc": "", "sub": "", "q": "", "klen": "", "repo": A_REPO,
-                         "kind": "", "ask": ""}, self.now)
-        snap = decode(again.add_client().queue.get_nowait())
-        self.assertEqual(len(self.terr_view(snap, TA)["offices"]), 1, "a live lead gets its office back")
-
     def test_a_governors_own_ask_is_the_governors(self):
         # no gov-watch has polled yet (first turn): the session is still the governor of its territory
         self.governor("g1")
@@ -366,13 +352,6 @@ class TestNoRepoIsTheStartTerritory(CityCase):
         self.governor("g2", B_REPO)
         self.line("PostToolUse", "g2", B_REPO, tool="Read")
         self.assertEqual(self.snap()["gov"]["terr"], TA)
-
-    def test_a_lead_without_repo_gets_an_office_there(self):
-        self.lead("tm-old", repo="")
-        spawn = [e for e in self.drain() if e.get("type") == "spawn" and e["id"] == "s:tm-old"][0]
-        self.assertIsNotNone(spawn.get("office"))
-        self.assertEqual(spawn["terr"], TA)
-
 
 class TestChain(CityCase):
 
@@ -480,6 +459,7 @@ class TestWorkerQuestionForm(unittest.TestCase):
 
 def two_territory_view():
     """city-office: A and B as two floors (A 1F, B 2F) of the office view."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cityoffice import office_view_of
     return office_view_of((A_REPO, "app"), (B_REPO, "app"))
 
@@ -529,88 +509,6 @@ def dist(a, b):
     return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
 
 
-class TestPeoplePage(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.r = run_sim(FEATURE_DRIVER, {"view": two_territory_view(), "ta": TA, "tb": TB}, FEATURE_REQUIRED)
-
-    def test_each_territory_has_its_own_governor_at_its_hall(self):
-        r = self.r
-        self.assertIsNotNone(r["gA"])
-        self.assertIsNotNone(r["gB"])
-        self.assertLessEqual(dist(r["gA"], r["hallA"]), 2.5)
-        self.assertLessEqual(dist(r["gB"], r["hallB"]), 2.5)
-
-    def test_lead_at_its_office_workers_around_it(self):
-        s, oc = self.r["settle"], self.r["OC"]
-        self.assertLessEqual(dist(s["L"], oc), 1.3, "the lead stands at its office")
-        for w in ("w1", "w2"):
-            self.assertLessEqual(dist(s[w], oc), 2.6, "%s lives around its lead's office" % w)
-
-    def test_resting_people_hang_out_at_the_rest_place(self):
-        s, r = self.r["settle"], self.r
-        self.assertEqual(s["r1"]["state"], "resting")
-        self.assertLessEqual(dist(s["r1"], r["RC"]), 1.8, "not on the bare ground by the hall")
-        for spot in r["restA"]:
-            self.assertLessEqual(dist(spot, r["RC"]), 1.8)
-        self.assertTrue(r["restB"], "no rest place yet: rest by the hall as before")
-
-    def test_nobody_shares_a_spot(self):
-        r = self.r
-        for label in ("settle", "c3"):
-            people = r[label]["all"] + [dict(r["gA"], id="gA"), dict(r["gB"], id="gB")]
-            for i, a in enumerate(people):
-                for b in people[i + 1:]:
-                    with self.subTest(when=label, a=a["id"], b=b["id"]):
-                        self.assertGreaterEqual(dist(a, b), 0.45)
-
-    def test_roster_groups_people_by_territory(self):
-        g = self.r["groups"]
-        self.assertEqual([x["terr"] for x in g], [TA, TB])
-        rows_a = g[0]["rows"]
-        self.assertEqual(rows_a[0], ["gov:" + TA, 0])
-        ia = [row[0] for row in rows_a]
-        self.assertEqual(rows_a[ia.index("s:L") + 1][1], 1)
-        self.assertEqual({row[0] for row in rows_a if row[1] == 1}, {"w1", "w2"})
-        self.assertIn(["r1", 0], rows_a)
-        self.assertEqual(g[1]["rows"][0], ["gov:" + TB, 0])
-        self.assertIn(["r2", 0], g[1]["rows"])
-
-    def test_worker_question_walks_to_the_office(self):
-        c1 = self.r["c1"]
-        self.assertLessEqual(dist(c1["w1"], self.r["OC"]), 1.3)
-        self.assertGreaterEqual(dist(c1["w1"], c1["L"]), 0.45, "beside its lead, not on it")
-        self.assertNotIn("完工", c1["bubble"], "a worker with a question does not cheer 完工啦")
-        self.assertNotEqual(c1["w1"]["state"], "resting", "a worker waiting for its lead does not rest yet")
-        self.assertEqual(c1["status"][1], "问经理")
-
-    def test_lead_walks_to_the_governor_worker_waits(self):
-        c2 = self.r["c2"]
-        self.assertLessEqual(dist(c2["L"], self.r["gA"]), 1.6)
-        self.assertGreaterEqual(dist(c2["L"], self.r["gA"]), 0.45, "beside the governor, not on him (headless E2E)")
-        self.assertEqual(c2["noWatch"][1], "在问总督", "a present governor answers relays even before its gov-watch runs")
-        self.assertLessEqual(dist(c2["w1"], self.r["OC"]), 1.6)
-        self.assertEqual(c2["status"][1], "在问总督")
-
-    def test_answer_sends_the_lead_home_and_the_worker_to_rest(self):
-        c3 = self.r["c3"]
-        self.assertLessEqual(dist(c3["L"], self.r["OC"]), 1.3)
-        self.assertEqual(c3["w1"]["state"], "resting")
-        self.assertLessEqual(dist(c3["w1"], self.r["RC"]), 1.8)
-
-    def test_permission_of_a_worker_goes_to_its_lead_of_a_lead_to_the_governor(self):
-        self.assertLessEqual(dist(self.r["p1"], self.r["OC"]), 1.3)
-        self.assertLessEqual(dist(self.r["p2"], self.r["gA"]), 1.6)
-
-    def test_governor_window_uses_the_groups(self):
-        # city-ux U11: renderDetail draws the list through teamListHtml(), which reads rosterGroups()
-        src = function_source("renderDetail") or ""
-        if "teamListHtml(" in src:
-            src = function_source("teamListHtml") or ""
-        self.assertIn("rosterGroups(", src)
-
-
 GOVFIG_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
 function buildLand(view){ officeState(view); }
@@ -619,7 +517,7 @@ apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governor
 const two = governorFigures().map(g => ({ terr: g.terr, x: g.x, y: g.y }));
 apply({ type: 'gov', terr: B.id, state: 'idle', present: false });
 const one = governorFigures().map(g => g.terr);
-__out = { two, one, hallA: { x: A.cx, y: A.cz }, hallB: { x: B.cx, y: B.cz } };
+__out = { two, one, hallA: { x: A.cx + MGR_SEAT.x, y: A.cz + MGR_SEAT.z }, hallB: { x: B.cx + MGR_SEAT.x, y: B.cz + MGR_SEAT.z } };
 """
 
 

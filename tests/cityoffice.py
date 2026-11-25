@@ -32,6 +32,9 @@ def office_view_of(*pairs):
     (floor n at cx = (n - 1) * 60): a driver's `V.territories[0].id` still names the first repo. The page
     ignores that key (officeState reads repos and floors)."""
     repos = [{"id": ac.territory_id(ident), "name": name, "here": True, "n": i} for i, (ident, name) in enumerate(pairs)]
-    terrs = [{"id": r["id"], "name": r["name"], "floor": i + 1, "cx": i * 60, "cz": 0} for i, r in enumerate(repos)]
+    # "offices" / "rest": island-era driver keys, kept only so old drivers run (a manager desk, a pantry spot)
+    terrs = [{"id": r["id"], "name": r["name"], "floor": i + 1, "cx": i * 60, "cz": 0,
+              "offices": [{"x": i * 60 - 5.7, "z": -1.3, "lead": ""}], "rest": {"x": i * 60 - 5.6, "z": -5.8}}
+             for i, r in enumerate(repos)]
     return {"v": 2, "repos": repos, "floors": [r["id"] for r in repos], "designs": {}, "asked": [r["id"] for r in repos],
             "territories": terrs}

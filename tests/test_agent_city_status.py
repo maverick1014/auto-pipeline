@@ -706,7 +706,8 @@ _CACHE = {}
 
 def sim_results():
     if "sim" not in _CACHE:
-        from cityoffice import office_view_of
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from cityoffice import office_view_of
         _CACHE["sim"] = run_sim(SIM_DRIVER, {"view": office_view_of(("/work/status/app/.git", "app"))}, SIM_REQUIRED)
     return _CACHE["sim"]
 
