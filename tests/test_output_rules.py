@@ -212,8 +212,9 @@ class TestF5ManagerLaws(PrinciplesCase):
     def test_test_parallelism_is_capped(self):
         self.has("maxWorkers=2", "-j 2", where=rule(self.text, "S5.", "S6."))
 
-    def test_reviewers_count_toward_the_cap(self):
-        self.has("reviewer", where=rule(self.text, "S6.", "S7."))
+    def test_no_count_caps(self):
+        # was test_reviewers_count_toward_the_cap: the caps are gone (check-blocks section 25, owner 2026-11-25)
+        self.has("No count caps", where=rule(self.text, "S6.", "S7."))
 
     def test_push_at_every_stage_and_clean_after_a_verified_merge(self):
         self.has("push at every stage", where=self.text)
