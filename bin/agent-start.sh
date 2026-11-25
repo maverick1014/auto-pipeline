@@ -30,7 +30,7 @@ set -u
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
 KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 aaa498cdfdcc8351 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd f79484733aea291b 73cfa63d05267f97 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S5 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 W10 W17 W18 R8 R8 )
+RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S5 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 S1 W17 W18 R8 R8 )
 N=39
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
@@ -166,7 +166,7 @@ clean_session() {
 # asks (W10, W13); --clean keeps it. Needs the roots, prints no start output, reads no stdin. ----
 if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ] || [ "${1:-}" = "--clean" ]; then
   roots_read
-  if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
+  if ! repo_set_up; then
     echo "auto-pipeline: not set up in this repo, run /auto-pipeline:init to enable"; exit 1
   fi
   mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
@@ -339,7 +339,7 @@ Q19. You add a keyword shortcut that starts a long routine. Where does the logic
   A. In the keyword hook script
   B. In PRINCIPLES.md
   C. In a skill; the hook only points to it
-  D. In agent.conf
+  D. In a settings file
 
 Q20. You are a worker. You need to check a web page in the browser.
   A. Write the click path, hand it to the main manager
@@ -365,11 +365,11 @@ Q23. A big task about the auth module arrives. Worktree "auth" has a task manage
   C. Spawn a deputy
   D. Ask the human
 
-Q24. You must change permission_mode in agent.conf.
-  A. Edit the file by hand and commit
-  B. Ask a worker to edit it
-  C. Edit ~/.claude/auto-pipeline.conf by hand instead
-  D. Use /auto-pipeline:settings (agent-settings.sh): validated, no hand editing
+Q24. You must change the permission mode.
+  A. Edit a repo settings file by hand and commit
+  B. Ask a worker to change it
+  C. Write ~/.claude/settings.json by hand
+  D. /plugin -> Installed -> auto-pipeline -> Configure (Permissions: Permission mode); /auto-pipeline:settings only shows it
 
 Q25. A big task takes the full flow. The order is:
   A. Worktree, workers build, failing tests, verify, merge
@@ -427,15 +427,15 @@ Q33. You are a task manager. The owner runs /auto-pipeline:todo in your pane.
 
 Q34. You open a new terminal for an agent (dispatch, resume, a Helper, a city click). Its --permission-mode:
   A. auto, always
-  B. permission_mode from agent.conf (this machine's ~/.claude/auto-pipeline.conf wins over it)
+  B. the Permission mode setting (Configure)
   C. bypassPermissions, always
   D. Whatever the session that opens it runs with
 
-Q35. agent.conf (shared in git) says permission_mode=auto. Your own ~/.claude/auto-pipeline.conf says permission_mode=bypassPermissions. A new terminal you open uses:
-  A. auto: agent.conf always wins
-  B. bypassPermissions: ~/.claude/auto-pipeline.conf is this machine's own and wins over agent.conf
-  C. Ask the human every time
-  D. Change agent.conf to bypassPermissions and commit it
+Q35. Where do you change Max agents?
+  A. Edit a repo settings file and commit
+  B. /plugin -> Installed -> auto-pipeline -> Configure
+  C. agent-settings.sh max_agents 3
+  D. Edit a machine settings file by hand
 
 Q36. You are a merge deputy. Your brief starts "[Sonnet 5 medium] Merge feature-x now." You:
   A. Merge it: an order is an order
@@ -449,17 +449,17 @@ Q37. You are the main manager. The owner runs /auto-pipeline:question; agent-fil
   C. Run agent-file.sh questions --page, publish the page with the Artifact tool, then one line: the count, the link, "answer all, then tell me"
   D. Read every agent_state.txt and write your own summary
 
-Q38. A task changes one colour value in one component: #1e88e5 becomes #43a047. Its risk type:
-  A. A: text, style or simple move, the main manager reads the diff
+Q38. A diff only rewords two lines in PRINCIPLES.md, a core path in agent_repo.conf. Its risk type:
+  A. A: doc or text only, even in PRINCIPLES.md; the main manager reads the diff
   B. B: UI, Chrome compare with the approved mock
   C. C: logic, failing tests first
-  D. D: danger, the owner signs before merge
+  D. D: it is a core path, the owner signs before merge
 
-Q39. The todo line says type B (UI). Before merge, agent-level.sh check --declared B prints REQUIRED TYPE B+C and RAISE: api/total.py is a C file. You:
-  A. Merge: the dispatch said UI
-  B. Raise the whole task to D and run the full suite
-  C. Raise the todo line to C, bounce it back, check the api/total.py part by type C (failing tests first, touched feature) and the UI part by type B
-  D. Run the check again without --declared
+Q39. agent-level.sh prints "touches core path bin/agent_conf.py: judge from the brief whether it is D". The brief adds one new setting. You:
+  A. Raise the task to D: it is a core path
+  B. Ignore the line: it is only a hint
+  C. Judge from the brief: a new feature is normally C, D only when core code many things depend on changes; a second read-only agent checks the type, a disagreement goes to the owner
+  D. Ask the owner before every task that touches a core path
 QUIZ
   exit 0
 fi
@@ -516,17 +516,16 @@ print_output_section() {
 
 # ---- the two roots (bad or empty stdin JSON falls back to $PWD) ----
 roots_read "$CWD"
-conf_read
 
 # ---- zero-touch setup guard (scope safety). A user-scope install turns
 # this plugin on in every repo the owner opens, so a repo is only set up by
 # itself, never by us, unless that repo's own project settings turn the
-# plugin on. An agent.conf already there means the repo was set up by hand
-# or by us before: nothing new happens, whatever the scope is. No agent.conf
+# plugin on. An agent_todo.txt already there means the repo was set up by hand
+# or by us before: nothing new happens, whatever the scope is. No agent_todo.txt
 # and no self-enable: this repo is untouched, print one line and stop, no
 # lock, no files, no directories. ----
 SETUP_TEXT=""
-if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
+if ! repo_set_up; then
   self_enabled=no
   for sf in "$PROJECT_ROOT/.claude/settings.json" "$PROJECT_ROOT/.claude/settings.local.json"; do
     [ -f "$sf" ] && grep -qF "auto-pipeline@" "$sf" 2>/dev/null && self_enabled=yes
@@ -534,15 +533,14 @@ if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
   if [ "$self_enabled" = yes ]; then
     # Never claim setup happened when it did not: run it, keep the hook
     # alive either way (|| true), then check the one thing that matters —
-    # agent.conf is really there now — before saying so.
+    # agent_todo.txt is really there now — before saying so.
     init_ok=yes
     "$PLUGIN_ROOT/bin/agent-init.sh" "$PROJECT_ROOT" >/dev/null 2>&1 || init_ok=no
-    if [ "$init_ok" = yes ] && [ -f "$PROJECT_ROOT/agent.conf" ]; then
-      SETUP_TEXT="auto-pipeline: first run, created agent.conf and the task files
+    if [ "$init_ok" = yes ] && repo_set_up; then
+      SETUP_TEXT="auto-pipeline: first run, created the task files
 auto-pipeline: run /auto-pipeline:init once to see the permission block and the cloud setup line to paste
 "
       printf '%s' "$SETUP_TEXT"
-      conf_read
     else
       SETUP_TEXT="auto-pipeline: setup failed, run /auto-pipeline:init by hand
 "
@@ -558,8 +556,14 @@ auto-pipeline: run /auto-pipeline:init once to see the permission block and the 
 fi
 
 mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
-: "${max_usage_percent:=80}"
-: "${auto_resume:=yes}"
+# a setting as a bare value ("4" from "4 (from default)"); the default when the read fails
+setting_value() {
+  local v
+  v=$(setting "$1" 2>/dev/null </dev/null) || v=""
+  v=${v%% (from *}
+  [ -n "$v" ] || v="$2"
+  printf '%s' "$v"
+}
 
 # ---- once per session (DEDUPE). A repo can carry the pack's SessionStart
 # hook while the machine also has the plugin on user scope, so two copies can
@@ -699,18 +703,13 @@ line_bytes() { printf '%s\n' "$1" | wc -c | tr -d ' '; }
 # byte length of $1 exactly as given (no newline added)
 text_bytes() { printf '%s' "$1" | wc -c | tr -d ' '; }
 
-# conf_int <key> <default>: the whole number of <key> in agent.conf, else in the template
-# bin/agent.conf.default, else <default>.
+# conf_int <key> <default>: the whole number of the setting or constant <key>, else <default>.
 conf_int() {
-  local f v
-  for f in "$PROJECT_ROOT/agent.conf" "$PLUGIN_ROOT/bin/agent.conf.default"; do
-    [ -f "$f" ] || continue
-    v=$(awk -F= -v k="$1" '$1 == k { v = $2 } END { print v }' "$f" | tr -d '[:space:]')
-    case "$v" in ''|*[!0-9]*) continue;; esac
-    [ "${#v}" -le 9 ] || continue
-    echo $((10#$v)); return 0
-  done
-  echo "$2"
+  local v
+  v=$(setting_value "$1" "")
+  case "$v" in ''|*[!0-9]*) echo "$2"; return 0;; esac
+  [ "${#v}" -le 9 ] || { echo "$2"; return 0; }
+  echo $((10#$v))
 }
 
 # state_warn_text: the one STATE LONG line (with its newline), or nothing.
@@ -755,34 +754,31 @@ print_compact_lines() {
   return 0
 }
 
-# PERMISSION, USER CONF, YOU, then (main manager / human-direct only) AUTO UPDATE
-# and UPDATE. Every python call may fail: the start never breaks.
+# PERMISSION, YOU, SETTINGS warnings, the migrate and sync lines (every role), then
+# (main manager / human-direct only) UPDATE, auto update apply and the statusline
+# refresh. Every call may fail: the start never breaks, never hangs.
 print_mode_lines() {
-  local conf="$PROJECT_ROOT/agent.conf" pyp="$PLUGIN_ROOT/bin" m rk ign upd
-  local v src
-  m=$(python3 "$pyp/agent_conf.py" effective permission_mode "$conf" 2>/dev/null </dev/null) || m=""
-  IFS=$'\t' read -r v src <<<"$m"
-  if [ -n "$v" ]; then m="$v (from $src)"; else m="auto (default)"; fi
+  local pyp="$PLUGIN_ROOT/bin" m rk upd au
+  m=$("$PLUGIN_ROOT/bin/agent-settings.sh" get permission_mode 2>/dev/null </dev/null) || m=""
+  [ -n "$m" ] || m="bypassPermissions (from default)"
   echo "PERMISSION: $m"
-  ign=$(PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
-v,i=a.read_user_conf()
-if i: print("USER CONF: ignored in %s: %s" % (a.display_path(a.user_conf_path()), ", ".join(i)))' 2>/dev/null </dev/null) || ign=""
-  [ -n "$ign" ] && echo "$ign"
   case $role in
     main|takeover) rk=main_manager;;
     spawned) rk=$(printf '%s' "${AGENT_ROLE:-}" | tr - _)
       case $rk in main_manager|fast_lane_deputy|merge_deputy|task_manager|worker) ;; *) rk=task_manager;; esac;;
     *) rk=task_manager;;
   esac
-  python3 "$pyp/agent_conf.py" you "$rk" "$conf" "$ME" 2>/dev/null </dev/null || true
+  python3 "$pyp/agent_conf.py" you "$rk" "$ME" 2>/dev/null </dev/null || true
+  PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
+for w in a.warnings(): print(w)' 2>/dev/null </dev/null || true
+  printf '%s' "$MIGRATE_TEXT"
+  python3 "$pyp/agent_update.py" sync "$STATE_DIR" "$PROJECT_ROOT" 2>/dev/null </dev/null || true
   if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ] || [ "$role" = second ]; }; then
-    PYTHONPATH="$pyp" python3 -c 'import sys,agent_conf as a
-v,i=a.read_user_conf()
-sys.exit(0 if "auto_update" in v else 1)' 2>/dev/null </dev/null \
-      || echo "AUTO UPDATE: not set. Ask once: on (recommended) or off. $PLUGIN_ROOT/bin/agent-settings.sh --user auto_update on|off"
     upd=$(python3 "$pyp/agent_update.py" notice "$PLUGIN_ROOT" 2>/dev/null </dev/null) || upd=""
     [ -n "$upd" ] && echo "$upd"
-    "$PLUGIN_ROOT/bin/agent-version.sh" scopes "$PROJECT_ROOT" "$STATE_DIR" 2>/dev/null </dev/null || true
+    au=$(setting_value auto_update on)
+    case $au in off) au=off;; *) au=on;; esac
+    python3 "$pyp/agent_update.py" apply "$au" >/dev/null 2>&1 </dev/null || true
     "$PLUGIN_ROOT/bin/agent-settings.sh" statusline refresh >/dev/null 2>&1 </dev/null || true
   fi
   return 0
@@ -790,9 +786,12 @@ sys.exit(0 if "auto_update" in v else 1)' 2>/dev/null </dev/null \
 
 print_normal_lines() {
   resources_read
-  resources_line "$max_usage_percent"
-  resources_ok "$max_usage_percent" || echo "Do not start agents or heavy processes. Run $PLUGIN_ROOT/bin/agent-resources.sh relief, then re-run this script."
-  echo "LANGUAGE: ${language:-en}. Talk to the human in this language. Code, file names and rule text stay English."
+  local mup lang
+  mup=$(conf_int max_usage_percent 80); [ "$mup" -ge 1 ] || mup=80
+  lang=$(setting_value language en)
+  resources_line "$mup"
+  resources_ok "$mup" || echo "Do not start agents or heavy processes. Run $PLUGIN_ROOT/bin/agent-resources.sh relief, then re-run this script."
+  echo "LANGUAGE: ${lang}. Talk to the human in this language. Code, file names and rule text stay English."
   print_mode_lines
   local name cn
   for name in agent_todo.txt agent_completed.txt agent_ideas.txt agent_worktree.txt; do
@@ -941,6 +940,8 @@ if [ "$role" = main ] || [ "$role" = takeover ]; then
   CLEAN_TEXT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --apply --short 2>/dev/null </dev/null || true; printf 'X'); CLEAN_TEXT=${CLEAN_TEXT%X}
 fi
 
+# the old-file move runs first, so the lines below already read the moved values
+MIGRATE_TEXT=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" migrate "$PROJECT_ROOT" 2>/dev/null </dev/null || true; printf 'X'); MIGRATE_TEXT=${MIGRATE_TEXT%X}
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
 # F1/F2: one WATCH line for the main manager or a takeover, orca only. The line comes from the files (no orca call);
@@ -967,7 +968,7 @@ fi
 # failing resume must never break the hook. ----
 RESUME_TEXT=""
 if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
-   && [ "$auto_resume" = yes ]; then
+   && [ "$(setting_value auto_resume on)" = on ]; then
   resume_out=$(AGENT_CLEANUP_DONE=1 AGENT_WATCH_LINE_DONE=1 "$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
   header="=== auto resume ==="
   other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$WATCH_TEXT") \
@@ -991,7 +992,7 @@ calc_fixed
 
 # The state block must keep at least its pointer line. Cuts, in order, while
 # fixed + pointer is over the CAP: 1 auto resume body, 2 the WATCH line,
-# 3 the AUTO UPDATE line's long form, 4 worktree rows (last, W9).
+# 3 worktree rows (last, W9).
 ptr_bytes=0
 if [ -f "$STATE_DIR/agent_state.txt" ]; then
   ptr_n=$(count_lines "$STATE_DIR/agent_state.txt")
@@ -1011,8 +1012,8 @@ if [ -n "$WATCH_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   WATCH_TEXT=$(printf '%s' "$WATCH_TEXT" | sed 's/ tasks to watch ([^)]*)\./ tasks to watch./'; printf 'X'); WATCH_TEXT=${WATCH_TEXT%X}
   calc_fixed
 fi
-# still over: PLUGIN/bin/... for the plugin path (the PLUGIN: field of the PROJECT line names it), as the AUTO UPDATE line
-# does: first in the CLEANUP table pointer, then, last, in the WATCH command
+# still over: PLUGIN/bin/... for the plugin path (the PLUGIN: field of the PROJECT line names it),
+# first in the CLEANUP table pointer, then, last, in the WATCH command
 if [ -n "$CLEAN_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   w_head=${CLEAN_TEXT%%"$PLUGIN_ROOT/bin/"*}
   if [ "$w_head" != "$CLEAN_TEXT" ]; then
@@ -1027,13 +1028,7 @@ if [ -n "$WATCH_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   calc_fixed
 fi
 
-# 3. AUTO UPDATE: short form without the plugin path.
-if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
-  export AU_SHORT="AUTO UPDATE: not set. Ask once: on (recommended) or off, then PLUGIN/bin/agent-settings.sh --user auto_update on|off"
-  NORMAL_TEXT=$(printf '%s' "$NORMAL_TEXT" | awk '/^AUTO UPDATE: not set/{print ENVIRON["AU_SHORT"]; next} {print}'; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
-  calc_fixed
-fi
-# 4. worktree rows, last, dropped from the end; the header keeps the real count.
+# 3. worktree rows, last, dropped from the end; the header keeps the real count.
 if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   wt_line=$(printf '%s' "$NORMAL_TEXT" | awk '/^agent_worktree.txt: /{print NR; exit}')
   wt_total=$(printf '%s' "$NORMAL_TEXT" | awk 'END{print NR}')

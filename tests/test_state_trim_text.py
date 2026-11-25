@@ -59,10 +59,10 @@ class TestPrinciples(unittest.TestCase):
         self.has(self.s8, "state trim", "agent_state.trim-")
 
     def test_s8_the_start_warning(self):
-        self.has(self.s8, "state_warn_lines")
+        self.has(self.s8, "Over 300 lines (fixed)", "STATE LONG")   # settings-configure: a constant
 
     def test_s8_the_auto_clear(self):
-        self.has(self.s8, "compact_clear_at", "empty")
+        self.has(self.s8, "Compacted 2 times (fixed)", "empty")
 
     def test_s8_goal(self):
         self.has(self.s8, "/goal", "GOAL:")

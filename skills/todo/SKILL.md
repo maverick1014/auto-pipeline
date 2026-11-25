@@ -4,7 +4,7 @@ description: Show the todo board: one table of every open task, wait on the owne
 ---
 # /todo — show the board (PRINCIPLES.md W14)
 
-Words to the human: the language of `agent.conf`. A spawned worker, deputy or reviewer never runs this: do nothing.
+Words to the human: the Language setting. A spawned worker, deputy or reviewer never runs this: do nothing.
 
 1. Your role, from the `YOU:` line of your start text:
    - main manager (`<repo> Manager`): the board of the whole repo, `BOARD=""`.

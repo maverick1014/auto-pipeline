@@ -6,7 +6,7 @@ Run by agent-file.sh, never by hand:
     agent_state.py <project root> <state dir> <now> add "<line>"
     agent_state.py <project root> <state dir> <now> trim [--dry-run | --auto]
 
-  project root  the main repo: agent_todo.txt, agent_completed.txt, agent.conf
+  project root  the main repo: agent_todo.txt, agent_completed.txt
   state dir     the git toplevel of the cwd: agent_state.txt and the day archives
   now           "YYYY-MM-DD HH:MM" (AGENT_FAKE_NOW); empty = the machine clock
 
@@ -138,30 +138,20 @@ def parse_time(text):
         return None
 
 
-def conf_of(root):
-    """The agent.conf of the project over the template's defaults. Never raises."""
-    conf = {}
-    for path in (os.path.join(HERE, "agent.conf.default"), os.path.join(root, "agent.conf")):
-        try:
-            conf.update(agent_conf.load(path))
-        except Exception:
-            pass
-    return conf
-
-
-def conf_int(conf, key):
-    low, high = agent_conf.NUMBER_BOUNDS[key]
+def conf_int(key):
+    """The fixed constant KEY as a whole number; the DEFAULTS one when it cannot be read."""
     try:
-        value = int(conf.get(key, ""))
-    except ValueError:
+        value = int(agent_conf.get(key))
+    except Exception:
         return DEFAULTS[key]
-    if value < low or value > high:
-        return DEFAULTS[key]
-    return value
+    return value if value > 0 else DEFAULTS[key]
 
 
 def trim_auto_on(root):
-    return conf_of(root).get("state_trim_auto", "on") != "off"
+    try:
+        return agent_conf.get("state_trim_auto") != "off"
+    except Exception:
+        return True
 
 
 # ---------------------------------------------------------------- the lock
@@ -449,11 +439,10 @@ def machine_view(lines):
 
 
 def build(root, lines, now):
-    conf = conf_of(root)
     open_names = set(first_fields(os.path.join(root, "agent_todo.txt"), 0))
     closed_names = set(first_fields(os.path.join(root, "agent_completed.txt"), 1))
     lab = plan(lines, name_regex(open_names), name_regex(closed_names), parse_time(now) or datetime.datetime.now(),
-               conf_int(conf, "state_keep_hours"), conf_int(conf, "state_header_lines"), open_names)
+               conf_int("state_keep_hours"), conf_int("state_header_lines"), open_names)
     return lab
 
 

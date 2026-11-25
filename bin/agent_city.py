@@ -1105,14 +1105,6 @@ def _conf_module():
     return agent_conf
 
 
-def _conf_value(conf_mod, conf, key):
-    """CONF[KEY] when agent_conf's validate_value() accepts it, else None."""
-    value = conf.get(key)
-    if isinstance(value, str) and value != "" and conf_mod.validate_value(key, value) is None:
-        return value
-    return None
-
-
 def repo_folder(identity):
     """The folder a new session starts in: ".../shop/.git" -> ".../shop" (the
     repo's main worktree); any other identity is the folder itself."""
@@ -1136,17 +1128,17 @@ def pass_city_dir(directory):
 
 def agent_command(name, folder, city_dir=None, model_key="main_manager", prompt=FIRST_PROMPT, role=None):
     """The one fixed line a new terminal runs: `claude --name <name>`, then
-    `--model <m> --effort <e>` and `--permission-mode <p>` from FOLDER's
-    agent.conf (MODEL_KEY, default main_manager, then permission_mode: a
-    second session opens with the main manager's values; <m> goes through
-    agent_conf.cli_model(), the name the claude CLI takes, not the agent.conf
-    one), then PROMPT (default FIRST_PROMPT) as the last word. The model of
-    "interior_designer" comes from bin/agent.conf.default when FOLDER's file
-    has no such line. A missing file or value, or one agent_conf refuses,
-    leaves that part out. CITY_DIR given: the line starts with
-    `AGENT_CITY_DIR=<city_dir> `, so the session reports to this city; ROLE
-    given: `AGENT_ROLE=<role> ` follows it, right before `claude`. Neither:
-    it starts with `claude `. Never the folder. Never raises."""
+    `--model <m> --effort <e>` from the MODEL_KEY setting (default main_manager:
+    a second session opens with the main manager's values; "interior_designer"
+    is the Helper model setting; <m> goes through agent_conf.cli_model(), the
+    name the claude CLI takes, not the setting's) and `--permission-mode <p>`
+    from the permission_mode setting, then PROMPT (default FIRST_PROMPT) as the
+    last word. The settings are the user's own (Configure), so FOLDER decides
+    nothing. A setting that cannot be read leaves that part out. CITY_DIR
+    given: the line starts with `AGENT_CITY_DIR=<city_dir> `, so the session
+    reports to this city; ROLE given: `AGENT_ROLE=<role> ` follows it, right
+    before `claude`. Neither: it starts with `claude `. Never the folder.
+    Never raises."""
     import shlex
     words = ["claude", "--name", shlex.quote(name)]
     if role:
@@ -1155,21 +1147,12 @@ def agent_command(name, folder, city_dir=None, model_key="main_manager", prompt=
         words.insert(0, "AGENT_CITY_DIR=" + shlex.quote(city_dir))
     try:
         conf_mod = _conf_module()
-        try:
-            conf = conf_mod.load(os.path.join(folder, "agent.conf"))
-        except Exception:
-            conf = {}
-        model = _conf_value(conf_mod, conf, model_key)
-        if model is None and model_key == "interior_designer":
-            try:
-                model = _conf_value(conf_mod, conf_mod.load(_bin_path("agent.conf.default")), model_key)
-            except Exception:
-                model = None
-        if model is not None:
+        model = conf_mod.get(model_key)
+        if isinstance(model, str) and ":" in model:
             model_name, effort = model.rsplit(":", 1)
             words += ["--model", shlex.quote(conf_mod.cli_model(model_name)), "--effort", shlex.quote(effort)]
-        mode, _src = conf_mod.effective("permission_mode", conf)
-        if mode is not None:
+        mode = conf_mod.get("permission_mode")
+        if isinstance(mode, str) and mode:
             words += ["--permission-mode", shlex.quote(mode)]
     except Exception:
         pass
@@ -1236,9 +1219,8 @@ def close_session(handle, runtime=None):
 
 def runtime_kind(folder, runtime=None):
     """What `bash <runtime> kind` prints (bin/agent-runtime.sh when RUNTIME is
-    None): orca, plain or cloud. It runs in FOLDER as that project, so FOLDER's
-    own agent.conf `runtime` line counts, not the one of where the server was
-    started. Any other output, a failure or a timeout is "plain". Never raises."""
+    None): orca, plain or cloud. It runs in FOLDER as that project; the
+    runtime setting is the user's own (Configure), the same for every folder. Any other output, a failure or a timeout is "plain". Never raises."""
     if runtime is None:
         runtime = _bin_path("agent-runtime.sh")
     env = dict(os.environ)
@@ -1266,28 +1248,19 @@ def _percent(text):
 
 
 def _usage_cap(folder):
-    """max_usage_percent: FOLDER's agent.conf, else bin/agent.conf.default (a
-    missing file or a value agent_conf refuses falls through); -1 when
-    neither gives one."""
+    """The max_usage_percent setting (user level, the same for every FOLDER);
+    -1 when it cannot be read."""
     try:
-        conf_mod = _conf_module()
+        return int(_conf_module().get("max_usage_percent"))
     except Exception:
         return -1
-    for path in (os.path.join(folder, "agent.conf"), _bin_path("agent.conf.default")):
-        try:
-            value = _conf_value(conf_mod, conf_mod.load(path), "max_usage_percent")
-        except Exception:
-            continue
-        if value is not None:
-            return int(value)
-    return -1
 
 
 def machine_resources(folder, script=None):
     """RAM and CPU percent as bin/agent-resources.sh reads them (SCRIPT, or
     bin/agent-resources.sh; sourced by one fixed `bash -c` program, the path
     is its argument; AGENT_FAKE_RAM and AGENT_FAKE_CPU work as there) and the
-    cap of FOLDER (_usage_cap) -> {"ram", "cpu", "max", "ok"}. A number that
+    cap (_usage_cap) -> {"ram", "cpu", "max", "ok"}. A number that
     cannot be read is -1 and counts as ok. Never raises."""
     if script is None:
         script = _bin_path("agent-resources.sh")

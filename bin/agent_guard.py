@@ -110,29 +110,28 @@ def session_pid():
 
 
 def read_conf(main):
-    """(board_guard mode, state_keep_hours) of the main repo's agent.conf; a trailing comment is cut.
-    Mode "on" only when the file says board_guard=on; a missing key, empty, bad value or an unreadable
-    file all mean "record" (never block); "off" means off."""
-    mode, hours = "record", 24.0
+    """(mode, state_keep_hours): mode "on" when the todo_before_agent setting is true, else "record" (never
+    block); state_keep_hours is the fixed constant. Any error: ("record", 24.0). MAIN is kept for old callers."""
     try:
-        with open(os.path.join(main, "agent.conf"), encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                k, eq, v = line.partition("=")
-                if not eq:
-                    continue
-                k = k.strip()
-                v = v.split("#", 1)[0].strip().strip("\"'").strip()
-                if k == "board_guard":
-                    mode = v.lower()
-                elif k == "state_keep_hours":
-                    try:
-                        if float(v) > 0:
-                            hours = float(v)
-                    except ValueError:
-                        pass
-    except OSError:
-        return "record", hours
-    return (mode if mode in ("on", "off") else "record"), hours
+        here = os.path.dirname(os.path.abspath(__file__))
+        old = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            if here not in sys.path:
+                sys.path.insert(0, here)
+            import agent_conf
+        finally:
+            sys.dont_write_bytecode = old
+        hours = 24.0
+        try:
+            value = float(agent_conf.get("state_keep_hours"))
+            if value > 0:
+                hours = value
+        except Exception:
+            pass
+        return ("on" if agent_conf.get("todo_before_agent") is True else "record"), hours
+    except Exception:
+        return "record", 24.0
 
 
 def read_todo(main):
@@ -764,11 +763,9 @@ def make_context(payload):
             if line.startswith("worktree "):
                 main = line[9:]
                 break
-    if not main or not os.path.isfile(os.path.join(main, "agent.conf")):
+    if not main or not os.path.isfile(os.path.join(main, "agent_todo.txt")):
         return None
     mode, keep = read_conf(main)
-    if mode == "off":
-        return None
     ctx = {"folder": folder, "gitdir": gitdir, "common": common, "main": main, "mode": mode,
            "keep": keep, "now": now_str(), "pid": session_pid()}
     ctx["role"] = find_role(payload, ctx)

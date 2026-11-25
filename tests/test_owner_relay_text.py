@@ -120,24 +120,11 @@ class TestBinPair(unittest.TestCase):
 
 
 class TestConfKeys(unittest.TestCase):
+    """settings-configure: owner_order_hours and owner_order_min_chars are fixed constants."""
 
-    KEYS = {"owner_order_hours": ("24", 1, 720), "owner_order_min_chars": ("20", 8, 200)}
-
-    def test_g4_bounds(self):
-        for key, (_, low, high) in self.KEYS.items():
-            with self.subTest(key=key):
-                self.assertEqual(agent_conf.NUMBER_BOUNDS[key], (low, high))
-                self.assertIsNone(agent_conf.validate_value(key, str(low)))
-                self.assertIsNone(agent_conf.validate_value(key, str(high)))
-                self.assertTrue(agent_conf.validate_value(key, str(low - 1)))
-                self.assertTrue(agent_conf.validate_value(key, str(high + 1)))
-                self.assertTrue(agent_conf.validate_value(key, "abc"))
-
-    def test_g4_template_defaults_appended_last(self):
-        with open(os.path.join(BIN, "agent.conf.default")) as fh:
-            lines = [l for l in fh.read().splitlines() if "=" in l and not l.startswith("#")]
-        self.assertEqual(lines[-2:], ["owner_order_hours=24", "owner_order_min_chars=20"])
-        self.assertLess(lines.index("watch_quiet_min=15"), len(lines) - 2)   # clean-up keys may sit between
+    def test_g4_the_constants(self):
+        self.assertEqual(agent_conf.CONSTANTS["owner_order_hours"], 24)
+        self.assertEqual(agent_conf.CONSTANTS["owner_order_min_chars"], 20)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@
 #   repo = folder of the project's main worktree, feature = folder of the git
 #   toplevel the session runs in. The role comes from role_read (agent-roots.sh),
 #   the same code agent-start.sh prints its ROLE line from.
-#   Only for source startup, resume, fork; a project without agent.conf is left
+#   Only for source startup, resume, fork; a repo not set up (no agent_todo.txt) is left
 #   alone. Inside Orca ($ORCA_TERMINAL_HANDLE) the tab gets the same name, cut
 #   off after 2 s (macOS has no `timeout`). Always exit 0, nothing on stderr,
 #   no file written.
@@ -36,7 +36,7 @@
 #   printed for this session id (marker "<git dir>/agent_helper_title_<session id>", written atomically
 #   when a title is printed; the only file this mode writes). Otherwise nothing, so a human /rename is
 #   kept. The session id comes from the parsed JSON only, never from the text of the prompt.
-#   Checked cheapest first: AGENT_ROLE set (a spawned agent is never a Helper), stdin JSON, agent.conf,
+#   Checked cheapest first: AGENT_ROLE set (a spawned agent is never a Helper), stdin JSON, repo set up,
 #   role, task, marker. The Orca tab is renamed with the same 2 s cut, only when a title is printed.
 #   Runs on every prompt: no network, one python3 call when nothing is printed, aims under 300 ms.
 #   Always exit 0, nothing on stderr.
@@ -96,7 +96,7 @@ fi
 case "$SID" in ''|*[!A-Za-z0-9_-]*) SID="";; esac
 
 roots_read "$CWD"
-[ -f "$PROJECT_ROOT/agent.conf" ] || exit 0
+repo_set_up || exit 0
 role_read
 
 repo=$(basename "$PROJECT_ROOT")

@@ -4,7 +4,7 @@
 # They only read what is checked in: CLAUDE.md, .claude/settings.json
 # (hooks and permission rules), .claude/skills/, .claude/agents/, scripts.
 #
-#   bin/agent-cloud-pack.sh <repo-path> [--language xx] [--update]
+#   bin/agent-cloud-pack.sh <repo-path> [--update]
 #   bin/agent-cloud-pack.sh -h                    print this block, exit 0
 #
 # <repo-path> may be any folder inside the target repo; the pack goes to its
@@ -29,28 +29,26 @@
 #                                     permission rules are added
 #   CLAUDE.md                        one pointer line appended once, never
 #                                     overwritten
-#   agent.conf, agent_*.txt,
-#   .secrets/, AGENTS.md             from running the packed agent-init.sh
+#   agent_*.txt, .secrets/,
+#   AGENTS.md                        from running the packed agent-init.sh
 #   .gitignore                       the task-file lines, plus the pack's
 #                                     own __pycache__ line, each once
 #
-# --language xx   sets agent.conf's language (validated), new or existing.
+# A cloud session runs the defaults: no settings file is written or committed
+# (settings live in /plugin -> Installed -> auto-pipeline -> Configure on a
+# machine with the plugin). --language is gone: given, it exits 2.
 # --update        refreshes bin/, PRINCIPLES.md, VERSION and the packed
 #                 skills/agents to match this source, and drops any bin/
-#                 script the source no longer has. Also runs the packed
-#                 agent-settings.sh sync, so agent.conf gains any key the
-#                 template gained since it was written; every value already
-#                 there is left alone. Never touches agent_*.txt, CLAUDE.md,
-#                 AGENTS.md, .gitignore, the user's own settings keys, or the
-#                 user's own skills and agents.
+#                 script the source no longer has. Never touches agent_*.txt,
+#                 CLAUDE.md, AGENTS.md, .gitignore, the user's own settings
+#                 keys, or the user's own skills and agents.
 #
 # A second run with the same arguments changes not one byte. A pack whose
 # VERSION differs from this source's, run without --update, is left alone:
 # one line is printed telling you to run --update instead.
 #
-# Ends by printing the one-sentence cloud install (with the language now in
-# use), a reminder that the Claude GitHub App must be installed on the
-# target repo (or the cloud clone has no remote to push to), and a reminder
+# Ends by printing the one-sentence cloud install, a reminder that the
+# Claude GitHub App must be installed on the target repo (or the cloud clone has no remote to push to), and a reminder
 # to commit and push.
 set -u
 export PYTHONDONTWRITEBYTECODE=1
@@ -66,7 +64,7 @@ die() {
 }
 
 case "${1:-}" in
-  -h|--help) sed -n '2,49p' "$0"; exit 0;;
+  -h|--help) sed -n '2,52p' "$0"; exit 0;;
 esac
 
 . "$(dirname "$0")/agent-roots.sh"
@@ -87,17 +85,13 @@ fi
 
 REPO_PATH="$1"; shift
 
-LANGUAGE=""
 UPDATE=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    -h|--help) sed -n '2,49p' "$0"; exit 0;;
+    -h|--help) sed -n '2,52p' "$0"; exit 0;;
     --language)
-      if [ "$#" -lt 2 ]; then
-        echo "agent-cloud-pack.sh: --language needs a value" >&2
-        exit 2
-      fi
-      LANGUAGE="$2"; shift 2;;
+      echo "agent-cloud-pack.sh: cloud sessions run the defaults; settings live in /plugin -> Installed -> auto-pipeline -> Configure" >&2
+      exit 2;;
     --update) UPDATE=1; shift;;
     *)
       echo "agent-cloud-pack.sh: unknown flag: $1" >&2
@@ -117,21 +111,6 @@ if [ -z "$TARGET" ]; then
 fi
 
 # ---- validate everything before writing anything ----
-if [ -n "$LANGUAGE" ]; then
-  if ! LANG_ERR=$(PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$LANGUAGE" 2>&1 <<'PY'
-import sys
-import agent_conf
-msg = agent_conf.validate_value("language", sys.argv[1])
-if msg:
-    sys.stderr.write(msg)
-    sys.exit(1)
-PY
-  ); then
-    echo "agent-cloud-pack.sh: bad --language '$LANGUAGE': $LANG_ERR" >&2
-    exit 2
-  fi
-fi
-
 SETTINGS_JSON="$TARGET/.claude/settings.json"
 if [ -f "$SETTINGS_JSON" ]; then
   if ! JSON_ERR=$(python3 -c "
@@ -298,28 +277,8 @@ if os.path.isdir(agents_dir):
 PY
 
 # ---- run the packed agent-init.sh, not the source one, so AGENTS.md gets
-# the relative path. Clear inherited enable-time options first so only
-# --language (below) counts. ----
-CONF="$TARGET/agent.conf"
-CONF_EXISTED=0
-[ -f "$CONF" ] && CONF_EXISTED=1
-
-unset CLAUDE_PLUGIN_OPTION_RUNTIME CLAUDE_PLUGIN_OPTION_LANGUAGE CLAUDE_PLUGIN_OPTION_MAX_AGENTS
-
-if [ "$CONF_EXISTED" -eq 0 ] && [ -n "$LANGUAGE" ]; then
-  INIT_OUT=$(CLAUDE_PLUGIN_OPTION_LANGUAGE="$LANGUAGE" "$PACK/bin/agent-init.sh" "$TARGET") || die "agent-init.sh"
-else
-  INIT_OUT=$("$PACK/bin/agent-init.sh" "$TARGET") || die "agent-init.sh"
-fi
-
-# ---- --update: agent.conf may be missing a key the template gained since it
-# was written (S1: no hand-editing). The packed agent-settings.sh appends any
-# such key with the template's value; run it from TARGET so PROJECT_ROOT
-# resolves there. ----
-if [ "$UPDATE" -eq 1 ]; then
-  SYNC_OUT=$(cd "$TARGET" && CLAUDE_PROJECT_DIR="$TARGET" "$PACK/bin/agent-settings.sh" sync) || die "agent-settings.sh sync"
-  printf '%s\n' "$SYNC_OUT"
-fi
+# the relative path. ----
+INIT_OUT=$("$PACK/bin/agent-init.sh" "$TARGET") || die "agent-init.sh"
 
 # ---- show agent-init.sh's file lines and its cloud Setup-script hint, but
 # not the permission JSON block or the two lines asking the human to paste
@@ -364,14 +323,6 @@ print("\n".join(cleaned))
 PY
 )
 printf '%s\n' "$FILTERED_OUT"
-
-if [ "$CONF_EXISTED" -eq 1 ] && [ -n "$LANGUAGE" ]; then
-  CUR_LANG=$(awk -F= '$1=="language"{print $2}' "$CONF")
-  if [ "$CUR_LANG" != "$LANGUAGE" ]; then
-    ( cd "$TARGET" && CLAUDE_PROJECT_DIR="$TARGET" "$PACK/bin/agent-settings.sh" language "$LANGUAGE" >/dev/null ) \
-      || die "agent-settings.sh"
-  fi
-fi
 
 # ---- the permission block agent-init.sh printed is the single source of
 # the rules: lines from "{" to the matching "}" ----
@@ -468,20 +419,13 @@ else
   printf '%s\n' "$POINTER" > "$CLAUDE_MD" || die "CLAUDE.md"
 fi
 
-# ---- language in use, for the one-sentence install below ----
-if [ -n "$LANGUAGE" ]; then
-  LANG_IN_USE="$LANGUAGE"
-else
-  LANG_IN_USE=$(awk -F= '$1=="language"{print $2}' "$CONF" 2>/dev/null)
-fi
-
 echo
 echo "Commit and push so a cloud session can read this:"
-echo "  git add .claude CLAUDE.md AGENTS.md agent.conf agent_*.txt .gitignore"
+echo "  git add .claude CLAUDE.md AGENTS.md agent_*.txt .gitignore"
 echo "  git commit -m 'auto-pipeline: lay the cloud pack'"
 echo "  git push"
 echo
 echo "The Claude GitHub App must be installed on this repo, or the cloud clone has no remote to push to."
 echo
 echo "To set up any other repo the same way, paste this into a fresh cloud session of it, then commit and push:"
-echo "git clone $REPO_URL /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language $LANG_IN_USE"
+echo "git clone $REPO_URL /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh ."

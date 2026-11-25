@@ -170,17 +170,6 @@ class TestResumeLineRunsInZsh(ScriptCase):
         command = self.command("opus-5.5:xhigh", "p1")
         self.assertEqual(command, "AGENT_ROLE=task-manager claude --model opus --effort xhigh --permission-mode auto")
 
-    @unittest.skipUnless(ZSH, "no zsh on PATH")
-    def test_the_fallback_without_python_answer_is_quoted_too(self):
-        """python3 cannot answer cli-model: the raw model part is used, and it
-        must still survive zsh."""
-        self.repo.write_bin_script("agent_conf.py", "import sys\nsys.exit(3)\n")
-        command = self.command("mystery-7[1m]:high", "f1")
-        code, out, err = ZshRun(self.repo.path())(command)
-        self.assertNotIn("no matches found", err)
-        self.assertEqual(code, 0, err)
-        self.assertEqual(flag(out, "--model"), "mystery-7[1m]")
-
 
 # ===================================================================== M3
 
@@ -188,15 +177,17 @@ class TestCityLineRunsInZsh(unittest.TestCase):
     def setUp(self):
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="model_suffix_"))
         self.addCleanup(shutil.rmtree, self.base, True)
-        patcher = mock.patch.dict(os.environ, {ENV: os.path.join(self.base, "u", "auto-pipeline.conf")})
+        patcher = mock.patch.dict(os.environ, {ENV: os.path.join(self.base, "u", "auto-pipeline.conf"),
+                                               "CLAUDE_CONFIG_DIR": os.path.join(self.base, "cfg")})
         patcher.start()
         self.addCleanup(patcher.stop)
 
     def line(self, spec):
+        # settings-configure: the Main manager model setting (Configure), user level
+        from test_agent_city_add_agent import configure_text
         folder = os.path.join(self.base, "f%d" % len(os.listdir(self.base)))
         os.makedirs(folder)
-        with open(os.path.join(folder, "agent.conf"), "w") as fh:
-            fh.write("main_manager=%s\npermission_mode=auto\n" % spec)
+        configure_text("main_manager=%s\npermission_mode=auto\n" % spec)
         return ac.agent_command("x Manager", folder)
 
     def test_the_model_word_keeps_the_suffix(self):
@@ -324,7 +315,7 @@ class TestYouCliWithTheSuffix(ScriptCase):
         self.addCleanup(proc.wait)
         self.addCleanup(proc.kill)
         r = subprocess.run([sys.executable, os.path.join(BIN, "agent_conf.py"), "you", "task_manager",
-                            self.repo.path("agent.conf"), str(proc.pid)],
+                            str(proc.pid)],
                            capture_output=True, text=True, env=self.repo._env(None), timeout=30)
         self.assertEqual((r.returncode, r.stdout), (0, "YOU: opus[1m] xhigh (model: flag, effort: flag)\n"))
 

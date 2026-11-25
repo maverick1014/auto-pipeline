@@ -1450,53 +1450,29 @@ class TestCleanupReal(tc.CleanupCase):
 
 
 class TestConfKey(unittest.TestCase):
-    def test_bounds(self):
-        self.assertEqual(agent_conf.NUMBER_BOUNDS.get("housekeep_interval_min"), (0, 1440))
+    """settings-configure: "Stuck: Tidy every (min)" in Configure (housekeep_interval_min)."""
+
+    def test_the_setting(self):
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        field = by["housekeep_interval_min"]
+        self.assertEqual((field["title"], field["default"], field["min"], field["max"]),
+                         ("Stuck: Tidy every (min)", 120, 0, 1440))
+        self.assertIn("0 = off", field["description"])
         for good in ("0", "1", "120", "1440"):
             self.assertIsNone(agent_conf.validate_value("housekeep_interval_min", good), good)
         for bad in ("-1", "1441", "abc", "1.5", ""):
             self.assertTrue(agent_conf.validate_value("housekeep_interval_min", bad), bad)
 
-    def test_hint_says_zero_is_off(self):
-        hint = agent_conf.HINTS.get("housekeep_interval_min", "")
-        self.assertIn("0", hint)
-        self.assertIn("off", hint)
-
-    def test_the_template_has_it_last_on_by_default(self):
-        lines = [l for l in read_root("bin", "agent.conf.default").splitlines() if l.strip()]
-        # it was the last line; estimate-blend (2026-11-13) appended its keys after it
-        at = lines.index("statusline_refresh_sec=60")
-        self.assertEqual(lines[at + 1], "housekeep_interval_min=120")
-        conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
-        self.assertEqual(agent_conf.validate(conf), {})
-
 
 class TestSettingsKey(ScriptCase):
+    """The value comes from Configure; agent-settings.sh never writes it."""
     script = "agent-settings.sh"
 
-    def value(self):
-        for line in (self.repo.read("agent.conf") or "").splitlines():
-            if line.startswith("housekeep_interval_min="):
-                return line.split("=", 1)[1]
-        return None
-
-    def test_set_and_off(self):
-        for v in ("30", "0"):
-            self.assertOk(self.repo.run("agent-settings.sh", "housekeep_interval_min", v))
-            self.assertEqual(self.value(), v)
-
-    def test_bad_values_are_refused(self):
-        self.assertOk(self.repo.run("agent-settings.sh", "housekeep_interval_min", "45"))
-        for v in ("-1", "1441", "abc"):
-            with self.subTest(v=v):
-                self.assertNotEqual(self.repo.run("agent-settings.sh", "housekeep_interval_min", v).returncode, 0)
-                self.assertEqual(self.value(), "45")
-
-    def test_sync_adds_it(self):
-        self.repo.unset_conf("housekeep_interval_min")
-        out = self.assertOk(self.repo.run("agent-settings.sh", "sync"))
-        self.assertIn("added housekeep_interval_min=120", out)
-        self.assertEqual(self.value(), "120")
+    def test_get_and_refuse(self):
+        self.repo.set_conf("housekeep_interval_min", 30)
+        self.assertEqual(self.assertOk(self.repo.run("agent-settings.sh", "get", "housekeep_interval_min")),
+                         "30 (from Configure)\n")
+        self.assertEqual(self.repo.run("agent-settings.sh", "housekeep_interval_min", "0").returncode, 1)
 
 
 # ================================================================ docs, release

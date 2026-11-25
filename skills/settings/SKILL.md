@@ -1,21 +1,19 @@
 ---
 name: settings
-description: Show the current auto-pipeline settings in a short table, or change one ("language en", "max_agents 3"). Use when the human asks about or wants to change a setting.
+description: Show the current auto-pipeline settings in a short table. Use when the human asks what a setting is or how to change one.
 ---
-# /settings: show or change a setting
+# /settings: show the settings
 
-Words to the human: the language of `agent.conf`. Keys and values stay as printed.
+Words to the human: the Language setting. Keys and values stay as printed.
 
 ## Show
 
-Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh` and show it as a short table: key, value, one plain-words meaning. Nothing else.
+Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh` and show its table as printed. Nothing else.
 
 ## Change
 
-The human says a key and a value, e.g. "language en" or "max_agents 3".
+This skill never changes a setting. Settings live only in Claude Code. To change one, tell the human:
 
-1. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh <key> <value>`.
-2. Show its one-line answer unchanged. If it refuses the value, show the refusal and the allowed values it prints. Never guess another value.
-3. Tell the human it takes effect at the next agent start.
+change: /plugin -> Installed -> auto-pipeline -> Configure
 
-Never edit `agent.conf` by hand. Only that script changes it.
+A change reaches hooks and new agents at the next session start. Never edit a settings file by hand.

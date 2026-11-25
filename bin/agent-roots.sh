@@ -3,7 +3,9 @@
 #
 #   . "$(dirname "$0")/agent-roots.sh"
 #   roots_read [<cwd>]   sets PROJECT_CWD, PROJECT_ROOT, PROJECT_GITDIR, STATE_DIR
-#   conf_read            sources "$PROJECT_ROOT/agent.conf" when it is there
+#   setting <key>        prints one setting (or fixed constant) as text, from
+#                         agent_conf.py get; nothing and status 1 on any failure
+#   repo_set_up          true when "$PROJECT_ROOT/agent_todo.txt" is a file
 #                         (call after roots_read)
 #   agent_pid            this session's pid: $CLAUDE_PID, else the first
 #                         claude/codex/opencode/gemini ancestor (shared with
@@ -32,7 +34,9 @@
 #   "<pid> <released|replaced> <YYYY-MM-DD> <HH:MM>"   (dead pids pruned on write)
 #
 # PLUGIN root  = the folder above bin/. Read only: PRINCIPLES.md, the quiz,
-#                agent_conf.py, bin/agent.conf.default. No script writes here.
+#                agent_conf.py. No script writes here. The settings are not
+#                in any file of PROJECT_ROOT: they live in Claude Code,
+#                /plugin -> Installed -> auto-pipeline -> Configure.
 # PROJECT root = the repo being worked on, found from the starting directory:
 #                1. $1 (a hook's stdin cwd), 2. $CLAUDE_PROJECT_DIR, 3. $PWD.
 #                A starting directory that does not exist falls back to $PWD.
@@ -40,7 +44,7 @@
 #                script started inside a git worktree still writes the shared
 #                files into the project's main repo.
 #
-# Per-project files live in PROJECT_ROOT: agent.conf, agent_todo.txt,
+# Per-project files live in PROJECT_ROOT: agent_todo.txt,
 # agent_completed.txt, agent_ideas.txt, agent_worktree.txt,
 # .secrets/. The main-manager lock, the closed list and the watch status (agent_watch.json) live in
 # PROJECT_GITDIR, the project's shared git dir, or "$PROJECT_ROOT/.auto-pipeline" when there is
@@ -68,12 +72,14 @@ roots_read() {
   return 0
 }
 
-conf_read() {
-  if [ -n "${PROJECT_ROOT:-}" ] && [ -f "$PROJECT_ROOT/agent.conf" ]; then
-    . "$PROJECT_ROOT/agent.conf"
-  fi
-  return 0
+setting() {
+  local out
+  out=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" get "$1" 2>/dev/null </dev/null) || return 1
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
 }
+
+repo_set_up() { [ -n "${PROJECT_ROOT:-}" ] && [ -f "$PROJECT_ROOT/agent_todo.txt" ]; }
 
 role_read() {
   local _d _t _p _row

@@ -1,4 +1,9 @@
-"""Failing tests for auto-update (owner, 2026-11-04: "config during setup,
+"""UPDATE settings-configure (2026-11-25): auto_update is the Configure setting "Basic: Auto
+update" (boolean, default on); the user file, agent-settings.sh --user, init's
+--auto-update and question, and the AUTO UPDATE start line are gone. The start of a
+main manager applies the setting (agent_update.py apply). Items 1, 3, 4 below are history.
+
+Failing tests for auto-update (owner, 2026-11-04: "config during setup,
 default is auto update, if the user close the auto update also can").
 Written by the task manager, before any code.
 
@@ -193,11 +198,11 @@ class Tmp(unittest.TestCase):
 # ------------------------------------------------------------- 1: the key
 
 class TestKey(Tmp):
-    def test_a_user_key_not_an_agent_conf_key(self):
-        self.assertIn("auto_update", agent_conf.USER_KEYS)
-        template = agent_conf.load(os.path.join(BIN, "agent.conf.default"))
-        self.assertNotIn("auto_update", template)
-        self.assertNotIn("auto_update", agent_conf.load(os.path.join(ROOT, "agent.conf")))
+    # settings-configure 2026-11-25: Auto update is a Configure boolean, default on
+    def test_a_configure_setting_default_on(self):
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        self.assertEqual((by["auto_update"]["type"], by["auto_update"]["default"]), ("boolean", True))
+        self.assertIs(agent_conf.get("auto_update", {"HOME": os.path.join(self.base, "home")}), True)
 
 
 # ------------------------------------------------------- 2: apply (native)
@@ -435,32 +440,30 @@ class TestVersions(Tmp):
         self.assertEqual(self.load(u.cache_path())["version"], "0.33.0")
 
 
-# ---------------------------------------------- 3: agent-settings --user
+# ------------------------------------- 3: the start applies the setting
 
-class TestSettingsApply(ScriptCase):
-    script = "agent-settings.sh"
+class TestStartApplies(ScriptCase):
+    """settings-configure: the main manager's start writes the Auto update setting onto the
+    marketplace entries (agent_update.py apply), quietly; was agent-settings.sh --user."""
+    script = "agent-start.sh"
 
     def test_off_then_on(self):
         home = self.repo.fake_home()
-        s = write_json(os.path.join(home, ".claude", "settings.json"), SETTINGS)
+        s_ = write_json(os.path.join(home, ".claude", "settings.json"), SETTINGS)
         k = write_json(os.path.join(home, ".claude", "plugins", "known_marketplaces.json"), KNOWN)
-        out = self.assertOk(self.repo.run("agent-settings.sh", "--user", "auto_update", "off"))
-        self.assertIn("saved: auto_update=off", out)
-        self.assertIs(json.load(open(s))["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], False)
+        self.repo.set_conf("auto_update", False)
+        out = self.assertOk(self.repo.run("agent-start.sh"))
+        self.assertIs(json.load(open(s_))["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], False)
         self.assertIs(json.load(open(k))["auto-pipeline"]["autoUpdate"], False)
-        self.assertEqual(agent_conf.load(self.repo.user_conf), {"auto_update": "off"})
-        self.assertOk(self.repo.run("agent-settings.sh", "--user", "auto_update", "on"))
+        self.assertNotIn("autoUpdate set", out)
+        self.repo.set_conf("auto_update", True)
+        self.assertOk(self.repo.run("agent-start.sh"))
         self.assertIs(json.load(open(k))["auto-pipeline"]["autoUpdate"], True)
         self.assertEqual(self.assertOk(self.repo.run("agent-settings.sh", "get", "auto_update")),
-                         "on (from %s)\n" % self.repo.user_conf)
+                         "on (from Configure)\n")
 
-    def test_never_in_agent_conf(self):
-        r = self.repo.run("agent-settings.sh", "auto_update", "on")
-        self.assertNotEqual(r.returncode, 0)
-        self.assertNotIn("auto_update", open(self.repo.path("agent.conf")).read())
-
-    def test_a_bad_value(self):
-        r = self.repo.run("agent-settings.sh", "--user", "auto_update", "maybe")
+    def test_the_settings_script_never_writes_it(self):
+        r = self.repo.run("agent-settings.sh", "--user", "auto_update", "off")
         self.assertEqual(r.returncode, 1)
         self.assertFalse(os.path.exists(self.repo.user_conf))
 
@@ -468,91 +471,24 @@ class TestSettingsApply(ScriptCase):
 # ----------------------------------------------------------- 4: init
 
 class TestInit(ScriptCase):
+    """settings-configure: init asks nothing about auto update and has no --auto-update."""
     script = "agent-init.sh"
 
-    def setUp(self):
-        super().setUp()
-        os.remove(self.repo.path("agent.conf"))
-        self.repo.git_init(self.repo.dir)
-        self.repo.fake_home()
+    def test_the_flag_is_gone(self):
+        r = self.repo.run("agent-init.sh", "--auto-update", "off")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("/plugin -> Installed -> auto-pipeline -> Configure", r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.repo.user_conf))
 
-    def init(self, *args):
-        return self.repo.run("agent-init.sh", *args)
-
-    def user(self):
-        if not os.path.exists(self.repo.user_conf):
-            return {}
-        return agent_conf.load(self.repo.user_conf)
-
-    def tty(self, answer, *args):
-        master, slave = pty.openpty()
-        try:
-            proc = subprocess.Popen([self.repo.script_path("agent-init.sh")] + list(args), cwd=self.repo.dir,
-                                    env=self.repo._env(None), stdin=slave, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, text=True)
-            os.close(slave)
-            slave = None
-            if answer is not None:
-                os.write(master, (answer + "\n").encode())   # the last prompt (add permissions) gets Enter = no
-            out, err = proc.communicate(timeout=60)
-        finally:
-            if slave is not None:
-                os.close(slave)
-            os.close(master)
-        return proc.returncode, out, err
-
-    def test_flag(self):
-        for value in ("off", "on"):
-            with self.subTest(value=value):
-                out = self.assertOk(self.init("--auto-update", value))
-                self.assertIn("saved: auto_update=%s" % value, out)
-                self.assertEqual(self.user()["auto_update"], value)
-
-    def test_bad_flag(self):
-        for args in (("--auto-update",), ("--auto-update", "yes"), ("--auto-update", "")):
-            with self.subTest(args=args):
-                r = self.init(*args)
-                self.assertEqual(r.returncode, 2)
-                self.assertTrue(r.stderr.strip())
-                self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
-                self.assertFalse(os.path.exists(self.repo.user_conf))
-
-    def test_no_terminal_is_on(self):
-        r = self.init()
+    def test_no_question_and_no_user_file(self):
+        r = self.repo.run("agent-init.sh")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.user()["auto_update"], "on")
         self.assertNotIn("Auto update:", r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.repo.user_conf))
 
-    def test_already_set_is_kept(self):
-        self.repo.set_user_conf("auto_update=off\n")
-        code, out, err = self.tty("on\n")
-        self.assertEqual(code, 0, err)
-        self.assertEqual(self.user()["auto_update"], "off")
-        self.assertNotIn("Auto update:", err)
-
-    def test_the_question(self):
-        for answer, want in (("auto\noff\n", "off"), ("auto\nOFF\n", "off"), ("auto\non\n", "on"),
-                             ("auto\n\n", "on"), ("auto\nmaybe\n", "on")):
-            with self.subTest(answer=answer):
-                if os.path.exists(self.repo.user_conf):
-                    os.remove(self.repo.user_conf)
-                if os.path.exists(self.repo.path("agent.conf")):
-                    os.remove(self.repo.path("agent.conf"))
-                code, out, err = self.tty(answer)
-                self.assertEqual(code, 0, err)
-                self.assertEqual(self.user().get("auto_update"), want)
-                q = [l for l in err.splitlines() if "Auto update:" in l]
-                self.assertTrue(q, err)
-                self.assertLess(err.index("Permission mode for every agent:"), err.index("Auto update:"))
-                tail = err[err.index("Auto update:"):]
-                self.assertIn("recommended", tail.split("off")[0].lower())
-                self.assertEqual(agent_conf.load(self.repo.path("agent.conf"))["permission_mode"], "auto")
-
-    def test_the_init_skill_asks(self):
+    def test_the_init_skill_asks_nothing(self):
         text = read("skills", "init", "SKILL.md")
-        self.assertIn("on (Recommended)", text)
-        self.assertIn("--auto-update on", text)
-        self.assertIn("--auto-update off", text)
+        self.assertNotIn("--auto-update", text)
 
 
 # ------------------------------------------------------- 5: start text
@@ -566,20 +502,9 @@ class TestStart(ScriptCase):
     def lines(self, out, prefix):
         return [l for l in out.splitlines() if l.startswith(prefix)]
 
-    def test_not_set_main_manager_is_told_once(self):
-        lines = self.lines(self.start(), "AUTO UPDATE:")
-        self.assertEqual(len(lines), 1, lines)
-        line = lines[0]
-        self.assertTrue(line.startswith("AUTO UPDATE: not set."))
-        self.assertIn("%s/bin/agent-settings.sh --user auto_update on|off" % self.repo.plugin, line)
-        self.assertIn("once", line)
-        self.assertIn("recommended", line.lower())
-
-    def test_set_no_line(self):
-        self.repo.set_user_conf("auto_update=off\n")
+    def test_no_auto_update_question_line_any_more(self):
+        # settings-configure: the setting has a default (on), nothing to ask
         self.assertEqual(self.lines(self.start(), "AUTO UPDATE:"), [])
-
-    def test_a_spawned_agent_is_never_told(self):
         self.assertEqual(self.lines(self.start({"AGENT_ROLE": "task-manager"}), "AUTO UPDATE:"), [])
 
     def plugin_version(self, version):

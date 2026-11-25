@@ -295,6 +295,9 @@ do_relief() {
   relief_kill_orphan_watches
   relief_human_table
   resources_read
+  if [ -z "${max_usage_percent:-}" ]; then
+    max_usage_percent=$(python3 "$(dirname "${BASH_SOURCE[0]}")/agent_conf.py" get max_usage_percent 2>/dev/null </dev/null) || max_usage_percent=""
+  fi
   resources_line "${max_usage_percent:-80}"
 }
 

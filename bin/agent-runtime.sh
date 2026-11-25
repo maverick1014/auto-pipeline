@@ -17,7 +17,7 @@
 # file, because the owner switches between Orca and the Claude app inside one
 # day:
 #   0. $AGENT_RUNTIME is exactly orca, plain or cloud   -> that one, full stop
-#   1. agent.conf `runtime` is orca, plain or cloud    -> that one, full stop
+#   1. the `runtime` setting (Configure) is orca, plain or cloud -> that one, full stop
 #   2. CLAUDE_CODE_REMOTE=true                         -> cloud
 #   3. orca on PATH and `orca worktree ps --json`
 #      answers inside 3 seconds                        -> orca
@@ -52,13 +52,11 @@
 
 # ---- kind ---------------------------------------------------------------
 
-# The agent.conf `runtime` value, read fresh from disk every time. Plain awk,
-# not `conf_read` + a variable, so a value from an earlier call (or no line at
-# all) can never linger.
+# The `runtime` setting (user level, Configure), read fresh every time through
+# `setting`, never kept in a variable, so a value from an earlier call can
+# never linger. Prints nothing when it cannot be read.
 _runtime_conf_value() {
-  roots_read
-  [ -f "$PROJECT_ROOT/agent.conf" ] || return 0
-  awk -F'=' '$1=="runtime"{v=$2} END{print v}' "$PROJECT_ROOT/agent.conf" 2>/dev/null
+  setting runtime 2>/dev/null || true
 }
 
 # The 3 second probe. Prints nothing. Exit code: 0 orca answered in time,

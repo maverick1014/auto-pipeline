@@ -6,7 +6,7 @@ description: Main manager only. List rubbish docs, old state copies, finished mo
 
 Main manager only. A task manager or Helper: refuse in one line, run nothing.
 
-Words to the human: the language of `agent.conf`. Ids and commands stay as printed.
+Words to the human: the Language setting. Ids and commands stay as printed.
 
 ## Step 1: the table (changes nothing)
 

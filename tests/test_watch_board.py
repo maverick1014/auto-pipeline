@@ -483,26 +483,25 @@ class TestResumeLine(StartResumeCase):
 
 
 class TestQuietKey(unittest.TestCase):
-    def test_g_the_template_has_watch_quiet_min_15(self):
-        with open(os.path.join(ROOT, "bin", "agent.conf.default")) as fh:
-            self.assertIn("watch_quiet_min=15", fh.read().splitlines())
+    """settings-configure: "Stuck: Consider stuck after (min)" in Configure (watch_quiet_min)."""
 
-    def test_g_the_range_is_1_to_240_with_a_hint(self):
+    def test_g_the_setting_is_15_in_1_to_240(self):
         sys.path.insert(0, os.path.join(ROOT, "bin"))
         import agent_conf
-        self.assertEqual(agent_conf.NUMBER_BOUNDS["watch_quiet_min"], (1, 240))
-        self.assertIn("watch_quiet_min", agent_conf.HINTS)
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        field = by["watch_quiet_min"]
+        self.assertEqual((field["default"], field["min"], field["max"]), (15, 1, 240))
+        self.assertEqual(field["title"], "Stuck: Consider stuck after (min)")
 
 
 class TestQuietKeySettings(ScriptCase):
     script = "agent-settings.sh"
 
-    def test_g_settings_accepts_1_to_240_only(self):
-        for bad in ("0", "241", "x"):
-            with self.subTest(value=bad):
-                self.assertNotEqual(self.repo.run("agent-settings.sh", "watch_quiet_min", bad).returncode, 0)
-        self.assertOk(self.repo.run("agent-settings.sh", "watch_quiet_min", "30"))
-        self.assertIn("watch_quiet_min=30", (self.repo.read("agent.conf") or "").splitlines())
+    def test_g_the_board_reads_the_setting_and_the_script_never_writes_it(self):
+        self.repo.set_conf("watch_quiet_min", 30)
+        self.assertEqual(self.assertOk(self.repo.run("agent-settings.sh", "get", "watch_quiet_min")),
+                         "30 (from Configure)\n")
+        self.assertEqual(self.repo.run("agent-settings.sh", "watch_quiet_min", "30").returncode, 1)
 
 
 # ---------------------------------------------------------------- E, G: the rule text

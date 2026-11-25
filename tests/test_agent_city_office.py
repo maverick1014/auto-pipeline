@@ -99,8 +99,8 @@ O5 HTTP (the guard of chat and add agent: 127.0.0.1, token, own Origin; POST onl
   -> 403; GET on these paths opens or changes nothing.
 
 O6 the interior designer (Renovation)
-  agent.conf key interior_designer (bin/agent.conf.default: interior_designer=sonnet-5:medium; one of
-    agent_conf.ROLE_KEYS, with a hint).
+  interior_designer: one of agent_conf.ROLE_KEYS, a helper role (settings-configure: it reads the
+    "Models: Helper model" setting; no agent.conf, no Configure item of its own).
   agent_command(name, folder, city_dir=None, model_key="main_manager", prompt=FIRST_PROMPT, role=None):
     as before, plus: the model comes from MODEL_KEY of <folder>/agent.conf, and for "interior_designer"
     from bin/agent.conf.default when the repo's file has no such line; ROLE -> "AGENT_ROLE=<role> " right
@@ -147,6 +147,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from http.server import ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -586,9 +587,12 @@ class TestView(OfficeCase):
 
 class TestDesignerCommand(OfficeCase):
     def test_conf_key(self):
+        # settings-configure (TELL c87d1093): the designer is a helper role, it reads the Helper
+        # model setting; no agent.conf, no Configure item of its own
         self.assertIn("interior_designer", agent_conf.ROLE_KEYS)
-        with open(os.path.join(BIN, "agent.conf.default"), encoding="utf-8") as fh:
-            self.assertIn("interior_designer=sonnet-5:medium\n", fh.read())
+        self.assertNotIn("interior_designer", agent_conf.user_config())
+        env = {"CLAUDE_CONFIG_DIR": os.path.join(self.base, "cfg")}
+        self.assertEqual(agent_conf.get("interior_designer", env), agent_conf.get("helper_model", env))
 
     def test_add_agent_line_is_unchanged(self):
         folder = os.path.dirname(self.shop)
@@ -603,16 +607,23 @@ class TestDesignerCommand(OfficeCase):
         words = shlex.split(cmd)
         self.assertEqual(words[:4], ["AGENT_ROLE=interior-designer", "claude", "--name", "shop Designer"])
         self.assertIn("--model", words)
-        self.assertEqual(words[words.index("--model") + 1], "sonnet", "the repo has no line: the plugin default")
+        self.assertEqual(words[words.index("--model") + 1], "sonnet", "the Helper model default")
         self.assertEqual(words[words.index("--effort") + 1], "medium")
         self.assertEqual(words[-1], ac.designer_prompt("shop"))
         cmd = ac.agent_command("shop Designer", folder, "/tmp/city x", "interior_designer", "hi", "interior-designer")
         self.assertEqual(shlex.split(cmd)[:2], ["AGENT_CITY_DIR=/tmp/city x", "AGENT_ROLE=interior-designer"])
 
-    def test_designer_model_from_the_repo(self):
-        folder = os.path.dirname(self.repo("pos", conf=CONF + "interior_designer=opus-5.5:low\n"))
-        words = shlex.split(ac.agent_command("pos Designer", folder, None, "interior_designer", "hi", "interior-designer"))
+    def test_designer_model_is_the_helper_model_setting(self):
+        cfg = os.path.join(self.base, "cfg")
+        os.makedirs(cfg, exist_ok=True)
+        with open(os.path.join(cfg, "settings.json"), "w") as fh:
+            json.dump({"pluginConfigs": {"auto-pipeline@auto-pipeline": {"options": {"helper_model": "opus-5.5:medium"}}}}, fh)
+        folder = os.path.dirname(self.repo("pos", conf=CONF + "interior_designer=sonnet-5:low\n"))
+        with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": cfg}):
+            words = shlex.split(ac.agent_command("pos Designer", folder, None, "interior_designer", "hi",
+                                                 "interior-designer"))
         self.assertEqual(words[words.index("--model") + 1], "opus")
+        self.assertEqual(words[words.index("--effort") + 1], "medium")
 
     def test_prompt(self):
         p = ac.designer_prompt("shop")

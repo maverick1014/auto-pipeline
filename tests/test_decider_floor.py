@@ -1,4 +1,9 @@
-"""Failing tests for decider-floor (owner, 2026-11-04, law 6 of his
+"""UPDATE settings-configure (2026-11-25): the role value comes from Configure now. Read
+"agent.conf <role_key>" below as "<Configure|env|default> <role_key>"; nothing set is the
+setting default, never unknown. CLI: `agent_conf.py you <role_key> <pid>`. Q35 asks where
+settings change (rule S1). HINTS -> the SETTINGS descriptions.
+
+Failing tests for decider-floor (owner, 2026-11-04, law 6 of his
 ~/.claude/CLAUDE.md): a decision maker runs Opus 5.5 or above, or any Fable,
 at effort medium or above. Sonnet and Haiku never decide. Written by the task
 manager, before any code.
@@ -82,10 +87,12 @@ CONTRACT
    file says do not act and to tell the human.
 """
 
+import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -170,44 +177,60 @@ class TestFloor(unittest.TestCase):
                 with self.subTest(key=key, value=value):
                     self.assertIsNone(agent_conf.validate_value(key, value))
 
-    def test_hints_name_the_floor(self):
+    def test_descriptions_name_the_floor(self):
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
         for key in ("main_manager", "task_manager"):
             with self.subTest(key=key):
                 for word in ("Opus 5.5", "Fable", "medium"):
-                    self.assertIn(word, agent_conf.HINTS[key])
+                    self.assertIn(word, by[key]["description"])
 
-    def test_the_shipped_confs_pass(self):
-        for path in (os.path.join(ROOT, "agent.conf"), os.path.join(BIN, "agent.conf.default")):
-            with self.subTest(path=path):
-                self.assertEqual(agent_conf.validate(agent_conf.load(path)), {})
+    def test_the_shipped_defaults_and_pickers_pass(self):
+        for s_ in agent_conf.SETTINGS:
+            with self.subTest(key=s_["key"]):
+                self.assertIsNone(agent_conf.validate_value(s_["key"], s_["default"]))
+                for pick in s_.get("options", []):
+                    self.assertIsNone(agent_conf.validate_value(s_["key"], pick))
 
 
-class TestSettingsRefuse(ScriptCase):
-    script = "agent-settings.sh"
+class TestConfigureRefuse(ScriptCase):
+    """settings-configure: a manager model below the floor stored in Configure is refused,
+    the default is used, and the start text says so (one SETTINGS: line)."""
+    script = "agent-start.sh"
 
-    def test_below_the_floor_is_not_saved(self):
-        before = open(self.repo.path("agent.conf")).read()
-        for value in ("sonnet-5:high", "opus-5.5:low", "haiku-4.5:max"):
-            with self.subTest(value=value):
-                r = self.repo.run("agent-settings.sh", "task_manager", value)
-                self.assertNotEqual(r.returncode, 0)
-                self.assertIn("not saved", r.stdout + r.stderr)
-                self.assertIn("Opus 5.5", r.stdout + r.stderr)
-                self.assertEqual(open(self.repo.path("agent.conf")).read(), before)
+    def test_below_the_floor_falls_back_and_is_said(self):
+        self.repo.set_conf("task_manager", "sonnet-5:high")
+        env = {"CLAUDE_CONFIG_DIR": self.repo.claude_dir()}
+        self.assertEqual(agent_conf.get("task_manager", env), "opus-5.5:high")
+        out = self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"}))
+        lines = [l for l in out.splitlines() if l.startswith("SETTINGS:") and "task_manager" in l]
+        self.assertEqual(len(lines), 1, out)
 
-    def test_at_the_floor_is_saved(self):
-        self.assertOk(self.repo.run("agent-settings.sh", "task_manager", "fable-5.1:medium"))
-        self.assertOk(self.repo.run("agent-settings.sh", "main_manager", "opus-5.5:high"))
-        self.assertOk(self.repo.run("agent-settings.sh", "worker", "sonnet-5:low"))
-        conf = agent_conf.load(self.repo.path("agent.conf"))
-        self.assertEqual((conf["task_manager"], conf["main_manager"], conf["worker"]),
-                         ("fable-5.1:medium", "opus-5.5:high", "sonnet-5:low"))
+    def test_at_the_floor_is_kept(self):
+        self.repo.set_conf("task_manager", "fable-5.1:medium")
+        self.repo.set_conf("worker", "sonnet-5:low")
+        env = {"CLAUDE_CONFIG_DIR": self.repo.claude_dir()}
+        self.assertEqual(agent_conf.get("task_manager", env), "fable-5.1:medium")
+        self.assertEqual(agent_conf.get("worker", env), "sonnet-5:low")
 
 
 # --------------------------------------------------------- 2: the YOU line
 
+_EMPTY_CFG = tempfile.mkdtemp(prefix="decider_floor_cfg_")
+
+
 def you(args=(), env=None, settings=None, conf=None, role="task_manager"):
-    return agent_conf.you_line(list(args), dict(env or {}), settings, dict(conf or {}), role)
+    """CONF: Configure options for the role keys (settings-configure), written into a
+    throwaway Claude config dir; nothing set -> the setting defaults."""
+    cfg = tempfile.mkdtemp(dir=_EMPTY_CFG)
+    if conf:
+        options = {}
+        for key, value in conf.items():
+            options["helper_model" if key in ("worker", "fast_lane_deputy", "merge_deputy") else key] = value
+        with open(os.path.join(cfg, "settings.json"), "w") as fh:
+            json.dump({"pluginConfigs": {"auto-pipeline@auto-pipeline": {"options": options}}}, fh)
+    full = dict(env or {})
+    full["CLAUDE_CONFIG_DIR"] = cfg
+    return agent_conf.you_line(list(args), full, settings, {}, role)
 
 
 MODEL_SETTINGS = {"claude-opus-5": {"effortLevel": "high"},
@@ -260,26 +283,27 @@ class TestYouLine(unittest.TestCase):
         self.assertEqual(you(["claude"], {}, {"model": "sonnet", "effortLevel": "max"}),
                          "YOU: sonnet max (model: settings.json, effort: settings.json)")
 
-    def test_agent_conf_last_and_marked(self):
+    def test_the_setting_last_and_marked(self):
         conf = {"task_manager": "opus-5.5:xhigh", "main_manager": "fable-5.1:high"}
         self.assertEqual(you(["claude", "--dangerously-skip-permissions"], {}, {}, conf, "main_manager"),
-                         "YOU: fable-5.1 high (model: agent.conf main_manager, effort: agent.conf main_manager)")
+                         "YOU: fable-5.1 high (model: Configure main_manager, effort: Configure main_manager)")
         self.assertEqual(you(["claude", "--effort", "max"], {}, None, conf, "task_manager"),
-                         "YOU: opus-5.5 max (model: agent.conf task_manager, effort: flag)")
+                         "YOU: opus-5.5 max (model: Configure task_manager, effort: flag)")
 
-    def test_unknown(self):
-        self.assertEqual(you(["claude"]), "YOU: unknown unknown (model: unknown, effort: unknown)")
+    def test_nothing_set_is_the_default_and_marked(self):
+        self.assertEqual(you(["claude"]),
+                         "YOU: opus-5.5 high (model: default task_manager, effort: default task_manager)")
         self.assertEqual(you(["claude"], {}, None, {"task_manager": "opus"}),
-                         "YOU: unknown unknown (model: unknown, effort: unknown)")
+                         "YOU: opus-5.5 high (model: default task_manager, effort: default task_manager)")
 
     def test_empty_and_junk_count_as_not_set(self):
         self.assertEqual(you(["claude"], {"ANTHROPIC_MODEL": "", "CLAUDE_CODE_EFFORT_LEVEL": ""},
-                             ["not", "a", "dict"], {"task_manager": "opus-5.5:high"}),
-                         "YOU: opus-5.5 high (model: agent.conf task_manager, effort: agent.conf task_manager)")
+                             ["not", "a", "dict"], {"task_manager": "opus-5.5:xhigh"}),
+                         "YOU: opus-5.5 xhigh (model: Configure task_manager, effort: Configure task_manager)")
         self.assertEqual(you(["claude"], {}, {"model": "", "effortLevel": "", "modelSettings": {"x": 1}}),
-                         "YOU: unknown unknown (model: unknown, effort: unknown)")
+                         "YOU: opus-5.5 high (model: default task_manager, effort: default task_manager)")
         self.assertEqual(you(["claude"], {}, {"model": "opus", "modelSettings": {"claude-opus-5-5": "xhigh"}}),
-                         "YOU: opus unknown (model: settings.json, effort: unknown)")
+                         "YOU: opus high (model: settings.json, effort: default task_manager)")
 
 
 class FakeClaude:
@@ -297,7 +321,7 @@ class TestYouCli(ScriptCase):
     def cli(self, pid, role="task_manager", env=None):
         e = self.repo._env(env)
         return subprocess.run([sys.executable, os.path.join(BIN, "agent_conf.py"), "you", role,
-                               self.repo.path("agent.conf"), str(pid)],
+                               str(pid)],
                               capture_output=True, text=True, env=e, timeout=30)
 
     def fake(self, *flags):
@@ -326,17 +350,17 @@ class TestYouCli(ScriptCase):
         r = self.cli(self.fake(), env={"CLAUDE_CONFIG_DIR": cfg})
         self.assertEqual(r.stdout, "YOU: fable high (model: settings.json, effort: settings.json)\n")
 
-    def test_agent_conf_and_broken_settings(self):
+    def test_the_setting_and_broken_settings(self):
         home = self.repo.fake_home()
         os.makedirs(os.path.join(home, ".claude"))
         with open(os.path.join(home, ".claude", "settings.json"), "w") as fh:
             fh.write("{broken")
-        self.repo.set_conf("main_manager", "fable-5.1:xhigh")
+        # a broken settings.json: Configure cannot be read either, so the setting default
         r = self.cli(self.fake(), role="main_manager")
         self.assertEqual(r.returncode, 0)
         self.assertNotIn("Traceback", r.stderr)
-        self.assertEqual(r.stdout, "YOU: fable-5.1 xhigh (model: agent.conf main_manager, "
-                                   "effort: agent.conf main_manager)\n")
+        self.assertEqual(r.stdout, "YOU: opus-5.5 high (model: default main_manager, "
+                                   "effort: default main_manager)\n")
 
     def test_a_dead_pid(self):
         f = FakeClaude()
@@ -346,8 +370,8 @@ class TestYouCli(ScriptCase):
         self.repo.set_conf("task_manager", "opus-5.5:high")
         r = self.cli(pid)
         self.assertEqual(r.returncode, 0)
-        self.assertEqual(r.stdout, "YOU: opus-5.5 high (model: agent.conf task_manager, "
-                                   "effort: agent.conf task_manager)\n")
+        self.assertEqual(r.stdout, "YOU: opus-5.5 high (model: Configure task_manager, "
+                                   "effort: Configure task_manager)\n")
 
 
 # ------------------------------------------------------ 3: the start text
@@ -374,15 +398,15 @@ class TestStartYou(ScriptCase):
         self.repo.fake_home()
         self.repo.set_conf("task_manager", "opus-5.5:xhigh")
         lines = self.you_lines({"AGENT_ROLE": "task-manager", "CLAUDE_PID": self.fake()})
-        self.assertEqual(lines, ["YOU: opus-5.5 xhigh (model: agent.conf task_manager, "
-                                 "effort: agent.conf task_manager)"])
+        self.assertEqual(lines, ["YOU: opus-5.5 xhigh (model: Configure task_manager, "
+                                 "effort: Configure task_manager)"])
 
     def test_main_manager_falls_back_to_main_manager(self):
         self.repo.fake_home()
         self.repo.set_conf("main_manager", "fable-5.1:xhigh")
         lines = self.you_lines({"CLAUDE_PID": self.fake("--dangerously-skip-permissions")})
-        self.assertEqual(lines, ["YOU: fable-5.1 xhigh (model: agent.conf main_manager, "
-                                 "effort: agent.conf main_manager)"])
+        self.assertEqual(lines, ["YOU: fable-5.1 xhigh (model: Configure main_manager, "
+                                 "effort: Configure main_manager)"])
 
     def test_settings_json_of_the_home(self):
         home = self.repo.fake_home()
@@ -412,11 +436,11 @@ class TestQuiz36(ScriptCase):
         self.assertIn('--answer "1A 2B 3C ... 39D"', out)
         self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 39)
 
-    def test_q35_is_the_user_file(self):
+    def test_q35_is_where_settings_change(self):
+        # settings-configure 2026-11-25: was "the user file wins over agent.conf"
         head, options = self.question(self.quiz(), 35)
-        self.assertIn("auto-pipeline.conf", head)
-        self.assertIn("agent.conf", head)
-        self.assertIn("auto-pipeline.conf", options[1])
+        self.assertIn("Max agents", head)
+        self.assertIn("/plugin -> Installed -> auto-pipeline -> Configure", options[1])
 
     def test_q36_is_the_floor(self):
         head, options = self.question(self.quiz(), 36)
@@ -429,7 +453,7 @@ class TestQuiz36(ScriptCase):
         self.assertIn("QUIZ RESULT: 39/39 PASS", out)
 
     def test_wrong_letters_name_the_rule(self):
-        for good, rule_code, wrongs in (("35B", "W10", ("35A", "35C", "35D")),
+        for good, rule_code, wrongs in (("35B", "S1", ("35A", "35C", "35D")),
                                         ("36C", "W17", ("36A", "36B", "36D"))):
             for wrong in wrongs:
                 with self.subTest(wrong=wrong):

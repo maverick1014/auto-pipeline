@@ -20,7 +20,6 @@
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
-conf_read
 
 usage() {
   cat <<'EOF'
@@ -40,13 +39,15 @@ case "${1:-}" in
   *) usage; exit 2;;
 esac
 
-# agent.conf lives in PROJECT_ROOT; the sibling scripts live in PLUGIN_ROOT/bin.
+# The settings come from Configure (setting <key>); the sibling scripts live in PLUGIN_ROOT/bin.
 # The four agent_*.txt data files live in the main repo (ROOT), which can be a
 # different place when this script runs from inside a worktree.
-: "${max_usage_percent:=80}"
-: "${task_manager:=opus-5.5:high}"
-: "${permission_mode:=auto}"
-: "${max_agents:=4}"
+max_usage_percent=$(setting max_usage_percent) || max_usage_percent=80
+task_manager=$(setting task_manager) || task_manager=opus-5.5:high
+permission_mode=$(setting permission_mode) || permission_mode=bypassPermissions
+max_agents=$(setting max_agents) || max_agents=4
+case "$max_usage_percent" in ''|*[!0-9]*) max_usage_percent=80;; esac
+case "$max_agents" in ''|*[!0-9]*) max_agents=4;; esac
 
 . "$PLUGIN_ROOT/bin/agent-resources.sh"
 . "$PLUGIN_ROOT/bin/agent-runtime.sh"
@@ -180,8 +181,7 @@ else
         cap_lines="${cap_lines}cap reached ($((total_live_panes + relaunch_count))/$max_agents), not relaunching $path
 "
       else
-        mode_eff=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" effective permission_mode "$PROJECT_ROOT/agent.conf" 2>/dev/null | cut -f1) || mode_eff=""
-        [ -n "$mode_eff" ] || mode_eff=auto
+        mode_eff="$permission_mode"
         cmd="AGENT_ROLE=task-manager claude --model $MODEL --effort $EFFORT --permission-mode $mode_eff"
         if [ "$DRY_RUN" -eq 1 ]; then
           relaunched="would"

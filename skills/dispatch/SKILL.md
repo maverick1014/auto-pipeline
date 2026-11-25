@@ -10,6 +10,12 @@ Every order you send another agent (brief, task, decision) starts with `[<model>
 
 1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh time`, and the RESOURCES line. Pick the risk type A-D (R8) by the acceptance criterion that exists; a mixed task gets its parts checked each by its own type; unsure between two, take the higher. Estimate the task in minutes of agent work only; the waits (mock gate, owner question or review, hold, suite slot) are not in it. First write your own guess in minutes, before you run the estimator. Then run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh estimate --type <t> --lane fast|full --mock yes|no "<one line what>" --guess <your minutes>` (only facts known before dispatch). Its minutes go on the todo line as est. A blend version shows a `blend:` line; any other version says `guess: <g>m, not used` until a retrain picks the blend. Its range and its `like` lines (the 3 nearest past tasks) are the reason you give. It says `rubric`: the rubric won its backtest (or no version is trained yet), so its numbers are the rubric row.
 
+Pick the type from the brief (R8): what changes, how much other code depends on it. Never from file paths alone. A doc or text diff is A, even in PRINCIPLES.md. A new feature is normally C; D only for core code many other things depend on.
+
+A `touches core path <file>: judge from the brief whether it is D` line of agent-level.sh is only a hint, never a type.
+
+Then a second agent, read-only (`Explore`), gets the brief and the code, not the manager's answer, and names the type. A disagreement goes to the owner as a question (`park add`).
+
 Parallel features? → first find the code they share (models, components, APIs). The shared part is its own task, merged first; the features that need it get `todo wait "<name>" on queue --after <shared task>` (W9).
 
 Touches another repo? → W12: keep your part, send the peer main manager the cross-repo brief below, called side first, hold your todo line until its DONE PASS.
@@ -27,7 +33,7 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    ```
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo where "<name>" <machine> "<worktree path>"
    ```
-   **orca** — open a worktree. Read `task_manager` in the project's `agent.conf` (form model:effort): `<model>` is what `python3 ${CLAUDE_PLUGIN_ROOT}/bin/agent_conf.py cli-model '<task_manager value>'` prints (the CLI refuses opus-5.5, takes opus), `<effort>` is the part after the colon. Read `<mode>` from `permission_mode`, read with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode` (its first word; this machine's ~/.claude/auto-pipeline.conf wins over agent.conf):
+   **orca** — open a worktree. Read the "Models: Task manager model" setting with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get task_manager` (form model:effort): `<model>` is what `python3 ${CLAUDE_PLUGIN_ROOT}/bin/agent_conf.py cli-model '<task_manager value>'` prints (the CLI refuses opus-5.5, takes opus), `<effort>` is the part after the colon. Read `<mode>` from the "Permissions: Permission mode" setting, read with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode` (its first word):
    ```
    orca worktree create --name <name> --repo path:<main repo> --base-branch main --no-parent --json
    orca terminal create --worktree path:<worktree path> --title "<name> Task Manager" --command "AGENT_ROLE=task-manager claude --name '<name> Task Manager' --model '<model>' --effort <effort> --permission-mode <mode>" --json
@@ -60,7 +66,7 @@ The board (PRINCIPLES.md W14) reads these. Write each as it happens, never later
 - Held -> on hold; released -> off
 - Waiting on someone other than the owner (a peer manager, a reviewer) -> --who <name>; the owner is the default for mock, question, review
 - Waiting for a slot or another task -> on queue --after <task>; slot found -> off
-- Launches record themselves (`bin/agent-guard.sh`, W14). Every Agent description and pane title must start with the task name, else the launch is refused (only with `board_guard=on`; the default `record` never refuses). Read-only agents (Explore, Plan) and Helper panes need no task name. Run the `todo add` line of step 2 or 7 first
+- Launches record themselves (`bin/agent-guard.sh`, W14). Every Agent description and pane title must start with the task name, else the launch is refused (only with the "Rules: Todo before agent" setting on, the default; off never refuses). Read-only agents (Explore, Plan) and Helper panes need no task name. Run the `todo add` line of step 2 or 7 first
 - Parked question for later (H1): `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"`
 
 ## Time question from the human

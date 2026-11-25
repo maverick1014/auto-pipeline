@@ -297,13 +297,6 @@ class TestGrowth(Case):
         self.stage("alpha", "verify", now="2026-11-02 14:00")
         self.assertEqual(self.progress("alpha"), "██████░░░░  66%")
 
-    def test_a_weight_of_0_no_time_part(self):
-        self.repo.set_conf("stage_verify", "0")
-        self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
-        self.stage("alpha", "verify", now="2026-11-02 14:00")
-        # (1 + 1 + 4 + 20 + 40) / 85 = 77.6
-        self.assertEqual(self.progress("alpha"), "███████░░░  77%")
-
     def test_self_reads_the_since_of_its_stage_line(self):
         # est 120, verify share 18m; 10 minutes in -> 66 + 15 x 10/18 = 74.3
         alpha = self.task_worktree("alpha")
@@ -513,36 +506,13 @@ class RefreshCase(ScriptCase):
 
 
 class TestRefreshInterval(RefreshCase):
-    def test_on_writes_the_template_value(self):
-        self.repo.unset_conf("statusline_refresh_sec")
+    def test_on_writes_the_fixed_60(self):
+        # settings-configure: statusline_refresh_sec is a fixed constant (60)
         self.assertOk(self.run_settings("on"))
         self.assertEqual(self.load(), {"statusLine": self.ours(60)})
 
-    def test_on_takes_agent_conf(self):
-        self.repo.set_conf("statusline_refresh_sec", "15")
-        self.assertOk(self.run_settings("on"))
-        self.assertEqual(self.load()["statusLine"], self.ours(15))
-
-    def test_a_bad_value_is_the_template_value(self):
-        for bad in ("0", "abc", "1.5", "-3"):
-            with self.subTest(value=bad):
-                self.repo.set_conf("statusline_refresh_sec", bad)
-                self.assertOk(self.run_settings("on"))
-                self.assertEqual(self.load()["statusLine"]["refreshInterval"], 60)
-
-    def test_the_number_comes_from_the_template_not_the_code(self):
-        self.repo.unset_conf("statusline_refresh_sec")
-        path = self.repo.plugin_path("bin", "agent.conf.default")
-        with open(path) as fh:
-            text = fh.read()
-        self.assertIn("statusline_refresh_sec=60\n", text)
-        with open(path, "w") as fh:
-            fh.write(text.replace("statusline_refresh_sec=60\n", "statusline_refresh_sec=45\n"))
-        self.assertOk(self.run_settings("on"))
-        self.assertEqual(self.load()["statusLine"]["refreshInterval"], 45)
-
-    def test_no_agent_conf(self):
-        os.remove(self.repo.path("agent.conf"))
+    def test_no_task_file(self):
+        os.remove(self.repo.path("agent_todo.txt"))
         self.assertOk(self.run_settings("on"))
         self.assertEqual(self.load()["statusLine"], self.ours(60))
 
@@ -557,9 +527,6 @@ class TestRefreshInterval(RefreshCase):
         self.write({"statusLine": {"type": "command", "command": self.cmd}, "theme": "dark"})
         self.assertOk(self.run_settings("on"))
         self.assertEqual(self.load(), {"statusLine": self.ours(60), "theme": "dark"})
-        self.repo.set_conf("statusline_refresh_sec", "30")
-        self.assertOk(self.run_settings("on"))
-        self.assertEqual(self.load()["statusLine"], self.ours(30))
 
     # board-waiting scope add (2026-11-20): refresh repoints only from a root under <config dir>/plugins/cache/
     # (requirements/board-waiting.md F); these two run refresh from a copy of the plugin in the cache
@@ -583,13 +550,11 @@ class TestRefreshInterval(RefreshCase):
         self.assertEqual(self.load(), {"statusLine": self.ours(60), "theme": "dark"})
 
     def test_refresh_points_and_sets(self):
-        self.repo.set_conf("statusline_refresh_sec", "30")
-        self.write({"statusLine": {"type": "command", "command": OURS_OLD, "refreshInterval": 60}})
+        self.write({"statusLine": {"type": "command", "command": OURS_OLD, "refreshInterval": 30}})
         self.assertOk(self.refresh_from_the_cache())
-        self.assertEqual(self.load(), {"statusLine": self.ours(30)})
+        self.assertEqual(self.load(), {"statusLine": self.ours(60)})
 
     def test_refresh_from_a_checkout_changes_nothing(self):
-        self.repo.set_conf("statusline_refresh_sec", "30")
         self.write({"statusLine": {"type": "command", "command": OURS_OLD, "refreshInterval": 60}})
         before = self.raw()
         self.assertOk(self.run_settings("refresh"))
@@ -618,17 +583,8 @@ class TestRefreshKey(unittest.TestCase):
         import agent_conf
         self.ac = agent_conf
 
-    def test_bounds(self):
-        self.assertEqual(self.ac.NUMBER_BOUNDS.get("statusline_refresh_sec"), (1, 3600))
-        for good in ("1", "60", "3600"):
-            self.assertIsNone(self.ac.validate_value("statusline_refresh_sec", good), good)
-        for bad in ("0", "-1", "abc", "1.5", "", "3601"):
-            self.assertTrue(self.ac.validate_value("statusline_refresh_sec", bad), bad)
-
-    def test_template_default(self):
-        conf = self.ac.load(os.path.join(ROOT, "bin", "agent.conf.default"))
-        self.assertEqual(conf.get("statusline_refresh_sec"), "60")
-        self.assertEqual(self.ac.validate(conf), {})
+    def test_the_fixed_constant(self):
+        self.assertEqual(self.ac.CONSTANTS["statusline_refresh_sec"], 60)
 
 
 # ---------------------------------------------------------------- 4, 5. model default, release
@@ -637,12 +593,11 @@ class TestRefreshKey(unittest.TestCase):
 class TestModelAndRelease(unittest.TestCase):
     def test_the_template_main_manager(self):
         import agent_conf
-        conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
-        self.assertEqual(conf["main_manager"], "opus-5.5:high")
-        self.assertEqual(conf["task_manager"], "opus-5.5:high")
-        self.assertEqual(conf["worker"], "sonnet-5:medium")
-        self.assertEqual(conf["fast_lane_deputy"], "sonnet-5:medium")
-        self.assertEqual(conf["merge_deputy"], "sonnet-5:medium")
+        env = {"CLAUDE_CONFIG_DIR": os.path.join(ROOT, "tests", "no-such-config-dir")}
+        self.assertEqual(agent_conf.get("main_manager", env), "opus-5.5:high")
+        self.assertEqual(agent_conf.get("task_manager", env), "opus-5.5:high")
+        for role in ("worker", "fast_lane_deputy", "merge_deputy"):
+            self.assertEqual(agent_conf.get(role, env), "sonnet-5:medium")
 
     def test_the_rule_text(self):
         text = read("PRINCIPLES.md")

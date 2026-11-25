@@ -60,8 +60,6 @@ STATE_TRIM = re.compile(r"^agent_state\.trim-(\d{4}-\d\d-\d\d)\.txt$")
 MOCK = re.compile(r"^mock/([^/]+)-mock\.html$")
 
 DEFAULT_DAYS = 14
-DOCS_KEEP_NOTE = ("docs_keep not set: a product repo keeps its real docs with "
-                  "agent-settings.sh docs_keep <list>")
 FOOTER = ("To remove: agent-cleanup.sh --files --yes <ids>|all|none. "
           "Nothing is removed without --yes.")
 
@@ -164,15 +162,16 @@ def res_why(res):
 
 def read_conf(ctx):
     days, keep, problem = DEFAULT_DAYS, [], None
-    conf = {}
     try:
-        conf = agent_conf.load(ctx.path("agent.conf"))
+        value = agent_conf.get("cleanup_days")
+        if isinstance(value, int) and agent_conf.validate_value("cleanup_days", str(value)) is None:
+            days = value
     except Exception:
-        conf = {}
-    value = conf.get("cleanup_days")
-    if value is not None and agent_conf.validate_value("cleanup_days", value) is None:
-        days = int(value)
-    value = conf.get("docs_keep", "")
+        pass
+    try:
+        value = str(agent_conf.get("docs_keep") or "")
+    except Exception:
+        value = ""
     if value.strip():
         problem = agent_conf.validate_value("docs_keep", value)
         if problem is None:
@@ -427,10 +426,6 @@ def compute(ctx):
             continue
         rows.append(row)
     notes = []
-    if keep_problem:
-        notes.append("docs_keep not valid: " + keep_problem)
-    elif not keep_set and any(r["kind"] == "D" for r in rows):
-        notes.append(DOCS_KEEP_NOTE)
     lines, line_notes = line_rows(ctx, days)
     rows += lines
     notes += [n for n in line_notes if n not in notes]

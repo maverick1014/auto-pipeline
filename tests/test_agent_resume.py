@@ -219,7 +219,9 @@ class TestRelaunch(ResumeCase):
 
 
 class TestLaunchCommand(ResumeCase):
-    def launch_args(self, task_manager="opus-5:xhigh", permission_mode="auto",
+    # settings-configure: the Task manager model setting must meet the decider floor
+    # (Opus 5.5+ or Fable, effort medium+); a value below it reads as the default opus-5.5:high
+    def launch_args(self, task_manager="opus-5.5:xhigh", permission_mode="auto",
                     module="alpha"):
         path = self.repo.make_worktree(module)
         self.repo.set_conf("task_manager", task_manager)
@@ -247,39 +249,38 @@ class TestLaunchCommand(ResumeCase):
         _, args = self.launch_args(module="pospro")
         self.assertIn("TM pospro", args)
 
-    def test_model_comes_from_agent_conf(self):
+    def test_model_comes_from_the_setting(self):
         for value, expected in (
-            ("opus-5:xhigh", "opus"),
-            ("sonnet-5:medium", "sonnet"),
-            ("haiku-4.5:low", "haiku"),
+            ("opus-5.5:xhigh", "opus"),
             ("fable-5.1:xhigh", "fable"),
+            ("sonnet-5:medium", "opus"),     # below the floor: the default opus-5.5:high
         ):
             with self.subTest(value=value):
                 self.repo.clear_calls()
                 _, args = self.launch_args(task_manager=value,
-                                           module="m" + expected)
+                                           module="m" + value.replace(":", "-").replace(".", "-"))
                 command = args[args.index("--command") + 1]
                 self.assertIn("--model %s " % expected, command + " ")
 
-    def test_unknown_model_name_is_passed_through_without_the_effort(self):
+    def test_a_model_below_the_floor_falls_back_to_the_default(self):
         self.repo.clear_calls()
         _, args = self.launch_args(task_manager="mystery-7:high", module="mm")
         command = args[args.index("--command") + 1]
-        self.assertIn("--model mystery-7 ", command + " ")
-        self.assertNotIn("mystery-7:high", command)
+        self.assertIn("--model opus --effort high", command)
+        self.assertNotIn("mystery-7", command)
 
-    def test_effort_comes_from_agent_conf(self):
+    def test_effort_comes_from_the_setting(self):
         for value, expected in (
-            ("opus-5:xhigh", "xhigh"),
-            ("sonnet-5:medium", "medium"),
-            ("haiku-4.5:low", "low"),
-            ("opus-5:high", "high"),
-            ("opus-5:max", "max"),
+            ("opus-5.5:xhigh", "xhigh"),
+            ("opus-5.5:medium", "medium"),
+            ("opus-5.5:low", "high"),        # below the floor: the default
+            ("fable-5.1:high", "high"),
+            ("opus-5.5:max", "max"),
         ):
             with self.subTest(value=value):
                 self.repo.clear_calls()
                 _, args = self.launch_args(task_manager=value,
-                                           module="e" + expected)
+                                           module="e" + value.replace(":", "-").replace(".", "-"))
                 command = args[args.index("--command") + 1]
                 self.assertIn("--effort %s " % expected, command + " ")
 
