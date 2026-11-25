@@ -115,6 +115,7 @@ class TestHumanQuiet(ScriptCase):
         self.assertEqual(self.quiet("0").returncode, 0)
 
     def test_another_session_does_not_count(self):
+        self.t.write([oo.owner("ok go", ago(40))])                # s1 has its own transcript (C9: none = unknown)
         self.t.write([oo.owner("I talk to the other pane", ago(1))], session="s2")
         self.assertEqual(self.quiet().returncode, 0)
 

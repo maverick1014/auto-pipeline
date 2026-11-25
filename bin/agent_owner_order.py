@@ -469,12 +469,14 @@ def human_quiet(cwd, argv):
         for home in config_homes():
             folders += [os.path.dirname(x) for x in
                         glob.glob(os.path.join(glob.escape(home), "projects", "*", glob.escape(wanted)))]
+    readable = 0
     for d in folders:
         path = os.path.join(d, opts["--session"] + ".jsonl")
         try:
             fh = open(path, "r", encoding="utf-8", errors="replace")
         except OSError:
             continue
+        readable += 1
         with fh:
             for raw in fh:
                 try:
@@ -493,6 +495,9 @@ def human_quiet(cwd, argv):
                     continue
                 if newest is None or epoch > newest:
                     newest = epoch
+    if not readable:
+        print("unknown: no transcript for session %s" % opts["--session"])
+        return 2
     if newest is None or minutes <= 0 or now - newest >= minutes * 60:
         print("quiet")
         return 0
