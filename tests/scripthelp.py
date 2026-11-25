@@ -87,6 +87,7 @@ COPY_BIN = [
     "agent-version.sh",      # stale-plugin-guard: running vs installed version, the hook
     "agent-level.sh",        # test-levels: the risk level a diff needs
     "agent_level.py",
+    "agent_blocks.py",       # check-blocks: the one table of blocks and triggers
     "agent_state.py",        # state-trim: state add / state trim
     "agent-autoclear.sh",    # state-trim: the auto /clear waiter
     "agent-guard.sh",        # board-trust: the launch hook (bash prefilter)

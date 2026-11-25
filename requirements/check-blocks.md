@@ -162,3 +162,24 @@ C5. Agents and skills
 - `agents/merge-deputy.md`: step 1 = `agent-file.sh checks gate`; a failed run after the merge -> `git reset --merge ORIG_HEAD`, never --hard; brief field `session: helper` -> no pane close, no worktree removal, branch kept; brief field `machine: <env>` -> gate on a local scratch copy of the branch, orca commands with `--environment <env>`.
 - skills/dispatch: picks the brief blocks, `--checks` on the todo line, a `CHECKS:` brief line instead of `LEVEL:`, the brief says "run the blocks of the task", never "Full suite once"; a requirement table copies defaults from the released template and lists every changed default. skills/merge: the gate, the check deputy, no level words.
 - Board: column `Checks` (zh `检查`) shows the checks field, an old line `level <X>`, else `-`.
+
+## 10. Slice 8: cleanup (TELL 101f0c46, owner 2026-11-25: fix it by the best design "that will not affect user workflow"; last slice)
+
+Evidence 2026-11-25: `agent-cleanup.sh` listed "kept 10, remove 0" while a merged worktree with its local and remote branch, 4 panes nobody used (2 idle Claude sessions), 21 LAUNCH lines of ended agents and a worktree line still "working" stayed.
+
+- (a) Every merge ends with cleanup, in every case. merge-deputy.md has steps for: a task manager pane (as today); a subagent's plain git worktree (unlock, remove, prune, delete its task branch and its `worktree-agent-*` branch, delete the remote branch); a human-direct Helper (its own pane always stays; the merged task's worktree, branches and other panes go, unless the Helper's own session runs inside that worktree: then the folder stays and the line says so); a worktree on another machine.
+- (b) The worktree line of a merged task is always removed or rewritten at merge, also when the folder stays.
+- (c) `human-direct` protects only the human's own session pane, not every pane in that worktree. A pane that never got a prompt and is idle over 30 minutes is closed by the sweep and named in its output. Orca's `worktree create` opens default tabs (a shell "Terminal 1" and a Claude "<name> Task Manager" session): dispatch uses that default agent pane for the brief or closes it, never opens a second one beside it.
+- (d) Every LAUNCH kind has a remover: subagent at SubagentStop (5afbd13), pane and tm-pane when the pane is closed or its handle is gone, merge at its end; the sweep prunes a record whose pid is dead or whose pane is gone.
+- (e) The cleanup table never lists main or the release branch; a worktree with a live LAUNCH record is "live agent", never "commit or discard the changes".
+- (f) The sweep runs after every merge, not only at start, at the last task and every 120 minutes.
+- (g) The plain list shows what `--apply` would remove under these rules; `--apply` stays main manager only.
+- Tests first, by module -> feature.
+
+## 11. Contract additions from the kick-off answers (TELL df857e05, 2026-11-25)
+
+- C2 budget: `check_budget_s` = 60, a fixed constant in `bin/agent_conf.py`. agent_repo.conf `build_seconds` / `guard_seconds` over it -> that block is heavy: not in BLOCKS, not in NOT TRIGGERED, one line `NET: BUILD (heavy, <n> s over the 60 s budget): nightly or pre-release, queued like a heavy test` or `NET: GUARD TESTS (heavy, <n> s over the 60 s budget): nightly or pre-release`; `--json` key `net`. Unmeasured or at most 60 s: runs per task.
+- C2 style and text related tests: a style-only file takes only its own tests (a test file whose name holds the file's stem); a text file also takes the tests that hold a changed string (a quoted or markup text of 4 chars or more, old or new).
+- C3 remove: `todo checks "<task>" --remove <BLOCK> --owner-quote "<his words>" [--time <t>]` (not --drop): runs `agent-owner-order.sh verify --repo <main repo folder> --quote "<words>"`; exit 0 -> the block leaves the checks field and the line gets ` | removed <BLOCK> <date>`; else refused. The gate always recomputes the tool blocks from the diff, so a removed tool block that the diff triggers is still planned; a removed brief block is not planned.
+- C3 builder: field ` | builder <name>` (`todo add --builder <name>`, `todo builder "<task>" <name>`, comma list). Builders = that field + the titles of the task's LAUNCH records of kind `worker <n>` or `tm-pane` in <dir>/agent_state.txt and the main repo's. A DIFF READ, FLOW CHECK or UI CHECK pass line whose `by` is a builder (case-insensitive): `<BLOCK>: pass by the builder (<who>), not accepted`, refused as `<BLOCK> by the builder`. No builder known: accepted, one line `note: builder unknown: <BLOCK> by <who> accepted` per such block.
+- C4 measure: init measures build_cmd and the guard tests only when RAM and CPU are under the cap (else one line, no number written); a run that hits the 120 s cap is written as `build_seconds=120` (or `guard_seconds=120`) with the comment `# heavy: hit the 120 s cap`, never retried.
