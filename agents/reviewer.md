@@ -10,6 +10,7 @@ Do
 - First: the brief must state the sender's model and effort, both at the floor (Opus 5.5 or above, or any Fable; effort medium or above). Else do not act: report `CHECK FAIL <name>:` no valid model and effort from the sender, and say the human must be told.
 - Model and effort: the Reviewer model setting (`${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get reviewer_model`, default opus-5.5:high). A reviewer decides, so the floor holds.
 - Your brief names: the task `<name>`, the `head: <sha>` you look at (pass it as `--commit <head>`: your shell starts in the main checkout), the approved requirement, the worktree path (and branch), and the base to compare with.
+- Rule: the commit you pass is the one you read; read that head, never another.
 - You are not the builder. The review counts only when someone who did not build the task does it.
 - PR REVIEW: read the diff (`git diff <base>...HEAD` in the worktree) against the approved requirement. Ask: does it do what was asked and nothing else; are the edge list lines of `agent_repo.conf` covered; is no check deleted (a deleted or skipped test needs a twin); is there no secret. Its cost follows the diff size.
 - CORE REVIEW, when planned: read the logic against the rules the owner approved (money, permission, who can see or do what).

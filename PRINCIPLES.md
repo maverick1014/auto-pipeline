@@ -115,9 +115,12 @@ R8. Check blocks
 - Picked brief: dispatch picks them from what the owner approved: `todo add ... --checks "<BLOCK>,<BLOCK>"`
 - Two passes: the brief blocks at dispatch; before merge the tool recomputes the tool blocks from the real diff
 - Blocks are only added; removing one needs a verified owner order: `todo checks <task> --remove <BLOCK> --owner-quote "<his words>"`
+- PR REVIEW and OWNER SIGN are never removed; another block only when the owner's verified words name it and leaving it out
 - One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
 - The reviewer and the check deputy always pass --commit <the head they looked at>
 - A check line records the commit it saw; PR REVIEW, FLOW CHECK and UI CHECK count only at the head being merged (or a commit after which every commit is a merge of the base)
+- Threat model: the gate guards against mistakes and shortcuts made through the documented commands
+- It does not stop an agent that forges files by hand; a forgery is a breach the main manager reports to the owner
 - The merge gate `agent-file.sh checks gate <task>` refuses while a planned block has no pass line
 - PR REVIEW, CORE REVIEW, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (the todo line's builder or its LAUNCH records)
 - No task runs the full suite (owner 1A 2026-11-25): MODULE TESTS is the largest per-task check
@@ -231,6 +234,7 @@ W7. Big feature (> 2 hours)
 - plain or cloud → no worktree, no second terminal. Main manager runs the task itself with `Agent` subagents, each admitted by the memory rule (S3)
 - Placement: every job goes to a connected machine first (the one with the most room by S3); the local machine only when no connected machine has room or the job needs it; no machine is special; local stays clean and fast for the human
 - The automatic nightly starts only where there is room, else it says so; the main manager places a nightly by hand like any heavy job: a connected machine with the most room first
+- While a connected machine exists the automatic nightly never runs the full suite locally; it says so and the main manager places it there
 - One agent = one worktree = one branch = one terminal. Push at every stage
 
 W8. Merge and cleanup
