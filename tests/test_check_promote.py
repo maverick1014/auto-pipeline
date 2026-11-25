@@ -71,6 +71,23 @@ class PromoteCase(ScriptCase):
         self.commit_wb({}, "release build")
         return log
 
+    def ready_direct(self, task, branch, quote="fix the total and publish it"):
+        """Section 44 F1: dispatch stores the owner's words with the target; the main manager's reviewer passed."""
+        import time as _t
+        sys.path.insert(0, HERE)
+        import test_check_results as _tcr
+        r = self.repo.run("agent-file.sh", "todo", "add", task, "small", "publish " + task, "10",
+                          "--target", "production", "--owner-quote", quote)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        _tcr.main_launched(self.repo.dir, task, at=_t.strftime("%Y-%m-%d %H:%M", _t.localtime(_t.time() - 120)))
+        self.git("fetch", "-q", "origin")
+        sha = self.git("rev-parse", "origin/" + branch)
+        for block in ("PR REVIEW", "DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS",
+                      "CORE REVIEW", "EXAMPLES TEST"):
+            r = self.repo.run("agent-file.sh", "check", task, block, "pass", "--by", task + " Reviewer",
+                              "--evidence", "ok", "--commit", sha)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def promote(self, *extra):
         return self.repo.run("agent-promote.sh", "--owner-quote", "yes ship it to production", *extra)
 
@@ -152,8 +169,8 @@ class TestDirectToProduction(PromoteCase):
                 if l.startswith("worktree ")]
 
     def direct(self, branch, *extra):
-        return self.repo.run("agent-promote.sh", "--task", "feat-p", "--branch", branch,
-                             "--owner-quote", "fix the total and publish it", *extra)
+        self.ready_direct("feat-p", branch)                          # section 44 F1: words come from the task
+        return self.repo.run("agent-promote.sh", "--task", "feat-p", "--branch", branch, *extra)
 
     def test_straight_into_production_then_merged_back(self):
         b = self.task_branch({"src/total.py": "t = 1\n"})
@@ -180,10 +197,14 @@ class TestDirectToProduction(PromoteCase):
             self.assertEqual(fh.read().split(), ["--push"])
 
     def test_not_verified_is_refused_and_nothing_moves(self):
+        # section 44 F1: the words are verified when the target is set; unverified -> no production task at all
         self.verified(False)
         b = self.task_branch({"src/total.py": "t = 1\n"})
         before = self.git("rev-parse", "origin/main")
-        self.assertEqual(self.direct(b).returncode, 1)
+        r = self.repo.run("agent-file.sh", "todo", "add", "feat-p", "small", "x", "10", "--target", "production",
+                          "--owner-quote", "publish it")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self.repo.run("agent-promote.sh", "--task", "feat-p", "--branch", b).returncode, 1)
         self.assertEqual(self.git("rev-parse", "origin/main"), before)
 
     def test_a_conflict_is_refused_and_cleaned_up(self):
@@ -197,7 +218,8 @@ class TestDirectToProduction(PromoteCase):
         b = "feat-c"
         before = self.git("rev-parse", "origin/main")
         before_wt = self.worktree_paths()
-        r = self.repo.run("agent-promote.sh", "--task", "feat-c", "--branch", b, "--owner-quote", "publish it")
+        self.ready_direct("feat-c", b)
+        r = self.repo.run("agent-promote.sh", "--task", "feat-c", "--branch", b)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.git("fetch", "-q", "origin")
         self.assertEqual(self.git("rev-parse", "origin/main"), before)

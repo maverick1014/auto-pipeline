@@ -17,6 +17,7 @@ and 9 C3 (contract).
 Run: python3 -m unittest tests.test_check_results
 """
 
+import json
 import os
 import re
 import subprocess
@@ -320,6 +321,7 @@ class TestGate(Case):
         # tool blocks of this diff: DIFF SCAN, BUILD, RELATED TESTS (none found)
         self.commit_push({"app.js": "y()\n"})
         self.ok("todo", "add", "t", "small", "task", "10", "--checks", "PR REVIEW")
+        main_launched(self.repo.dir, "t")                           # section 44 F2
 
     def gate(self, *extra, env=None, dirpath=None):
         return self.af("checks", "gate", "t", "--dir", dirpath or self.repo.dir, "--base", "base", *extra, env=env)

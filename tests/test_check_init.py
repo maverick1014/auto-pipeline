@@ -335,6 +335,14 @@ class TestWorkingBranch(InitCase):
     """Owner 2026-11-25 (sections 28, 29): every repo keeps the working branch (setting "Flow: Working
     branch"); init creates it from the production branch and switches the main checkout to it. No worktree."""
 
+    def setUp(self):
+        super().setUp()
+        # section 44 F4: a repo that never used the plugin has no agent file at HEAD (the fixture commits them)
+        tracked = [f for f in self.git("ls-files").split() if f.startswith("agent_")]
+        if tracked:
+            self.git("rm", "-q", "--cached", *tracked)
+            self.git("commit", "-q", "-m", "not yet a plugin repo")
+
     def branch(self):
         sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
         import agent_conf

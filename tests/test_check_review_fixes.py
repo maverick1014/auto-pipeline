@@ -208,7 +208,8 @@ class TestP1P2P3P6Promote(tp.PromoteCase):
         return name
 
     def direct(self, branch):
-        return self.repo.run("agent-promote.sh", "--task", branch, "--branch", branch, "--owner-quote", "publish it")
+        self.ready_direct(branch, branch)                            # section 44 F1
+        return self.repo.run("agent-promote.sh", "--task", branch, "--branch", branch)
 
     def test_p1_the_release_runs_on_a_production_commit(self):
         # like agent-release.sh: it refuses a commit that is not on the local production branch
@@ -494,7 +495,8 @@ class TestG6ReleaseWhileProductionIsCheckedOut(tp.PromoteCase):
         self.git("commit", "-q", "-m", "urgent")
         self.git("push", "-q", "-u", "origin", "feat-r")
         self.git("switch", "-q", "main")
-        r = self.repo.run("agent-promote.sh", "--task", "feat-r", "--branch", "feat-r", "--owner-quote", "publish it")
+        self.ready_direct("feat-r", "feat-r")                        # section 44 F1
+        r = self.repo.run("agent-promote.sh", "--task", "feat-r", "--branch", "feat-r")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertFalse(os.path.exists(log))
         self.assertIn("release: not run: local main is checked out in %s; switch that checkout to the working branch "
