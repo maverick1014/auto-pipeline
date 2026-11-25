@@ -550,7 +550,7 @@ def run_monitored(cmd, reserved_mb):
     ACTIVE[:] = [proc]
     me, peak, stop = os.getpid(), 0, None
     while True:
-        peak = max(peak, group_kb(proc.pid))
+        peak = max(peak, group_kb(proc.pid), tree_kb(proc.pid))
         if int(math.ceil(peak / 1024.0)) > reserved_mb:
             reserved_mb = int(math.ceil(peak / 1024.0))
             update_reservation(me, mb=reserved_mb)
@@ -1000,11 +1000,8 @@ def start(cwd, wait):
 
 
 def working_branch(root):
-    """The setting working_branch (Flow: Working branch), default ap-worktree; not in agent_conf yet: the same default."""
-    try:
-        return str(agent_conf.get("working_branch")).strip() or "ap-worktree"
-    except Exception:
-        return "ap-worktree"
+    """The working branch of this clone: agent_conf.working_branch (per person, stored once, section 34)."""
+    return agent_conf.working_branch(root)
 
 
 def tip_of(root):

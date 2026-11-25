@@ -65,9 +65,9 @@ class PromoteCase(ScriptCase):
 
     def release_stub(self):
         log = os.path.join(self.repo.base, "release.log")
-        self.commit_wb({"bin/agent-release.sh": "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\n" % log},
-                       "release build")
-        os.chmod(os.path.join(self.repo.dir, "bin", "agent-release.sh"), 0o755)
+        self.put("bin/agent-release.sh", "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\n" % log)
+        os.chmod(os.path.join(self.repo.dir, "bin", "agent-release.sh"), 0o755)   # executable in the commit
+        self.commit_wb({}, "release build")
         return log
 
     def promote(self, *extra):
@@ -146,19 +146,23 @@ class TestDirectToProduction(PromoteCase):
         self.git("switch", "-q", self.wb)
         return name
 
+    def worktree_paths(self):
+        return [l.split()[1] for l in self.git("worktree", "list", "--porcelain").splitlines()
+                if l.startswith("worktree ")]
+
     def direct(self, branch, *extra):
         return self.repo.run("agent-promote.sh", "--task", "feat-p", "--branch", branch,
                              "--owner-quote", "fix the total and publish it", *extra)
 
     def test_straight_into_production_then_merged_back(self):
         b = self.task_branch({"src/total.py": "t = 1\n"})
-        before_wt = self.git("worktree", "list")
+        before_wt = self.worktree_paths()
         r = self.direct(b)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.git("fetch", "-q", "origin")
         self.assertIn("Merge feat-p (W8)", self.git("log", "-1", "--format=%s", "origin/main"))
         self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD"), self.wb, "the checkout never switched")
-        self.assertEqual(self.git("worktree", "list"), before_wt, "the short-lived worktree is gone")
+        self.assertEqual(self.worktree_paths(), before_wt, "the short-lived worktree is gone")
         self.assertEqual(subprocess.run(["git", "-C", self.repo.dir, "merge-base", "--is-ancestor", "origin/main",
                                          self.wb]).returncode, 0, "production merged back into the working branch")
         lines = r.stdout.splitlines()
@@ -191,12 +195,12 @@ class TestDirectToProduction(PromoteCase):
         b = self.task_branch({"src/a.py": "conflict two\n"}, name="feat-c")
         b = "feat-c"
         before = self.git("rev-parse", "origin/main")
-        before_wt = self.git("worktree", "list")
+        before_wt = self.worktree_paths()
         r = self.repo.run("agent-promote.sh", "--task", "feat-c", "--branch", b, "--owner-quote", "publish it")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.git("fetch", "-q", "origin")
         self.assertEqual(self.git("rev-parse", "origin/main"), before)
-        self.assertEqual(self.git("worktree", "list"), before_wt)
+        self.assertEqual(self.worktree_paths(), before_wt)
 
 
 class TestSync(PromoteCase):

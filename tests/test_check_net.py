@@ -382,7 +382,8 @@ class TestRoom(RoomCase):
         self.assertEqual(r.stdout.strip(), "ROOM: ok")
 
     def test_measure_pane_keeps_the_highest(self):
-        p = subprocess.Popen([sys.executable, "-c", "b = bytearray(120 * 1024 * 1024); import time; time.sleep(20)"])
+        # random bytes: the memory compressor cannot shrink them under load (zero pages it can)
+        p = subprocess.Popen([sys.executable, "-c", "import os, time; b = os.urandom(120 * 1024 * 1024); time.sleep(20)"])
         self.addCleanup(p.kill)
         import time
         time.sleep(1.5)
@@ -533,7 +534,7 @@ class TestTestRun(RoomCase):
             self.assertEqual(fh.read(), before)
 
     def test_peak_mb_is_the_whole_process_tree(self):
-        child = "b = bytearray(60 * 1024 * 1024); import time; time.sleep(3)"
+        child = "import os, time; b = os.urandom(60 * 1024 * 1024); time.sleep(3)"
         cmd = ("import subprocess, sys; ps = [subprocess.Popen([sys.executable, '-c', %r]) for _ in range(3)]; "
                "[p.wait() for p in ps]" % child)
         self.assertEqual(self.run_test("tree", "python3", "-c", cmd).returncode, 0)

@@ -187,6 +187,7 @@ def suggestion(reasons, path):
 class Sweep(object):
     def __init__(self, root, plugin, kind, apply_, short):
         self.root = root
+        self._wb = None
         self.plugin = plugin
         self.kind = kind
         self.apply = apply_
@@ -268,6 +269,30 @@ class Sweep(object):
 
     def keep(self, what, where, why, sug):
         self.kept.append((what, where, why, sug))
+
+    # ---- the working branch (C47)
+
+    def leave_alone(self, branch):
+        """True for a branch the sweep never lists nor deletes: main/release, the stored working branch, and any
+        branch that starts with the setting's prefix before <name> (default ap-main-), local or origin."""
+        if not branch:
+            return False
+        if branch in PROTECTED:
+            return True
+        if self._wb is None:
+            wb, prefix = "", "ap-main-"
+            try:
+                wb = agent_conf.working_branch(self.root) or ""
+                setting = str(agent_conf.get("working_branch")).strip()
+                if "<name>" in setting:
+                    prefix = setting.split("<name>")[0]
+                elif setting:
+                    prefix = ""
+            except Exception:
+                pass
+            self._wb = (wb, prefix)
+        wb, prefix = self._wb
+        return branch == wb or bool(prefix and branch.startswith(prefix))
 
     # ---- the base
 
@@ -517,7 +542,7 @@ class Sweep(object):
             return
         for row in self.wts[1:]:
             path = row["path"]
-            if row.get("branch") in PROTECTED:
+            if self.leave_alone(row.get("branch")):
                 continue
             if not os.path.isdir(path):
                 self.keep("worktree " + path, "this machine", "folder missing",
@@ -598,7 +623,7 @@ class Sweep(object):
                 if not path:
                     continue
                 branch = strip_heads(row.get("branch"))
-                if branch in PROTECTED:
+                if self.leave_alone(branch):
                     continue
                 reasons = []
                 if not branch:
@@ -622,6 +647,7 @@ class Sweep(object):
         checked = set(w["branch"] for w in self.wts if w.get("branch"))
         names = (set(self.local_refs) | set(self.origin_refs)) - checked
         names -= set(PROTECTED)
+        names = set(n for n in names if not self.leave_alone(n))
         for name in sorted(names):
             copies = []
             if name in self.local_refs:

@@ -481,11 +481,11 @@ def stage_of(text, name):
 
 def remote_command(path):
     """The one short command: FSIG <n> <lines> <waiting> <1 when the newest such line says "started"> <newest
-    STAGE|HEARTBEAT|STEP line>|<last wake line> FEND (R1: no task name in it; Python picks the task's own stage). Under 500 chars or the task is not watched
+    VALID STAGE|HEARTBEAT|STEP line (a malformed one is skipped, C50)>|<last wake line> FEND (R1: no task name in it; Python picks the task's own stage). Under 500 chars or the task is not watched
     (R1: a send is cut only near 4 KB (W16), the tell chunks are 300; a path of 140 chars must fit)."""
     return ("awk -F' [|] ' '/^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
             "{n++;l=$0;w=/^([[][^]]*[]] )?[QM]/?1:2}/^TELL |^ *([[][^]]*[]] +)?ANSWER:/{if(w==1||/^T/)w=0}"
-            "/^(STAGE|HEARTBEAT|STEP) /{v=substr($1,1,99);t=/tarted/}"
+            "/^(STAGE [^ ]+: |HEARTBEAT [^ ]+: step [0-7] of 7, work [0-9]+m, |STEP [0-7] )/{v=substr($1,1,99);t=/tarted/}"
             "END{print \"FSIG\",n,NR,w,t+0,v \"|\" substr(l,1,%d),\"FEND\"}' %s"
             % (LAST_CUT, shlex.quote(path + "/agent_state.txt")))
 
