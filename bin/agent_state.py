@@ -198,7 +198,7 @@ class Lock(object):
 # ---------------------------------------------------------------- state add
 
 
-def add(state_dir, now, args):
+def add(state_dir, now, args, allow_check=False):
     if len(args) != 1:
         raise Refuse("state add: needs exactly one text in quotes (got %d arguments)" % len(args))
     text = args[0]
@@ -206,6 +206,8 @@ def add(state_dir, now, args):
         raise Refuse("state add: the text is empty")
     if "\n" in text or "\r" in text:
         raise Refuse("state add: the text must not hold a line break")
+    if text.startswith("CHECK ") and not allow_check:
+        raise Refuse("state add: a CHECK line is written by agent-file.sh check only")
     path = os.path.join(state_dir, STATE_NAME)
     with Lock(state_dir):
         old = read_bytes(path) or b""

@@ -193,7 +193,7 @@ W8. Merge and cleanup
 - The sweep prunes a LAUNCH record whose pid is dead or whose pane is gone; its table never lists main or the release branch; a worktree with a live LAUNCH record is "live agent"
 - The plain list shows what --apply would remove; --apply is main manager only
 - Never skip cleanup
-- Main manager verified + waiting for the owner's yes → close the task manager pane, remove its worktree, keep the pushed branch, start the next task
+- Main manager verified + waiting for the owner's yes → agent-file.sh checks gather first, close the task manager pane, remove its worktree, keep the pushed branch, start the next task
 - Owner yes → merge deputy merges the branch. Owner no → a new task manager from that branch. Goal: work all night, RAM stays free
 - Clean up only after the merge is verified
 - Deputy runs `./agent-file.sh worktree rm <path>` and `./agent-file.sh todo done <name>` with the facts from the main manager and `--merge <commit>`

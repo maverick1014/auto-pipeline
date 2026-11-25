@@ -16,6 +16,7 @@
 #   agent-file.sh todo est "<name>" <minutes> [--guess <m>]   -> est (and guess) replaced in place; prints "todo est: <name> <old>m -> <new>m"
 #   agent-file.sh check "<task>" "<BLOCK>" pass|fail --by <who> --evidence "<text>"
 #                                                             -> agent_state.txt of this folder: "CHECK <task> <BLOCK>: pass | by <who> | <evidence> | <date time>" (OWNER SIGN allowed)
+#   agent-file.sh checks gather "<task>" --dir <path>         -> appends the task's CHECK lines of <path>/agent_state.txt to the main repo's agent_state.txt (lines already there skipped); prints "checks gather: <task> <n> lines"
 #   agent-file.sh checks gate "<task>" --dir <path> [--base <ref>] [--results <file>] [--checks "<list>"]
 #                                                             -> the merge guard: per planned block "<BLOCK>: pass (by <who>)|fail (by <who>)|missing", then "GATE PASS <task>" (exit 0) or "GATE REFUSED <task>: <BLOCK> missing, ..." (exit 1); no todo line and no --checks: exit 2
 #   agent-file.sh next                                        -> "NEXT: <n> can start (slots <free> of <max>, RAM <p>% under <cap>%)", then START / WAIT lines for the queued tasks
@@ -1180,6 +1181,8 @@ case "${1:-}:${2:-}" in
     shift; checks_py check "$@";;
   checks:gate)
     shift 2; checks_py gate "$@";;
+  checks:gather)
+    shift 2; checks_py gather "$@";;
   next:*)
     shift; next_run "$@";;
   edge:add)

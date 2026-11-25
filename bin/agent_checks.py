@@ -286,7 +286,7 @@ def cmd_check(ctx, a):
         raise Refuse("check: the result is pass or fail (got: %s)" % verdict)
     opts, i = {}, 0
     while i < len(rest):
-        if rest[i] in ("--by", "--evidence", "--owner-quote") and i + 1 < len(rest):
+        if rest[i] in ("--by", "--evidence", "--owner-quote", "--time") and i + 1 < len(rest):
             opts[rest[i]] = rest[i + 1]
             i += 2
         else:
@@ -299,6 +299,8 @@ def cmd_check(ctx, a):
         if "\n" in q or "\r" in q:
             raise Refuse("check: --owner-quote must not hold a line break")
         opts["--evidence"] = "owner order verified: " + q.strip()
+    elif "--time" in opts:
+        raise Refuse("check: --time belongs to an OWNER SIGN pass only")
     elif "--owner-quote" in opts:
         raise Refuse("check: --owner-quote belongs to an OWNER SIGN pass only")
     for k in ("--by", "--evidence"):
@@ -310,13 +312,13 @@ def cmd_check(ctx, a):
     if " | " in opts["--by"]:
         raise Refuse("check: --by must not hold \" | \"")
     if sign_pass:
-        verify_owner(ctx, opts["--owner-quote"].strip(), None, "check: owner order not verified, nothing written: ")
+        verify_owner(ctx, opts["--owner-quote"].strip(), opts.get("--time"), "check: owner order not verified, nothing written: ")
     import agent_state
     text = "CHECK %s %s: %s | by %s | %s" % (task, block, verdict, opts["--by"].strip(), opts["--evidence"].strip())
     saved = sys.stdout
     sys.stdout = open(os.devnull, "w")
     try:
-        agent_state.add(ctx["state"], ctx["now"], [text])
+        agent_state.add(ctx["state"], ctx["now"], [text], True)
     except Exception as e:
         sys.stdout = saved
         raise Refuse("check: %s" % e)
@@ -328,29 +330,76 @@ def cmd_check(ctx, a):
 # -- gate
 
 def read_results(paths, task):
-    """block -> (verdict, who): the last CHECK line of the task wins, across the files in order."""
-    res = {}
-    for path in paths:
-        read_results_file(path, task, res)
-    return res
+    """block -> (verdict, who, evidence): the newest CHECK line of the task wins (the date at the end of the
+    line; same date: the later file in paths, then the later line)."""
+    best = {}
+    for n, path in enumerate(paths):
+        read_results_file(path, task, best, n)
+    return dict((b, v[3:]) for b, v in best.items())
 
 
-def read_results_file(path, task, res):
+def read_results_file(path, task, best, n=0):
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             lines = fh.read().split("\n")
     except IOError:
-        return res
+        return best
     head = "CHECK %s " % task
     names = block_names() + [SIGN]
-    for l in lines:
+    for i, l in enumerate(lines):
         if not l.startswith(head):
             continue
         rest = l[len(head):]
-        m = re.match(r"(.+?): (pass|fail) \| by (.*?)(?: \| |$)", rest)
+        m = re.match(r"(.+?): (pass|fail) \| by (.*)$", rest)
         if m and m.group(1) in names:
-            res[m.group(1)] = (m.group(2), m.group(3).strip())
-    return res
+            parts = m.group(3).split(" | ")
+            who = parts[0].strip()
+            if len(parts) >= 3:
+                ev, date = " | ".join(parts[1:-1]), parts[-1].strip()
+            else:
+                ev, date = " | ".join(parts[1:]), ""
+            key = (date, n, i)
+            old = best.get(m.group(1))
+            if old is None or key >= old[:3]:
+                best[m.group(1)] = key + (m.group(2), who, ev.strip())
+    return best
+
+
+def cmd_gather(ctx, a):
+    if not a or not a[0].strip():
+        raise Refuse("checks gather: usage: checks gather \"<task>\" --dir <path>", 2)
+    task, rest = a[0], a[1:]
+    if len(rest) != 2 or rest[0] != "--dir":
+        raise Refuse("checks gather: usage: checks gather \"<task>\" --dir <path>", 2)
+    src = os.path.join(rest[1], "agent_state.txt")
+    dst = os.path.join(ctx["root"], "agent_state.txt")
+    head = "CHECK %s " % task
+    try:
+        with open(src, encoding="utf-8", errors="replace") as fh:
+            mine = [l for l in fh.read().split("\n") if l.startswith(head)]
+    except IOError:
+        mine = []
+    try:
+        with open(dst, encoding="utf-8", errors="replace") as fh:
+            have = set(fh.read().split("\n"))
+    except IOError:
+        have = set()
+    new = []
+    for l in mine:
+        if l not in have and l not in new:
+            new.append(l)
+    if new:
+        with open(dst, "a", encoding="utf-8") as fh:
+            try:
+                if os.path.getsize(dst) > 0:
+                    with open(dst, "rb") as rb:
+                        rb.seek(-1, 2)
+                        if rb.read(1) != b"\n":
+                            fh.write("\n")
+            except OSError:
+                pass
+            fh.write("\n".join(new) + "\n")
+    print("checks gather: %s %d lines" % (task, len(new)))
 
 
 def launch_builders(path, task):
@@ -442,6 +491,18 @@ def upstream_of(d):
     return name.strip(), up.strip(), head.strip()
 
 
+def sign_believed(ctx, evidence):
+    """An OWNER SIGN pass counts only with "owner order verified: <words>" that verify accepts again now."""
+    pre = "owner order verified: "
+    if not evidence.startswith(pre) or not evidence[len(pre):].strip():
+        return False
+    try:
+        verify_owner(ctx, evidence[len(pre):].strip(), None, "")
+    except Refuse:
+        return False
+    return True
+
+
 def cmd_gate(ctx, a):
     if not a:
         raise Refuse("checks gate: usage: checks gate \"<task>\" --dir <path> [--base <ref>] [--results <file>] [--checks \"<list>\"]", 2)
@@ -510,6 +571,9 @@ def cmd_gate(ctx, a):
         elif r[0] == "fail":
             lines.append("%s: fail (by %s)" % (b, r[1]))
             refused.append("%s fail" % b)
+        elif b == SIGN and not sign_believed(ctx, r[2]):
+            lines.append("%s: pass not verified, not accepted" % b)
+            refused.append("%s not verified" % b)
         elif b in BUILDER_BLOCKS and is_builder(r[1]):
             lines.append("%s: pass by the builder (%s), not accepted" % (b, r[1]))
             refused.append("%s by the builder" % b)
@@ -687,6 +751,8 @@ def main(argv):
             cmd_todo_est(ctx, a)
         elif cmd == "check":
             cmd_check(ctx, a)
+        elif cmd == "gather":
+            cmd_gather(ctx, a)
         elif cmd == "gate":
             cmd_gate(ctx, a)
         elif cmd == "next":
