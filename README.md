@@ -47,6 +47,7 @@ Cloud sessions (claude.ai/code): the agent handles them with cloud-pack. Nothing
 | `/auto-pipeline:close-case` | Settle one finished case, or wrap up the whole repo. |
 | `/auto-pipeline:clean-up` | List rubbish docs and outdated lines, remove only what you say yes to. |
 | `/auto-pipeline:test-slim` | Measure the tests of a repo, merge duplicates and make the slow ones cheaper, with an audit that no check is lost. |
+| `/auto-pipeline:md-slim` | Keep the files agents read short and exact: one term per concept, the technical term instead of a long description, a proof that no rule is lost. |
 | `/auto-pipeline:city` | Start the agent city visualiser and print its URL. |
 
 You can also just type a keyword instead of the command (case does not matter):
