@@ -159,6 +159,35 @@ TOK = "\x00"
 CONFIG_EXT = (".yml", ".yaml", ".json", ".toml")
 
 
+TEXT_ATTR_VALUE = re.compile(r"(?<![\w:.\-@$])(" + "|".join(TEXT_ATTRS) + r")=(?:\"[^\"]*\"|'[^']*')")
+LOCALE_PARTS = ("locales", "locale", "i18n", "translations", "lang")
+LOCALE_NAME = re.compile(r"^(?:[a-z]{2}(?:[-_][A-Za-z]{2,4})?|[a-z]{3}[-_][A-Za-z]{2,4})$")
+
+
+def is_locale_file(path):
+    parts = path.replace("\\", "/").lower().split("/")
+    if any(p in LOCALE_PARTS for p in parts[:-1]):
+        return True
+    return bool(LOCALE_NAME.match(os.path.splitext(os.path.basename(path))[0]))
+
+
+def strict_of(path, ext, markup):
+    """G7: do changed literals count as code in this file?"""
+    if ext in CONFIG_EXT:
+        return not is_locale_file(path)
+    return True
+
+
+def bound_attr(attr):
+    """G7: an attribute that holds an expression: @click, :prop, v-x, or name={...}."""
+    m = re.match(r"^([^=]+)=(.)", attr, re.S)
+    if not m:
+        return False
+    if m.group(1)[0] in "@:" or m.group(1).startswith("v-"):
+        return True
+    return m.group(2) == "{" and bool(re.search(r"[\"'`]", attr))  # name={...} holding a string literal
+
+
 def is_import(line):
     return bool(IMPORT_LINE.match(line)) or "require(" in line or "import(" in line
 
@@ -252,6 +281,11 @@ def analyse(line, markup):
         if res is None:
             return None
         work, attrs = res
+    if markup:  # text attributes (alt, title ...) are shown text: keep them out of the string literals
+        def shown(m):
+            texts.append(m.group(0))
+            return m.group(1) + "=" + TOK + "W" + TOK
+        work = TEXT_ATTR_VALUE.sub(shown, work)
     res = mask_strings(work)
     if res is None:
         return None
@@ -298,6 +332,8 @@ class Checker(object):
             if x != y:
                 if TOK in x or TOK in y or COLOUR.search(y):
                     return False
+                if strict and (bound_attr(x) or bound_attr(y)):
+                    return False
                 found.add("existing prop value" if self.used_at_base(y) else "new prop value")
         return True
 
@@ -318,7 +354,7 @@ class Checker(object):
             if not rem or not add or len(rem) != len(add):
                 return "code", "code change"
             for old, new in zip(rem, add):
-                if not self.pair(old, new, markup, found, not markup and ext not in CONFIG_EXT):
+                if not self.pair(old, new, markup, found, strict_of(path, ext, markup)):
                     return "code", "code change"
         order = ["text change", "colour change", "existing prop value", "new prop value"]
         reasons = [r for r in order if r in found]
