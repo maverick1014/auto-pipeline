@@ -150,16 +150,12 @@ WALK = set(".grtBb")
 TERR_CHARS = set("grPH")
 
 
-def plans():
-    return ac.load_plans()
-
-
 def world_of(*repos):
-    """repos: (identity, lines) in arrival order."""
-    ps = plans()
+    """repos: (identity, lines) in arrival order (city-office: lines are no longer kept)."""
     w = ac.new_world()
-    for ident, lines in repos:
-        ac.add_territory(w, ps, ident, ac.repo_name(ident), lines)
+    for ident, _lines in repos:
+        ac.add_territory(w, ident, ac.repo_name(ident))
+    w["floors"] = [ident for ident, _ in repos]
     return w
 
 
@@ -255,11 +251,10 @@ class TestWorldFile(unittest.TestCase):
 
     def test_save_then_load_is_the_same_world(self):
         w = world_of(("/a/.git", 12000), ("/b/.git", 40))
-        ac.build(w, plans(), "/a/.git", "ui", "a1", "worker", 3.0)
-        w["territories"]["/a/.git"]["future_field"] = {"kept": True}
+        w["territories"]["/a/.git"]["reno_asked"] = True
         ac.save_world(self.path, w)
         self.assertEqual(os.listdir(os.path.dirname(self.path)), ["world.json"], "temp file left behind")
-        loaded, notice = ac.load_world(self.path, plans())
+        loaded, notice = ac.load_world(self.path)
         self.assertIsNone(notice)
         self.assertEqual(loaded, json.loads(json.dumps(w)))
         with open(self.path) as fh:
@@ -271,20 +266,15 @@ class TestWorldFile(unittest.TestCase):
         self.assertRegex(src, r"tmp|temp|mkstemp")
 
     def test_missing_file_is_a_fresh_world(self):
-        w, notice = ac.load_world(self.path, plans())
+        w, notice = ac.load_world(self.path)
         self.assertEqual(w, ac.new_world())
         self.assertIsNone(notice)
         self.assertFalse(os.path.exists(os.path.dirname(self.path)) and os.listdir(os.path.dirname(self.path)))
 
     def test_broken_or_unknown_file_is_moved_aside(self):
         good = world_of(("/a/.git", 10))
-        bad_slot = json.loads(json.dumps(good))
-        bad_slot["territories"]["/a/.git"]["slot"] = "x"
-        bad_plan = json.loads(json.dumps(good))
-        bad_plan["territories"]["/a/.git"]["plan"] = "atlantis"
         cases = {"not json": b"{not json", "a list": b"[1, 2]", "future version": json.dumps(dict(good, v=2)).encode(),
                  "no version": json.dumps({"territories": {}, "order": []}).encode(),
-                 "bad slot": json.dumps(bad_slot).encode(), "unknown plan": json.dumps(bad_plan).encode(),
                  "binary": b"\xff\xfe\x00junk"}
         for name, data in cases.items():
             with self.subTest(case=name):
@@ -293,7 +283,7 @@ class TestWorldFile(unittest.TestCase):
                 os.makedirs(folder)
                 with open(self.path, "wb") as fh:
                     fh.write(data)
-                w, notice = ac.load_world(self.path, plans())
+                w, notice = ac.load_world(self.path)
                 self.assertEqual(w, ac.new_world())
                 aside = [f for f in os.listdir(folder) if f.startswith("world.json.bad-")]
                 self.assertEqual(len(aside), 1)
