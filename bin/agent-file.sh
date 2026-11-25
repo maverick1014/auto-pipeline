@@ -7,6 +7,19 @@
 #                 [--merge <commit> | --range <a>..<b>]       -> line moves to agent_completed.txt as one data line
 #   agent-file.sh todo level "<name>" <A-D>                   -> the todo line says its risk type, " | level <A-D>" (old 0-4 read: 0=A 1=B 2,3=C 4=D; replaced in place, only goes up)
 #   agent-file.sh todo drop "<name>" "<reason>"               -> line moves to agent_completed.txt as: date | name | what | est <n>m actual - | dropped: <reason>
+#   agent-file.sh todo add ... [--checks "<BLOCK>,<BLOCK>"] [--scope "<glob>,<glob>"] [--builder "<name>"]
+#                                                             -> fields " | checks A, B" (table order) right after guess (else est, else what), " | scope <globs>", " | builder <name>"; an unknown block is refused
+#   agent-file.sh todo checks "<name>" <BLOCK>[,<BLOCK>]      -> union into the checks field, table order; prints "todo checks: <name> <old or -> -> <new>"
+#   agent-file.sh todo checks "<name>" --remove <BLOCK> --owner-quote "<words>" [--time <t>]
+#                                                             -> only on a verified owner order (agent-owner-order.sh verify): the block leaves the field, the line gets " | removed <BLOCK> <date time>"
+#   agent-file.sh todo builder "<name>" <who>                 -> field " | builder <who>" (replaced in place; a comma list is fine)
+#   agent-file.sh todo est "<name>" <minutes> [--guess <m>]   -> est (and guess) replaced in place; prints "todo est: <name> <old>m -> <new>m"
+#   agent-file.sh check "<task>" "<BLOCK>" pass|fail --by <who> --evidence "<text>"
+#                                                             -> agent_state.txt of this folder: "CHECK <task> <BLOCK>: pass | by <who> | <evidence> | <date time>" (OWNER SIGN allowed)
+#   agent-file.sh checks gate "<task>" --dir <path> [--base <ref>] [--results <file>] [--checks "<list>"]
+#                                                             -> the merge guard: per planned block "<BLOCK>: pass (by <who>)|fail (by <who>)|missing", then "GATE PASS <task>" (exit 0) or "GATE REFUSED <task>: <BLOCK> missing, ..." (exit 1); no todo line and no --checks: exit 2
+#   agent-file.sh next                                        -> "NEXT: <n> can start (slots <free> of <max>, RAM <p>% under <cap>%)", then START / WAIT lines for the queued tasks
+#   agent-file.sh edge add "<text>"                           -> one "edge=<text>" line in agent_repo.conf of this folder's git toplevel; "edge add: already listed" when present
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
@@ -46,6 +59,7 @@
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
 #
+# todo done also closes the queue wait of every open line whose " | after <name>" field is that task, drops the after field, and prints "released: <line name>" per line.
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
 #   work = agent minutes. wait = minutes spent waiting (mock gate, owner, suite slot). Never mixed.
 #   <t> is one of: page server script docs cloud app data mixed.
@@ -201,7 +215,7 @@ roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|todo:level) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -1033,18 +1047,53 @@ todo_level() {
   echo "todo level: $name ${old:--} -> $n"
 }
 
+# --- check blocks (agent_checks.py does the work)
+checks_py() {
+  command -v python3 >/dev/null 2>&1 || refuse "${1:-checks}: python3 is needed and was not found"
+  python3 "$(dirname "$0")/agent_checks.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" "$@"
+}
+# next: the free slots and the RAM cap are read here, the rest is agent_checks.py
+next_run() {
+  local mx cap ram
+  [ $# -eq 0 ] || refuse "next: takes nothing after it"
+  . "$(dirname "$0")/agent-resources.sh"
+  mx=$(conf_num max_agents 1 1000) || mx=4
+  cap=$(conf_num max_usage_percent 1 100) || cap=80
+  ram=$(ram_used); is_num "$ram" || ram=0
+  checks_py next "$mx" "$ram" "$cap"
+}
+# released_after <name>: close the queue wait of every open line queued after <name>
+released_after() {
+  local n list
+  list=$(checks_py after-list "$1" 2>/dev/null) || return 0
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    todo_wait "$n" off >/dev/null
+    echo "released: $n"
+  done <<< "$list"
+}
+
 case "${1:-}:${2:-}" in
   helper-task:*)
     [ $# -ge 2 ] || usage
     helper_task "$2";;
   todo:add)
-    shift 2; guess=""; level=""; rest=()
+    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
       if [ "$1" = "--guess" ]; then
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
         guess=$((10#$2)); shift 2
       elif [ "$1" = "--level" ]; then
         level=$(risk_type "${2:-}"); [ -n "$level" ] || refuse "todo add: --level wants one of A B C D (got: ${2:-nothing})"
+        shift 2
+      elif [ "$1" = "--checks" ]; then
+        [ $# -ge 2 ] || refuse "todo add: --checks needs a list of blocks"
+        checks=$(checks_py norm "$2") || exit 1
+        shift 2
+      elif [ "$1" = "--scope" ] || [ "$1" = "--builder" ]; then
+        [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: $1 needs a value"
+        if bad_text "$2"; then refuse "todo add: the $1 value must not hold \" | \" or a line break"; fi
+        if [ "$1" = "--scope" ]; then scope=$2; else builder=$2; fi
         shift 2
       else rest+=("$1"); shift; fi
     done
@@ -1054,6 +1103,9 @@ case "${1:-}:${2:-}" in
     [ -n "${6:-}" ] && what="$5 | est ${6}m"
     [ -z "$guess" ] || what="$what | guess ${guess}m"
     [ -z "$level" ] || what="$what | level $level"
+    [ -z "$checks" ] || what="$what | checks $checks"
+    [ -z "$scope" ] || what="$what | scope $scope"
+    [ -z "$builder" ] || what="$what | builder $builder"
     by="${7:-$WHO}"
     append "$TODO" "$3 | $4 | $what | opened $NOW | by $by"
     echo "todo added: $3";;
@@ -1078,6 +1130,7 @@ case "${1:-}:${2:-}" in
     date="${NOW%% *}"
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
     echo "todo done: $name"
+    released_after "$name"
     [ -n "$counted" ] || echo "files and lines: not counted (no --merge or --range)"
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
     # the finished task no longer counts as open: trim the state file (silent unless lines moved; a refusal is a warning)
@@ -1092,6 +1145,20 @@ case "${1:-}:${2:-}" in
     shift 2; todo_cross "$@";;
   todo:level)
     shift 2; todo_level "$@";;
+  todo:checks)
+    shift 2; checks_py todo-checks "$@";;
+  todo:builder)
+    shift 2; checks_py todo-builder "$@";;
+  todo:est)
+    shift 2; checks_py todo-est "$@";;
+  check:*)
+    shift; checks_py check "$@";;
+  checks:gate)
+    shift 2; checks_py gate "$@";;
+  next:*)
+    shift; next_run "$@";;
+  edge:add)
+    shift 2; checks_py edge-add "$@";;
   todo:stage)
     shift 2; todo_stage "$@";;
   park:*)
