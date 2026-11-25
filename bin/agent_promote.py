@@ -3,6 +3,8 @@
 working branch (requirements/check-blocks.md sections 28-30 C36'/C42, 34 C48). Called by agent-promote.sh. Python 3.9 stdlib."""
 
 import os
+import glob
+import json
 import re
 import shutil
 import subprocess
@@ -38,22 +40,6 @@ def last_line(text):
     return lines[-1].strip() if lines else ""
 
 
-def production_branch(root):
-    """production_branch in agent_repo.conf, else the target of origin/HEAD, else main."""
-    try:
-        with open(os.path.join(root, "agent_repo.conf")) as fh:
-            for line in fh:
-                m = re.match(r"^\s*production_branch\s*=\s*(\S+)\s*$", line)
-                if m:
-                    return m.group(1)
-    except OSError:
-        pass
-    rc, ref, _ = run(root, "symbolic-ref", "-q", "refs/remotes/origin/HEAD")
-    if rc == 0 and ref.startswith("refs/remotes/origin/"):
-        return ref[len("refs/remotes/origin/"):]
-    return "main"
-
-
 def is_ancestor(root, a, b):
     return run(root, "merge-base", "--is-ancestor", a, b)[0] == 0
 
@@ -63,15 +49,31 @@ def current_branch(root):
 
 
 def dirty(root):
-    """The tracked changes of the checkout other than agent_*.txt (the board files); '' when none."""
-    rc, text, _ = run(root, "status", "--porcelain", "--untracked-files=no")
-    rows = []
-    for line in text.splitlines():
-        path = line[3:].strip().strip('"')
+    """The tracked changes of the checkout other than agent_*.txt (the board files); '' when none. Reads
+    `status --porcelain -z` exactly: NUL-separated entries, a rename or copy carries its source as the next entry."""
+    try:
+        r = subprocess.run(["git", "-C", root, "status", "--porcelain", "-z", "--untracked-files=no"],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    entries = r.stdout.decode("utf-8", "replace").split("\0")
+    rows, i = [], 0
+    while i < len(entries):
+        e = entries[i]
+        i += 1
+        if len(e) < 4:
+            continue
+        if e[0] in "RC" or e[1] in "RC":
+            i += 1                                   # the source path of a rename or copy
+        path = e[3:]
         if re.match(r"^agent_[^/]*\.txt$", path):
             continue
         rows.append(path)
     return ", ".join(rows[:3])
+
+
+def merge_in_progress(root):
+    return run(root, "rev-parse", "-q", "--verify", "MERGE_HEAD")[0] == 0
 
 
 def verify(root, quote, when):
@@ -133,6 +135,53 @@ def release(cwd):
     return 0
 
 
+def remove_worktree(root, wt):
+    run(root, "worktree", "remove", "--force", wt)
+    if os.path.exists(wt):
+        shutil.rmtree(wt, ignore_errors=True)
+    run(root, "worktree", "prune")
+
+
+def own_worktree(root):
+    """The path of this run's short-lived worktree (P6), free to be made."""
+    wt = os.path.join(agent_nightly.common_dir(root), WT_NAME % os.getpid())
+    if os.path.exists(wt):
+        remove_worktree(root, wt)
+    return wt
+
+
+def remove_stale(root):
+    """F14: leftover agent_promote_wt_<pid> worktrees of runs that are dead."""
+    gitdir = agent_nightly.common_dir(root)
+    for path in glob.glob(os.path.join(gitdir, "agent_promote_wt_*")):
+        m = re.match(r"^agent_promote_wt_(\d+)$", os.path.basename(path))
+        if m and not agent_nightly.pid_alive(m.group(1)):
+            remove_worktree(root, path)
+
+
+def release_not_run(prod, where):
+    out("release: not run: local %s is checked out in %s; switch that checkout to the working branch "
+        "(section 33), then run bin/agent-release.sh --push" % (prod, where))
+
+
+def release_at(root, prod, sha):
+    """The release build in a short-lived worktree at the published commit (F9), never the main checkout's HEAD.
+    Local production checked out -> the G6 line, not run, 1."""
+    where = checked_out(root, prod)
+    if where:
+        release_not_run(prod, where)
+        return 1
+    wt = own_worktree(root)
+    rc, _, se = run(root, "worktree", "add", "-q", "--detach", wt, sha)
+    if rc != 0:
+        out("release: not run: could not make the short-lived worktree: %s" % last_line(se))
+        return 1
+    try:
+        return release(wt)
+    finally:
+        remove_worktree(root, wt)
+
+
 # ------------------------------------------------------------------ sync (C48)
 
 def merge_production_in(root, wb, prod):
@@ -148,6 +197,8 @@ def merge_production_in(root, wb, prod):
     cur = current_branch(root)
     if cur != wb:
         return "waits", "the main checkout is on %s, not on %s" % (cur or "no branch", wb)
+    if merge_in_progress(root):
+        return "waits", "a merge is in progress in %s (not started by this run)" % root
     d = dirty(root)
     if d:
         return "waits", "the main checkout has changes (%s)" % d
@@ -195,10 +246,10 @@ def publish(root, wb, prod, quote, when):
         else:
             out("refused: the sync did not finish; publish again when it does")
         return 1
+    tip = run(root, "rev-parse", "refs/heads/" + wb)[1]          # the sha release_ok checks, and the one pushed (F8)
     if agent_nightly.release_ok(root) != 0:
         out("refused: the last nightly is not green on the tip of %s" % wb)
         return 1
-    tip = run(root, "rev-parse", "refs/heads/" + wb)[1]
     rc, _, se = run(root, "push", "origin", "%s:refs/heads/%s" % (tip, prod), timeout=300)
     if rc != 0:
         out("refused: the push to origin/%s failed: %s" % (prod, last_line(se)))
@@ -206,20 +257,64 @@ def publish(root, wb, prod, quote, when):
     follow_local(root, prod, tip)
     subject = run(root, "log", "-1", "--format=%s", tip)[1]
     out("promote: %s -> %s (%s)" % (prod, tip[:7], subject))
-    return release(root)
+    return release_at(root, prod, tip)
 
 
 # ------------------------------------------------------------------ the direct path (C42)
 
-def remove_worktree(root, wt):
-    run(root, "worktree", "remove", "--force", wt)
-    if os.path.exists(wt):
-        shutil.rmtree(wt, ignore_errors=True)
-    run(root, "worktree", "prune")
+def todo_fields(root, task):
+    """The fields of the task's line in the main repo's agent_todo.txt, else None."""
+    try:
+        with open(os.path.join(root, "agent_todo.txt"), encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                f = [x.strip() for x in line.rstrip("\n").split(" | ")]
+                if f and f[0] == task:
+                    return f
+    except OSError:
+        pass
+    return None
 
 
-def direct(root, wb, prod, task, branch, quote, when):
-    if not verify(root, quote, when):
+def stored_words(root, task):
+    try:
+        with open(os.path.join(agent_nightly.common_dir(root), "agent_owner_words.json")) as fh:
+            e = json.load(fh).get(task)
+    except (OSError, ValueError, AttributeError):
+        return None
+    return e if isinstance(e, dict) and e.get("quote") and e.get("verified") is not False else None
+
+
+def gate(root, task, branch, prod):
+    """F1: the gate on a detached scratch worktree of origin/<branch>. True when it passes."""
+    wt = own_worktree(root)
+    rc, _, se = run(root, "worktree", "add", "-q", "--detach", wt, "origin/" + branch)
+    if rc != 0:
+        out("refused: could not make the scratch worktree for the gate: %s" % last_line(se))
+        return False
+    try:
+        try:
+            r = subprocess.run([os.path.join(HERE, "agent-file.sh"), "checks", "gate", task, "--dir", wt,
+                                "--base", "origin/" + prod, "--branch", branch], cwd=root, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=1800)
+        except (OSError, subprocess.SubprocessError) as exc:
+            out("refused: the gate could not run: %s" % exc)
+            return False
+        text = (r.stdout.strip() + "\n" + r.stderr.strip()).strip()
+        if r.returncode != 0 or "GATE REFUSED" in r.stdout:
+            out(text if text else "GATE REFUSED %s: the gate failed (exit %d)" % (task, r.returncode))
+            return False
+        return True
+    finally:
+        remove_worktree(root, wt)
+
+
+def direct(root, wb, prod, task, branch):
+    fields = todo_fields(root, task)
+    if fields is None or "target production" not in fields:
+        out("refused: %s is not a production task (todo add --target production)" % task)
+        return 1
+    if not stored_words(root, task):
+        out("refused: no owner words stored for %s" % task)
         return 1
     fetch(root)
     for ref in ("origin/" + prod, "origin/" + branch):
@@ -231,10 +326,9 @@ def direct(root, wb, prod, task, branch, quote, when):
     if shared:
         out("%s carries commits of %s that are not in %s: branch it from %s" % (branch, wb, prod, prod))
         return 1
-    gitdir = agent_nightly.common_dir(root)
-    wt = os.path.join(gitdir, WT_NAME % os.getpid())
-    if os.path.exists(wt):
-        remove_worktree(root, wt)
+    if not gate(root, task, branch, prod):
+        return 1
+    wt = own_worktree(root)
     rc, _, se = run(root, "worktree", "add", "-q", "--detach", wt, "origin/" + prod)
     if rc != 0:
         out("refused: could not make the short-lived worktree: %s" % last_line(se))
@@ -255,8 +349,7 @@ def direct(root, wb, prod, task, branch, quote, when):
         follow_local(root, prod, sha)
         where = checked_out(root, prod)
         if where:
-            out("release: not run: local %s is checked out in %s; switch that checkout to the working branch "
-                "(section 33), then run bin/agent-release.sh --push" % (prod, where))
+            release_not_run(prod, where)
             code = 1
         else:
             code = release(wt)
@@ -274,7 +367,7 @@ def direct(root, wb, prod, task, branch, quote, when):
 # ------------------------------------------------------------------ main
 
 USAGE = ("usage: agent-promote.sh --owner-quote \"<words>\" [--time <t>] | --task \"<task>\" --branch <branch> "
-         "--owner-quote \"<words>\" [--time <t>] | --sync\n")
+         "| --sync\n")
 
 
 def parse(argv):
@@ -295,20 +388,25 @@ def parse(argv):
 
 def main(argv):
     opts = parse(argv)
-    if not opts or not (opts.get("sync") or opts.get("quote")) or ("task" in opts) != ("branch" in opts) \
-            or (opts.get("sync") and len(opts) > 1):
+    if not opts or not (opts.get("sync") or opts.get("quote") or "task" in opts) \
+            or ("task" in opts) != ("branch" in opts) or (opts.get("sync") and len(opts) > 1):
         sys.stderr.write(USAGE)
         return 2
+    if "task" in opts and ("quote" in opts or "time" in opts):
+        out("refused: the owner's words come from the task (todo add --target production --owner-quote), "
+            "not from promote")
+        return 1
     cwd = os.getcwd()
     root = agent_nightly.main_root(cwd)
+    remove_stale(root)
     wb = agent_nightly.need_stored(root)
     if not wb:
         return 1
-    prod = production_branch(root)
+    prod = agent_conf.production_branch(root)
     if opts.get("sync"):
         return sync(root, wb, prod)[0]
     if "task" in opts:
-        return direct(root, wb, prod, opts["task"], opts["branch"], opts["quote"], opts.get("time"))
+        return direct(root, wb, prod, opts["task"], opts["branch"])
     return publish(root, wb, prod, opts["quote"], opts.get("time"))
 
 
