@@ -22,10 +22,10 @@ sys.path.insert(0, HERE)
 from scripthelp import ROOT, BIN, ScriptCase  # noqa: E402
 
 # owner 1A 2026-11-25 (requirement section 15): FULL SUITE is gone, MODULE TESTS is the largest per-task check
-# owner principle 2026-11-25 (section 19): OUTCOME CHECK heads the table; DIFF READ and FLOW CHECK fold into it
-TOOL = ["OUTCOME CHECK", "DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "DB CHECK",
+# section 21 (owner, 2026-11-25): the PR-style review heads the table and is the main check of every task
+TOOL = ["PR REVIEW", "DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "DB CHECK",
         "DATA CHECK", "CORE REVIEW"]
-BRIEF = ["EXAMPLES TEST", "UI CHECK", "REAL DATA COUNT"]
+BRIEF = ["EXAMPLES TEST", "FLOW CHECK", "UI CHECK", "REAL DATA COUNT"]
 FILE_LINE = re.compile(r"^FILE (\S+): (\S+) \((.*)\)$")
 
 
@@ -68,17 +68,23 @@ class TestTheTable(unittest.TestCase):
         self.assertEqual(sign["MODULE TESTS"], "a dependency, lockfile, CI or test-config change")
         self.assertIn("changes or removes data or columns", sign["DB CHECK"])
         self.assertIn("permission", sign["CORE REVIEW"])
-        for name in ("OUTCOME CHECK", "DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS") + tuple(BRIEF):
+        for name in ("PR REVIEW", "DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS") + tuple(BRIEF):
             self.assertEqual(sign[name], "no", name)
 
     def test_triggers_say_what_the_requirement_says(self):
         trig = {b["name"]: b["trigger"] for b in self.mod.BLOCKS}
         self.assertEqual(trig["DIFF SCAN"], "every task")
-        self.assertEqual(trig["OUTCOME CHECK"], "every task")
+        self.assertEqual(trig["PR REVIEW"], "every task")
         runs = {b["name"]: b["runs"] for b in self.mod.BLOCKS}
-        for phrase in ("did not build it", "outcome", "owner approved", "reads the diff", "runs the real thing once",
-                       "15-minute time box", "ideas file"):
-            self.assertIn(phrase, runs["OUTCOME CHECK"])
+        for phrase in ("did not build it", "reads the diff against the approved requirement", "nothing else",
+                       "edge list", "no check deleted", "no secret", "diff size"):
+            self.assertIn(phrase, runs["PR REVIEW"])
+        self.assertNotIn("runs the real thing", runs["PR REVIEW"])
+        self.assertEqual(trig["FLOW CHECK"], "what a user does changes")
+        self.assertTrue(trig["UI CHECK"].startswith("what a user sees changes"))
+        for name in ("FLOW CHECK", "UI CHECK"):
+            self.assertIn("15-minute time box", runs[name])
+            self.assertIn("ideas file", runs[name])
         self.assertIn("LIGHT", runs["RELATED TESTS"])
         self.assertIn("release run or the nightly", runs["RELATED TESTS"])
         self.assertIn("release run or the nightly", runs["MODULE TESTS"])
@@ -118,7 +124,7 @@ class TestTheTable(unittest.TestCase):
         lines = r.stdout.splitlines()
         self.assertEqual(lines[0], "| Block | Picked | Trigger | What runs | Owner signs |")
         self.assertRegex(lines[1], r"^\|(-+\|){5}$")
-        self.assertEqual(len(lines), 2 + 12)
+        self.assertEqual(len(lines), 2 + 13)
         for b, line in zip(self.mod.BLOCKS, lines[2:]):
             self.assertEqual(line, "| %s | %s | %s | %s | %s |"
                              % (b["name"], b["picked"], b["trigger"], b["runs"], b["sign"]))
@@ -208,7 +214,7 @@ class TestOutputShape(BlocksCase):
     def test_no_changes(self):
         self.base({"src/a.js": "x()\n"})
         r = self.check()
-        self.assertEqual(r.stdout.splitlines()[0], "BLOCKS: OUTCOME CHECK, DIFF SCAN")
+        self.assertEqual(r.stdout.splitlines()[0], "BLOCKS: PR REVIEW, DIFF SCAN")
         self.assertIn("no changes", r.stdout.splitlines())
 
     def test_line_order(self):
@@ -219,7 +225,7 @@ class TestOutputShape(BlocksCase):
         self.assertTrue(lines[1].startswith("FILE "), r.stdout)
         tags = [l.split(":")[0] for l in lines]
         self.assertLess(tags.index("DIFF SCAN"), tags.index("NOT TRIGGERED"))
-        self.assertEqual(lines[-1], "BRIEF PICKS: EXAMPLES TEST, UI CHECK, REAL DATA COUNT "
+        self.assertEqual(lines[-1], "BRIEF PICKS: EXAMPLES TEST, FLOW CHECK, UI CHECK, REAL DATA COUNT "
                                     "(dispatch picks them from the brief)")
 
     def test_blocks_are_in_table_order_and_brief_blocks_never_in_it(self):
@@ -428,7 +434,7 @@ class TestTriggers(BlocksCase):
 
     def test_an_asset_alone_runs_only_the_diff_scan(self):
         r = self.run_case({"img/a.png": b"\x89PNG1"}, {"img/a.png": b"\x89PNG2"}, conf=CONF_JS)
-        self.assertEqual(self.blocks(r), ["OUTCOME CHECK", "DIFF SCAN"])
+        self.assertEqual(self.blocks(r), ["PR REVIEW", "DIFF SCAN"])
 
     def test_ci_config_is_every_module_and_owner_sign(self):
         r = self.run_case({".github/workflows/ci.yml": "a: 1\n"}, {".github/workflows/ci.yml": "a: 2\n"}, conf=CONF_JS)
@@ -493,7 +499,7 @@ class TestBudget(BlocksCase):
 
 
 class TestLightOnly(BlocksCase):
-    """Owner principle (section 19): a task runs only LIGHT related and module tests (measured); a heavy one
+    """Owner principle (sections 19 and 21): a task runs only LIGHT related and module tests (measured); a heavy one
     goes to the release run or the nightly and never blocks a merge. Unmeasured: runs per task."""
 
     def weights(self, data):
@@ -502,11 +508,11 @@ class TestLightOnly(BlocksCase):
         with open(os.path.join(gd, "agent_test_weights.json"), "w") as fh:
             json.dump(data, fh)
 
-    def test_the_outcome_check_line(self):
+    def test_the_pr_review_line(self):
         r = self.run_case({"src/a.js": "x()\n"}, {"src/a.js": "y()\n"})
-        self.assertEqual(self.blocks(r)[0], "OUTCOME CHECK")
-        self.assertEqual(self.detail(r, "OUTCOME CHECK"),
-                         "an agent that did not build it: read the diff, run the real thing once (15 min box)")
+        self.assertEqual(self.blocks(r)[0], "PR REVIEW")
+        self.assertEqual(self.detail(r, "PR REVIEW"),
+                         "an agent that did not build it reads the diff against the approved requirement")
 
     def test_heavy_related_tests_go_to_the_net(self):
         self.weights({"related": "300 s 2048 MB"})

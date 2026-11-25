@@ -54,10 +54,10 @@ repo gate
 printf 'x()\n' > "$R/app.js"; base; printf 'y()\n' > "$R/app.js"
 g add app.js; g commit -q -m "banner to toast"     # the gate plans what merges: committed work only
 cd "$R"
-"$P/bin/agent-file.sh" todo add t small "banner to toast" 10 --checks "OUTCOME CHECK" --builder "t Deputy"
+"$P/bin/agent-file.sh" todo add t small "banner to toast" 10 --checks "PR REVIEW" --builder "t Deputy"
 for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do "$P/bin/agent-file.sh" check t "$b" pass --by "t Deputy" --evidence demo; done
 "$P/bin/agent-file.sh" checks gate t --dir "$R" --base base; echo "exit $?"
-"$P/bin/agent-file.sh" check t "OUTCOME CHECK" pass --by "t Check" --evidence "read the diff"
+"$P/bin/agent-file.sh" check t "PR REVIEW" pass --by "t Check" --evidence "read the diff"
 "$P/bin/agent-file.sh" checks gate t --dir "$R" --base base; echo "exit $?"
 
 say "6 next lists a queued task that can start"

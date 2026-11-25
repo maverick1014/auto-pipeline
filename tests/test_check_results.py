@@ -76,9 +76,9 @@ class TestTodoAddChecks(Case):
 
     def test_checks_and_scope_fields_after_guess(self):
         self.ok("todo", "add", "toast", "small", "banner to toast", "10", "--guess", "8",
-                "--checks", "OUTCOME CHECK", "--scope", "src/pages/Orders.jsx,src/pages/Orders.test.jsx")
+                "--checks", "PR REVIEW", "--scope", "src/pages/Orders.jsx,src/pages/Orders.test.jsx")
         f = self.fields("toast")
-        self.assertEqual(f[3:7], ["est 10m", "guess 8m", "checks OUTCOME CHECK",
+        self.assertEqual(f[3:7], ["est 10m", "guess 8m", "checks PR REVIEW",
                                   "scope src/pages/Orders.jsx,src/pages/Orders.test.jsx"])
 
     def test_checks_in_table_order_whatever_the_order_given(self):
@@ -86,11 +86,11 @@ class TestTodoAddChecks(Case):
         self.assertIn("checks EXAMPLES TEST, UI CHECK", self.fields("exp"))
 
     def test_checks_after_est_without_guess(self):
-        self.ok("todo", "add", "w", "small", "wording", "5", "--checks", "OUTCOME CHECK")
-        self.assertEqual(self.fields("w")[3:5], ["est 5m", "checks OUTCOME CHECK"])
+        self.ok("todo", "add", "w", "small", "wording", "5", "--checks", "PR REVIEW")
+        self.assertEqual(self.fields("w")[3:5], ["est 5m", "checks PR REVIEW"])
 
     def test_an_unknown_block_is_refused(self):
-        r = self.refused("todo", "add", "x", "small", "x", "5", "--checks", "OUTCOME CHECK,SMOKE TEST")
+        r = self.refused("todo", "add", "x", "small", "x", "5", "--checks", "PR REVIEW,SMOKE TEST")
         self.assertIn("SMOKE TEST", r.stderr)
 
     def test_owner_sign_may_be_planned(self):
@@ -102,8 +102,8 @@ class TestTodoAddChecks(Case):
         self.assertIn("checks OWNER SIGN", self.fields("q"))
 
     def test_a_tool_block_may_be_planned_too(self):
-        self.ok("todo", "add", "x", "small", "x", "5", "--checks", "CORE REVIEW,OUTCOME CHECK")
-        self.assertIn("checks OUTCOME CHECK, CORE REVIEW", self.fields("x"))
+        self.ok("todo", "add", "x", "small", "x", "5", "--checks", "CORE REVIEW,PR REVIEW")
+        self.assertIn("checks PR REVIEW, CORE REVIEW", self.fields("x"))
 
     def test_old_level_still_works(self):
         self.ok("todo", "add", "old", "small", "x", "5", "--level", "B")
@@ -114,19 +114,19 @@ class TestTodoChecks(Case):
 
     def setUp(self):
         super().setUp()
-        self.ok("todo", "add", "t", "big", "task", "60", "--checks", "OUTCOME CHECK")
+        self.ok("todo", "add", "t", "big", "task", "60", "--checks", "PR REVIEW")
 
     def test_add_is_a_union_in_table_order(self):
         r = self.ok("todo", "checks", "t", "UI CHECK,EXAMPLES TEST")
         self.assertEqual(r.stdout.strip(),
-                         "todo checks: t OUTCOME CHECK -> OUTCOME CHECK, EXAMPLES TEST, UI CHECK")
-        self.assertIn("checks OUTCOME CHECK, EXAMPLES TEST, UI CHECK", self.fields("t"))
+                         "todo checks: t PR REVIEW -> PR REVIEW, EXAMPLES TEST, UI CHECK")
+        self.assertIn("checks PR REVIEW, EXAMPLES TEST, UI CHECK", self.fields("t"))
 
     def test_first_checks_on_a_line_without_the_field(self):
         self.ok("todo", "add", "bare", "small", "x", "5")
-        r = self.ok("todo", "checks", "bare", "OUTCOME CHECK")
-        self.assertEqual(r.stdout.strip(), "todo checks: bare - -> OUTCOME CHECK")
-        self.assertIn("checks OUTCOME CHECK", self.fields("bare"))
+        r = self.ok("todo", "checks", "bare", "PR REVIEW")
+        self.assertEqual(r.stdout.strip(), "todo checks: bare - -> PR REVIEW")
+        self.assertIn("checks PR REVIEW", self.fields("bare"))
 
     def test_every_other_field_stays(self):
         self.ok("todo", "stage", "t", "tests")
@@ -136,23 +136,23 @@ class TestTodoChecks(Case):
         self.assertEqual(before, after)
 
     def test_unknown_task_or_block_refused(self):
-        self.refused("todo", "checks", "nope", "OUTCOME CHECK")
+        self.refused("todo", "checks", "nope", "PR REVIEW")
         self.refused("todo", "checks", "t", "LOOK AT IT")
 
     def test_remove_without_a_verified_owner_order_is_refused(self):
         self.repo.write_bin_script("agent-owner-order.sh",
                                    "#!/usr/bin/env bash\necho 'refused: no such owner prompt'\nexit 1\n")
-        r = self.refused("todo", "checks", "t", "--remove", "OUTCOME CHECK", "--owner-quote", "drop the diff read")
+        r = self.refused("todo", "checks", "t", "--remove", "PR REVIEW", "--owner-quote", "drop the diff read")
         self.assertIn("no such owner prompt", r.stderr)
 
     def test_remove_with_a_verified_owner_order(self):
         log = os.path.join(self.repo.base, "order.log")
         self.repo.write_bin_script("agent-owner-order.sh",
                                    "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\necho 'verified'\nexit 0\n" % log)
-        self.ok("todo", "checks", "t", "--remove", "OUTCOME CHECK", "--owner-quote", "drop the diff read")
+        self.ok("todo", "checks", "t", "--remove", "PR REVIEW", "--owner-quote", "drop the diff read")
         f = self.fields("t")
-        self.assertFalse(any(x.startswith("checks ") and "OUTCOME CHECK" in x for x in f), f)
-        self.assertTrue(any(re.fullmatch(r"removed OUTCOME CHECK \d{4}-\d{2}-\d{2} \d{2}:\d{2}", x) for x in f), f)
+        self.assertFalse(any(x.startswith("checks ") and "PR REVIEW" in x for x in f), f)
+        self.assertTrue(any(re.fullmatch(r"removed PR REVIEW \d{4}-\d{2}-\d{2} \d{2}:\d{2}", x) for x in f), f)
         with open(log) as fh:
             args = fh.read().split("\n")
         self.assertEqual(args[0], "verify")
@@ -171,7 +171,7 @@ class TestTodoChecks(Case):
 class TestTodoEst(Case):
 
     def test_est_and_guess_replaced_in_place_rest_stays(self):
-        self.ok("todo", "add", "t", "big", "task", "60", "--guess", "50", "--checks", "OUTCOME CHECK")
+        self.ok("todo", "add", "t", "big", "task", "60", "--guess", "50", "--checks", "PR REVIEW")
         self.ok("todo", "stage", "t", "tests")
         self.ok("todo", "wait", "t", "on", "question")
         self.ok("todo", "wait", "t", "off")
@@ -207,10 +207,10 @@ class TestTodoEst(Case):
 class TestCheckLine(Case):
 
     def test_one_line_in_the_state_file_of_this_folder(self):
-        r = self.ok("check", "toast", "OUTCOME CHECK", "pass", "--by", "check deputy", "--evidence", "diff read, 3 files")
+        r = self.ok("check", "toast", "PR REVIEW", "pass", "--by", "check deputy", "--evidence", "diff read, 3 files")
         self.assertIn("toast", r.stdout)
         last = self.state().strip().splitlines()[-1]
-        self.assertRegex(last, r"^CHECK toast OUTCOME CHECK: pass \| by check deputy \| diff read, 3 files \| "
+        self.assertRegex(last, r"^CHECK toast PR REVIEW: pass \| by check deputy \| diff read, 3 files \| "
                                r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
         self.assertNotIn("CHECK", self.todo())
 
@@ -285,7 +285,7 @@ class TestGate(Case):
         self.git("push", "-q", "-u", "origin", "feat")
         # tool blocks of this diff: DIFF SCAN, BUILD, RELATED TESTS (none found)
         self.commit_push({"app.js": "y()\n"})
-        self.ok("todo", "add", "t", "small", "task", "10", "--checks", "OUTCOME CHECK")
+        self.ok("todo", "add", "t", "small", "task", "10", "--checks", "PR REVIEW")
 
     def gate(self, *extra, env=None, dirpath=None):
         return self.af("checks", "gate", "t", "--dir", dirpath or self.repo.dir, "--base", "base", *extra, env=env)
@@ -299,25 +299,25 @@ class TestGate(Case):
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         lines = r.stdout.splitlines()
-        self.assertIn("OUTCOME CHECK: missing", lines)
+        self.assertIn("PR REVIEW: missing", lines)
         self.assertIn("BUILD: pass (by tm)", lines)
-        self.assertEqual(lines[-1], "GATE REFUSED t: OUTCOME CHECK missing")
+        self.assertEqual(lines[-1], "GATE REFUSED t: PR REVIEW missing")
 
     def test_pass_when_every_planned_block_passed(self):
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         r = self.gate()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(r.stdout.splitlines()[-1], "GATE PASS t")
 
     def test_the_tool_blocks_come_from_the_diff_not_the_todo_line(self):
-        self.passes("OUTCOME CHECK")
+        self.passes("PR REVIEW")
         r = self.gate()
         self.assertEqual(r.returncode, 1)
         self.assertIn("BUILD: missing", r.stdout.splitlines())
         self.assertIn("DIFF SCAN: missing", r.stdout.splitlines())
 
     def test_the_last_line_of_a_block_wins(self):
-        self.passes("DIFF SCAN", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "RELATED TESTS", "PR REVIEW")
         self.ok("check", "t", "BUILD", "pass", "--by", "tm", "--evidence", "ok")
         self.ok("check", "t", "BUILD", "fail", "--by", "check deputy", "--evidence", "lint red")
         r = self.gate()
@@ -326,13 +326,13 @@ class TestGate(Case):
         self.assertEqual(r.stdout.splitlines()[-1], "GATE REFUSED t: BUILD fail")
 
     def test_another_tasks_lines_do_not_count(self):
-        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK"):
+        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
             self.ok("check", "other", b, "pass", "--by", "tm", "--evidence", "ok")
         self.assertEqual(self.gate().returncode, 1)
 
     def test_a_signing_block_plans_owner_sign(self):
         self.commit_push({"package-lock.json": '{"a": 2}\n'})
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK", "MODULE TESTS")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW", "MODULE TESTS")
         r = self.gate()
         self.assertEqual(r.returncode, 1)
         self.assertIn("OWNER SIGN: missing", r.stdout.splitlines())
@@ -343,7 +343,7 @@ class TestGate(Case):
     def test_a_planned_owner_sign_is_gated(self):
         # core review defect 6
         self.ok("todo", "checks", "t", "OWNER SIGN")
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         r = self.gate()
         self.assertEqual(r.returncode, 1)
         self.assertIn("OWNER SIGN: missing", r.stdout.splitlines())
@@ -351,7 +351,7 @@ class TestGate(Case):
     # -- core review defect 4: the gate plans what merges
 
     def test_a_dirty_tree_is_refused(self):
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         self.write({"app.js": "z()\n"})
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
@@ -359,12 +359,12 @@ class TestGate(Case):
                          "GATE REFUSED t: uncommitted changes in %s (commit and push them, or drop them)" % self.repo.dir)
 
     def test_agent_files_do_not_make_it_dirty(self):
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         self.write({"agent_state.trim-2026-11-25.txt": "x\n"})
         self.assertEqual(self.gate().returncode, 0, self.gate().stdout)
 
     def test_an_unpushed_head_is_refused(self):
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         self.commit_push({"app.js": "w()\n"}, push=False)
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
@@ -372,7 +372,7 @@ class TestGate(Case):
 
     def test_no_upstream_is_a_note(self):
         self.git("checkout", "-q", "-b", "local-only")
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         r = self.gate()
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertIn("note: no upstream: the gate plans this local HEAD", r.stdout.splitlines())
@@ -385,7 +385,7 @@ class TestGate(Case):
         wt = os.path.join(self.repo.base, "wt_lock")
         self.git("worktree", "add", "-q", "-b", "feat-lock", wt, "feat")
         self.commit_push({"package-lock.json": '{"a": 2}\n'}, cwd=wt)
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK", "MODULE TESTS")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW", "MODULE TESTS")
         r = self.gate(env={"CLAUDE_PROJECT_DIR": self.repo.dir}, dirpath=wt)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("OWNER SIGN: missing", r.stdout.splitlines())
@@ -398,7 +398,7 @@ class TestGate(Case):
         self.git("push", "-q", "-u", "origin", "feat-wt", cwd=wt)
         self.passes("DIFF SCAN", "BUILD", cwd=wt)                    # the task manager, in its worktree
         self.passes("RELATED TESTS")                                 # a deputy of the main manager, in main
-        self.ok("check", "t", "OUTCOME CHECK", "pass", "--by", "t Check", "--evidence", "read it")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Check", "--evidence", "read it")
         r = self.gate(dirpath=wt)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
@@ -411,12 +411,12 @@ class TestGate(Case):
         with open(os.path.join(wt, "agent_state.txt"), "a") as fh:
             for b in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
                 fh.write("CHECK t %s: pass | by tm | ok | 2026-11-25 09:00\n" % b)
-            fh.write("CHECK t OUTCOME CHECK: fail | by t Check | a typo | 2026-11-25 12:00\n")
+            fh.write("CHECK t PR REVIEW: fail | by t Check | a typo | 2026-11-25 12:00\n")
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
-            fh.write("CHECK t OUTCOME CHECK: pass | by t Check | ok | 2026-11-25 10:00\n")
+            fh.write("CHECK t PR REVIEW: pass | by t Check | ok | 2026-11-25 10:00\n")
         r = self.gate(dirpath=wt)
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("OUTCOME CHECK: fail (by t Check)", r.stdout.splitlines())
+        self.assertIn("PR REVIEW: fail (by t Check)", r.stdout.splitlines())
 
     def test_checks_gather_keeps_a_worktrees_lines_in_main(self):
         wt = os.path.join(self.repo.base, "wt_g")
@@ -440,7 +440,7 @@ class TestGate(Case):
 
     def test_a_forged_owner_sign_line_is_not_accepted(self):
         self.ok("todo", "checks", "t", "OWNER SIGN")
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
             fh.write("CHECK t OWNER SIGN: pass | by owner | ok | 2026-11-25 13:00\n")
         r = self.gate()
@@ -449,7 +449,7 @@ class TestGate(Case):
 
     def test_a_verified_owner_sign_line_is_checked_again(self):
         self.ok("todo", "checks", "t", "OWNER SIGN")
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
             fh.write("CHECK t OWNER SIGN: pass | by owner | owner order verified: yes merge it | 2026-11-25 13:00\n")
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
@@ -475,21 +475,21 @@ class TestGate(Case):
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
         for who in ("t Task Manager", "t Worker 2", "t Worker 1: toast", "t Deputy"):
             with self.subTest(who=who):
-                self.ok("check", "t", "OUTCOME CHECK", "pass", "--by", who, "--evidence", "read it")
+                self.ok("check", "t", "PR REVIEW", "pass", "--by", who, "--evidence", "read it")
                 r = self.gate()
                 self.assertEqual(r.returncode, 1, r.stdout)
-                self.assertIn("OUTCOME CHECK: pass by the builder (%s), not accepted" % who, r.stdout.splitlines())
+                self.assertIn("PR REVIEW: pass by the builder (%s), not accepted" % who, r.stdout.splitlines())
 
     def test_the_check_deputy_is_no_builder(self):
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
-        self.ok("check", "t", "OUTCOME CHECK", "pass", "--by", "t Check", "--evidence", "read it")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Check", "--evidence", "read it")
         r = self.gate()
         self.assertEqual(r.returncode, 0, r.stdout)
 
     def test_results_from_a_file(self):
         path = os.path.join(self.repo.base, "report.txt")
         with open(path, "w") as fh:
-            for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK"):
+            for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
                 fh.write("CHECK t %s: pass | by tm | ok | 2026-11-25 13:00\n" % b)
         r = self.gate("--results", path)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -500,7 +500,7 @@ class TestGate(Case):
         path = os.path.join(self.repo.base, "report.txt")
         with open(path, "w") as fh:
             fh.write("=== REPORT ===\nDONE PASS t\n")
-            for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK"):
+            for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
                 fh.write("  CHECK t %s: pass | by t Check | ok | 2026-11-25 13:00\n" % b)
         r = self.gate("--results", path)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -509,33 +509,33 @@ class TestGate(Case):
         # owner 1A (section 17): a task merges into the working branch; there is no origin/main here
         self.git("push", "-q", "origin", "base:refs/heads/trunk")
         self.commit_push({"agent_repo.conf": "working_branch=trunk\n"})
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         r = self.af("checks", "gate", "t", "--dir", self.repo.dir)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_no_todo_line_needs_checks(self):
         r = self.af("checks", "gate", "ghost", "--dir", self.repo.dir, "--base", "base")
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
-        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK"):
+        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
             self.ok("check", "ghost", b, "pass", "--by", "tm", "--evidence", "ok")
-        r = self.af("checks", "gate", "ghost", "--dir", self.repo.dir, "--base", "base", "--checks", "OUTCOME CHECK")
+        r = self.af("checks", "gate", "ghost", "--dir", self.repo.dir, "--base", "base", "--checks", "PR REVIEW")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_a_removed_brief_block_is_not_planned(self):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "checks", "t", "UI CHECK")
         self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "no ui check for this one")
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         self.assertEqual(self.gate().returncode, 0)
 
     def test_outcome_check_is_planned_for_every_task(self):
-        # owner principle 2026-11-25 (section 19): the main check of every task, planned by the tool
+        # section 21: the PR-style review is the main check of every task, planned by the tool
         self.ok("todo", "add", "plain", "small", "x", "5")
         for b in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
             self.ok("check", "plain", b, "pass", "--by", "tm", "--evidence", "ok")
         r = self.af("checks", "gate", "plain", "--dir", self.repo.dir, "--base", "base")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertEqual(r.stdout.splitlines()[-1], "GATE REFUSED plain: OUTCOME CHECK missing")
+        self.assertEqual(r.stdout.splitlines()[-1], "GATE REFUSED plain: PR REVIEW missing")
 
     def test_a_removed_tool_block_is_still_planned_when_the_diff_triggers_it(self):
         # a removal is recorded, but the gate recomputes the tool blocks from the diff
@@ -543,7 +543,7 @@ class TestGate(Case):
         self.ok("todo", "checks", "t", "BUILD")
         self.ok("todo", "checks", "t", "--remove", "BUILD", "--owner-quote", "skip the build")
         self.ok("todo", "checks", "t", "BUILD")
-        self.passes("DIFF SCAN", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "RELATED TESTS", "PR REVIEW")
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("BUILD: missing", r.stdout.splitlines())
@@ -553,35 +553,35 @@ class TestGate(Case):
     def test_a_diff_read_by_the_builder_is_refused(self):
         self.ok("todo", "builder", "t", "t Deputy")
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
-        self.ok("check", "t", "OUTCOME CHECK", "pass", "--by", "t Deputy", "--evidence", "read my own diff")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Deputy", "--evidence", "read my own diff")
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("OUTCOME CHECK: pass by the builder (t Deputy), not accepted", r.stdout.splitlines())
-        self.assertEqual(r.stdout.splitlines()[-1], "GATE REFUSED t: OUTCOME CHECK by the builder")
+        self.assertIn("PR REVIEW: pass by the builder (t Deputy), not accepted", r.stdout.splitlines())
+        self.assertEqual(r.stdout.splitlines()[-1], "GATE REFUSED t: PR REVIEW by the builder")
 
     def test_the_builder_may_pass_the_tool_blocks(self):
         self.ok("todo", "builder", "t", "t Deputy")
         for b in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
             self.ok("check", "t", b, "pass", "--by", "t Deputy", "--evidence", "ok")
-        self.ok("check", "t", "OUTCOME CHECK", "pass", "--by", "check deputy", "--evidence", "read it")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "check deputy", "--evidence", "read it")
         self.assertEqual(self.gate().returncode, 0)
 
     def test_a_worker_of_the_launch_records_is_a_builder(self):
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
             fh.write("LAUNCH a1: worker 1 | task t | t Worker 1: toast | since 2026-11-25 12:00 | pid 1 | by tm\n")
         self.ok("todo", "checks", "t", "UI CHECK")
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         self.ok("check", "t", "UI CHECK", "pass", "--by", "t Worker 1: toast", "--evidence", "clicked it")
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("UI CHECK: pass by the builder (t Worker 1: toast), not accepted", r.stdout.splitlines())
 
     def test_unknown_builder_is_accepted_with_one_note(self):
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "OUTCOME CHECK")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         r = self.gate()
         self.assertEqual(r.returncode, 0, r.stdout)
         notes = [l for l in r.stdout.splitlines() if l.startswith("note: builder unknown")]
-        self.assertEqual(notes, ["note: builder unknown: OUTCOME CHECK by tm accepted"])
+        self.assertEqual(notes, ["note: builder unknown: PR REVIEW by tm accepted"])
 
     def test_builder_field_on_the_todo_line(self):
         r = self.ok("todo", "builder", "t", "t Deputy")

@@ -52,7 +52,8 @@ class NetCase(ScriptCase):
     def setUp(self):
         super().setUp()
         self.git("branch", "-M", "main")
-        self.put({"agent_repo.conf": "version=1\nfull_cmd=python3 -m unittest discover -s tests -t .\n",
+        self.put({"agent_repo.conf": "version=1\nfull_cmd=python3 -m unittest discover -s tests -t .\n"
+                                     "related_cmd=python3 -m unittest {modules}\n",
                   ".claude-plugin/plugin.json": '{"name": "p", "version": "0.1.0"}\n',
                   "tests/__init__.py": "", "tests/test_a.py": PASSING, "tests/test_x.py": x_test("ok"),
                   "src/x.txt": "ok\n"})
@@ -181,6 +182,38 @@ class TestNightly(NetCase):
         self.assertEqual(self.status_file()["result"], "green", self.status_file())
         self.assertTrue(os.path.exists(os.path.join(self.repo.dir, "node_modules", "dep", "index.js")),
                         "the main checkout's folder stays")
+
+    def test_failures_names_the_merge_by_running_the_test(self):
+        # section 21 (4): the broken file is not named in the test's text, so only running finds the merge
+        self.put({"tests/test_cfg.py": "import os, unittest\n\n\nclass C(unittest.TestCase):\n"
+                                       "    def test_cfg(self):\n        name = 'co' + 'nf.txt'\n"
+                                       "        with open(os.path.join('src', name)) as fh:\n"
+                                       "            self.assertEqual(fh.read().strip(), 'on')\n",
+                  "src/conf.txt": "on\n", "requirements/feat-c.md": "# feat-c\n"})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "cfg")
+        self.nightly("--start", "--wait")
+        self.merge("feat-a", {"docs/a.md": "a\n"}, "Merge feat-a (W8)")
+        self.merge("feat-c", {"src/conf.txt": "off\n"}, "Merge feat-c (W8)")
+        self.merge("feat-y", {"docs/b.md": "y\n"}, "Merge feat-y (W8)")
+        self.nightly("--start", "--wait")
+        r = self.nightly("--failures")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rows = [l for l in r.stdout.splitlines() if "test_cfg" in l]
+        self.assertEqual(len(rows), 1, r.stdout)
+        test, merge, task, req = rows[0].split(" | ")
+        self.assertRegex(merge, r"^[0-9a-f]{7,} Merge feat-c \(W8\)$")
+        self.assertEqual((task, req), ("feat-c", "requirements/feat-c.md"))
+        misses = [l for l in self.misses_file() if "test_cfg" in l]
+        self.assertTrue(misses and misses[-1].split(" | ")[2].endswith("Merge feat-c (W8)"), misses)
+
+    def test_failures_with_no_green_run_before(self):
+        self.put({"src/x.txt": "broken\n"})
+        self.git("commit", "-qam", "break")
+        self.nightly("--start", "--wait")
+        rows = [l for l in self.nightly("--failures").stdout.splitlines() if "test_x_txt" in l]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].split(" | ")[1], "-")
 
     def test_a_red_first_run_is_no_miss(self):
         self.put({"src/x.txt": "broken\n"})

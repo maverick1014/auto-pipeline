@@ -21,7 +21,7 @@ sys.path.insert(0, HERE)
 from scripthelp import BIN, ScriptCase  # noqa: E402
 
 NAMES = ["DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK",
-         "CORE REVIEW", "OUTCOME CHECK", "EXAMPLES TEST", "UI CHECK",
+         "CORE REVIEW", "PR REVIEW", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK",
          "REAL DATA COUNT"]
 ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
            "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B")
@@ -56,16 +56,16 @@ QUIZ_Q35 = """Q35. Before a release the full suite runs once on the working bran
   C. Release now and fix the tests later
   D. Mark the two tests skipped and release"""
 
-QUIZ_Q38 = """Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: OUTCOME CHECK, DIFF SCAN, RELATED TESTS, GUARD TESTS. What runs?
+QUIZ_Q38 = """Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: PR REVIEW, DIFF SCAN, RELATED TESTS, GUARD TESTS. What runs?
   A. The full suite once
-  B. Those blocks: an agent that did not build it checks the outcome, the light tests run, nothing else
+  B. Those blocks: an agent that did not build it reviews the diff against the approved requirement, the light tests run, nothing else
   C. Lint, type-check, a UI CHECK and the heavy tests as well
   D. Nothing: it is only text"""
 
-QUIZ_Q39 = """Q39. Production is broken and the smallest fix is ready. You:
-  A. Run the whole test flow first, then release
-  B. One agent that did not build it checks the outcome, the light related tests run, then merge and release at once; the heavy tests run afterwards and a failure there goes to a new fixer agent
-  C. Release with no check at all
+QUIZ_Q39 = """Q39. Production is broken and the owner wants it fixed now. You:
+  A. Fix it on the working branch and wait for the release run
+  B. Branch from the latest stable release, make the smallest fix, a PR review by an agent that did not build it, the light related tests, release it alone, then merge it back into the working branch
+  C. Release a fix with no check at all
   D. Wait for the nightly run"""
 
 
@@ -188,7 +188,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
 
     def test_w5_the_check_deputy_drives_the_browser(self):
         w5 = self.rule("W5. ", "W6. ")
-        for phrase in ("check deputy", "one at a time", "OUTCOME CHECK", "UI CHECK", "never verify their own work"):
+        for phrase in ("check deputy", "one at a time", "FLOW CHECK", "UI CHECK", "never verify their own work"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w5)
         self.assertNotIn("Main manager only", w5)
@@ -242,7 +242,7 @@ class TestDispatchSkill(unittest.TestCase):
 
     def test_it_picks_the_brief_blocks(self):
         text = self.text()
-        for name in ("OUTCOME CHECK", "EXAMPLES TEST", "UI CHECK", "REAL DATA COUNT", "CORE REVIEW"):
+        for name in ("PR REVIEW", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK", "REAL DATA COUNT", "CORE REVIEW"):
             self.assertIn(name, text)
         adds = [l for l in text.splitlines() if "agent-file.sh todo add" in l]
         self.assertTrue(adds)
@@ -288,7 +288,7 @@ class TestMergeSkill(unittest.TestCase):
 
     def test_gate_and_check_deputy(self):
         text = self.text()
-        for phrase in ("checks gate", "check-deputy", "GATE REFUSED", "OUTCOME CHECK", "UI CHECK"):
+        for phrase in ("checks gate", "check-deputy", "GATE REFUSED", "PR REVIEW", "FLOW CHECK", "UI CHECK"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
         self.assertLess(text.index("checks gate"), text.index("merge-deputy"))
@@ -313,7 +313,8 @@ class TestAgents(unittest.TestCase):
         self.assertNotIn("Edit", tools)
         self.assertNotIn("Write", tools)
         body = text.split("---", 2)[2]
-        for phrase in ("OUTCOME CHECK", "UI CHECK", "RELEASE SMOKE", "one at a time", "15-minute", "agent-file.sh idea add",
+        for phrase in ("PR REVIEW", "FLOW CHECK", "UI CHECK", "RELEASE SMOKE", "one at a time", "15-minute",
+                       "agent-file.sh idea add",
                        "agent-file.sh check", "CHECK PASS", "CHECK FAIL", "never edit", "floor"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, body)
@@ -542,50 +543,60 @@ class TestWorkingBranchRules(unittest.TestCase):
         self.assertEqual(conf.get("working_branch"), "main")
 
 
-class TestOutcomeIsTheProof(unittest.TestCase):
-    """Owner principle 2026-11-25 (TELL bd0506cc, section 19), for every repo on the plugin."""
+class TestReviewIsTheMainCheck(unittest.TestCase):
+    """Section 21 (owner and main manager, 2026-11-25; corrects section 19), for every repo on the plugin."""
 
     def r8(self):
         return section(read("PRINCIPLES.md"), "R8. Check blocks", "## B. Work")
 
-    def test_r8_starts_with_the_principle(self):
+    def test_r8_head(self):
         r8 = self.r8()
         head = r8[:r8.index("| Block |")]
         for phrase in ("let other agents verify the outcome of the code instead of letting test cases do it",
-                       "The proof that a change is right", "did not build it", "runs the real thing once",
-                       "the main check of every task", "Tests are a cheap guard only", "LIGHT",
-                       "a heavy test never blocks a merge", "The full suite never runs in a task",
-                       "URGENT FIX", "merge and release at once", "new fixer agent", "15-minute time box",
-                       "ideas file"):
+                       "PR REVIEW", "did not build it", "reads the diff against the approved requirement",
+                       "the main check of every task", "its cost follows the diff size",
+                       "only when what the user sees or does changed", "15-minute time box", "ideas file",
+                       "light related tests", "a bug that a review or check finds gets a small test with its fix",
+                       "The full suite is the safety net only", "URGENT FIX", "latest stable release",
+                       "release it alone", "merge it back into the working branch"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, head)
+        self.assertNotIn("runs the real thing once", r8)
+
+    def test_r8_release_run_failures(self):
+        r8 = self.r8()
+        for phrase in ("agent-nightly.sh --failures", "test out of date", "real break",
+                       "No check is deleted without a twin", "a table of these labels"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, r8)
 
     def test_the_old_urgent_line_is_gone(self):
         self.assertNotIn("a verified owner order may move a block to right after the release", self.r8())
 
-    def test_dispatch_plans_the_outcome_check_and_the_urgent_path(self):
+    def test_dispatch(self):
         text = read("skills", "dispatch", "SKILL.md")
-        for phrase in ("OUTCOME CHECK", "every task", "URGENT FIX", "release at once"):
+        for phrase in ("PR REVIEW", "every task", "URGENT FIX", "latest stable release", "agent-release.sh --source"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
-    def test_merge_skill_urgent_release(self):
+    def test_merge_skill(self):
         text = read("skills", "merge", "SKILL.md")
-        for phrase in ("URGENT FIX", "release at once", "agent-nightly.sh --start", "new fixer agent"):
+        for phrase in ("URGENT FIX", "agent-release.sh --urgent", "merge it back into the working branch",
+                       "agent-nightly.sh --failures", "test out of date", "real break", "new fixer agent"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
-    def test_check_deputy_box(self):
+    def test_check_deputy(self):
         text = read("agents", "check-deputy.md")
-        for phrase in ("OUTCOME CHECK", "real thing once", "15-minute", "only what the owner approved",
+        for phrase in ("PR REVIEW", "approved requirement", "15-minute", "only the approved items",
                        "agent-file.sh idea add"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
-    def test_no_old_block_names_left(self):
+    def test_no_retired_block_names_left(self):
         for path in (("PRINCIPLES.md",), ("skills", "dispatch", "SKILL.md"), ("skills", "merge", "SKILL.md"),
                      ("agents", "check-deputy.md"), ("agents", "fast-lane-deputy.md"), ("agents", "merge-deputy.md")):
             with self.subTest(path=path):
                 text = read(*path)
                 self.assertNotIn("DIFF READ", text)
-                self.assertNotIn("FLOW CHECK", text)
+                self.assertNotIn("OUTCOME CHECK", text)
