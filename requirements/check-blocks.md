@@ -713,3 +713,10 @@ and "17 settings" where PRINCIPLES.md counts them.
 - LOST (the watch cannot reach a machine or a pane) → wait one more sweep; still lost → tell the owner in one line with the machine and the task
 - Never redispatch a LOST task on another machine by itself
 ```
+
+## 39. Leftovers the main manager found reading PRINCIPLES.md as a newcomer (TELL d2d93d25)
+
+- (a) "slot" against "No count caps" (S6): W9 and W15 as section 37 F5; W11 "suite slot" becomes "suite run". The signal name WATCH SLOT stays (a name).
+- (b) R5 (the housekeep flag) and W8 (the sweep's safe items) say "merged into the working branch or the production branch", not "merged into origin/main"; the code does the same: agent_housekeep.py flags a todo line whose branch is merged into origin/<stored working branch> too (`flag: todo <name>: merged into origin/<working branch> (branch <b>)`, the production form unchanged); agent-cleanup.sh's help text says the same as the sweep (section 37 P7).
+- (c) Old names: the F Map's merge skill line "(the reviewer and the check deputy, then the merge deputy)", no "E2E"; W14's main manager stages "e2e (the review and the checks), merge" (the stage word e2e stays in the code as the name of that stage); W16 as section 37 F3.
+- (d) W6: every agent file is named by its plugin path `agents/<name>.md` (merge deputy and worker said `.claude/agents/`).

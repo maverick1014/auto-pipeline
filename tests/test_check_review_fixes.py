@@ -331,6 +331,58 @@ class TestAfterDoneFailAndLost(unittest.TestCase):
         self.assertTrue(lines[signals + 1].startswith("- DONE FAIL → "), lines[signals + 1])
 
 
+import test_agent_housekeep as th  # noqa: E402
+
+
+class TestLeftoversTexts(unittest.TestCase):
+    """Section 39 (TELL d2d93d25): what a newcomer reading PRINCIPLES.md still found."""
+
+    def test_a_no_slots(self):
+        text = read("PRINCIPLES.md")
+        self.assertNotIn("suite slot", text)
+        self.assertNotIn("free slot", text)
+        self.assertNotIn("slot is free", text)
+
+    def test_b_merged_means_either_branch(self):
+        text = read("PRINCIPLES.md")
+        self.assertNotIn("merged into origin/main", text)
+        r5 = rule("R5. ", "R6. ")
+        self.assertIn("merged into the working branch or the production branch", r5)
+        sweep = [l for l in text.splitlines() if l.startswith("- Removes only safe items")][0]
+        self.assertIn("merged into the working branch or the production branch", sweep)
+        self.assertNotIn("merged into origin/main", read("bin", "agent-cleanup.sh"))
+
+    def test_c_old_names(self):
+        text = read("PRINCIPLES.md")
+        self.assertNotIn("(E2E, then merge deputy)", text)
+        self.assertIn("(the reviewer and the check deputy, then the merge deputy)", text)
+        self.assertIn("Main manager: e2e (the review and the checks), merge", text)
+
+    def test_d_agent_paths(self):
+        w6 = rule("W6. ", "W7. ")
+        self.assertNotIn(".claude/agents/", w6)
+        for name in ("merge-deputy", "worker"):
+            self.assertIn("`agents/%s.md`" % name, w6)
+
+
+@only_own
+class TestLeftoversHousekeep(th.HousekeepCase):
+    def test_a_branch_merged_into_the_working_branch_is_flagged(self):
+        d = self.repo.dir
+        th.tc.git(d, "switch", "-q", "-c", "ap-main-t", "main")
+        th.tc.git(d, "push", "-q", "origin", "ap-main-t")
+        th.tc.git(d, "config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
+        th.tc.git(d, "switch", "-q", "-c", "feat/alpha")
+        self.commit_in(d, "alpha.txt")
+        th.tc.git(d, "push", "-q", "origin", "feat/alpha")
+        th.tc.git(d, "switch", "-q", "ap-main-t")
+        th.tc.git(d, "merge", "-q", "--no-ff", "-m", "Merge feat/alpha (W8)", "feat/alpha")
+        th.tc.git(d, "push", "-q", "origin", "ap-main-t")
+        self.set_file("agent_todo.txt", [self.todo("alpha")])
+        self.apply()
+        self.assertIn("flag: todo alpha: merged into origin/ap-main-t (branch feat/alpha)", self.body())
+
+
 class TestF11(unittest.TestCase):
     def test_docstring(self):
         head = read("bin", "agent_conf.py").split('"""')[1]
