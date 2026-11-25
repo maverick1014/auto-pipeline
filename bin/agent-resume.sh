@@ -217,12 +217,27 @@ try:
 except Exception:
     print("")' 2>/dev/null) || pane_handle=""
           # no handle in the answer: a name of our own, so the pane still counts until the reservation expires
+          real_handle=$pane_handle
           [ -n "$pane_handle" ] || pane_handle="resume-$$-$relaunch_count"
-          (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane "$pane_handle" "$room_pane") >/dev/null 2>&1 </dev/null || true
-          relaunched="yes"
+          if (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane "$pane_handle" "$room_pane") >/dev/null 2>&1 </dev/null; then
+            relaunched="yes"
+          else
+            rc_room=$?
+            if [ "$rc_room" -eq 1 ]; then
+              # another agent took the room first: close the new pane, say so (skills/dispatch: no room, close it)
+              [ -z "$real_handle" ] || runtime_close "$real_handle" >/dev/null 2>&1 </dev/null || true
+              relaunched="no, no room"
+              cap_lines="${cap_lines}no room (another agent took it first), closed the new pane, not relaunching $path
+"
+            else
+              relaunched="yes"
+            fi
+          fi
         fi
-        relaunch_count=$((relaunch_count + 1))
-        room_planned=$((room_planned + room_pane))
+        if [ "$relaunched" = yes ] || [ "$relaunched" = would ]; then
+          relaunch_count=$((relaunch_count + 1))
+          room_planned=$((room_planned + room_pane))
+        fi
       fi
     else
       # plain, cloud: no terminals. Same "is this worth relaunching" checks,
