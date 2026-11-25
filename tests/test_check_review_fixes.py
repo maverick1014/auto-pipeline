@@ -538,6 +538,18 @@ class TestG9AndG10Texts(unittest.TestCase):
         self.assertIn("suite run", d)
 
 
+class TestG11TheDefaultPrefixIsAlwaysKept(tc.CleanupCase):
+    def test_a_fixed_team_name_still_keeps_ap_main_branches(self):
+        d = self.repo.dir
+        self.repo.set_conf("working_branch", "team-main")
+        tc.git(d, "config", "--local", "auto-pipeline.workingbranch", "team-main")
+        tc.git(d, "branch", "ap-main-bob")                    # merged: its tip is in main
+        tc.git(d, "push", "-q", "origin", "ap-main-bob")
+        out = self.ok("--apply")
+        self.assertTrue(self.has_local("ap-main-bob"), out)
+        self.assertTrue(self.has_origin("ap-main-bob"), out)
+
+
 class TestF11(unittest.TestCase):
     def test_docstring(self):
         head = read("bin", "agent_conf.py").split('"""')[1]

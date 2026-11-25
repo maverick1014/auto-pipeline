@@ -742,3 +742,4 @@ and "17 settings" where PRINCIPLES.md counts them.
 - G8 agent_nightly.py: each scratch worktree of `--failures` and of record_misses has its own name (`..._<pid>`) and removes only its own.
 - G9 PRINCIPLES.md R8: "init switches the main checkout of a new repo to the working branch; in a repo that already uses the plugin the main manager switches it at a quiet point after the start's WORKING BRANCH line".
 - G10 skills/dispatch: the brief's list of waits says "suite run", not "suite slot" (section 39 a).
+- G11 (CORE REVIEW third pass, low): the sweep always protects the default prefix "ap-main-" too, whatever this clone's setting (a fixed team name must not expose other people's default-named branches).
