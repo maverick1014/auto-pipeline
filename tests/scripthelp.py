@@ -607,6 +607,9 @@ class ScriptRepo:
         env.pop("AGENT_CLEANUP_DONE", None)
         env.setdefault("AGENT_CLEANUP_TIMEOUT", "3")
         env.pop("ORCA_STUB_SLEEP", None)
+        # the status line must not read the terminal the test run sits in (statusline-wide): width unknown unless
+        # a test sets AGENT_STATUSLINE_WIDTH itself
+        env["AGENT_STATUSLINE_WIDTH"] = "0"
         env.pop("AGENT_ROLE", None)
         env.pop("CLAUDE_PROJECT_DIR", None)
         env.pop("CLAUDE_CODE_REMOTE", None)
