@@ -48,7 +48,8 @@ O3 floor designs (Floor design)
     number; labels: carpet 地毯, manager_floor 区经理室地板, pantry_floor 茶水间地板). Every problem has a
     non-empty zh and en. All problems are listed, not only the first. Never raises, whatever OBJ is.
   FLOOR_RULES: the rules as plain text (`agent-city floor rules` prints it): every field, every colour key,
-    every catalogue id, "55" and "95", "exactly 3", the never-settable things (floor size, the lift, the
+    every catalogue id, "55" and "95", "exactly 3", which decor entry is which slot ("south-west corner",
+    "south middle", "east wall"), the never-settable things (floor size, the lift, the
     area manager's room, the desks, the pantry, the meeting corner, people), where the file lives, and the
     commands `agent-city.sh floor show` and `agent-city.sh floor set`.
   floors_home() -> $AGENT_CITY_HOME/floors (default ~/.claude/agent-city/floors).
@@ -179,8 +180,8 @@ def good(**kw):
     return d
 
 
-def line(ev, sid, repo, aid="", role=""):
-    return {"ev": ev, "sid": sid, "aid": aid, "at": "", "tool": "Read", "nt": "", "proj": "shop", "role": role,
+def line(ev, sid, repo, aid="", role="", at=""):
+    return {"ev": ev, "sid": sid, "aid": aid, "at": at, "tool": "Read", "nt": "", "proj": "shop", "role": role,
             "desc": "", "sub": "", "q": "", "klen": "", "repo": repo, "kind": ""}
 
 
@@ -353,7 +354,7 @@ class TestRoles(OfficeCase):
 
     def test_a_subagent_still_hangs_on_its_session(self):
         self.known(self.shop, sid="h1")
-        sp = self.spawns(line("PreToolUse", "h1", self.shop, aid="w1", role="worker"))
+        sp = self.spawns(line("PreToolUse", "h1", self.shop, aid="w1", at="worker"))
         ws = [e for e in sp.values() if e["role"] == "worker"]
         self.assertEqual(len(ws), 1)
         self.assertEqual(ws[0].get("up"), "s:h1")
@@ -426,7 +427,8 @@ class TestCheckDesign(unittest.TestCase):
     def test_rules_text(self):
         t = ac.FLOOR_RULES
         for word in ac.DESIGN_COLORS + ac.FLOOR_DECOR + ("name", "why", "decor", "55", "95", "exactly 3", "lift",
-                                                       "pantry", "meeting", "floor size", "agent-city.sh floor show",
+                                                       "pantry", "meeting", "floor size", "south-west corner", "south middle",
+                                                       "east wall", "agent-city.sh floor show",
                                                        "agent-city.sh floor set"):
             self.assertIn(word, t)
 
