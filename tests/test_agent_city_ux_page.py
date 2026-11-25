@@ -9,7 +9,7 @@ and is driven straight by these tests (tests/test_agent_city_people.py run_sim).
 U1 repo tags + zoom-out limit
   (sim) repoTags(view) -> [{id, name, x, z}], one per view.territories entry, in that order: id = t.id,
         name = t.name, x/z = the territory middle in scene coordinates (t.cx - mid.x, t.cz - mid.z,
-        mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) }, as landState).
+        mid = { x: Math.round(view.x0 + view.w / 2), z: Math.round(view.z0 + view.h / 2) }, as officeState).
   (sim) nearestTerr(tags, x, z) -> the id of the tag nearest to (x, z); null for no tags.
   (sim) let camFly = null; FLY_SEC (0.6 .. 1.2): how long a fly takes.
         flyTo(x, z, dist): camFly = a tween from the camera's tx/tz/dist now to (x, z, dist).
@@ -748,7 +748,7 @@ class TestChatWiring(unittest.TestCase):
 
 U10_DRIVER = r"""
 const V = __payload.view, A = V.territories[0];
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'idle' }], agents: [] });
 apply({ type: 'spawn', id: 'x1', role: 'worker', label: 'worker', task: '登录 API', terr: A.id });
@@ -790,7 +790,7 @@ class TestPersonHistory(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.r = run_sim(U10_DRIVER, {"view": two_territory_view()},
-                        ("apply", "byId", "landState", "i18n", "actLog", "actTool", "ACT_KEEP", "personHistory",
+                        ("apply", "byId", "officeState", "i18n", "actLog", "actTool", "ACT_KEEP", "personHistory",
                          "historyHtml", "giveAnswer"))
 
     def test_activity_lines_from_live_events(self):
@@ -894,7 +894,7 @@ class TestNoToolCounters(unittest.TestCase):
 BUILDING_DRIVER = r"""
 const T = o => buildingName(Object.assign({ name: '', task: '', by: 'worker', files: [], type: 'house' }, o));
 const V = __payload.view, A = V.territories[0];
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'idle' }], agents: [] });
 const rec = newBuildingRecord(A.id, 99, 'shop', 0, 0, 'worker', true, { task: '导出 CSV', files: ['web/export.js'] });
@@ -920,7 +920,7 @@ class TestBuildingName(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.r = run_sim(BUILDING_DRIVER, {"view": two_territory_view()},
-                        ("buildingName", "newBuildingRecord", "bldLabel", "buildingInfo", "apply", "landState", "i18n"))
+                        ("buildingName", "newBuildingRecord", "bldLabel", "buildingInfo", "apply", "officeState", "i18n"))
 
     def test_one_meaningful_name(self):
         n, w = self.r["names"], self.r["want"]

@@ -36,7 +36,7 @@ from test_agent_city_chain import FEATURE_REQUIRED, TA, two_territory_view  # no
 
 CAMERA_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta);
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'idle' }], agents: [] });
 const out = {};

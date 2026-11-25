@@ -639,7 +639,7 @@ const { prelude, fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf
 const box = { Math, JSON, console, String, Array, Object };
 vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
-require("fs").writeSync(1, JSON.stringify(cases.map(([entries, name, busy]) => box.chatHtml(entries, name, busy))));
+require(`fs`).writeSync(1, JSON.stringify(cases.map(([entries, name, busy]) => box.chatHtml(entries, name, busy))));
 """
 
 
@@ -683,7 +683,7 @@ class TestPageChat(unittest.TestCase):
 const fs = require('fs'), vm = require('vm');
 const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const box = {}; vm.createContext(box); vm.runInContext(fns, box);
-require("fs").writeSync(1, JSON.stringify([{ t: 'gov', terr: 't1' }, { t: 'c', id: 's:tm1' }, { t: 'c', id: 'a9' },
+require(`fs`).writeSync(1, JSON.stringify([{ t: 'gov', terr: 't1' }, { t: 'c', id: 's:tm1' }, { t: 'c', id: 'a9' },
   { t: 'rg', id: 'r:dev:s:1' }, { t: 'b', id: 4 }, null].map(s => box.chatTarget(s))));
 """
         self.assertEqual(run_node(js, {"fns": page_fns("chatTarget")}), ["gov:t1", "s:tm1", "a9", None, None, None])
@@ -698,7 +698,7 @@ vm.createContext(box); vm.runInContext(fns, box);
 const out = [];
 for (const sel of [{ t: 'c', id: 's:tm1' }, { t: 'c', id: 's:tm2' }, { t: 'c', id: 'a9' },
                    { t: 'gov', terr: 't1' }, { t: 'gov' }, null]) { box.selected = sel; out.push(box.curChatTo()); }
-require("fs").writeSync(1, JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
         out = run_node(js, {"fns": page_fns("curChatTo", "chatTarget")})
         self.assertEqual(out, ["s:tm1", "s:tm2", "a9", "gov:t1", "gov:t0", None])
@@ -710,7 +710,7 @@ const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const people = { 's:tm1': { id: 's:tm1', label: 'task-manager', task: 'shop' }, 'a9': { id: 'a9', label: 'worker', task: 'form' } };
 const box = { byId: id => people[id], nameOf: c => c.label, fullName: c => 'repo · ' + c.label + ' · ' + c.task };
 vm.createContext(box); vm.runInContext(fns, box);
-require("fs").writeSync(1, JSON.stringify(['s:tm1', 'a9', 'gov:t1', 's:gone'].map(t => box.chatDisplayName(t))));
+require(`fs`).writeSync(1, JSON.stringify(['s:tm1', 'a9', 'gov:t1', 's:gone'].map(t => box.chatDisplayName(t))));
 """
         out = run_node(js, {"fns": constants_prelude() + "\n" + page_fns("chatDisplayName")})
         # city-polish P3: the page log mixes every repo, so it names the person with its repo (fullName)
@@ -758,7 +758,7 @@ vm.runInContext(fns, box);
   const refused = await box.sendChat('s:tm1', 'hi');
   box.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 7, state: 'queued' }) });
   const took = await box.sendChat('s:tm1', 'hi');
-  require("fs").writeSync(1, JSON.stringify([down, refused, took, (box.chats.get('s:tm1') || {}).error || '']));
+  require(`fs`).writeSync(1, JSON.stringify([down, refused, took, (box.chats.get('s:tm1') || {}).error || '']));
 })();
 """
         down, refused, took, _ = run_node(js, {"fns": constants_prelude() + "\n" + page_fns("sendChat")})

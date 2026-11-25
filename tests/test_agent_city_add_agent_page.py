@@ -102,7 +102,7 @@ from test_agent_city_people import function_source, page, run_sim  # noqa: E402
 from test_agent_city_chain import TA, TB, two_territory_view  # noqa: E402
 from test_agent_city_ux_page import css, listener_block, rule, text_keys  # noqa: E402
 
-SIM_REQUIRED = ("apply", "landState", "railGroups", "railHtml", "addHtml", "addIconHtml", "addState", "addAnswer", "addReason",
+SIM_REQUIRED = ("apply", "officeState", "railGroups", "railHtml", "addHtml", "addIconHtml", "addState", "addAnswer", "addReason",
                 "citizens", "byId", "i18n", "esc")
 
 KEYS = ("rail.none", "add.tip", "add.plus", "add.opening", "add.openingBare", "add.cap", "add.capNums", "add.capAsk", "add.go",
@@ -113,7 +113,7 @@ KEYS = ("rail.none", "add.tip", "add.plus", "add.opening", "add.openingBare", "a
 DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
 A.name = 'auto-pipeline'; B.name = 'v4-plus'; A.here = true; B.here = true;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const ag = (id, label, task, terr, extra) => Object.assign({ id, role: 'task-manager', label, task, stuck: false, done: false,
   tools: {}, terr, lead: '', office: null, relay: '' }, extra || {});
 const snap = adding => ({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [],

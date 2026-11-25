@@ -226,11 +226,11 @@ class TestHookFile(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 PAGE_REQUIRED = ("apply", "update", "buildings", "buildingPose", "levelScale", "buildingInfo",
-                 "MOVE_SEC", "DEMOLISH_SEC", "occupied", "landState")
+                 "MOVE_SEC", "DEMOLISH_SEC", "occupied", "officeState")
 
 Q_DRIVER = r"""
 const V = JSON.parse(JSON.stringify(__payload.view)), T = V.territories[0], tid = T.id;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const P = T.plots;
 T.buildings = [
   { plot: P[0].k, type: P[0].d === 'house' ? 'house' : 'house', by: 'worker', x: P[0].x, z: P[0].z,

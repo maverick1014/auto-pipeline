@@ -166,7 +166,7 @@ def px(value):
 SNAPSHOT = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
 const OF = A.offices[0];
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const ag = (id, role, task, terr, lead, office) => ({ id, role, label: role, task, stuck: false, done: false, tools: {},
   terr, lead: lead || '', office: office || null, relay: '' });
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [],
@@ -226,7 +226,7 @@ class TestRailData(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.r = run_sim(RAIL_DRIVER, payload(), ("apply", "landState", "railGroups", "railHtml", "railCount", "selKey",
+        cls.r = run_sim(RAIL_DRIVER, payload(), ("apply", "officeState", "railGroups", "railHtml", "railCount", "selKey",
                                                  "terrColor", "REPO_COLORS", "newCitizen", "citizens", "byId"))
 
     def test_repo_colours(self):
@@ -344,7 +344,7 @@ class TestFollow(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.r = run_sim(FOLLOW_DRIVER, payload(), ("apply", "landState", "startFollow", "stopFollow", "toggleFollow",
+        cls.r = run_sim(FOLLOW_DRIVER, payload(), ("apply", "officeState", "startFollow", "stopFollow", "toggleFollow",
                                                    "followPos", "FOLLOW_DIST", "cameraStep", "flyTo", "stopFly",
                                                    "tagVisible", "cam", "byId", "newCitizen", "citizens"))
 

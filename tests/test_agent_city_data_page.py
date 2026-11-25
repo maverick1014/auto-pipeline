@@ -83,7 +83,7 @@ const { fns, driver, payload } = JSON.parse(fs.readFileSync(process.argv[2], 'ut
 const box = { __payload: payload, __out: null, console, Math, JSON, Map, Set, Array, Object, Number, String };
 vm.createContext(box);
 vm.runInContext(fns + '\n;\n' + driver, box);
-require("fs").writeSync(1, JSON.stringify(box.__out));
+require(`fs`).writeSync(1, JSON.stringify(box.__out));
 """
 
 
@@ -141,7 +141,7 @@ LINES = [
 
 HIST_HEAD = r"""
 const V = __payload.view, A = V.territories[0], L = __payload.lines;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const snap = hist => { const ev = { type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'idle' }],
   agents: [{ id: 'w1', role: 'worker', label: 'worker', task: '登录 API', terr: A.id, tools: {} },
@@ -221,7 +221,7 @@ out.off = serverHist; out.kept = texts(byId('w1')).length;
 __out = out;
 """
 
-HIST_NEEDS = ("apply", "byId", "landState", "i18n", "actLog", "actTool", "giveAnswer", "personHistory", "stepText",
+HIST_NEEDS = ("apply", "byId", "officeState", "i18n", "actLog", "actTool", "giveAnswer", "personHistory", "stepText",
               "stuckText", "histLine", "ownHist", "HIST_KEEP", "serverHist")
 
 

@@ -43,7 +43,7 @@ def dist(a, b):
 CHAIN_RELOAD_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
 const OF = A.offices[0], OC = { x: OF.x + .5, y: OF.z + .5 };
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 function tick(sec){ for (let i = 0; i < Math.round(sec * 10); i++) update(.1); }
 const live = __payload.mode === 'live';
 const L = { id: 's:L', role: 'task-manager', label: 'task-manager', task: 'city-people', stuck: false, done: false, tools: { Bash: 2 }, terr: A.id, lead: '', office: { x: OF.x, z: OF.z }, relay: live ? '' : 'governor' };
@@ -90,7 +90,7 @@ class TestChainSurvivesReload(unittest.TestCase):
 
 CALM_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta);
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const inside = (p, f) => Math.abs(p.x - f.x) < f.hw - 1e-6 && Math.abs(p.y - f.z) < f.hd - 1e-6;
 apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'idle' }], agents: [

@@ -148,6 +148,7 @@
 - Nobody sent it, or the sender is gone: it appears beside the lift as before, never on the 区经理 and never on another new one. People placed when the page opens or reconnects get no hand-over.
 - Nobody stacks: standing people are never closer than 0.45 (appearing, working, waiting, talking, leaving at the hall). A walker walks around people and other walkers, never closer than 0.3, when there is room to pass.
 - A message between agents (SendMessage) is a face-to-face talk: the sender walks to the other one (there in about 4 s, faster when far), they face each other for about 2 s (💬, then 👌 from the other one), the sender walks back, both go on. Closer than 1.2: nobody walks, both turn.
+- The 区经理 sits at his desk in the glass room: whoever talks to him (a hand-over, a message, a question) stands across the desk from him (about 2 m, city-office 2026-11-25), not right beside him.
 - The 区经理 walks over with his messages too and goes back to his glass room; anyone who needs him calls him back at once and that talk is dropped.
 - No walk, the bubble on the sender's own spot: the recipient is not recognised or is walking; the sender is not at work; or more than 3 talks already wait for that person. A recipient on another floor is not "no walk": the sender rides the lift (Office, Between floors).
 - One talk per person at a time; the rest wait in line.

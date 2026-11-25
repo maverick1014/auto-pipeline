@@ -169,7 +169,7 @@ STEP_CASES = [
 
 STEPS_DRIVER = r"""
 const V = __payload.view, T = V.territories[0], tid = T.id;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 function tick(sec){ for (let i = 0; i < Math.round(sec * 10); i++) update(.1); }
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: tid }, govs: [{ terr: tid, state: 'busy' }],
   governors: 1, asks: [], shows: [], agents: [] });

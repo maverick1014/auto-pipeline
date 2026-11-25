@@ -45,12 +45,8 @@ TA, TB = ac.territory_id(A_REPO), ac.territory_id(B_REPO)
 
 
 def named_view():
-    plans = ac.load_plans()
-    w = ac.new_world()
-    ac.add_territory(w, plans, A_REPO, "repoA", 3000)
-    ac.add_territory(w, plans, B_REPO, "repoB", 3000)
-    return ac.layout(w, plans)
-
+    from cityoffice import office_view_of
+    return office_view_of((A_REPO, "repoA"), (B_REPO, "repoB"))
 
 ASK_Q = {"id": "q1", "agent": "gov", "terr": TA, "label": "", "task": "", "repo": A_REPO, "kind": "question",
          "phase": "owner", "why": "no-governor", "wait": 60, "left": 0, "tool": "AskUserQuestion",
@@ -60,7 +56,7 @@ ASK_Q = {"id": "q1", "agent": "gov", "terr": TA, "label": "", "task": "", "repo"
 
 WORDS_DRIVER = r"""
 const V = __payload.view, ask = __payload.ask;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: ask.terr }, govs: [{ terr: ask.terr, state: 'busy' }],
   governors: 1, asks: [], shows: [], agents: [] });
 const name = askName(ask);
@@ -101,7 +97,7 @@ const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const box = { Math, JSON, console, askName: v => 'repoA 总督' };
 vm.createContext(box);
 vm.runInContext(fns, box);
-require("fs").writeSync(1, JSON.stringify({
+require(`fs`).writeSync(1, JSON.stringify({
   gov: box.askWhyLine({ kind: 'question', why: 'no-governor', agent: 'gov', terr: 't' }),
   other: box.askWhyLine({ kind: 'question', why: 'no-governor', agent: 'w1', terr: 't' }) }));
 """
@@ -172,7 +168,7 @@ class TestUnknownGovernorAfterRestart(unittest.TestCase):
     def test_page_says_unknown_and_draws_no_figure(self):
         driver = r"""
 const V = __payload.view;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: __payload.ta }, governors: 0, asks: [], shows: [], agents: [],
   govs: [{ terr: __payload.ta, state: 'unknown' }] });
 __out = { row: govRowText(__payload.ta), at: governorAt(__payload.ta) };
@@ -187,7 +183,7 @@ class TestResultThenClose(unittest.TestCase):
     def test_the_panel_closes_10s_after_its_result(self):
         driver = r"""
 const V = __payload.view, ask = __payload.ask;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 let closes = 0;
 function closeAskPanel(){ closes++; openAskId = null; }
 function renderAskPanel(){}

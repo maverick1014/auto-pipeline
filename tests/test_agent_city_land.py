@@ -610,7 +610,7 @@ for (const [name, view] of Object.entries(views)) {
     B: tiles.filter(t => t[2] === 'B').length, f: tiles.filter(t => t[2] === 'f').length };
   out[name] = res;
 }
-require("fs").writeSync(1, JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
 
 _CACHE = {}
@@ -686,7 +686,7 @@ const line = { hidden: false };
 box.$ = sel => (sel === '#empty-land' ? line : null);
 box.showEmptyLine({ territories: [] }); out.lineEmpty = line.hidden;
 box.showEmptyLine({ territories: [{ id: 't' }] }); out.lineLand = line.hidden;
-require("fs").writeSync(1, JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
 
 
@@ -701,7 +701,7 @@ vm.runInContext(prelude + '\n' + fns, box);
 const out = [box.newCitizen('c1', 'worker', '', 'a').x, box.newCitizen('c2', 'worker', '', '').x, box.newCitizen('c3', 'worker', '', 'zz').x];
 box.govTerr = null;
 out.push(box.newCitizen('c4', 'worker', '', '').x);
-require("fs").writeSync(1, JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
 
 

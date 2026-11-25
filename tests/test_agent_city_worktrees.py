@@ -251,7 +251,7 @@ def feed(st, ev, sid, repo, role="", wt=""):
 # ---------------------------------------------------------------------------
 
 PAGE_REQUIRED = ("apply", "update", "sites", "siteList", "siteRoad", "siteDecor", "topCounts",
-                 "SITE_MERGE_SEC", "SITE_PACK_SEC", "DEMO_SITES", "landState")
+                 "SITE_MERGE_SEC", "SITE_PACK_SEC", "DEMO_SITES", "officeState")
 
 
 def page_view():
@@ -261,7 +261,7 @@ def page_view():
 
 SITE_DRIVER = r"""
 const V = JSON.parse(JSON.stringify(__payload.view)), T = V.territories[0], tid = T.id;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const O = T.plots[0];
 const office = { x: O.x, z: O.z };
 T.offices = [{ lead: '', site: 'wt:1', x: office.x, z: office.z }];

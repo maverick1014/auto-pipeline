@@ -660,7 +660,7 @@ for (const terr of ['a', 'b', 'c', 'd', 'e', 'gone']) {
 }
 out.row = box.railRowHtml({ id: 'gov:a', depth: 0, rest: false }, { selId: null, color: '#fff' });
 out.rowWaiting = box.railRowHtml({ id: 'gov:b', depth: 0, rest: false }, { selId: null, color: '#fff' });
-require("fs").writeSync(1, JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
 
 CITIZEN_JS = r"""
@@ -671,7 +671,7 @@ vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const base = { state: 'working', askKind: '', askPhase: '', relay: '' };
 const s = extra => box.citizenStatus(Object.assign({}, base, extra));
-require("fs").writeSync(1, JSON.stringify({
+require(`fs`).writeSync(1, JSON.stringify({
   waiting: s({ waiting: true }), bgrun: s({ bgrun: true }), idle: s({ idle: true }), plain: s({}),
   idleAsk: s({ idle: true, askKind: 'permission' }),
   bgrunAsk: s({ bgrun: true, askKind: 'question', askPhase: 'owner' }),
@@ -680,7 +680,7 @@ require("fs").writeSync(1, JSON.stringify({
 
 SIM_DRIVER = r"""
 const V = __payload.view, T = V.territories[0], tid = T.id;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const agent = (id, extra) => Object.assign({ id, role: 'task-manager', label: 'task-manager', task: id,
   stuck: false, done: false, waiting: false, status: '', tools: {}, terr: tid }, extra);
 apply({ type: 'snapshot', world: V, gov: { state: 'background', terr: tid }, govs: [{ terr: tid, state: 'background' }],
@@ -699,18 +699,15 @@ out.govBg = [govRowStatus(tid), govTalk(tid)];
 __out = out;
 """
 
-SIM_REQUIRED = ("landState", "governorAt", "apply", "citizens", "byId", "citizenStatus", "govRowStatus", "govTalk")
+SIM_REQUIRED = ("officeState", "governorAt", "apply", "citizens", "byId", "citizenStatus", "govRowStatus", "govTalk")
 
 _CACHE = {}
 
 
 def sim_results():
     if "sim" not in _CACHE:
-        plans = ac.load_plans()
-        world = ac.new_world()
-        terr = ac.add_territory(world, plans, "/work/status/app/.git", "app", 6000)
-        terr["peak"] = terr["lines"] = 6000
-        _CACHE["sim"] = run_sim(SIM_DRIVER, {"view": ac.layout(world, plans)}, SIM_REQUIRED)
+        from cityoffice import office_view_of
+        _CACHE["sim"] = run_sim(SIM_DRIVER, {"view": office_view_of(("/work/status/app/.git", "app"))}, SIM_REQUIRED)
     return _CACHE["sim"]
 
 

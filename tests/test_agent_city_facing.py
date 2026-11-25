@@ -129,7 +129,7 @@ function judge(S, dx, dz, yaw, legT, who){
 # been on its current leg (the same next point). A builder then stands at its plot.
 WALK_DRIVER = (r"""
 const V = __payload.view, T = V.territories[0], tid = T.id, DT = __payload.dt;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 __JUDGE__
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: tid }, govs: [{ terr: tid, state: 'busy' }], governors: 1,
   asks: [], shows: [], agents: [] });
@@ -218,7 +218,7 @@ class TestCitizensFaceWhereTheyWalk(unittest.TestCase):
 # A present governor with nothing to do strolls after IDLE_STROLL_SEC; every tick records his step and yaw.
 GOV_DRIVER = (r"""
 const V = __payload.view, T = V.territories[0], tid = T.id, DT = 1 / 30;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 __JUDGE__
 apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: tid }, govs: [{ terr: tid, state: 'idle' }], governors: 1,
   asks: [], shows: [], agents: [] });

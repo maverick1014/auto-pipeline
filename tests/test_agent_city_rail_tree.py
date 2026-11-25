@@ -197,7 +197,7 @@ class TestUpAfterRestartS3(RosterCase):
 TREE_SETUP = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
 const OF = A.offices[0];
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const ag = (id, role, label, terr, up, lead, office) => Object.assign({ id, role, label, task: label, stuck: false,
   done: false, tools: {}, terr, lead: lead || '', office: office || null, relay: '' }, up === undefined ? {} : { up });
 const AGENTS = [
@@ -277,7 +277,7 @@ def payload():
     return PAYLOAD
 
 
-REQ = ("apply", "landState", "railGroups", "railHtml", "railCount", "byId", "newCitizen", "i18n", "citizens")
+REQ = ("apply", "officeState", "railGroups", "railHtml", "railCount", "byId", "newCitizen", "i18n", "citizens")
 
 
 class TestPageKeepsUpP1(unittest.TestCase):

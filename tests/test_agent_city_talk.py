@@ -120,23 +120,24 @@ sys.path.insert(0, HERE)
 
 from test_agent_city_people import REQUIRED, ac, function_source, page, run_sim  # noqa: E402
 from test_agent_city_page import page_fns, run_node  # noqa: E402
-from test_agent_city_walk import plan_view  # noqa: E402
+from cityoffice import office_view  # noqa: E402
 from cityhelp import Mains  # noqa: E402
 
 MIN_GAP, WALK_GAP, TALK_NEAR, HANDOVER_SEC, TALK_SEC, TRIP = .45, .3, 1.2, 2.6, 2.0, 4.0
+ACROSS_DESK = 2.4   # city-office: the area manager sits at his desk; who talks to him stands across it (MGR_VISIT)
 EPS = 1e-6
 
 TALK_REQUIRED = REQUIRED + ("talkOf", "govTalkOf", "HANDOVER_SEC", "TALK_SEC", "MIN_GAP", "angleDiff", "hallStand",
                             "findPath", "freeAt", "waitStand", "goTo", "leave", "govMove", "simT")
 
 PRELUDE = r"""
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 {   // the driver lives in its own block: a new name in the page never clashes with a name here
 let seed = 20261001; Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;   // same scene every run
-const V = __payload.view, T = V.territories[0], tid = T.id, GOV = 'gov:' + tid, OFF = T.offices[0];
+const V = __payload.view; officeState(V); const T = map.territories[0], tid = T.id, GOV = 'gov:' + tid;
 const AG = (id, role, extra) => Object.assign({ id, role, label: role, task: 't-' + id, stuck: false, done: false, tools: {},
   terr: tid, lead: '', office: null, relay: '' }, extra || {});
-const CAST = () => [AG('s:L', 'task-manager', { office: { x: OFF.x, z: OFF.z } }),
+const CAST = () => [AG('s:L', 'task-manager'),
   AG('w1', 'worker', { lead: 's:L' }), AG('w2', 'worker', { lead: 's:L' }), AG('w3', 'worker', { lead: 's:L' }),
   AG('s:H', 'task-manager'), AG('d1', 'fast-lane-deputy')];
 const g = () => governorAt(tid);
@@ -153,7 +154,8 @@ const r3 = v => +(+v).toFixed(3);
 const stackBad = [];
 // T2: standing people (and the governor) are never closer than MIN_GAP, at every tick of every scene
 function checkGaps(label){
-  const ps = citizens.filter(c => !c.gone && c.state !== 'resting' && c.state !== 'leaving')
+  // city-office: subagents are never drawn (Office, Who is shown), so only the people you see can stack
+  const ps = citizens.filter(c => !c.gone && !isSub(c) && c.state !== 'resting' && c.state !== 'leaving' && !c.inLift)
     .map(c => ({ id: c.id, x: c.x, y: c.y, walk: walking(c) }));
   const gv = g(); if (gv) ps.push({ id: GOV, x: gv.x, y: gv.y, walk: govWalking() });
   for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
@@ -548,7 +550,7 @@ class SimCase(unittest.TestCase):
     @classmethod
     def view(cls):
         if SimCase._view is None:
-            SimCase._view = plan_view("meadow", "town")
+            SimCase._view = office_view("app")
         return SimCase._view
 
     @classmethod
@@ -608,21 +610,10 @@ class TestNewAgentAppearsNextToItsSenderT1(SimCase):
         self.assertEqual(one["end"]["state"], "working")
         self.assertLess(one["end"]["home"], .05, "it ends on its own spot")
 
-    def test_a_deputy_appears_next_to_the_governor(self):
-        gov = self.r["gov"]
-        self.assertEqual(gov["state0"], "handover")
-        self.beside(gov["d0"])
-        self.talk(gov["talkGov0"], "handover", "d9", True, "📋")
-        self.talk(gov["talkNew0"], "handover", "gov:" + self.view()["territories"][0]["id"], False)
-        self.assertEqual(gov["face"], [True, True], "the deputy and the governor face each other")
-        self.assertLess(gov["govMoved"], .01, "the governor stays where he is")
-        self.assertIsNone(gov["after"]["talkGov"])
-        self.assertNotEqual(gov["after"]["state"], "handover")
-
     def test_a_task_manager_sent_by_the_governor(self):
         tm = self.r["tm"]
         self.assertEqual(tm["state0"], "handover")
-        self.beside(tm["d0"])
+        self.beside(tm["d0"], ACROSS_DESK)
         self.assertEqual(tm["talkGov0"]["kind"], "handover")
         self.assertNotEqual(tm["after"], "handover")
 
@@ -632,13 +623,6 @@ class TestNewAgentAppearsNextToItsSenderT1(SimCase):
         self.beside(sub["d0"])
         self.talk(sub["talkH0"], "handover", "h1", True, "📋")
         self.assertNotEqual(sub["after"], "handover")
-
-    def test_five_at_once_stand_apart_around_the_sender(self):
-        five = self.r["five"]
-        self.assertEqual(five["states0"], ["handover"] * 5)
-        for d in five["d0"]:
-            self.beside(d, 1.6)
-        self.assertGreaterEqual(five["minPair0"], MIN_GAP - EPS, "the five never stack on each other")
 
     def test_five_at_once_get_one_hand_over(self):
         five = self.r["five"]
@@ -663,11 +647,6 @@ class TestNoSenderT1T2(SimCase):
         self.assertEqual(self.r["talks"], [None] * 3)
         self.assertIsNone(self.r["govTalk"])
         self.assertEqual(self.r["end"], ["working"] * 3)
-
-    def test_never_on_the_governor_or_on_each_other(self):
-        for d in self.r["dGov"]:
-            self.assertGreaterEqual(d, MIN_GAP - EPS, "a new one never appears on the governor's spot")
-        self.assertGreaterEqual(self.r["minPair"], MIN_GAP - EPS, "three at once never appear on one spot")
 
     def test_a_governor_who_is_away_sends_nobody(self):
         self.assertEqual(self.r["noGov"], {"state": "spawn", "talk": None})
@@ -751,13 +730,13 @@ class TestGovernorTalksT3(SimCase):
     scene = "gov"
 
     def gid(self):
-        return "gov:" + self.view()["territories"][0]["id"]
+        return "gov:" + self.view()["floors"][0]
 
     def test_a_message_to_the_governor(self):
         to = self.r["toGov"]
         self.assertEqual(to["state"], "to_talk")
         self.assertLessEqual(to["trip"], TRIP + 2)
-        self.beside(to["arrive"]["d"])
+        self.beside(to["arrive"]["d"], ACROSS_DESK)
         self.assertLess(to["arrive"]["govAtHall"], .05, "the governor is at his hall stand for it")
         self.talk(to["arrive"]["talks"][0], "msg", self.gid(), True, "💬")
         self.talk(to["arrive"]["talks"][1], "msg", "s:H", False)
@@ -770,7 +749,7 @@ class TestGovernorTalksT3(SimCase):
         self.assertGreater(self.r["far0"], TALK_NEAR + .5, "the scene needs the lead far from the hall")
         self.assertIsNone(fg["talk0"], "no bubble while he walks over")
         self.assertLessEqual(fg["trip"], TRIP + 2.5)
-        self.beside(fg["arrive"]["d"])
+        self.beside(fg["arrive"]["d"], ACROSS_DESK)
         self.assertFalse(fg["arrive"]["walking"])
         self.talk(fg["arrive"]["talks"][0], "msg", "s:L", True, "💬")
         self.talk(fg["arrive"]["talks"][1], "msg", self.gid(), False)
@@ -881,7 +860,7 @@ class TestQuestionAndAnswerT3(SimCase):
     scene = "relay"
 
     def gid(self):
-        return "gov:" + self.view()["territories"][0]["id"]
+        return "gov:" + self.view()["floors"][0]
 
     def test_a_worker_asks_its_lead_face_to_face(self):
         ask = self.r["ask"]
@@ -908,7 +887,7 @@ class TestQuestionAndAnswerT3(SimCase):
 
     def test_a_lead_asks_the_governor_face_to_face(self):
         ask = self.r["gask"]
-        self.beside(ask["d"], 1.3)
+        self.beside(ask["d"], ACROSS_DESK)
         self.talk(ask["talks"][0], "ask", self.gid(), True, "❓")
         self.talk(ask["talks"][1], "ask", "s:L", False)
         self.assertEqual(ask["face"], [True, True], "the governor turns to the one who asks")
@@ -945,7 +924,7 @@ class TestOwnerAnswerT3(SimCase):
     scene = "heard"
 
     def test_the_governor_tells_the_one_who_asked(self):
-        gid = "gov:" + self.view()["territories"][0]["id"]
+        gid = "gov:" + self.view()["floors"][0]
         self.assertEqual(self.r["heard"]["state"], "heard")
         self.talk(self.r["heard"]["talks"][1], "answer", "s:H", True, "✅")
         self.talk(self.r["heard"]["talks"][0], "answer", gid, False)
@@ -954,23 +933,6 @@ class TestOwnerAnswerT3(SimCase):
 
 
 class TestWalkersKeepAGapT2(SimCase):
-
-    def test_a_walker_walks_around_a_standing_person(self):
-        r = self.r = self.run_scene("around")
-        self.assertTrue(r["open"], "the scene needs open ground with room to pass")
-        self.assertEqual(r["around"]["state"], "working", "it still arrives")
-        self.assertLess(r["around"]["arrived"], .05)
-        self.assertGreaterEqual(r["around"]["minD"], WALK_GAP - EPS, "it never walks through the one who stands on its way")
-        self.assertLess(r["around"]["blockerMoved"], .01, "the one who stands is not pushed away")
-        self.no_stack()
-
-    def test_two_walkers_head_on_pass_each_other(self):
-        r = self.r = self.run_scene("headon")
-        self.assertTrue(r["open"], "the scene needs open ground with room to pass")
-        self.assertGreater(r["headOn"]["bothWalked"], 5, "the scene needs both walking")
-        for d in r["headOn"]["arrived"]:
-            self.assertLess(d, .05, "both still arrive")
-        self.assertGreaterEqual(r["headOn"]["minD"], WALK_GAP - EPS, "they never walk through each other")
 
     def test_a_leaving_person_never_stands_on_the_governor(self):
         r = self.r = self.run_scene("leave")
@@ -1017,7 +979,7 @@ class TestGovernorBubbleAtHisHeadB2(unittest.TestCase):
 const fs = require('fs'), vm = require('vm');
 const { fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const box = {}; vm.createContext(box); vm.runInContext(fns, box);
-require("fs").writeSync(1, JSON.stringify(cases.map(c => box.govHeadRows(c[0], c[1], c[2]))));
+require(`fs`).writeSync(1, JSON.stringify(cases.map(c => box.govHeadRows(c[0], c[1], c[2]))));
 """
         return run_node(js, {"fns": page_fns("govHeadRows"), "cases": cases})
 

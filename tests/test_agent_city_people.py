@@ -20,7 +20,7 @@ CONTRACT (bin/agent-city.html, the inline script)
   below runs it in node with a stub DOM, then drives it through apply(ev)
   and update(dt) only.
 
-  function landState(view)   the non-3D half of buildLand(view), inside the
+  function officeState(view)   the non-3D half of buildLand(view), inside the
       simulation section: sets map, mid, land, clears occupied and the rest
       slots, adds the view's buildings as records, calls updateHome().
       buildLand(view) calls it first, then draws.
@@ -135,14 +135,14 @@ for (let tries = 0; tries < 150; tries++) {
   vm.createContext(box);
   try {
     vm.runInContext(script + '\n;\n' + driver, box, { timeout: 60000 });
-    require("fs").writeSync(1, JSON.stringify(box.__out)); process.exit(0);
+    require(`fs`).writeSync(1, JSON.stringify(box.__out)); process.exit(0);
   } catch (e) {
     const m = /^(\S+) is not defined$/.exec((e && e.message) || '');
     if (e && e.name === 'ReferenceError' && m && !required.includes(m[1]) && !stubs.has(m[1])) { stubs.add(m[1]); continue; }
-    require("fs").writeSync(1, JSON.stringify({ fatal: String(e && e.stack || e).slice(0, 2500) })); process.exit(0);
+    require(`fs`).writeSync(1, JSON.stringify({ fatal: String(e && e.stack || e).slice(0, 2500) })); process.exit(0);
   }
 }
-require("fs").writeSync(1, JSON.stringify({ fatal: 'too many unknown names: ' + [...stubs].join(' ') }));
+require(`fs`).writeSync(1, JSON.stringify({ fatal: 'too many unknown names: ' + [...stubs].join(' ') }));
 """
 
 
@@ -169,22 +169,9 @@ def run_sim(driver, payload, required=()):
 
 
 def plan_views():
-    """One world view per plan (terrain): a single territory, big enough to open plots."""
-    plans = ac.load_plans()
-    views = {}
-    for i in range(400):
-        ident = "/work/p0-%d/app/.git" % i
-        w = ac.new_world()
-        t = ac.add_territory(w, plans, ident, "app%d" % i, 6000)
-        t["peak"] = t["lines"] = 6000
-        plan = t["plan"]
-        if plan in views:
-            continue
-        views[plan] = ac.layout(w, plans)
-        if len(views) == len(plans):
-            break
-    return views
-
+    """city-office: one office view of one floor (was one island view per plan)."""
+    from cityoffice import office_view_of
+    return {"office": office_view_of(("/work/p0-0/app/.git", "app0"))}
 
 # Drives the simulation section on one territory: snapshot with a present
 # governor and 4 placed agents, then a live worker that builds and rests, and
@@ -192,7 +179,7 @@ def plan_views():
 P0_DRIVER = r"""
 const V = __payload.view, T = V.territories[0], tid = T.id;
 const PLOT = T.plots[0];
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const trace = {};
 function tick(sec){
   for (let i = 0; i < Math.round(sec * 10); i++) {
@@ -240,7 +227,7 @@ const govGone = governorAt(tid);
 __out = { govFirst, settled, built, rested, worked, final, govGone };
 """
 
-REQUIRED = ("landState", "governorAt", "apply", "update", "citizens", "buildings", "byId", "citizenStatus")
+REQUIRED = ("officeState", "governorAt", "apply", "update", "citizens", "buildings", "byId", "citizenStatus")
 
 
 class TestPeopleWalkP0(unittest.TestCase):
@@ -321,13 +308,13 @@ class TestGovernorFigureP0(unittest.TestCase):
     def test_build_land_calls_land_state(self):
         src = function_source("buildLand")
         self.assertIsNotNone(src)
-        self.assertIn("landState(", src)
+        self.assertIn("officeState(", src)
 
     def test_no_governor_in_snapshot_means_no_figure(self):
         view = next(iter(plan_views().values()))
         driver = r"""
 const V = __payload.view, tid = V.territories[0].id;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'idle', terr: tid }, govs: [], governors: 0, asks: [], shows: [], agents: [] });
 __out = { g: governorAt(tid) };
 """

@@ -479,48 +479,14 @@ class TestWorkerQuestionForm(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 def two_territory_view():
-    """A (village, a lead's office and a rest place) and B (town, no rest place yet)."""
-    plans = ac.load_plans()
-    w = ac.new_world()
-    for ident in (A_REPO, B_REPO):
-        t = ac.add_territory(w, plans, ident, "app", 6000)
-        t["lines"] = t["peak"] = 6000
-    w["territories"][B_REPO]["era"] = "town"
-    view = ac.layout(w, plans)
-    ta = next(t for t in view["territories"] if t["id"] == TA)
-    tb = next(t for t in view["territories"] if t["id"] == TB)
-    plots = {(p["x"], p["z"]) for t in view["territories"] for p in t["plots"]}
-
-    def free(x, z):
-        return tile(view, x, z) == "g" and (x, z) not in plots and not (
-            -2 <= x - ta["cx"] <= 1 and -2 <= z - ta["cz"] <= 1)
-
-    rest = office = None
-    for r in range(3, 9):
-        for dz in range(-r, r + 1):
-            for dx in range(-r, r + 1):
-                x, z = ta["cx"] + dx, ta["cz"] + dz
-                if rest is None and all(free(x + i, z + j) for i in (0, 1) for j in (0, 1)):
-                    rest = (x, z)
-    for r in range(3, 9):
-        for dz in range(-r, r + 1):
-            for dx in range(-r, r + 1):
-                x, z = ta["cx"] + dx, ta["cz"] + dz
-                if office is None and free(x, z) and max(abs(x - rest[0]), abs(z - rest[1])) >= 3 \
-                        and any(tile(view, x + a, z + b) in ".grtBb" for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
-                    office = (x, z)
-    ta["rest"] = {"x": rest[0], "z": rest[1]}
-    ta["offices"] = [{"lead": "s:L", "x": office[0], "z": office[1]}]
-    ta["era"] = "village"
-    tb["rest"] = None
-    tb["offices"] = []
-    return view
-
+    """city-office: A and B as two floors (A 1F, B 2F) of the office view."""
+    from cityoffice import office_view_of
+    return office_view_of((A_REPO, "app"), (B_REPO, "app"))
 
 FEATURE_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
 const OF = A.offices[0], OC = { x: OF.x + .5, y: OF.z + .5 }, RC = { x: A.rest.x + 1, y: A.rest.z + 1 };
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 function tick(sec){ for (let i = 0; i < Math.round(sec * 10); i++) update(.1); }
 const pos = id => { const c = byId(id); return c ? { x: c.x, y: c.y, state: c.state } : null; };
 const who = () => citizens.filter(c => !c.gone && c.state !== 'leaving' && !(c.path && c.path.length)).map(c => ({ id: c.id, x: c.x, y: c.y })); // standing people (strollers may pass)
@@ -647,7 +613,7 @@ class TestPeoplePage(unittest.TestCase):
 
 GOVFIG_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [], agents: [],
   govs: [{ terr: A.id, state: 'busy' }, { terr: B.id, state: 'idle' }] });
 const two = governorFigures().map(g => ({ terr: g.terr, x: g.x, y: g.y }));
@@ -675,7 +641,7 @@ class TestGovernorFigures(unittest.TestCase):
 
 HOME_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [], agents: [],
   govs: [{ terr: A.id, state: 'busy' }] });
 const h0 = { x: home.x, z: home.z };
@@ -698,7 +664,7 @@ vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const out = {};
 for (const [name, t] of Object.entries(cases)) out[name] = { rest: box.restDecor(t), office: box.officeDecor(t) };
-require("fs").writeSync(1, JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
     fns = tp.page_fns("restDecor", "officeDecor",
                       optional=("eraShown", "showOf", "eraLook", "sr", "terrOf", "tileAt", "walkable", "frontOf"))
