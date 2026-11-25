@@ -365,7 +365,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .rolechip.tm{background:var(--build-bg);color:var(--build-ink)}
 .rolechip.helper{background:var(--rest-bg);color:var(--rest-ink)}
 .rolechip.designer{background:var(--bgrun-bg);color:var(--bgrun-ink)}
-.tagl.tag{display:inline-flex;align-items:center;gap:5px;background:var(--panel);color:var(--ink);border:1.5px solid var(--ink);border-radius:999px;padding:2px 9px 2px 6px;font:600 12px/1.25 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2);white-space:nowrap}
+.tagl.tag{display:inline-flex;align-items:center;gap:5px;background:var(--panel);color:var(--ink);border:1.5px solid var(--ink);border-radius:999px;padding:2px 9px 2px 6px;font:600 12px/1.25 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2);white-space:nowrap;pointer-events:auto;cursor:pointer}
 .tagl.tag .nm{max-width:130px;overflow:hidden;text-overflow:ellipsis}
 .tagl.tag .wk{font:600 10.5px/1 var(--mono);background:var(--ink);color:var(--paper);padding:3px 6px;border-radius:6px}
 .tagl.tag.sel{background:var(--ink);color:var(--paper)}
@@ -472,12 +472,21 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 
 @media (max-width:720px){
   .stage{--lift-w:64px}
+  .floorsign,.dpop,.follow{left:42px!important;transform:none;max-width:calc(100% - 118px)}
   .lift .ln,.lift-h span:first-child{display:none}
   .lb{grid-template-columns:1fr;justify-items:center;gap:3px;padding:6px 4px}
   .lb .lc{font-size:10px}
   .floorsign .frs{display:none}
   .stage.win-open .lift,.stage.win-open .cam{right:12px}
   .stage.win-open .cam{display:none}
+}
+@media (max-width:520px){
+  .sign{padding:4px 10px 4px 6px;gap:8px}
+  .sign-name{font-size:17px}
+  .sign-sub{display:none}
+  .sign-icon{width:28px;height:28px}
+  .bar{gap:8px}
+  #btnPick,#logbtn{padding:0 10px}
 }
 @media (prefers-reduced-motion:reduce){ .doorhint{animation:none} .lift{transition:none} }
 
@@ -4316,7 +4325,7 @@ let camMove = null;     // the 1 s flight in through the door
 const panLimit = () => view === 'outside' ? 25 : 7;
 const distLimitNow = () => view === 'outside' ? 120 : 40;
 /* the floor view distance: 21 on a computer, 31 on a narrow phone, a little more on a short stage */
-function fitDist(){ return (W / Math.max(1, H) < .9 ? 31 : 21) * Math.min(1.25, Math.max(1, 640 / Math.max(1, H))); }
+function fitDist(){ const a = W / Math.max(1, H); return (a < .9 ? Math.max(31, 24 / a) : 21) * Math.min(1.25, Math.max(1, 640 / Math.max(1, H))); }
 function resetView(){ cam.az = -.62; cam.el = .86; cam.wantDist = fitDist(); cam.tx = 0; cam.ty = 0; cam.tz = .3; stopFollow(); }
 function camGo(to, ms, cb){
   if (RM || !ms) { cam.az = to.az; cam.el = to.el; cam.dist = to.dist; cam.tx = to.x; cam.ty = to.y; cam.tz = to.z; cam.wantDist = null; if (cb) cb(); return; }
@@ -4351,7 +4360,7 @@ function watchFollow(){
   if (!follow || view !== 'inside') return;
   const r = rowPos(follow);
   if (!r) { stopFollow(); return; }
-  if (!r.inLift && r.at !== cur) goFloor(r.at);
+  if (!r.inLift && r.at !== cur) { const keep = follow; goFloor(r.at); follow = keep; }   // the view goes with it: still following
 }
 let viewShiftX = 0, viewShiftY = 0;
 function updateCamera(dt){
@@ -4888,7 +4897,7 @@ function demoPost(path, body){
     const terr = body.terr, t = terrOf(terr);
     if (!t) return done(404, { error:'unknown' });
     if (citizens.some(c => !c.gone && c.role === 'designer' && c.terr === terr)) return done(409, { error:'designer-here' });
-    const c = emit({ type:'spawn', id:'d' + (++cid), role:'designer', label:'designer', task:t.name + ' Designer', terr, from:'', up:'' });
+    const c = emit({ type:'spawn', id:'s:d' + (++cid), role:'designer', label:'designer', task:t.name + ' Designer', terr, from:'', up:'' });
     if (c) c.feed = makeFeed('designer', .1, terr);
     return done(200, { state:'opening', name:t.name + ' Designer', role:'designer' });
   }
@@ -5982,7 +5991,7 @@ function seedDemo(){
   const mk = (role, terr, up) => {
     const opts = TASKS[role].filter(t => !citizens.some(c => c.task === t));
     const home = terr === govTerr ? 'gov:' + terr : '';
-    const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task:pick(opts.length ? opts : TASKS[role]), terr, from:home, up:up || home });
+    const sess = SESSION_ROLES.includes(role), c = emit({ type:'spawn', id:(sess ? 's:d' : 'd') + (++cid), role, label:role, task:pick(opts.length ? opts : TASKS[role]), terr, from:home, up:up || home });
     if (c) c.feed = makeFeed(role, undefined, terr);
     return c;
   };
