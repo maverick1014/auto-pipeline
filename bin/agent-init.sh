@@ -25,12 +25,17 @@
 #                                  written. One line per file changed.
 #   bin/agent-init.sh --scope all  run in all repos: set it true in the user
 #                                  settings file; repo files are left alone.
+#   bin/agent-init.sh --no-measure [<dir>]
+#                                  set up, but do not time the build and the guard tests
 #   bin/agent-init.sh -h           print this block, create nothing, exit 0
 #
 # Creates, only when missing, in the project root: the four agent_*.txt task
 # files (empty), .secrets/ (empty dir) and AGENTS.md (one line pointing at this
 # plugin, relative to the project root when the plugin is packed inside it, e.g.
 # .claude/auto-pipeline, absolute otherwise).
+# Writes agent_repo.conf (this repo's facts, committed) when missing, or adds only the
+# keys it lacks, never changing a value that is set (bin/agent_repo_init.py). It times
+# the build and the guard tests once, only under the RAM/CPU cap, unless --no-measure.
 # Adds .secrets/, agent_state.txt, agent_monitor.txt, agent_monitor.txt.tmp.*
 # and .auto-pipeline/ to .gitignore, creating it when missing. Never
 # overwrites a file already there.
@@ -56,7 +61,7 @@ set -eu
 . "$(dirname "$0")/agent-roots.sh"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,54p' "$0"; exit 0;;
+  -h|--help) sed -n '2,60p' "$0"; exit 0;;
 esac
 
 # Plugin on/off per repo or per user. Python does the JSON. Args: all|selected,
@@ -115,12 +120,14 @@ PY
 SCOPE=""
 
 ADD_PERMS=0
+NO_MEASURE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode|--auto-update)
       echo "agent-init.sh: $1 is gone: settings change only in /plugin -> Installed -> auto-pipeline -> Configure" >&2
       exit 2;;
     --add-permissions) ADD_PERMS=1; shift;;
+    --no-measure) NO_MEASURE="--no-measure"; shift;;
     --scope)
       case "${2:-}" in
         all|selected) SCOPE="$2";;
@@ -303,6 +310,16 @@ file_empty agent_worktree.txt
 dir_secrets
 file_agents_md
 file_gitignore
+
+repo_conf() {
+  local cap
+  cap=$(setting max_usage_percent 2>/dev/null) || cap=80
+  case "$cap" in ''|*[!0-9]*) cap=80;; esac
+  python3 "$(dirname "$0")/agent_repo_init.py" "$ROOT" $NO_MEASURE --cap "$cap" \
+    --resources "$(dirname "$0")/agent-resources.sh" </dev/null \
+    || echo "agent_repo.conf: scan failed, nothing written"
+}
+repo_conf
 
 skip_warning_line
 
