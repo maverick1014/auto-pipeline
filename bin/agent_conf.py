@@ -898,12 +898,6 @@ def working_branch(repo, derive=False):
             return r.stdout.decode(errors="replace").strip()
         except (OSError, subprocess.SubprocessError):
             return ""
-    stored = cfg("config", "--local", "--get", "auto-pipeline.workingbranch")
-    if stored:
-        return stored
-    if not derive:
-        return None
-
     def named(form):
         if "<name>" not in form:
             return form
@@ -916,6 +910,17 @@ def working_branch(repo, derive=False):
                 login = ""
             who = re.sub(r"[^a-z0-9-]+", "-", login.lower()).strip("-") or "user"
         return form.replace("<name>", who)
+    stored = cfg("config", "--local", "--get", "auto-pipeline.workingbranch")
+    if stored:
+        if stored != _production_branch(repo, cfg):
+            return stored
+        sys.stderr.write('working branch: "%s" is the production branch; using %s\n'
+                         % (stored, named(WORKING_BRANCH_DEFAULT)))
+        if not derive:
+            return None
+    elif not derive:
+        return None
+
     try:
         value = str(get("working_branch")).strip() or WORKING_BRANCH_DEFAULT
     except Exception:
@@ -932,7 +937,7 @@ def working_branch(repo, derive=False):
 # ------------------------------------------------------------------ CLI
 
 USAGE = ("usage: agent_conf.py get <key> | show | migrate <project root> "
-         "| cli-model <model[:effort]> | you <role_key> <pid> | working-branch <repo>\n")
+         "| cli-model <model[:effort]> | you <role_key> <pid> | working-branch <repo> | stored-working-branch <repo>\n")
 
 
 def _cmd_get(key):
@@ -973,6 +978,9 @@ def main(argv):
         return 0
     if len(argv) == 2 and argv[0] == "get":
         return _cmd_get(argv[1])
+    if len(argv) == 2 and argv[0] == "stored-working-branch":
+        sys.stdout.write((working_branch(argv[1]) or "") + "\n")
+        return 0
     if len(argv) == 2 and argv[0] == "working-branch":
         sys.stdout.write(working_branch(argv[1], derive=True) + "\n")
         return 0
