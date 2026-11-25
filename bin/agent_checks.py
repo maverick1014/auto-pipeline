@@ -29,7 +29,7 @@ if HERE not in sys.path:
 FALLBACK = ["DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK", "FULL SUITE",
             "CORE REVIEW", "DIFF READ", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK", "REAL DATA COUNT"]
 SIGN = "OWNER SIGN"
-BUILDER_BLOCKS = ("PR REVIEW", "CORE REVIEW", "DIFF READ", "FLOW CHECK", "UI CHECK")
+BUILDER_BLOCKS = ("PR REVIEW", "CORE REVIEW", "FLOW CHECK", "UI CHECK")
 NO_WB_NOTE = "note: no working branch stored in this clone: give --base origin/<working branch> (the brief names it)"
 DATE_RE = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}"
 
@@ -517,7 +517,12 @@ def cmd_gather(ctx, a):
     task, rest = a[0], a[1:]
     if len(rest) != 2 or rest[0] != "--dir":
         raise Refuse("checks gather: usage: checks gather \"<task>\" --dir <path>", 2)
-    src = os.path.join(rest[1], "agent_state.txt")
+    print("checks gather: %s %d lines" % (task, gather_lines(ctx, task, rest[1])))
+
+
+def gather_lines(ctx, task, folder):
+    """Append the task's CHECK lines of <folder>/agent_state.txt to the main repo's (lines there are skipped)."""
+    src = os.path.join(folder, "agent_state.txt")
     dst = os.path.join(ctx["root"], "agent_state.txt")
     head = "CHECK %s " % task
     try:
@@ -545,7 +550,7 @@ def cmd_gather(ctx, a):
             except OSError:
                 pass
             fh.write("\n".join(new) + "\n")
-    print("checks gather: %s %d lines" % (task, len(new)))
+    return len(new)
 
 
 def launch_builders(path, task):
@@ -827,6 +832,8 @@ def cmd_gate(ctx, a):
     paths = [os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")]
     if opts.get("--results"):
         paths.append(opts["--results"])
+    if os.path.realpath(d) != os.path.realpath(ctx["root"]):
+        gather_lines(ctx, task, d)      # A10: promote's own gate finds the lines of a task with no worktree line
     opened = (field_of(f, "opened") or "") if f is not None else ""
     res = read_results(paths, task, opened, soon(ctx["now"]))
     gd = common_dir(d) or common_dir(ctx["root"])

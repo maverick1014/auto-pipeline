@@ -110,7 +110,9 @@ class TestA4CreateThenReserve(unittest.TestCase):
     def test_dispatch(self):
         d = read("skills", "dispatch", "SKILL.md")
         self.assertNotIn("before `orca terminal create`", d.lower())
-        self.assertLess(d.index("orca terminal create"), d.index("agent-room.sh reserve-pane"))
+        # section 48 C24 changed the order again: reserve (pending) before the create, name it after
+        self.assertLess(d.index("reserve-pane --pending"), d.index("orca terminal create"))
+        self.assertLess(d.index("orca terminal create"), d.index("reserve-pane --name"))
 
 
 class TestA5PromoteUsage(unittest.TestCase):

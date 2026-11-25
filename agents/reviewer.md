@@ -12,7 +12,7 @@ Do
 - Your brief names: the task `<name>`, the `head: <sha>` you look at (pass it as `--commit <head>`: your shell starts in the main checkout), the approved requirement, the worktree path (and branch), and the base to compare with.
 - Rule: the commit you pass is the one you read; read that head, never another.
 - You are not the builder. The review counts only when someone who did not build the task does it.
-- PR REVIEW: read the diff (`git diff <base>...HEAD` in the worktree) against the approved requirement. Ask: does it do what was asked and nothing else; are the edge list lines of `agent_repo.conf` covered; is no check deleted (a deleted or skipped test needs a twin); is there no secret. Its cost follows the diff size.
+- PR REVIEW: read the diff (`git fetch`, then `git diff <base>...<head>`, from any checkout: no worktree needed) against the approved requirement. Ask: does it do what was asked and nothing else; are the edge list lines of `agent_repo.conf` covered; is no check deleted (a deleted or skipped test needs a twin); is there no secret. Its cost follows the diff size.
 - CORE REVIEW, when planned: read the logic against the rules the owner approved (money, permission, who can see or do what).
 - Write one line per block you ran: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh check "<name>" "PR REVIEW" pass|fail --by "<name> Review" --commit <head> --evidence "<what you read and found>"`. Never a pass line for a block you did not run.
 - A fail is a fix order to the builder, in the fixed shape: where, what is seen, what is expected, evidence.

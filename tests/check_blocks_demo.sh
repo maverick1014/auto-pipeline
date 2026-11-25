@@ -183,6 +183,22 @@ echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
 echo "working branch has production: $(git -C "$M" merge-base --is-ancestor origin/main ap-main-demo && echo yes || echo no)"
 cd "$T"
 
+say "walk 3: an urgent small production task, done by a fast-lane deputy in an Agent worktree (no worktree line)"
+flowrepo walk3; cd "$M"
+echo "-- dispatch step 2: the todo line with the owner's words that name the publish; base: origin/main"
+"$P2/bin/agent-file.sh" todo add u1 small "urgent: fix the total and publish it" 10 --checks "PR REVIEW" --builder "u1 Deputy" --target production --owner-quote "urgent: fix the total and publish it now"
+W="$T/walk3-agent-wt"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b u1 "$W" origin/main
+printf 'x = 4\n' > "$W/app.py"; git -C "$W" commit -qam "urgent fix"; git -C "$W" push -q -u origin u1
+for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P2/bin/agent-file.sh" check u1 "$b" pass --by "u1 Deputy" --evidence demo >/dev/null); done
+P=$P2 launch u1 auto-pipeline:reviewer "u1 Review"
+"$P2/bin/agent-file.sh" check u1 "PR REVIEW" pass --by "u1 Review" --commit "$(git -C "$W" rev-parse HEAD)" --evidence "read the diff" >/dev/null
+echo "-- /merge step 4: the gate on the deputy's worktree (it brings the deputy's lines into the main repo), then promote --task"
+if "$P2/bin/agent-file.sh" checks gate u1 --dir "$W" --branch u1 --base origin/main | grep -E "GATE"; then
+  "$P2/bin/agent-promote.sh" --task u1 --branch u1; echo "promote exit $?"
+else echo "-- GATE REFUSED: no promote"; fi
+echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
+cd "$T"
+
 say "10 FIX ORDER 6: G1-G4 (the owner's words are taken as verified here, as in walk 2)"
 flowrepo order6; cd "$M"
 "$P2/bin/agent-file.sh" todo add g small "small fix" 10 --checks "PR REVIEW" >/dev/null
