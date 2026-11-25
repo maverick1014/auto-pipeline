@@ -309,3 +309,44 @@ Contract (task manager):
 - C2': `MODULE TESTS: <group folders, ", "> | run: <one cmd per group joined by " ; ">` when a changed code file is named by a file in a `group.<folder>` folder other than its own; deps/lockfile/CI/test config: `MODULE TESTS: every module (<files>) | run: <every group cmd joined by " ; ", or full_cmd when no groups>` and OWNER SIGN `MODULE TESTS (<files>)`. No `group lines` under RELATED TESTS any more. No groups and a plain code change: not triggered.
 - C6 nightly: `bin/agent-nightly.sh` (logic `bin/agent_nightly.py`): `--start` runs full_cmd of agent_repo.conf once in the background on the main repo's HEAD of main (writes `<git common dir>/agent_nightly.json`: started, commit, finished, result green|red, failed tests); `--status` prints `NIGHTLY: green|red|running|none <commit> <finished>`; `--due` exit 0 when a start is due (no run today after `nightly_hour` (fixed constant 22) and no heavy run, or no watch alive and the last run older than 24 hours), else 1; `--release-ok` exit 0 only when the last nightly ran on the current origin/main commit and was green, else 1 with one line saying what to run; a red run after a green one records one line per failing test in `<git common dir>/agent_selection_misses.txt`: `<date> | <test> | <merge commit short> <merge subject>` (the first merge on main's first-parent line since the last green nightly that touched a file the test names, else the last merge since then); `--misses` prints them and `misses: <n> since <first date>`.
 - C7 weight: `bin/agent-test-run.sh --key <key> -- <command...>`: weight from agent_repo.conf `weight.<key>=<seconds> <MB>`; light = under 120 s and under 1024 MB; unknown or heavy: takes the heavy slot (a lock in the git common dir; waits while it is held) and starts only when RAM used is under 50%; light: only the normal RAM guard; runs the command, prints its output, writes `weight.<key>=<s> <mb>` back into the agent_repo.conf of the git toplevel of the cwd, exits with the command's exit code; first line `TEST RUN <key>: light|heavy (<why>)`. Constants: light_test_s 120, light_test_mb 1024, nightly_hour 22.
+
+## 16. Rule text for sections 15 and the slot default (task manager draft; the rules worker puts it in as written)
+
+R8: the table again from `python3 bin/agent_blocks.py table`. Replace the OWNER SIGN, budget and net lines with:
+```
+- No task runs the full suite (owner 1A 2026-11-25): MODULE TESTS is the largest per-task check
+- OWNER SIGN is planned when a sign fires: MODULE TESTS on a dependency, lockfile, CI or test-config change, DATA CHECK, DB CHECK on a data change; dispatch plans it with CORE REVIEW when the brief changes who can see or do what
+- BUILD and GUARD TESTS run per task only when their measured time in agent_repo.conf is under `check_budget_s` (60 s)
+- Slower = heavy: it runs in the net; a heavy BUILD takes the heavy-test slot (S5)
+- REAL DATA COUNT with no read access: skipped with one printed line, never silently
+- Outside tasks, the net: NIGHTLY RUN, all tests once every night in the background on the heavy-test machine (`agent-nightly.sh`); it gates nothing
+- A failure the nightly finds that the causing task's own RELATED or MODULE run did not find is a selection miss: one line, the test and the merge (`agent-nightly.sh --misses`)
+- After two weeks the owner reads the selection miss count and decides whether the nightly goes too
+- The watch's housekeep pass starts it once a day after 22:00 (`nightly_hour`) when no heavy test runs; no watch alive: the next session start, when the last run is older than 24 hours
+- A release needs the last nightly on that main to be green, or one background run (`agent-nightly.sh --release-ok`); no other pre-release run
+- RELEASE SMOKE after every release: a fresh session uses the released version for real (start, one subagent launch and finish, the user-facing flows that changed)
+```
+W4 (replaces the whole rule):
+```
+W4. Multi-agent tests
+- Tests are organised module → feature
+- No task runs the full suite (owner 1A 2026-11-25). Which tests run follows the blocks (R8): RELATED TESTS and GUARD TESTS per task; MODULE TESTS only when its trigger fires
+- Every test run goes through `agent-test-run.sh`: light or heavy by measured weight (S5)
+- The main manager and the merge deputy never re-run tests the task manager already passed. Only on a merge conflict: test the conflicted part
+- After a bounce: re-run only the tests that failed, not the suite
+```
+S5 (replaces the whole rule):
+```
+S5. Heavy tests
+- A test run is light or heavy by measured weight, never by its name: `agent_repo.conf` keeps seconds and peak MB per test command or module group (`weight.<key>`); init measures, each real run through `agent-test-run.sh` updates them
+- Light (under 120 s and under 1 GB): no slot, on the agent's own machine, several at once, under the normal RAM guard (S4)
+- Heavy: the heavy-test slot on the heavy-test machine. Unknown weight counts as heavy the first time
+- Start one; once it runs and has settled, start another only if RAM is still more than 50% free; never two at the same moment. The Heavy test slot/time setting is the ceiling, RAM decides below it
+- Every test run caps its own parallelism, e.g. `jest --maxWorkers=2`, `flutter test -j 2`
+- Every test run that can run in the background runs in the background by default (Bash `run_in_background`)
+- Setting "Load: Heavy test slot/time" = 2
+```
+skills/merge step 8: before `bin/agent-release.sh --push`, run `bin/agent-nightly.sh --release-ok`; exit 1 → `bin/agent-nightly.sh --start` in the background, release after it is green; no other pre-release run.
+F map: scripts `bin/agent-nightly.sh  the nightly run of all tests: gates nothing, records selection misses, --release-ok`, `bin/agent-test-run.sh  every test run: light or heavy by measured weight, the heavy-test slot`; commands `bin/agent-nightly.sh --status | --misses | --release-ok`.
+Quiz Q9 (rule S5, answer A): see tests/test_check_rules.py QUIZ_Q9.
+Every "FULL SUITE" and "NIGHTLY SUITE" word leaves PRINCIPLES.md, skills and agents.
