@@ -505,6 +505,14 @@ class TestGate(Case):
         r = self.gate("--results", path)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_the_base_defaults_to_the_working_branch(self):
+        # owner 1A (section 17): a task merges into the working branch; there is no origin/main here
+        self.git("push", "-q", "origin", "base:refs/heads/trunk")
+        self.commit_push({"agent_repo.conf": "working_branch=trunk\n"})
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ")
+        r = self.af("checks", "gate", "t", "--dir", self.repo.dir)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_no_todo_line_needs_checks(self):
         r = self.af("checks", "gate", "ghost", "--dir", self.repo.dir, "--base", "base")
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)

@@ -86,7 +86,11 @@ class TestTheTable(unittest.TestCase):
         self.assertIn("posting rule", trig["CORE REVIEW"])
 
     def test_the_net_is_outside_tasks(self):
-        self.assertEqual([n["name"] for n in self.mod.NET], ["NIGHTLY RUN", "RELEASE SMOKE"])
+        self.assertEqual([n["name"] for n in self.mod.NET], ["NIGHTLY RUN", "RELEASE RUN", "RELEASE SMOKE"])
+        release = {n["name"]: n["runs"] for n in self.mod.NET}["RELEASE RUN"]
+        for phrase in ("full suite once on the working branch", "new fixer agent", "never back to the builder",
+                       "waits until it is green"):
+            self.assertIn(phrase, release)   # owner 1A 2026-11-25 (section 17)
         for n in self.mod.NET:
             self.assertTrue(n["runs"].strip())
 

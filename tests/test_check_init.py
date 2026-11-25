@@ -101,9 +101,9 @@ class TestFresh(InitCase):
         self.init("--no-measure")
         keys = [l.split("=", 1)[0] for l in self.conf_text().splitlines() if "=" in l and not l.startswith("#")]
         order = ["version", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd", "test_config",
-                 "data_scripts", "real_data"]
+                 "data_scripts", "real_data", "working_branch"]
         self.assertEqual([k for k in keys if k in order], order)
-        self.assertGreater(keys.index("edge"), keys.index("real_data"))
+        self.assertGreater(keys.index("edge"), keys.index("working_branch"))
 
     def test_it_is_meant_to_be_committed(self):
         self.init("--no-measure")
@@ -328,3 +328,23 @@ class TestReviewInit(InitCase):
         core = self.conf()["core_paths"].split(",")
         self.assertIn("src/auth/", core)
         self.assertFalse([c for c in core if " " in c], core)
+
+
+class TestWorkingBranch(InitCase):
+    """Owner 1A 2026-11-25 (section 17): the working branch is the one that does not reach users;
+    main when a release branch exists (users install release), else dev. Init asks nothing."""
+
+    def test_no_release_branch_is_dev(self):
+        self.init("--no-measure")
+        self.assertEqual(self.conf()["working_branch"], "dev")
+
+    def test_a_release_branch_makes_main_the_working_branch(self):
+        self.git("branch", "release")
+        self.init("--no-measure")
+        self.assertEqual(self.conf()["working_branch"], "main")
+
+    def test_an_existing_value_stays(self):
+        self.put({"agent_repo.conf": "working_branch=trunk\n"})
+        self.git("branch", "release")
+        self.init("--no-measure")
+        self.assertEqual(self.conf()["working_branch"], "trunk")

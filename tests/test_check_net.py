@@ -143,6 +143,19 @@ class TestNightly(NetCase):
         r = self.nightly("--release-ok")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_the_nightly_tests_the_working_branch(self):
+        # owner 1A (section 17): dev is the working branch; main (checked out here) moved on and is red
+        self.git("branch", "dev")
+        dev = self.git("rev-parse", "dev")
+        self.put({"src/x.txt": "broken\n"})
+        self.git("commit", "-qam", "main moves")
+        with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:
+            fh.write("working_branch=dev\n")
+        self.nightly("--start", "--wait")
+        st = self.status_file()
+        self.assertEqual((st["commit"], st["result"]), (dev, "green"), st)
+        self.assertEqual(self.nightly("--release-ok").returncode, 0)
+
     def test_the_nightly_tests_the_commit_not_the_shared_checkout(self):
         # re-check defect G: merge deputies work in the main checkout at night
         self.put({"src/x.txt": "half merged\n"})                    # uncommitted, in the main checkout

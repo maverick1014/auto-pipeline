@@ -47,8 +47,14 @@ QUIZ_Q16 = """Q16. A small logic task (one function, about 30 minutes) needs a n
 QUIZ_Q25 = """Q25. A big task takes the full flow. The order is:
   A. Worktree, workers build, failing tests, verify, merge
   B. Failing tests, worktree, mock, workers build, merge
-  C. Todo line + estimate, mock if UI, worktree + task manager, failing tests, workers build, verify, push, acceptance blocks, merge + cleanup, todo done
+  C. Todo line + estimate, mock if UI, worktree + task manager, failing tests, workers build, verify, push, acceptance blocks, merge into the working branch + cleanup, todo done
   D. Mock, workers build, todo line, acceptance blocks, merge"""
+
+QUIZ_Q35 = """Q35. Before a release the full suite runs once on the working branch, and two tests fail. The tasks that caused them are merged and their builders are idle. You:
+  A. Send each failure back to the agent that built it
+  B. Give the failures to a new fixer agent (a fast-lane deputy or a task manager, by size); the release waits until that run is green
+  C. Release now and fix the tests later
+  D. Mark the two tests skipped and release"""
 
 QUIZ_Q38 = """Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: DIFF SCAN, RELATED TESTS, GUARD TESTS; dispatch planned DIFF READ. What runs?
   A. The full suite once
@@ -138,7 +144,7 @@ class TestPrinciplesR8(unittest.TestCase):
         # never a rule line that the table of blocks does not back
         text = read("PRINCIPLES.md").split("## Notice")[0]
         found = set(re.findall(r"\b([A-Z]{2,}(?: [A-Z]{2,})+)\b", text))
-        extra = {"OWNER SIGN", "NIGHTLY RUN", "RELEASE SMOKE", "TEST RUN",   # the sign, the net, the runner
+        extra = {"OWNER SIGN", "NIGHTLY RUN", "RELEASE RUN", "RELEASE SMOKE", "TEST RUN",   # sign, net, runner
                  "DONE PASS", "DONE FAIL", "CLOSE CASE", "NEEDS HUMAN", "MOCK READY", "STALE PLUGIN",
                  "STATE LONG", "OWNER TODO", "QUESTIONS PAGE", "OWNER ORDER", "REPO TASK",   # report words
                  "GATE PASS", "GATE REFUSED", "CHECK PASS", "CHECK FAIL", "MERGE PASS", "MERGE FAIL",
@@ -352,7 +358,7 @@ class TestQuiz(ScriptCase):
 
     def test_the_changed_questions(self):
         out = self.quiz()
-        for n, text in ((6, QUIZ_Q6), (9, QUIZ_Q9), (16, QUIZ_Q16), (25, QUIZ_Q25), (38, QUIZ_Q38), (39, QUIZ_Q39)):
+        for n, text in ((6, QUIZ_Q6), (9, QUIZ_Q9), (16, QUIZ_Q16), (25, QUIZ_Q25), (35, QUIZ_Q35), (38, QUIZ_Q38), (39, QUIZ_Q39)):
             with self.subTest(q=n):
                 self.assertEqual(self.question(out, n), text)
 
@@ -493,3 +499,44 @@ class TestKeepTheResultLines(unittest.TestCase):
     def test_w8_says_so(self):
         w8 = section(read("PRINCIPLES.md"), "W8. ", "W9. ")
         self.assertIn("checks gather", w8)
+
+
+class TestWorkingBranchRules(unittest.TestCase):
+    """Owner 1A 2026-11-25 (section 17): rapid-development flow."""
+
+    def test_r1_merges_into_the_working_branch(self):
+        self.assertIn("Merge into the working branch + cleanup", section(read("PRINCIPLES.md"), "R1. ", "R2. "))
+
+    def test_r8_working_branch_and_release_run(self):
+        r8 = section(read("PRINCIPLES.md"), "R8. Check blocks", "## B. Work")
+        for phrase in ("working branch", "working_branch", "dev", "RELEASE RUN",
+                       "the full suite runs once on the working branch", "before a release", "new fixer agent",
+                       "never back to the builder", "The release waits until"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, r8)
+
+    def test_w8_merges_into_the_working_branch(self):
+        self.assertIn("working branch", section(read("PRINCIPLES.md"), "W8. ", "W9. "))
+
+    def test_merge_deputy_merges_into_the_working_branch(self):
+        text = read("agents", "merge-deputy.md")
+        given = [l for l in text.splitlines() if l.startswith("Your brief gives")][0]
+        self.assertIn("<working branch>", given)
+        self.assertIn("git push origin <working branch>", text)
+        self.assertNotIn("git push origin main", text)
+
+    def test_merge_skill_release_run(self):
+        text = read("skills", "merge", "SKILL.md")
+        for phrase in ("working branch", "new fixer agent", "never back to the builder"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        block = section(text, "name: <name>", "todo done arguments:")
+        self.assertIn("working branch:", block)
+
+    def test_dispatch_names_the_working_branch(self):
+        self.assertIn("working branch", read("skills", "dispatch", "SKILL.md"))
+
+    def test_this_repo_works_on_main(self):
+        conf = dict(l.split("=", 1) for l in read("agent_repo.conf").splitlines()
+                    if l and not l.startswith("#") and "=" in l and not l.startswith("edge="))
+        self.assertEqual(conf.get("working_branch"), "main")
