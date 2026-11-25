@@ -168,7 +168,9 @@ class TestC17ResumeReserves(tr.TestRoomForPanes):
         self.assertEqual(self.relaunched_for(out, paths[0]), "yes")
         path = self.env()["AGENT_RESERVE_FILE"]
         jobs = json.load(open(path)).get("jobs", []) if os.path.exists(path) else []
-        self.assertTrue([j for j in jobs if j.get("handle") and j.get("kind") == "pane"], jobs)
+        # section 48 C24: reserved before the create; named by its handle when the create answer gives one
+        # (this stub's answer has none, so it keeps its pending key)
+        self.assertTrue([j for j in jobs if j.get("kind") == "pane" and (j.get("handle") or j.get("key"))], jobs)
 
 
 # ====================================================================== C18-C20 the nightly

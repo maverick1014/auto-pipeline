@@ -181,6 +181,7 @@ class locked:
         return False
 
 
+UNVERIFIED_HOLD_S = 6 * 3600   # an entry whose start time is unknown or empty expires after 6 hours (C27)
 PANE_HOLD_S = 15 * 60       # a pane reserved at launch is dropped after 15 minutes when it never measured itself (C7)
 
 
@@ -213,13 +214,15 @@ def move_aside(path):
 def still_live(j):
     """A reservation is live while its pid runs with the start time stored with it (a reused pid is not it);
     a handle entry (a pane reserved at launch, no pid yet) lives 15 minutes."""
-    if not j.get("pid") and j.get("handle"):
+    if not j.get("pid") and (j.get("handle") or j.get("key")):
         return time.time() - float(j.get("started", 0) or 0) < PANE_HOLD_S
     if not pid_alive(j.get("pid")):
         return False
     stored = j.get("start")
-    if not stored:
-        return True
+    if not stored:                                       # it cannot be verified: expires after 6 hours (C27)
+        if not j.get("started"):
+            return True                                  # no time to count from: kept
+        return time.time() - float(j["started"]) < UNVERIFIED_HOLD_S
     now_start = proc_start(j["pid"])
     return not now_start or now_start == stored          # unknown ("") is never pruned
 
@@ -332,8 +335,10 @@ def room(need, reserve_as=None):
         jobs, _ = load_jobs()
         me = reserve_as.get("pid") if reserve_as else None
         handle = reserve_as.get("handle") if reserve_as else None
+        key = reserve_as.get("key") if reserve_as else None
         others = [j for j in jobs if not ((me is not None and j.get("pid") == me)
-                                          or (handle and j.get("handle") == handle))]
+                                          or (handle and j.get("handle") == handle)
+                                          or (key and j.get("key") == key))]
         total, used, limit = machine()
         if used < 0:
             return False, "ROOM: no: RAM unknown"
@@ -452,19 +457,45 @@ def room_main(argv, cwd):
             jobs, _ = load_jobs()
             save_jobs([j for j in jobs if j.get("pid") != new["pid"]] + [new])
         return 0
-    if cmd == "reserve-pane" and len(argv) == 3:
+    if cmd == "reserve-pane" and len(argv) == 4 and argv[1] == "--name":
+        # the pending reservation takes the new handle (no check, C24)
+        key, handle = argv[2], argv[3]
+        with locked():
+            jobs, _ = load_jobs()
+            found = [j for j in jobs if j.get("key") == key]
+            rest = [j for j in jobs if j.get("key") != key and j.get("handle") != handle]
+            if found:
+                new = dict(found[0])
+                new.pop("key", None)
+            else:
+                new = {"mb": pane_need(common_dir(cwd)), "repo": repo_name(), "since": now().strftime(FMT),
+                       "kind": "pane", "measured": False, "by": "launch"}
+            new.update({"handle": handle, "what": "pane " + handle, "started": time.time()})
+            save_jobs(rest + [new])
+        return 0
+    if cmd == "reserve-pane" and len(argv) in (3, 4):
+        pending = len(argv) == 4 and argv[1] == "--pending"
+        if len(argv) == 4 and not pending:
+            sys.stderr.write("agent-room.sh reserve-pane <handle> <mb> | --pending <key> <mb> | --name <key> <handle>\n")
+            return 2
+        ident, size = (argv[2], argv[3]) if pending else (argv[1], argv[2])
         try:
-            mb = int(float(argv[2]))
+            mb = int(float(size))
         except ValueError:
             sys.stderr.write("agent-room.sh reserve-pane <handle> <mb>\n")
             return 2
-        new = {"handle": argv[1], "mb": mb, "what": "pane " + argv[1], "repo": repo_name(),
+        new = {"mb": mb, "what": "pane being created" if pending else "pane " + ident, "repo": repo_name(),
                "since": now().strftime(FMT), "started": time.time(), "kind": "pane", "measured": False,
-               "by": "launch"}
+               "by": "launch", ("key" if pending else "handle"): ident}
         ok, line = room(mb, new)               # the check and the reservation in one locked step
         if not ok:
             print(line)
             return 1
+        return 0
+    if cmd == "release-pane" and len(argv) == 2:
+        with locked():
+            jobs, _ = load_jobs()
+            save_jobs([j for j in jobs if argv[1] not in (j.get("key"), j.get("handle"))])
         return 0
     if cmd == "release" and len(argv) == 2:
         try:
@@ -474,7 +505,7 @@ def room_main(argv, cwd):
         return 0
     if cmd == "list":
         for j in sorted(live_jobs(), key=lambda j: j.get("started", 0)):
-            print("%s | %s MB | %s%s | %s | %s | %s" % (j.get("pid") or j.get("handle"), j.get("mb"), j.get("kind", "test"),
+            print("%s | %s MB | %s%s | %s | %s | %s" % (j.get("pid") or j.get("handle") or j.get("key"), j.get("mb"), j.get("kind", "test"),
                                                        "" if j.get("measured", True) else " (unmeasured)",
                                                        j.get("what", ""), os.path.basename(str(j.get("repo", ""))), j.get("since", "")))
         return 0
@@ -492,7 +523,8 @@ def room_main(argv, cwd):
     if cmd == "measure-pane" and len(argv) == 2:
         return measure_pane(argv[1], cwd)
     sys.stderr.write("usage: agent-room.sh check <mb>|unknown | reserve <pid> <mb> \"<what>\" [--kind test|build|pane] "
-                     "[--unmeasured] | reserve-pane <handle> <mb> | release <pid> | list | relief | measure-pane <pid>\n")
+                     "[--unmeasured] | reserve-pane <handle> <mb> | reserve-pane --pending <key> <mb> | "
+                     "reserve-pane --name <key> <handle> | release-pane <key> | release <pid> | list | relief | measure-pane <pid>\n")
     return 2
 
 
@@ -559,12 +591,14 @@ def measure_pane(pid, cwd):
     mb = int(math.ceil(kb / 1024.0))
     gitdir = common_dir(cwd)
     with locked():
-        old = parse_weight(read_weights(gitdir).get("pane", ""))
-        if not old or mb > old[1]:
-            try:
-                write_weight(gitdir, "pane", 0, mb)
-            except OSError:
-                pass
+        data = read_weights(gitdir)
+        recent = [int(x) for x in (data.get("pane_recent") or []) if isinstance(x, (int, float))][-4:] + [mb]
+        data["pane_recent"] = recent
+        data["pane"] = "0 s %d MB" % max(recent)      # the highest of the last 5 measurements, not of all time
+        try:
+            atomic_write(weights_path(gitdir), json.dumps(data, sort_keys=True) + "\n")
+        except OSError:
+            pass
         handle = os.environ.get("ORCA_TERMINAL_HANDLE", "")
         if handle:
             jobs, _ = load_jobs()
@@ -1217,6 +1251,48 @@ def production_branch(root):
     return agent_conf.production_branch(root)
 
 
+def orca_json(args, timeout):
+    """The parsed JSON of one orca call, or None (not installed, a failure, not ok, timeout)."""
+    try:
+        res = subprocess.run(["orca"] + args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, universal_newlines=True, timeout=timeout)
+        data = json.loads(res.stdout) if res.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    if isinstance(data, dict) and data.get("ok") is False:
+        return None
+    return data
+
+
+def machines(cwd=None):
+    """(paired, reachable): the names of the paired machines (`orca environment list --json` ->
+    result.environments) and those that answer `orca terminal list --environment <name> --json` within 10 s."""
+    data = orca_json(["environment", "list", "--json"], 30)
+    rows = []
+    if isinstance(data, dict):
+        inner = data.get("result") if isinstance(data.get("result"), dict) else data
+        rows = inner.get("environments") or []
+    elif isinstance(data, list):
+        rows = data
+    paired = []
+    for row in rows if isinstance(rows, list) else []:
+        name = row.get("name") if isinstance(row, dict) else None
+        if name and name not in paired:
+            paired.append(str(name))
+    reachable = [n for n in paired if orca_json(["terminal", "list", "--environment", n, "--json"], 10) is not None]
+    return paired, reachable
+
+
+def machines_cli(cwd):
+    paired, reachable = machines(cwd)
+    for name in reachable:
+        print(name)
+    down = [n for n in paired if n not in reachable]
+    if down:
+        print("NIGHTLY: the paired machine %s did not answer; it runs here when there is room" % ", ".join(down))
+    return 0
+
+
 def need_stored(root):
     """The stored working branch, or print the one refusal line and return None."""
     wb = working_branch(root)
@@ -1324,7 +1400,7 @@ def main(argv):
     cwd = os.getcwd()
     if argv and argv[0] == "testrun":
         return testrun(argv[1:])
-    if argv and argv[0] in ("check", "reserve", "reserve-pane", "release", "list", "numbers", "relief", "measure-pane"):
+    if argv and argv[0] in ("check", "reserve", "reserve-pane", "release-pane", "release", "list", "numbers", "relief", "measure-pane"):
         return room_main(argv, cwd)
     if argv and argv[0] in ("run", "--start", "--release-ok", "--failures") and not need_stored(main_root(cwd)):
         return 1
@@ -1339,6 +1415,8 @@ def main(argv):
         return 0 if due(cwd) else 1
     if argv[0] == "--release-ok":
         return release_ok(cwd)
+    if argv[0] == "--machines":
+        return machines_cli(cwd)
     if argv[0] == "--misses":
         return misses(cwd)
     if argv[0] == "--failures":

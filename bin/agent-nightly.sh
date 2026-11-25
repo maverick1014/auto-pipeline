@@ -7,6 +7,8 @@
 #   agent-nightly.sh --due              exit 0 when a start is due, else 1
 #   agent-nightly.sh --release-ok       exit 0 only when the last nightly is green on the working branch tip (or its parent when the tip only bumps plugin.json)
 #   agent-nightly.sh --failures         one row per failing test of the last red run: test | merge | task | requirement
+#   agent-nightly.sh --machines         the reachable paired machines, one name per line; a paired one that did not answer: one
+#                                       line starting NIGHTLY: after the names
 #   agent-nightly.sh --misses           selection misses, then "misses: <n> since <date>"
 #
 # Files in the git common dir: agent_nightly.json, agent_selection_misses.txt. Logic: agent_nightly.py.

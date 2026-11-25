@@ -573,21 +573,6 @@ class Housekeep(object):
 
     # ---- f. the nightly run (check-blocks section 15): started in the background when it is due
 
-    def connected_machine(self):
-        """True when `orca environment list --json` names a connected machine (C18)."""
-        try:
-            res = subprocess.run(["orca", "environment", "list", "--json"], cwd=self.root, stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True,
-                                 timeout=30)
-            data = json.loads(res.stdout) if res.returncode == 0 else None
-        except (OSError, ValueError, subprocess.SubprocessError):
-            return False
-        rows = data.get("environments", []) if isinstance(data, dict) else (data or [])
-        for row in rows if isinstance(rows, list) else []:
-            if isinstance(row, dict) and row.get("name") and row.get("connected", True) is not False:
-                return True
-        return False
-
     def run_nightly(self):
         script = os.path.join(self.plugin, "bin", "agent-nightly.sh")
         if not self.apply or not os.path.isfile(script):
@@ -596,9 +581,17 @@ class Housekeep(object):
         if subprocess.call([script, "--due"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60) != 0:
             return
-        if self.connected_machine():
+        try:
+            import agent_nightly
+            paired, reachable = agent_nightly.machines(self.root)
+        except Exception:
+            paired, reachable = [], []
+        if reachable:
             self.nightly.append("NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start there")
             return
+        if paired:
+            self.nightly.append("NIGHTLY: the paired machine %s did not answer; it runs here when there is room"
+                                % ", ".join(paired))
         room = os.path.join(self.plugin, "bin", "agent-room.sh")
         if os.path.isfile(room):
             try:
