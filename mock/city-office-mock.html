@@ -1292,7 +1292,7 @@ function select(id){
   if(view === 'outside'){ enter(d.at || d.repo, () => select(id)); return; }
   const at = d.at || d.repo;
   if(at !== cur){ goFloor(at, () => select(id)); return; }
-  sel = id; cam.follow = id; cam.wantDist = Math.min(cam.dist, 9);
+  sel = id; cam.follow = id; cam.wantDist = Math.min(cam.dist, (fitDist() + 9) / 2); // owner 11-25: half the old zoom (21->15 desktop)
   renderPanel(); renderRail();
 }
 function closePanel(){ sel = null; $('#panel').hidden = true; stage.classList.remove('has-panel'); renderRail(); }

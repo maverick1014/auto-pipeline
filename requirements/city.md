@@ -11,7 +11,7 @@
 
 ## Office
 
-- Owner, 2026-11-24 (city-office; prototype https://claude.ai/artifact/BhrUSCTgwVkVpVYiYnibmY, kept as `mock/city-office-mock.html`; his words: "instead of building the whole city, a position in their office is better ... different repo is different department"). The city becomes ONE office building, "Agent 办公楼". It replaces the island: in Look the island, camera, repo tags and tag strip; Arrange; Worktrees; Growth; Balance; Quality. Those sections stay below until the build removes them, then they go.
+- Owner, 2026-11-24 (city-office; prototype https://claude.ai/artifact/BhrUSCTgwVkVpVYiYnibmY, kept as `mock/city-office-mock.html`; approved 2026-11-25: "ok already, can approve"; his words: "instead of building the whole city, a position in their office is better ... different repo is different department"). The city becomes ONE office building, "Agent 办公楼". It replaces the island: in Look the island, camera, repo tags and tag strip; Arrange; Worktrees; Growth; Balance; Quality. Those sections stay below until the build removes them, then they go.
 - Kept as they are: Data path, Interaction, Status, Face to face (on one floor), Talking, Add agent, Persistence, Limits, Anywhere. The governor is called 区经理 (area manager) on the page; the rule of who it is does not change.
 
 ### Building
@@ -31,6 +31,7 @@
 - Fixed zones on every floor: the lift (north middle), the area manager's glass room (north-east), the assistant desks outside its door, the open office of manager desks (one more desk than managers, at most 9), the pantry (north-west; idle people go there), the meeting corner (south-east). The outer wall on the camera's side drops to a low sill, so the floor is always seen inside.
 - Rail, person panel, talking, question cards and Add agent work as before. The rail groups are floors (nF + repo, top first); the tree is 区经理 > 设计师, 助理, 经理.
 - Selecting someone on another floor: the view goes to that floor first. From outside: in through the door to that floor.
+- Selecting someone zooms in half as far as the island did (owner, 2026-11-25: "the zoom in for the avatar might no need so many ... reduce about 50%"): the camera goes to distance (floor view distance + 9) / 2, about 15 on a computer (the island went to 9), never further out than it already is. Following works as in Look.
 
 ### Between floors
 - Owner: "if manager v4 want to find manager v3 ... he pressing the lift and wait then sit the lift to that floor and talk with the manager". A face-to-face talk (Face to face) with someone on another floor: the sender walks to the lift, presses the button, waits for the door, rides, walks out on the other floor, talks, and rides back the same way.
