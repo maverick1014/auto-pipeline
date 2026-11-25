@@ -175,5 +175,60 @@ class TestStartPermissionLine(ScriptCase):
         self.assertLessEqual(len(out.encode()), 2000)
 
 
+class TestModeMatchNotice(ScriptCase):
+    """mode-match (2026-11-25): one start line when this session's mode (hook stdin
+    "permission_mode") differs from the Permission mode setting; else nothing."""
+    script = "agent-start.sh"
+
+    def start(self, mode="auto", lang=None, setting=None, sid="mm-1"):
+        if lang:
+            self.repo.set_conf("language", lang)
+        if setting:
+            self.repo.set_conf("permission_mode", setting)
+        payload = {"session_id": sid, "source": "startup", "cwd": self.repo.cwd}
+        if mode is not None:
+            payload["permission_mode"] = mode
+        out = self.assertOk(self.repo.run("agent-start.sh", stdin=json.dumps(payload),
+                                          env={"AGENT_ROLE": "task-manager"}))
+        return [l for l in out.splitlines() if l.startswith("MODE MISMATCH:")]
+
+    def test_differ_en(self):
+        lines = self.start("auto", "en")
+        self.assertEqual(len(lines), 1, lines)
+        line = lines[0]
+        for word in ("auto", "bypassPermissions", "approval",
+                     "claude --permission-mode bypassPermissions",
+                     "/plugin -> auto-pipeline -> Configure", "Permission mode"):
+            self.assertIn(word, line)
+
+    def test_differ_zh(self):
+        lines = self.start("plan", "zh", setting="acceptEdits")
+        self.assertEqual(len(lines), 1, lines)
+        line = lines[0]
+        for word in ("plan", "acceptEdits", "批准", "claude --permission-mode acceptEdits",
+                     "/plugin -> auto-pipeline -> Configure", "Permission mode"):
+            self.assertIn(word, line)
+
+    def test_equal_prints_nothing(self):
+        self.assertEqual(self.start("bypassPermissions"), [])
+        self.assertEqual(self.start("acceptEdits", setting="acceptEdits", sid="mm-2"), [])
+
+    def test_mode_missing_prints_nothing(self):
+        self.assertEqual(self.start(None), [])
+
+    def test_setting_unreadable_prints_nothing(self):
+        path = os.path.join(self.repo.plugin_bin, "agent-settings.sh")
+        with open(path, "w") as fh:
+            fh.write("#!/usr/bin/env bash\nexit 1\n")
+        os.chmod(path, 0o755)
+        self.assertEqual(self.start("auto", sid="mm-3"), [])
+
+    def test_one_principles_line(self):
+        w16 = [l for l in read("PRINCIPLES.md").splitlines() if "MODE MISMATCH" in l]
+        self.assertEqual(len(w16), 1)
+        self.assertLessEqual(len(w16[0]), 200, w16[0])
+        self.assertIn("held because permission modes differ", read("PRINCIPLES.md"))
+
+
 if __name__ == "__main__":
     unittest.main()
