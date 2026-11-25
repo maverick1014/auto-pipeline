@@ -44,6 +44,9 @@ from scripthelp import ROOT
 PRINCIPLES_MARK = "PLUGIN-PRINCIPLES-MARKER"
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
 class RootsCase(ScriptCase):
     script = "agent-start.sh"
 
@@ -70,7 +73,19 @@ class RootsCase(ScriptCase):
         return self.repo.run("agent-start.sh", *args, **kwargs)
 
 
-class TestPluginRoot(RootsCase):
+class _TestPluginRootFixture:
+    def fixture(self):
+        pass
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one start for the readers
+class TestPluginRoot(_TestPluginRootFixture, RootsCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
     def test_the_rules_line_points_into_the_plugin(self):
         out = self.assertOk(self.start())
         self.assertIn("RULES: read %s/PRINCIPLES.md now (S8)." % self.repo.plugin,
@@ -85,6 +100,14 @@ class TestPluginRoot(RootsCase):
         self.assertFalse(os.path.exists(self.repo.path("PRINCIPLES.md")))
         out = self.assertOk(self.start())
         self.assertIn("QUIZ:", out)
+
+
+class TestPluginRootWrites(_TestPluginRootFixture, RootsCase):
+    """The tests of TestPluginRoot that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_the_plugin_is_never_written_to(self):
         before = sorted(os.listdir(self.repo.plugin))

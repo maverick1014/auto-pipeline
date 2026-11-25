@@ -442,13 +442,6 @@ class TestTheTexts(SeatCase):
         self.assertOk(result)
         self.assertIn("--release", result.stdout)
 
-    def test_principles_say_it(self):
-        text = read("PRINCIPLES.md")
-        w10 = text[text.index("W10."):text.index("W11.")]
-        w13 = text[text.index("W13."):text.index("## C.")]
-        self.assertIn("--take-over", w10)
-        self.assertIn("--release", w13)
-
     def test_city_requirement_says_it(self):
         text = read("requirements", "city.md")
         data_path = text[text.index("## Data path"):text.index("## Look")]

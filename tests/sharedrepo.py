@@ -52,8 +52,9 @@ def tree_state(base):
     return rows
 
 
-def remember_runs(repo):
-    """Make repo.run() answer a repeated call from memory."""
+def remember_runs(repo, after=None):
+    """Make repo.run() answer a repeated call from memory. after(): called
+    after each real (first) run."""
     real = repo.run
     seen = {}
 
@@ -62,6 +63,8 @@ def remember_runs(repo):
                           kwargs.get("stdin"), kwargs.get("cwd")], default=str)
         if key not in seen:
             seen[key] = real(script, *args, **kwargs)
+            if after:
+                after()
         return seen[key]
 
     repo.run = run
@@ -123,3 +126,89 @@ class SharedScriptCase(ScriptCase):
             type(self)._shared_state = now
             self.fail("this test changed the shared fixture (make it a ScriptCase test): %s"
                       % ", ".join(changed[:10]))
+
+
+def shared_fixture(guard=None, remember=(), remember_repo=False):
+    """Class decorator: the class's setUp runs once, for its first test; the
+    later tests reuse what it built (any TestCase, not only ScriptCase).
+
+        @shared_fixture(guard="base", remember=("pack",))
+        class TestEveryFileLands(PackCase): ...
+
+    - cleanups the setUp registers (self.addCleanup) run when the class ends
+    - attributes the setUp set on self are there for every test
+    - remember: method names whose result is kept per arguments (a second
+      call with the same arguments does not run again)
+    - remember_repo: self.repo.run() remembers its calls too
+    - guard: the attribute naming a folder (or a function of the test giving
+      it, e.g. REPO_BASE); after every test its content must
+      be what it was after the setUp (and the first calls), else the test fails
+    """
+    def deco(cls):
+        setup = cls.setUp
+        teardown = cls.tearDown
+
+        def setUp(self):
+            if "_once_done" not in cls.__dict__:
+                before = dict(vars(self))
+                self.addCleanup = cls.addClassCleanup
+                try:
+                    setup(self)
+                finally:
+                    del self.addCleanup
+                if remember_repo and getattr(self, "repo", None) is not None:
+                    remember_runs(self.repo, after=lambda: resnap(self))
+                for key, value in vars(self).items():
+                    if key not in before or before[key] is not value:
+                        setattr(cls, key, value)
+                cls._once_done = True
+                resnap(self)
+
+        def folder_of(self):
+            return guard(self) if callable(guard) else getattr(self, guard)
+
+        def resnap(self):
+            # the fixture as it stands now: after the setUp, and after the
+            # first real run of each remembered call
+            cls._once_state = tree_state(folder_of(self)) if guard else None
+
+        def tearDown(self):
+            teardown(self)
+            if not guard:
+                return
+            now = tree_state(folder_of(self))
+            if now != cls._once_state:
+                before = {r[0]: r for r in cls._once_state}
+                after = {r[0]: r for r in now}
+                changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
+                cls._once_state = now
+                self.fail("this test changed the shared fixture (give it its own setUp): %s"
+                          % ", ".join(changed[:10]))
+
+        for name in remember:
+            real = getattr(cls, name)
+
+            def make(real, name):
+                def remembered(self, *args, **kwargs):
+                    store = cls.__dict__.get("_remembered")
+                    if store is None:
+                        store = {}
+                        cls._remembered = store
+                    key = json.dumps([name, list(args), sorted(kwargs.items())], default=str)
+                    if key not in store:
+                        store[key] = real(self, *args, **kwargs)
+                        resnap(self)
+                    return store[key]
+                return remembered
+
+            setattr(cls, name, make(real, name))
+        cls.setUp = setUp
+        cls.tearDown = tearDown
+        return cls
+
+    return deco
+
+
+def REPO_BASE(test):
+    """guard= for a ScriptCase class: its repo folder (plugin copy and project)."""
+    return test.repo.base

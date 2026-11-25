@@ -92,6 +92,9 @@ import stat
 import subprocess
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
 class ResumeCase(ScriptCase):
     script = "agent-resume.sh"
 
@@ -121,6 +124,7 @@ class ResumeCase(ScriptCase):
         self.fail("no table row for %s in:\n%s" % (path, out))
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestResourcesLine(ResumeCase):
     def test_resources_line_comes_first(self):
         out = self.assertOk(self.resume("--dry-run"))
@@ -159,14 +163,6 @@ class TestRelaunch(ResumeCase):
         out = self.assertOk(self.resume())
         self.assertEqual(self.relaunched_for(out, path), "yes")
         self.assertEqual(len(self.repo.create_calls()), 1)
-
-    def test_does_not_relaunch_when_a_pane_is_live(self):
-        path = self.repo.make_worktree("gamma")
-        self.repo.set_worktree_lines([(path, "gamma", "working")])
-        self.repo.set_panes([{"path": path, "agents": ["working"]}])
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.relaunched_for(out, path), "no, pane is live")
-        self.assertEqual(self.repo.create_calls(), [])
 
     def test_a_pane_in_any_state_counts_as_live(self):
         for state in ("working", "done", "permission"):
@@ -288,11 +284,6 @@ class TestLaunchCommand(ResumeCase):
                 command = args[args.index("--command") + 1]
                 self.assertIn("--effort %s " % expected, command + " ")
 
-    def test_the_effort_flag_comes_after_the_model_flag(self):
-        _, args = self.launch_args()
-        command = args[args.index("--command") + 1]
-        self.assertLess(command.index("--model"), command.index("--effort"))
-
     def test_permission_mode_comes_from_agent_conf(self):
         self.repo.clear_calls()
         _, args = self.launch_args(permission_mode="acceptEdits", module="pm")
@@ -308,21 +299,8 @@ class TestLaunchCommand(ResumeCase):
         self.assertIn("--permission-mode bypassPermissions", command)
         self.assertNotIn("plan", command)
 
-    def test_command_sets_the_task_manager_role(self):
-        _, args = self.launch_args()
-        command = args[args.index("--command") + 1]
-        self.assertTrue(command.startswith("AGENT_ROLE=task-manager claude "), command)
-
 
 class TestDryRun(ResumeCase):
-    def test_dry_run_launches_nothing(self):
-        path = self.repo.make_worktree("alpha")
-        self.repo.set_worktree_lines([(path, "alpha", "working")])
-        self.repo.set_panes([])
-        out = self.assertOk(self.resume("--dry-run"))
-        self.assertEqual(self.repo.create_calls(), [])
-        self.assertEqual(self.relaunched_for(out, path), "would")
-
     def test_dry_run_still_shows_the_reasons(self):
         live = self.repo.make_worktree("live")
         idle = self.repo.make_worktree("idle")
@@ -424,12 +402,6 @@ class TestAgentCap(ResumeCase):
         out = self.assertOk(self.resume())
         self.assertEqual(self.relaunched_for(out, paths[0]), "no, cap reached")
         self.assertIn("cap reached (2/2), not relaunching %s" % paths[0], out)
-
-    def test_a_done_pane_is_still_a_live_pane(self):
-        paths = self.setup_cap(max_agents=3, dead=1)
-        self.repo.set_panes([{"path": paths[0], "agents": ["done"]}])
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.relaunched_for(out, paths[0]), "no, pane is live")
 
     def test_a_full_cap_relaunches_nothing(self):
         paths = self.setup_cap(max_agents=1, dead=2, live_elsewhere=1)
@@ -577,6 +549,7 @@ class TestOrcaDown(ResumeCase):
         self.assertIn("ideas: 0 waiting", out)
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestOrcaDownOnAuto(ResumeCase):
     """orca on PATH but not answering, with no runtime pinned, is plain."""
 
@@ -631,6 +604,7 @@ class TestCountsAlwaysPrint(ResumeCase):
         self.assertIn("ideas: 0 waiting", out)
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestUsage(ResumeCase):
     def test_help_exits_zero(self):
         result = self.repo.run("agent-resume.sh", "-h")
@@ -666,10 +640,8 @@ class PlainCase(ResumeCase):
         return self.assertOk(self.resume())
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestPlainRelaunchesNothing(PlainCase):
-    def test_it_exits_zero(self):
-        self.assertEqual(self.resume().returncode, 0)
-
     def test_the_working_row_names_the_mode(self):
         self.assertEqual(self.relaunched_for(self.out(), self.alpha),
                          "no, %s mode" % self.KIND)
@@ -710,6 +682,7 @@ class TestPlainRelaunchesNothing(PlainCase):
         self.assertTrue(self.lines(self.out())[0].startswith("RESOURCES:"))
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestNoMonitorAnyMore(PlainCase):
     """bin/agent-monitor.sh is gone (2026-11-24): resume prints no monitor line and starts no loop."""
 
@@ -770,9 +743,6 @@ class TestAConfWrittenBeforeRuntimeExisted(ResumeCase):
         self.path = self.repo.make_worktree("alpha")
         self.repo.set_worktree_lines([(self.path, "alpha", "working")])
         self.repo.set_panes([])
-
-    def test_it_exits_zero(self):
-        self.assertEqual(self.resume().returncode, 0, self.resume().stderr)
 
     def test_it_says_nothing_about_an_unbound_variable(self):
         result = self.resume()

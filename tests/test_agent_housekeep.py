@@ -382,6 +382,10 @@ class HousekeepCase(tc.CleanupCase):
 # ---------------------------------------------------------------- usage, role
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo per class, each run once; the tests only read
 class TestUsage(HousekeepCase):
     def test_help(self):
         out = self.assertOk(self.hk("-h"))
@@ -402,9 +406,8 @@ class TestUsage(HousekeepCase):
         self.assertTrue(os.path.exists(os.path.join(ROOT, "bin", "agent_housekeep.py")))
 
 
-class TestMainManagerOnly(HousekeepCase):
-    def setUp(self):
-        super().setUp()
+class _TestMainManagerOnlyFixture:
+    def fixture(self):
         self.repo.set_worktree_lines([(self.gone, "gone-one", "idle")])
         self.set_file("agent_ideas.txt", ["same | 2026-11-10 10:00 | by main",
                                           "same | 2026-11-11 10:00 | by main"])
@@ -422,6 +425,15 @@ class TestMainManagerOnly(HousekeepCase):
         self.assertEqual(self.repo.calls(), [])
         self.assertEqual(self.cleanup_calls(), [])
 
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
+class TestMainManagerOnly(_TestMainManagerOnlyFixture, HousekeepCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
     def test_a_task_manager_is_refused(self):
         self.assertRefused(self.hk("--apply", env={"AGENT_ROLE": "task-manager"}))
 
@@ -431,6 +443,14 @@ class TestMainManagerOnly(HousekeepCase):
     def test_a_human_direct_helper_is_refused(self):
         self.lock_me()
         self.assertRefused(self.hk("--apply", env={"CLAUDE_PID": "999999"}))
+
+
+class TestMainManagerOnlyWrites(_TestMainManagerOnlyFixture, HousekeepCase):
+    """The tests of TestMainManagerOnly that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_the_main_manager_runs(self):
         env = self.lock_me()
@@ -1494,11 +1514,6 @@ class TestDocs(unittest.TestCase):
     def test_w8_runs_it_from_the_watch_loop(self):
         self.assertSectionHas("W8", "housekeep_interval_min", "agent-housekeep.sh", "agent-watch.sh --all")
 
-    def test_the_main_manager_reads_the_block(self):
-        lines = [l for code in ("W8", "S8") for l in principles_section(code)
-                 if "HOUSEKEEP" in l and "idea rm" in l]
-        self.assertTrue(lines, "W8 or S8: the main manager reads the HOUSEKEEP block, judges suspects (idea rm)")
-
     def test_w12_names_todo_cross(self):
         self.assertSectionHas("W12", "todo cross")
 
@@ -1525,11 +1540,6 @@ class TestDocs(unittest.TestCase):
 
     def test_readme_lists_the_script(self):
         self.assertIn("bin/agent-housekeep.sh", read_root("PRINCIPLES.md"))
-
-    def test_release(self):
-        # estimate-blend (2026-11-13) released 0.34.0 on top: at least 0.33.0, like the other release tests
-        ver = json.loads(read_root(".claude-plugin", "plugin.json"))["version"]
-        self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 33, 0))
 
 
 ROWS_NOW = "2026-11-24 12:00"

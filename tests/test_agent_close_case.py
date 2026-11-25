@@ -48,6 +48,9 @@ def dispatch_brief():
                    "## Task manager brief", "## Cross-repo brief")
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
 class CloseCaseCase(ScriptCase):
     script = "agent-close-case.sh"
 
@@ -75,6 +78,7 @@ class CloseCaseCase(ScriptCase):
         return result.stdout
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo per class, each run once; the tests only read
 class TestNoKeywordHook(CloseCaseCase):
     def test_close_case_in_a_prompt_prints_nothing(self):
         for role_env in ({"AGENT_ROLE": "task-manager", "CLAUDE_PID": NOBODY},
@@ -94,7 +98,7 @@ class TestNoKeywordHook(CloseCaseCase):
         self.assertEqual(self.hook("", env={"AGENT_ROLE": "task-manager"}, stdin=""), "")
 
 
-class TestHooksJson(CloseCaseCase):
+class TestHooksJson(unittest.TestCase):   # reads hooks.json and skills only: no repo
     def hooks(self):
         return json.loads(read("hooks", "hooks.json"))["hooks"]
 

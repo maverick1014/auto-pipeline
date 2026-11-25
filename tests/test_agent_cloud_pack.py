@@ -210,6 +210,9 @@ def session_start_commands(settings):
     return out
 
 
+from sharedrepo import shared_fixture  # noqa: E402
+
+
 class PackCase(unittest.TestCase):
     """A throwaway copy of this plugin as the source, and a throwaway repo
     that already has settings of its own and a CLAUDE.md."""
@@ -312,6 +315,7 @@ class PackCase(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+@shared_fixture(guard="base")   # one pack for the class; the tests only read it
 class TestEveryFileLands(PackCase):
     def setUp(self):
         super().setUp()
@@ -613,15 +617,8 @@ class TestClaudeMd(PackCase):
         self.assertEqual(read_text(self.t("CLAUDE.md")), text)
 
 
-
 class TestIdempotent(PackCase):
     def test_a_second_run_changes_not_one_byte(self):
-        self.assertOk(self.pack())
-        before = snapshot(self.target)
-        self.assertOk(self.pack())
-        self.assertEqual(snapshot(self.target), before)
-
-    def test_a_second_run_without_the_flag_changes_nothing_either(self):
         self.assertOk(self.pack())
         before = snapshot(self.target)
         self.assertOk(self.pack())
@@ -638,6 +635,7 @@ class TestIdempotent(PackCase):
         self.assertIn("--update", out)
 
 
+@shared_fixture(guard="base")   # one pack, edits and --update for the class
 class TestUpdate(PackCase):
     def setUp(self):
         super().setUp()
@@ -773,11 +771,8 @@ class TestRunsFromThePack(PackCase):
         self.assertNotIn("__pycache__", status)
 
 
+@shared_fixture(guard="base", remember=("pack",))   # one pack run per argument list
 class TestTheOutput(PackCase):
-    def test_it_prints_the_one_sentence_cloud_install(self):
-        out = self.assertOk(self.pack())
-        self.assertIn(ONE_SENTENCE, out)
-
     def test_the_sentence_has_no_settings(self):
         out = self.assertOk(self.pack())
         self.assertIn(ONE_SENTENCE, out)

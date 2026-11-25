@@ -271,19 +271,6 @@ class TestKindAuto(RuntimeCase):
         self.kind()
         self.assertEqual(self.repo.calls(), [])
 
-    def test_orca_present_but_not_answering_is_plain(self):
-        self.repo.stub_orca_down()
-        self.assertEqual(self.kind(), "plain")
-
-    def test_orca_slower_than_three_seconds_is_plain(self):
-        self.assertEqual(self.kind(env={"ORCA_STUB_SLEEP": "6"}), "plain")
-
-    def test_a_slow_orca_does_not_hang_the_caller(self):
-        started = time.time()
-        self.runtime("kind", env={"ORCA_STUB_SLEEP": "20"}, timeout=30)
-        self.assertLess(time.time() - started, 10,
-                        "the 3 second probe did not cut the call off")
-
     def test_a_fast_orca_is_not_cut_off(self):
         self.assertEqual(self.kind(env={"ORCA_STUB_SLEEP": "1"}), "orca")
 

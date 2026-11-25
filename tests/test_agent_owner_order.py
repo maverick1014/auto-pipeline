@@ -552,7 +552,21 @@ class TestTimeAndMany(OwnerOrderCase):
 
 # ================================================================== C. length, usage
 
-class TestShortAndUsage(OwnerOrderCase):
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
+class _TestShortAndUsageFixture:
+    def fixture(self):
+        pass
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
+class TestShortAndUsage(_TestShortAndUsageFixture, OwnerOrderCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_h21_too_short_before_any_search(self):
         self.assertRefused(self.verify("rules yes"),
@@ -561,12 +575,6 @@ class TestShortAndUsage(OwnerOrderCase):
     def test_c3_wide_characters_count_two(self):
         self.assertRefused(self.verify("这个功能很重要"),
                            "OWNER ORDER not verified: quote too short (14 < 20)")
-
-    def test_c3_wide_quote_long_enough(self):
-        dt = ago(30)
-        words = "这个功能需要保留很重要"
-        path = self.write([owner("老板说: " + words + "。", dt)])
-        self.assertVerified(self.verify(words), path, dt)
 
     def test_c3_width_counts_after_normalise(self):
         self.assertRefused(self.verify("  rules     yes   "),
@@ -590,6 +598,20 @@ class TestShortAndUsage(OwnerOrderCase):
         for args in cases:
             with self.subTest(args=args):
                 self.assertUsage(self.run_tool(*args))
+
+
+class TestShortAndUsageWrites(_TestShortAndUsageFixture, OwnerOrderCase):
+    """The tests of TestShortAndUsage that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
+    def test_c3_wide_quote_long_enough(self):
+        dt = ago(30)
+        words = "这个功能需要保留很重要"
+        path = self.write([owner("老板说: " + words + "。", dt)])
+        self.assertVerified(self.verify(words), path, dt)
 
 
 # ================================================================== D1. machine

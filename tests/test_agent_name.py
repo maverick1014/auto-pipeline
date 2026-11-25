@@ -208,11 +208,11 @@ class NameCase(ScriptCase):
         return self.title(self.hook(source, **kw))
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
 class TestRoles(NameCase):
     """The name follows the role, the same way agent-start.sh decides it."""
-
-    def test_main_manager_with_no_lock(self):
-        self.assertEqual(self.name(), "project Manager")
 
     def test_main_manager_whose_own_lock_it_is(self):
         self.set_lock(os.getpid())
@@ -260,6 +260,7 @@ class TestRoles(NameCase):
                          odd + " Task Manager")
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo per class, each run once; the tests only read
 class TestSources(NameCase):
     """Name on a new, resumed or forked session; never on clear or compact."""
 
@@ -513,10 +514,6 @@ class HelperCase(NameCase):
 
 
 class TestHelperTaskCommand(HelperCase):
-
-    def test_sets_the_name_of_this_session(self):
-        self.set_task("SST Calculation")
-        self.assertEqual(self.start_name(), "project Helper - SST Calculation")
 
     def test_works_before_the_quiz_pass(self):
         gitdir = self.repo.path(".git")

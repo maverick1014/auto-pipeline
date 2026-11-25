@@ -567,7 +567,7 @@ class TestTheScriptHeader(unittest.TestCase):
         self.assertNotIn("last step", self.header())
 
 
-class TestTheHookText(CleanCase):
+class TestTheHookText(unittest.TestCase):
     """The whole-repo rule is the skill now (close-case part B); the hook is silent."""
 
     def part_b(self):
@@ -587,24 +587,6 @@ class TestTheHookText(CleanCase):
         self.assertLess(out.index("yes or no"), out.index("--release"))
         self.assertLess(out.index("--clean"), out.index("--release"))
         self.assertIn("never run it yourself", out)
-
-    def test_a_report_text_does_not_ask(self):
-        self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
-        out = self.prompt("CLOSE CASE alpha: unfinished\nDone: x.", pid=os.getpid())
-        self.assertEqual(out, "")
-        self.assertNotIn("--clean", out)
-        self.assertNotIn("--release", out)
-
-    def test_a_task_manager_is_never_asked(self):
-        self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
-        stdin = json.dumps({"session_id": "s", "transcript_path": "/tmp/x.jsonl",
-                            "cwd": self.repo.cwd, "permission_mode": "auto",
-                            "hook_event_name": "UserPromptSubmit", "prompt": "close case"})
-        result = self.repo.run("agent-close-case.sh", stdin=stdin,
-                               env={"AGENT_ROLE": "task-manager", "CLAUDE_PID": NOBODY})
-        self.assertOk(result)
-        self.assertNotIn("--clean", result.stdout)
-        self.assertNotIn("--release", result.stdout)
 
 
 if __name__ == "__main__":

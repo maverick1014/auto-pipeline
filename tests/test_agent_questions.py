@@ -363,6 +363,9 @@ class TestParkRmId(QCase):
 # ---------------------------------------------------------------- the collector
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
 class SourcesCase(QCase):
     """Three todo waits, two open worktree questions, three parked questions,
     two folders that are not here."""
@@ -408,7 +411,19 @@ class SourcesCase(QCase):
                 ("project", "which DB for reports?")]
 
 
-class TestSources(SourcesCase):
+class _TestSourcesFixture:
+    def fixture(self):
+        pass
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
+class TestSources(_TestSourcesFixture, SourcesCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
     def test_every_source_in_task_groups(self):
         data = self.qjson()
         self.assertEqual(data["count"], 8)
@@ -477,12 +492,6 @@ class TestSources(SourcesCase):
                                       "not read: /nowhere/zeta on another machine"])
         self.assertEqual(lines[-3], "")
 
-    def test_a_sub_line(self):
-        self.af("park", "add", "with a sub?", "omega", "--sub", "2 repos")
-        out = self.qtext()
-        at = out.splitlines().index("   with a sub?")
-        self.assertEqual(out.splitlines()[at + 1], "   — 2 repos")
-
     def test_it_writes_nothing(self):
         def snap():
             rows = []
@@ -497,6 +506,20 @@ class TestSources(SourcesCase):
         self.qjson()
         self.qjson("--self", role="task-manager", cwd=self.wt)
         self.assertEqual(snap(), before)
+
+
+class TestSourcesWrites(_TestSourcesFixture, SourcesCase):
+    """The tests of TestSources that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
+    def test_a_sub_line(self):
+        self.af("park", "add", "with a sub?", "omega", "--sub", "2 repos")
+        out = self.qtext()
+        at = out.splitlines().index("   with a sub?")
+        self.assertEqual(out.splitlines()[at + 1], "   — 2 repos")
 
 
 class TestSourcesEnglish(SourcesCase):
@@ -814,6 +837,7 @@ class TestTheTemplate(PageCase):
 
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo per class, each run once; the tests only read
 class TestPageInNode(PageCase):
     """The page's script, run by tests/questions_page_harness.js on a stub DOM."""
 

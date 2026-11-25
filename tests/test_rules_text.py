@@ -18,7 +18,7 @@ import tempfile
 
 
 def read(*parts):
-    with open(os.path.join(ROOT, *parts)) as fh:
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
         return fh.read()
 
 
@@ -362,16 +362,9 @@ class TestPrinciplesW15Report(unittest.TestCase):
         self.assertLess(len(hits[0]), 200)
 
 
-def watch_section(text, start, end):
-    lines = text.splitlines()
-    begin = next(i for i, line in enumerate(lines) if line.startswith(start))
-    stop = next(i for i in range(begin + 1, len(lines)) if lines[i].startswith(end))
-    return "\n".join(lines[begin:stop])
-
-
 class TestPrinciplesW15Watch(unittest.TestCase):
     def test_principles_watch_rule_names_the_script_and_the_report_block(self):
-        w15 = watch_section(read("PRINCIPLES.md"), "W15. Watch", "W16.")
+        w15 = section(read("PRINCIPLES.md"), "W15. Watch", "W16.")
         line = next((l for l in w15.splitlines() if "agent-watch.sh" in l), "")
         self.assertTrue(line, "W15 has no agent-watch.sh line")
         for word in ("=== REPORT ===", "agent_state.txt", "background",
@@ -380,7 +373,7 @@ class TestPrinciplesW15Watch(unittest.TestCase):
 
     def test_dispatch_starts_the_watch_after_the_launch_check(self):
         text = read("skills", "dispatch", "SKILL.md")
-        steps = watch_section(text, "# /dispatch", "## Board records")
+        steps = section(text, "# /dispatch", "## Board records")
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-watch.sh", steps)
         at = steps.index("agent-watch.sh")
         self.assertLess(steps.index("terminal wait"), at)
@@ -395,14 +388,14 @@ class TestPrinciplesW15Watch(unittest.TestCase):
         self.assertNotIn("on screen", block)
 
     def test_dispatch_brief_mock_step_names_mock_ready(self):
-        brief = watch_section(read("skills", "dispatch", "SKILL.md"),
+        brief = section(read("skills", "dispatch", "SKILL.md"),
                         "## Task manager brief", "## Cross-repo brief")
         mock = next(l for l in brief.splitlines() if l.startswith(" 2 mock"))   # progress-bar: the line now starts with its stage call
         self.assertIn("MOCK READY", mock)
         self.assertIn("agent_state.txt", mock)
 
     def test_dispatch_brief_names_the_report_block(self):
-        brief = watch_section(read("skills", "dispatch", "SKILL.md"),
+        brief = section(read("skills", "dispatch", "SKILL.md"),
                         "## Task manager brief", "## Cross-repo brief")
         report = next(l for l in brief.splitlines() if l.startswith("REPORT:"))
         self.assertIn("=== REPORT ===", report)
@@ -415,14 +408,9 @@ class TestPrinciplesW15Watch(unittest.TestCase):
 CHANGE = "/plugin -> Installed -> auto-pipeline -> Configure"
 
 
-def read_readers(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
-
-
 class TestSettingsTexts(unittest.TestCase):
     def test_principles(self):
-        text = read_readers("PRINCIPLES.md")
+        text = read("PRINCIPLES.md")
         self.assertNotIn("agent.conf", text)
         self.assertNotIn("auto-pipeline.conf", text)
         self.assertIn(CHANGE, text)
@@ -439,21 +427,21 @@ class TestSettingsTexts(unittest.TestCase):
             self.skipTest("85b99de not in this clone")
         def r8(text):
             return text[text.index("R8. Risk types"):text.index("## B. Work")]
-        self.assertEqual(r8(read_readers("PRINCIPLES.md")), r8(main))
+        self.assertEqual(r8(read("PRINCIPLES.md")), r8(main))
 
     def test_readme_has_one_line_where_to_change_settings(self):
-        lines = [l for l in read_readers("README.md").splitlines() if CHANGE in l]
+        lines = [l for l in read("README.md").splitlines() if CHANGE in l]
         self.assertEqual(len(lines), 1)
-        self.assertNotIn("agent.conf", read_readers("README.md"))
+        self.assertNotIn("agent.conf", read("README.md"))
 
     def test_settings_skill(self):
-        text = read_readers("skills", "settings", "SKILL.md")
+        text = read("skills", "settings", "SKILL.md")
         self.assertIn(CHANGE, text)
         self.assertRegex(text, r"(?i)never changes")
         self.assertNotRegex(text, r"agent-settings\.sh <key> <value>")
 
     def test_init_skill_asks_no_setting(self):
-        text = read_readers("skills", "init", "SKILL.md")
+        text = read("skills", "init", "SKILL.md")
         self.assertNotRegex(text, r"(?i)bypass or all auto|auto update on or off")
         self.assertNotIn("--mode", text)
         self.assertNotIn("--auto-update", text)
@@ -466,11 +454,6 @@ class TestSettingsTexts(unittest.TestCase):
 
 
 ZSH = shutil.which("zsh")
-
-
-def read_suffix(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
 
 
 class ZshRun:
@@ -496,7 +479,7 @@ class ZshRun:
 
 class TestTypedLaunchLines(unittest.TestCase):
     def dispatch(self):
-        return read_suffix("skills", "dispatch", "SKILL.md")
+        return read("skills", "dispatch", "SKILL.md")
 
     def test_the_dispatch_line_quotes_the_model(self):
         lines = [l for l in self.dispatch().splitlines() if "orca terminal create" in l and "claude" in l]
@@ -558,32 +541,22 @@ class TestTypedLaunchLines(unittest.TestCase):
                                 self.fail("unquoted model word %r: write --model '%s'" % (word, word))
 
 
-def read_perm(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
-
-
 class TestLaunchTextPermission(unittest.TestCase):
     def test_dispatch_reads_the_setting(self):
-        text = read_perm("skills", "dispatch", "SKILL.md")
+        text = read("skills", "dispatch", "SKILL.md")
         line = next(l for l in text.splitlines() if "**orca**" in l and "<mode>" in l)
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode", line)
         self.assertIn("--permission-mode <mode>", text)
 
     def test_w10_helper_line(self):
-        line = next(l for l in read_perm("PRINCIPLES.md").splitlines() if l.startswith("- Open a second session"))
+        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("- Open a second session"))
         self.assertIn("agent-settings.sh get permission_mode", line)
         self.assertIn("--permission-mode <mode>", line)
 
     def test_w10_new_terminals_line(self):
-        line = next(l for l in read_perm("PRINCIPLES.md").splitlines() if l.startswith("- New terminals"))
+        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("- New terminals"))
         self.assertIn("Permission mode", line)
         self.assertNotIn(".conf", line)
-
-
-def read_update(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
 
 
 def text(path):
@@ -593,7 +566,7 @@ def text(path):
 
 class TestReleaseTextAutoUpdate(unittest.TestCase):
     def test_merge_skill_says_bump_the_version(self):
-        text = read_update("skills", "merge", "SKILL.md")
+        text = read("skills", "merge", "SKILL.md")
         line = next((l for l in text.splitlines() if ".claude-plugin/plugin.json" in l), None)
         self.assertIsNotNone(line)
         self.assertIn("version", line)
