@@ -20,6 +20,8 @@ import sys
 import tempfile
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 HEADER = ("# agent_repo.conf: this repo's own facts (check-blocks). Written by agent-init.sh, "
           "kept up to date by agents; a human may edit it, never has to.")
 KEYS = ["version", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd", "test_config",
@@ -197,6 +199,65 @@ def detect_real_data(root):
         if os.path.isfile(os.path.join(d, n)) and re.search(r"readonly|read_only|_ro(?![a-z0-9])", n, re.I):
             return ".secrets/" + n
     return "none"
+
+
+def git_ok(root, *args):
+    return run(["git", "-C", root] + list(args), root)
+
+
+def production_branch(root, conf_text):
+    """production_branch= in agent_repo.conf, else origin/HEAD's target, else main (else the current branch)."""
+    for line in conf_text.splitlines():
+        if line.startswith("production_branch=") and line.split("=", 1)[1].strip():
+            return line.split("=", 1)[1].strip()
+    head = git_ok(root, "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD").strip()
+    if head.startswith("origin/"):
+        return head[len("origin/"):]
+    if git_ok(root, "rev-parse", "--verify", "-q", "refs/heads/main").strip():
+        return "main"
+    return git_ok(root, "symbolic-ref", "--short", "-q", "HEAD").strip() or "main"
+
+
+def ensure_working_branch(root, conf_text, out):
+    """Create, when missing, the working_branch (a setting) from the production branch, and a worktree for it
+    at <parent of the main repo>/<main repo folder>-<working branch>. Existing ones are kept."""
+    try:
+        import agent_conf
+        name = agent_conf.get("working_branch")
+    except Exception:
+        name = "ap-worktree"
+    common = git_ok(root, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    main_root = common[:-len("/.git")] if common.endswith("/.git") else root
+    prod = production_branch(root, conf_text)
+    ref = "refs/heads/" + name
+    if git_ok(root, "rev-parse", "--verify", "-q", ref).strip():
+        out.append("working branch: kept %s" % name)
+    else:
+        base = prod if git_ok(root, "rev-parse", "--verify", "-q", "refs/heads/" + prod).strip() else \
+            ("origin/" + prod if git_ok(root, "rev-parse", "--verify", "-q", "refs/remotes/origin/" + prod).strip() else "")
+        if not base:
+            return
+        if not run(["git", "-C", root, "branch", name, base], root) and \
+                not git_ok(root, "rev-parse", "--verify", "-q", ref).strip():
+            return
+        out.append("working branch: created %s from %s" % (name, prod))
+    listing = git_ok(root, "worktree", "list", "--porcelain")
+    path, have = "", ""
+    for line in listing.splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):]
+        elif line == "branch " + ref:
+            have = path
+    if have:
+        out.append("worktree: kept %s" % have)
+        return
+    target = os.path.join(os.path.dirname(main_root), "%s-%s" % (os.path.basename(main_root), name))
+    if os.path.exists(target):
+        out.append("worktree: kept %s" % target)
+        return
+    if subprocess.run(["git", "-C", root, "worktree", "add", "-q", target, name],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+        out.append("worktree: created %s" % target)
 
 
 def fix_subjects(root):
@@ -392,6 +453,11 @@ def main(argv):
                 out.append("agent_repo.conf: added " + l.split("=", 1)[0])
         if not add_lines:
             out.append("agent_repo.conf: kept")
+    try:
+        with open(path) as fh:
+            ensure_working_branch(root, fh.read(), out)
+    except Exception:
+        pass
     for line in out:
         print(line)
     return 0

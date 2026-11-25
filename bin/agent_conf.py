@@ -53,15 +53,14 @@ SETTINGS = [
     _s("task_manager", "Models: Task manager model", "string", "opus-5.5:high",
        "Model and effort of a task manager. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
        options=MANAGER_PICKS),
+    _s("reviewer_model", "Models: Reviewer model", "string", "opus-5.5:high",
+       "Model and effort of the reviewer of every diff. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
+       options=MANAGER_PICKS),
     _s("helper_model", "Models: Helper model", "string", "sonnet-5:medium",
        "Model and effort of the fast-lane deputy, the merge deputy and every worker. Form: model-name:effort.",
        options=HELPER_PICKS),
-    _s("max_agents", "Load: Max agents", "number", 4,
-       "How many agents may run at once on this machine. Whole number, 1 to 16.", min=1, max=16),
     _s("max_usage_percent", "Load: Max memory %", "number", 80,
        "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.", min=1, max=100),
-    _s("heavy_test_slots", "Load: Heavy test slot/time", "number", 2,
-       "How many heavy test runs may run at once. Whole number, 1 to 8.", min=1, max=8),
     _s("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions",
        "How much an agent may do without asking. bypassPermissions asks nothing; auto lets the model judge.",
        options=PERMISSION_MODES),
@@ -69,6 +68,8 @@ SETTINGS = [
        "Resume the agents that were running by themselves when a main manager starts."),
     _s("todo_before_agent", "Rules: Todo before agent", "boolean", True,
        "On: a launch naming no open todo task is refused. Off: launches are only recorded on the board."),
+    _s("working_branch", "Flow: Working branch", "string", "ap-worktree",
+       "Branch that tasks merge into; init creates it and a worktree for it. The production branch (users) stays apart."),
     _s("watch_quiet_min", "Stuck: Consider stuck after (min)", "number", 15,
        "Minutes a running task's state file may stay unchanged before the board marks it not confirmed. 1 to 240.",
        min=1, max=240),
@@ -93,12 +94,13 @@ CONSTANTS = {
     "compact_clear_at": 2, "compact_clear_check_sec": 30, "cleanup_days": 14,
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
     "check_budget_s": 60, "unused_pane_min": 30,
-    "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024,
+    "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024, "verify_box_min": 15,
 }
 
 BY_KEY = {s["key"]: s for s in SETTINGS}
 HELPER_ROLES = ("fast_lane_deputy", "merge_deputy", "worker", "interior_designer")   # city-office: the designer is a helper
-DECIDER_KEYS = ("main_manager", "task_manager")
+DECIDER_KEYS = ("main_manager", "task_manager", "reviewer_model")
+RETIRED_KEYS = ("max_agents", "heavy_test_slots")   # gone settings: an old value is ignored, never moved, never said
 ROLE_KEYS = ["main_manager", "fast_lane_deputy", "merge_deputy", "task_manager", "worker", "interior_designer"]
 
 ROLE_VALUE_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9.\-]*)(?:\[1m\])?:(low|medium|high|xhigh|max)$")
@@ -399,14 +401,14 @@ def repo_paths(project_root):
     return found, notes
 
 
-REPO_V1_SINGLE = ("version", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd",
+REPO_V1_SINGLE = ("version", "production_branch", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd",
                   "test_config", "data_scripts", "real_data", "build_seconds", "guard_seconds", "build_mb")
 REPO_V1_GLOBS = ("core_paths", "test_config", "data_scripts")
 
 
 def repo_conf(project_root):
     """(dict, warnings) from <project root>/agent_repo.conf v1. Single keys: core_paths, guard_tests,
-    build_cmd, related_cmd, full_cmd, test_config, data_scripts, real_data, build_seconds, guard_seconds
+    build_cmd, related_cmd, full_cmd, test_config, data_scripts, real_data, build_seconds, guard_seconds, production_branch (optional; missing = the repo default branch)
     (the last value of a repeated key wins). "groups": [(module, command)] from group.<module>=, in file
     order. Old level3_paths and level4_paths are read as core paths (joined into core_paths). A bad glob
     list is left out with one warning. Never raises."""
@@ -415,8 +417,9 @@ def repo_conf(project_root):
         with open(os.path.join(project_root, REPO_FILE), "r", encoding="utf-8") as fh:
             body = fh.read()
     except Exception:
-        return {"groups": groups}, notes
+        return {"groups": groups, "weights": {}}, notes
     values = {}
+    weights = {}
     for line in body.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in line:
@@ -425,6 +428,8 @@ def repo_conf(project_root):
         key, value = key.strip(), value.strip()
         if key.startswith("group.") and len(key) > 6:
             groups.append((key[6:], value))
+        elif key.startswith("weight.") and len(key) > 7:
+            weights[key[7:]] = value
         else:
             values[key] = value
     for key in REPO_V1_SINGLE + REPO_KEYS:
@@ -449,6 +454,7 @@ def repo_conf(project_root):
     if core:
         found["core_paths"] = ",".join(core)
     found["groups"] = groups
+    found["weights"] = weights
     return found, notes
 
 
@@ -512,6 +518,8 @@ def _candidates(values, path, claimed):
     moves, notes = [], []
     for old, value in values.items():
         key, mapped = old, value
+        if old in RETIRED_KEYS:
+            continue
         if old in CONSTANTS:
             if str(CONSTANTS[old]) != value:
                 notes.append("fixed: %s=%s in %s is now fixed at %s" % (old, value, path, CONSTANTS[old]))

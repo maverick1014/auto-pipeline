@@ -47,6 +47,16 @@
       ],
       "default": "opus-5.5:high"
     },
+    "reviewer_model": {
+      "type": "string",
+      "title": "Models: Reviewer model",
+      "description": "Model and effort of the reviewer of every diff. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
+      "options": [
+        "opus-5.5:high",
+        "opus-5.5:xhigh"
+      ],
+      "default": "opus-5.5:high"
+    },
     "helper_model": {
       "type": "string",
       "title": "Models: Helper model",
@@ -59,14 +69,6 @@
       ],
       "default": "sonnet-5:medium"
     },
-    "max_agents": {
-      "type": "number",
-      "title": "Load: Max agents",
-      "description": "How many agents may run at once on this machine. Whole number, 1 to 16.",
-      "min": 1,
-      "max": 16,
-      "default": 4
-    },
     "max_usage_percent": {
       "type": "number",
       "title": "Load: Max memory %",
@@ -74,14 +76,6 @@
       "min": 1,
       "max": 100,
       "default": 80
-    },
-    "heavy_test_slots": {
-      "type": "number",
-      "title": "Load: Heavy test slot/time",
-      "description": "How many heavy test runs may run at once. Whole number, 1 to 8.",
-      "min": 1,
-      "max": 8,
-      "default": 2
     },
     "permission_mode": {
       "type": "string",
@@ -108,6 +102,12 @@
       "title": "Rules: Todo before agent",
       "description": "On: a launch naming no open todo task is refused. Off: launches are only recorded on the board.",
       "default": true
+    },
+    "working_branch": {
+      "type": "string",
+      "title": "Flow: Working branch",
+      "description": "Branch that tasks merge into; init creates it and a worktree for it. The production branch (users) stays apart.",
+      "default": "ap-worktree"
     },
     "watch_quiet_min": {
       "type": "number",

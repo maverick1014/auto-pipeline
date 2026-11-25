@@ -19,18 +19,24 @@ def _b(name, picked, trigger, runs, sign="no"):
 
 
 BLOCKS = [
+    _b("PR REVIEW", "tool", "every task",
+       "an agent that did not build it reads the diff against the approved requirement: does it do what "
+       "was asked and nothing else, are the edge list lines covered, is no check deleted, no secret; its "
+       "cost follows the diff size"),
     _b("DIFF SCAN", "tool", "every task",
        "the tool scans the diff: files outside the task's scope, deleted or skipped tests, secrets, "
        "debug leftovers"),
     _b("BUILD", "tool", "code changed",
        "lint + type-check or syntax check of the app that was touched"),
     _b("RELATED TESTS", "tool", "code, text or rule files changed",
-       "only the tests that import or name the changed files. Style-only change of a shared component: "
-       "the component's own tests. Rule text: the tests that name the changed section"),
+       "only the LIGHT tests (measured) that import or name the changed files. Style-only change of a "
+       "shared component: the component's own tests. Rule text: the tests that name the changed section. "
+       "A heavy one goes to the release run or the nightly"),
     _b("MODULE TESTS", "tool",
        "code used by other modules changed, or dependencies, lockfile, CI or test config changed",
-       "the tests of every module that uses the changed code; a dependency, lockfile, CI or test-config "
-       "change: the tests of every module",
+       "the tests of every module that uses the changed code, light module groups only; a dependency, "
+       "lockfile, CI or test-config change: the tests of every module. A heavy group goes to the release "
+       "run or the nightly",
        "a dependency, lockfile, CI or test-config change"),
     _b("GUARD TESTS", "tool", "code or text changed",
        "the repo's tree-scanning tests (listed in the repo file)"),
@@ -44,18 +50,17 @@ BLOCKS = [
        "what changes, or a posting rule changes",
        "an independent read-only agent reads the logic against the rules the owner approved",
        "a permission change"),
-    _b("DIFF READ", "brief", "text, style, a simple move (banner -> toast)",
-       "someone who did not write it reads the diff. That is the acceptance. A 5-minute task stays a "
-       "5-minute task"),
     _b("EXAMPLES TEST", "brief", "behaviour or logic changes",
        "failing tests first, written from the examples in the requirement doc; they cover the fitting "
        "lines of the repo's edge list. Money and permission rules: the owner approves the examples "
        "before code"),
-    _b("FLOW CHECK", "brief", "a behaviour a user can reach changes",
-       "someone who did not build it runs 1 normal path + 1 error path"),
-    _b("UI CHECK", "brief", "new page, re-layout, size or responsive change",
+    _b("FLOW CHECK", "brief", "what a user does changes",
+       "someone who did not build it runs 1 normal path + 1 error path: only the approved items, a "
+       "15-minute time box, extra finds go to the ideas file"),
+    _b("UI CHECK", "brief", "what a user sees changes: new page, re-layout, size or responsive change",
        "compare with the approved mock or the before screenshot, desktop and phone width. Style change "
-       "of a shared component: look at a few different usages only"),
+       "of a shared component: look at a few different usages only. A 15-minute time box, extra finds "
+       "go to the ideas file"),
     _b("REAL DATA COUNT", "brief",
        "a rule, limit or validation is added or tightened, or a list, print or export changes",
        "one read-only count on real data: how many existing records would be refused, and the largest "
@@ -64,9 +69,13 @@ BLOCKS = [
 
 NET = [
     {"name": "NIGHTLY RUN",
-     "runs": "all tests run once every night in the background on the heavy-test machine. It gates "
-             "nothing. A failure the causing task's own RELATED or MODULE run did not find is recorded "
-             "as a selection miss"},
+     "runs": "all tests run once every night in the background on the machine with the most room. It "
+             "gates nothing. A failure the causing task's own RELATED or MODULE run did not find is "
+             "recorded as a selection miss"},
+    {"name": "RELEASE RUN",
+     "runs": "the full suite once on the working branch before a release (a green nightly on that commit "
+             "counts); failures go to a new fixer agent, never back to the builder; the release waits "
+             "until it is green"},
     {"name": "RELEASE SMOKE",
      "runs": "after every release a fresh session uses the released version for real: start, one "
              "subagent launch and finish, the user-facing flows that changed"},

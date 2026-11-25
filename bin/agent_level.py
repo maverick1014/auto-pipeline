@@ -1657,6 +1657,9 @@ def db_sign(repo, path, status):
 
 USAGE = 'usage: agent-level.sh check --base <ref> [--scope "<globs>"] [--json] [--declared <x>]'
 BRIEF_LINE = "BRIEF PICKS: %s (dispatch picks them from the brief)" % ", ".join(agent_blocks.BRIEF_NAMES)
+PR_REVIEW_LINE = "an agent that did not build it reads the diff against the approved requirement"
+WEIGHT_RE = re.compile(r"^\s*(\d+)\s*s\s+(\d+)\s*MB\s*$")
+NET_TESTS = "the release run or the nightly"
 NO_BUILD = "syntax or type check of the touched app (no build_cmd in agent_repo.conf)"
 
 
@@ -1698,6 +1701,35 @@ def main_root(top):
     if proc.returncode == 0 and common.endswith("/.git"):
         return common[:-len("/.git")]
     return top
+
+
+def measured_weights(top):
+    """{key: "<s> s <mb> MB"} from agent_test_weights.json in the git common dir. Never raises."""
+    proc = git(top, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False)
+    common = text_of(proc.stdout).strip()
+    if proc.returncode != 0 or not common:
+        return {}
+    try:
+        with open(os.path.join(common, "agent_test_weights.json"), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def weight_of(key, measured, conf):
+    """(seconds, mb) of a test key: the measured json first, then the repo file's weight.<key> seed.
+    None when unmeasured."""
+    for raw in (measured.get(key), (conf.get("weights") or {}).get(key)):
+        m = WEIGHT_RE.match(raw) if isinstance(raw, str) else None
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    return None
+
+
+def is_heavy(weight):
+    return weight is not None and (weight[0] >= agent_conf.CONSTANTS["light_test_s"]
+                                   or weight[1] >= agent_conf.CONSTANTS["light_test_mb"])
 
 
 def seconds(conf, key):
@@ -1761,6 +1793,10 @@ def run(argv):
     if not changed:
         notes.append("no changes")
 
+    measured = measured_weights(top)
+    net = []            # (block, weight, what) light-only: a heavy one goes to the release run or the nightly
+
+    triggered["PR REVIEW"] = PR_REVIEW_LINE
     findings = diff_scan(repo, changed, kinds, scope)
     triggered["DIFF SCAN"] = "%d findings" % len(findings)
 
@@ -1775,7 +1811,10 @@ def run(argv):
     related, groups = [], []
     if of("code", "style", "text", "rule"):
         related = related_tests(repo, changed, kinds)
-        if related:
+        w = weight_of("related", measured, conf)
+        if is_heavy(w):
+            net.append(("RELATED TESTS", w, ""))
+        elif related:
             run_cmd = fill(related_cmd, related) if related_cmd else "-"
             triggered["RELATED TESTS"] = "%s | run: %s" % (", ".join(related), run_cmd)
         else:
@@ -1811,11 +1850,23 @@ def run(argv):
     if of("deps", "ci"):
         files = of("deps", "ci")
         every = [cmd for _, cmd in conf.get("groups", [])] or [conf.get("full_cmd") or "-"]
-        triggered["MODULE TESTS"] = "every module (%s) | run: %s" % (", ".join(files), " ; ".join(every))
+        w = weight_of("full", measured, conf)
+        if is_heavy(w):
+            net.append(("MODULE TESTS", w, ""))
+        else:
+            triggered["MODULE TESTS"] = "every module (%s) | run: %s" % (", ".join(files), " ; ".join(every))
         signs.append(("MODULE TESTS", files))
     elif groups:
-        triggered["MODULE TESTS"] = "%s | run: %s" % (", ".join(m for m, _ in groups),
-                                                     " ; ".join(c for _, c in groups))
+        light = []
+        for m, c in groups:
+            w = weight_of("group." + m, measured, conf)
+            if is_heavy(w):
+                net.append(("MODULE TESTS", w, m))
+            else:
+                light.append((m, c))
+        if light:
+            triggered["MODULE TESTS"] = "%s | run: %s" % (", ".join(m for m, _ in light),
+                                                         " ; ".join(c for _, c in light))
     if of("core"):
         triggered["CORE REVIEW"] = ", ".join(of("core"))
     if signs:
@@ -1824,7 +1875,7 @@ def run(argv):
         triggered["OWNER SIGN"] = "; ".join("%s (%s)" % (b, ", ".join(f)) for b, f in signs)
 
     blocks = [n for n in agent_blocks.TOOL_NAMES if n in triggered]
-    heavy_names = [h[0] for h in heavy]
+    heavy_names = [h[0] for h in heavy] + [n[0] for n in net]
     rest = [n for n in agent_blocks.TOOL_NAMES if n not in triggered and n not in heavy_names]
 
     if as_json:
@@ -1850,6 +1901,8 @@ def run(argv):
         out.append("NOT TRIGGERED: %s" % ", ".join(rest))
     for name, n, how in heavy:
         out.append("NET: %s (heavy, %d s over the %d s budget): %s" % (name, n, budget, how))
+    for name, (sec, mb), what in net:
+        out.append("NET: %s (heavy, %d s, %d MB): %s%s" % (name, sec, mb, NET_TESTS, ": " + what if what else ""))
     out.append(BRIEF_LINE)
     sys.stdout.write("\n".join(out) + "\n")
     return 0
