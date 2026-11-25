@@ -4,14 +4,9 @@
 #
 #   bin/agent-init.sh              set up the current project
 #   bin/agent-init.sh <dir>        set up that project
-#   bin/agent-init.sh --mode bypass|auto [<dir>]
-#                                  also set permission_mode for every agent
-#                                  (bypass = bypassPermissions, auto = auto);
-#                                  any other value exits 2, nothing created
-#   bin/agent-init.sh --auto-update on|off [<dir>]
-#                                  save auto_update in the user file and apply
-#                                  it (agent-settings.sh --user auto_update);
-#                                  any other value exits 2, nothing created
+#   bin/agent-init.sh --mode ... / --auto-update ...
+#                                  gone: exit 2, one line naming where settings live
+#                                  (/plugin -> Installed -> auto-pipeline -> Configure)
 #   bin/agent-init.sh --add-permissions [<dir>]
 #                                  merge the permission block into the project's
 #                                  .claude/settings.json (top-level
@@ -32,36 +27,22 @@
 #                                  settings file; repo files are left alone.
 #   bin/agent-init.sh -h           print this block, create nothing, exit 0
 #
-# Creates, only when missing, in the project root: agent.conf (a copy of
-# bin/agent.conf.default), the four agent_*.txt task files (empty),
-# .secrets/ (empty dir) and AGENTS.md (one line pointing at this plugin,
-# relative to the project root when the plugin is packed inside it, e.g.
+# Creates, only when missing, in the project root: the four agent_*.txt task
+# files (empty), .secrets/ (empty dir) and AGENTS.md (one line pointing at this
+# plugin, relative to the project root when the plugin is packed inside it, e.g.
 # .claude/auto-pipeline, absolute otherwise).
 # Adds .secrets/, agent_state.txt, agent_monitor.txt, agent_monitor.txt.tmp.*
 # and .auto-pipeline/ to .gitignore, creating it when missing. Never
 # overwrites a file already there.
 #
-# A fresh agent.conf is seeded from bin/agent.conf.default, then any of
-# CLAUDE_PLUGIN_OPTION_RUNTIME, CLAUDE_PLUGIN_OPTION_LANGUAGE,
-# CLAUDE_PLUGIN_OPTION_MANAGER_MODEL (sets main_manager and task_manager) and
-# CLAUDE_PLUGIN_OPTION_MAX_AGENTS that Claude Code collected at enable time
-# are written over it, key by key, when set and not empty.
-#
-# Permission mode: only when agent.conf is created in this run. --mode writes
-# it through bin/agent-settings.sh permission_mode. Without --mode, a fresh
-# agent.conf and a terminal on stdin: one question, "Permission mode for every
-# agent: bypass (recommended) or auto?"; Enter or anything else keeps the
-# template value. agent.conf already there: never changed; with --mode, one
-# line says it was kept and how to change it.
-# When the project's permission_mode is bypassPermissions and
-# ~/.claude/settings.json lacks "skipDangerousModePermissionPrompt": true, one
-# line says new panes stop on the bypass warning screen. The file is only
-# read, never written.
-#
-# Auto update: after the permission step. --auto-update given: saved. Else
-# auto_update already in the user file: nothing. Else a terminal on stdin: one
-# question on stderr, "Auto update: on (recommended) or off?" (Enter, EOF or
-# anything else = on). Else on. Saved through agent-settings.sh --user.
+# Asks nothing about settings and writes no settings file: they live only in
+# /plugin -> Installed -> auto-pipeline -> Configure. After the setup it prints
+# the lines of an old agent file moved into Configure (agent_conf.py migrate),
+# the lines of plugin scopes of this folder brought up to date (agent_update.py
+# sync), then one line "settings: /plugin -> Installed -> auto-pipeline -> Configure".
+# When the Permission mode setting is bypassPermissions and ~/.claude/settings.json
+# lacks "skipDangerousModePermissionPrompt": true, one line says new panes stop on
+# the bypass warning screen. The file is only read, never written.
 #
 # Ends by printing two blocks a human pastes himself, since a plugin cannot
 # reach either place:
@@ -75,7 +56,7 @@ set -eu
 . "$(dirname "$0")/agent-roots.sh"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,72p' "$0"; exit 0;;
+  -h|--help) sed -n '2,54p' "$0"; exit 0;;
 esac
 
 # Plugin on/off per repo or per user. Python does the JSON. Args: all|selected,
@@ -131,36 +112,14 @@ for path, value, backup, data in loaded:
 PY
 }
 
-MODE=""
-MODE_GIVEN=0
 SCOPE=""
 
 ADD_PERMS=0
-AUTO_UPDATE=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --mode)
-      if [ $# -lt 2 ]; then
-        echo "agent-init.sh: --mode needs a value: bypass or auto" >&2
-        exit 2
-      fi
-      MODE_GIVEN=1
-      case "$2" in
-        bypass) MODE="bypassPermissions";;
-        auto) MODE="auto";;
-        *) echo "agent-init.sh: --mode must be bypass or auto, got: $2" >&2; exit 2;;
-      esac
-      shift 2;;
-    --auto-update)
-      if [ $# -lt 2 ]; then
-        echo "agent-init.sh: --auto-update needs a value: on or off" >&2
-        exit 2
-      fi
-      case "$2" in
-        on|off) AUTO_UPDATE="$2";;
-        *) echo "agent-init.sh: --auto-update must be on or off, got: $2" >&2; exit 2;;
-      esac
-      shift 2;;
+    --mode|--auto-update)
+      echo "agent-init.sh: $1 is gone: settings change only in /plugin -> Installed -> auto-pipeline -> Configure" >&2
+      exit 2;;
     --add-permissions) ADD_PERMS=1; shift;;
     --scope)
       case "${2:-}" in
@@ -268,64 +227,10 @@ file_empty() {
   fi
 }
 
-file_conf() {
-  path="$ROOT/agent.conf"
-  if [ -e "$path" ]; then
-    echo "kept: agent.conf"
-  else
-    cp "$PLUGIN_ROOT/bin/agent.conf.default" "$path"
-    seed_conf_from_env "$path"
-    echo "created: agent.conf"
-    CONF_FRESH=1
-  fi
-}
-
-conf_permission_mode() {
-  PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 -c '
-import sys, agent_conf
-print(agent_conf.load(sys.argv[1]).get("permission_mode", ""))' "$ROOT/agent.conf"
-}
-
-set_permission_mode() {
-  CLAUDE_PROJECT_DIR="$ROOT" "$PLUGIN_ROOT/bin/agent-settings.sh" permission_mode "$1"
-}
-
-ask_permission_mode() {
-  [ -t 0 ] || return 0
-  printf 'Permission mode for every agent: bypass (recommended) or auto? [bypass/auto, Enter = template default]: ' >&2
-  ans=""
-  read -r ans || ans=""
-  ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
-  case "$ans" in
-    bypass|b) set_permission_mode bypassPermissions;;
-    auto|a) set_permission_mode auto;;
-  esac
-}
-
-save_auto_update() {
-  "$PLUGIN_ROOT/bin/agent-settings.sh" --user auto_update "$1"
-}
-
-auto_update_step() {
-  if [ -n "$AUTO_UPDATE" ]; then
-    save_auto_update "$AUTO_UPDATE"
-    return 0
-  fi
-  if python3 "$PLUGIN_ROOT/bin/agent_conf.py" effective auto_update "$ROOT/agent.conf" >/dev/null 2>&1; then
-    return 0
-  fi
-  ans=on
-  if [ -t 0 ]; then
-    printf 'Auto update: on (recommended) or off? [on/off, Enter = on]: ' >&2
-    read -r ans || ans=""
-    ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
-    [ "$ans" = off ] || ans=on
-  fi
-  save_auto_update "$ans"
-}
-
 skip_warning_line() {
-  [ "$(conf_permission_mode)" = "bypassPermissions" ] || return 0
+  local pm
+  pm=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" get permission_mode 2>/dev/null </dev/null) || pm=""
+  [ "$pm" = "bypassPermissions" ] || return 0
   if python3 - "$HOME/.claude/settings.json" <<'PY'
 import json, sys
 try:
@@ -340,50 +245,6 @@ PY
     return 0
   fi
   echo 'Note: new panes stop on the bypass warning screen until you add this to ~/.claude/settings.json yourself (this script never writes it): "skipDangerousModePermissionPrompt": true'
-}
-
-# Write the enable-time answers Claude Code collected over a freshly copied
-# agent.conf. Only called right after the copy, never when the file was
-# already there. A key with no matching env var, or an empty one, is left as
-# the template set it; every other key and the key order stay untouched. A
-# value that fails agent_conf.validate_value is never written: the template's
-# own value stands, and one line naming the key, the bad value and why goes
-# to stderr, so it can never land inside the permission block a test (or a
-# human) parses as JSON. One bad key never stops the others.
-seed_conf_from_env() {
-  PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" <<'PY'
-import os
-import sys
-
-import agent_conf
-
-path = sys.argv[1]
-conf = agent_conf.load(path)
-mapping = {
-    "CLAUDE_PLUGIN_OPTION_RUNTIME": "runtime",
-    "CLAUDE_PLUGIN_OPTION_LANGUAGE": "language",
-    "CLAUDE_PLUGIN_OPTION_MANAGER_MODEL": "main_manager",
-    "CLAUDE_PLUGIN_OPTION_MAX_AGENTS": "max_agents",
-}
-changed = False
-for env_key, conf_key in mapping.items():
-    value = os.environ.get(env_key, "")
-    if not value:
-        continue
-    error = agent_conf.validate_value(conf_key, value)
-    if error:
-        sys.stderr.write(
-            "agent-init.sh: ignored %s=%s, %s Kept %s.\n"
-            % (env_key, value, error, conf.get(conf_key, ""))
-        )
-        continue
-    conf[conf_key] = value
-    if conf_key == "main_manager":
-        conf["task_manager"] = value
-    changed = True
-if changed:
-    agent_conf.save(conf, path)
-PY
 }
 
 dir_secrets() {
@@ -435,8 +296,6 @@ if [ "$ADD_PERMS" = 1 ]; then
   exit $?
 fi
 
-CONF_FRESH=0
-file_conf
 file_empty agent_todo.txt
 file_empty agent_completed.txt
 file_empty agent_ideas.txt
@@ -445,16 +304,6 @@ dir_secrets
 file_agents_md
 file_gitignore
 
-if [ "$CONF_FRESH" = 1 ]; then
-  if [ "$MODE_GIVEN" = 1 ]; then
-    set_permission_mode "$MODE"
-  else
-    ask_permission_mode
-  fi
-elif [ "$MODE_GIVEN" = 1 ]; then
-  echo "kept: agent.conf permission_mode=$(conf_permission_mode), change it with: $PLUGIN_ROOT/bin/agent-settings.sh permission_mode <mode>"
-fi
-auto_update_step
 skip_warning_line
 
 cat <<'BLOCK'
@@ -481,5 +330,8 @@ echo "For cloud sessions (claude.ai/code): the default cloud image already ships
 echo "npx playwright install --with-deps chromium || true"
 echo "Skip this if you never run this repo in a cloud session."
 
-echo "Setup done. To change a setting later: /auto-pipeline:settings, for example /auto-pipeline:settings language en"
+python3 "$PLUGIN_ROOT/bin/agent_conf.py" migrate "$ROOT" 2>/dev/null </dev/null || true
+python3 "$PLUGIN_ROOT/bin/agent_update.py" sync "$ROOT" 2>/dev/null </dev/null || true
+echo "settings: /plugin -> Installed -> auto-pipeline -> Configure"
+echo "Setup done. /auto-pipeline:settings shows the settings; it never changes them."
 echo "Main commands: /auto-pipeline:todo (see all open tasks), /auto-pipeline:question (answer the agents' questions)."
