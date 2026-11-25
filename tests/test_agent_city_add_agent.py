@@ -226,7 +226,6 @@ class AddCase(unittest.TestCase):
 
     def make(self, **kw):
         args = dict(decisions_path=os.path.join(self.base, "decisions.jsonl"), world_path=None, token="tok",
-                    count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "files": {}, "bad": []},
                     main_fn=self.mains, open_fn=self.opener, kind_fn=lambda folder: self.kind,
                     resources_fn=lambda folder: dict(self.res))
         args.update(kw)
@@ -899,11 +898,11 @@ class TestHere(AddCase):
         state.feed_line(line("UserPromptSubmit", "s9", "/nowhere/ghost/.git"), self.now)   # a repo that is not on this machine
         worlds = self.events(page, "world")
         self.assertTrue(worlds, "a new territory is a world event")
-        here = {t["id"]: t.get("here") for t in worlds[-1]["world"]["territories"]}
+        here = {t["id"]: t.get("here") for t in worlds[-1]["world"]["repos"]}
         self.assertEqual(here, {ac.territory_id(self.shop): True, ac.territory_id("/nowhere/ghost/.git"): False})
         c = state.add_client()
         snap = json.loads(c.queue.get_nowait().decode("utf-8").split("data:", 1)[1])
-        self.assertEqual({t["id"]: t.get("here") for t in snap["world"]["territories"]}, here)
+        self.assertEqual({t["id"]: t.get("here") for t in snap["world"]["repos"]}, here)
 
     def test_a_folder_that_is_not_here_never_opens(self):
         tid = self.known("/nowhere/ghost/.git")

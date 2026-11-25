@@ -102,7 +102,7 @@ from test_agent_city_people import function_source, page, run_sim  # noqa: E402
 from test_agent_city_chain import TA, TB, two_territory_view  # noqa: E402
 from test_agent_city_ux_page import css, listener_block, rule, text_keys  # noqa: E402
 
-SIM_REQUIRED = ("apply", "landState", "railGroups", "railHtml", "addHtml", "addIconHtml", "addState", "addAnswer", "addReason",
+SIM_REQUIRED = ("apply", "officeState", "railGroups", "railHtml", "addHtml", "addIconHtml", "addState", "addAnswer", "addReason",
                 "citizens", "byId", "i18n", "esc")
 
 KEYS = ("rail.none", "add.tip", "add.plus", "add.opening", "add.openingBare", "add.cap", "add.capNums", "add.capAsk", "add.go",
@@ -113,7 +113,12 @@ KEYS = ("rail.none", "add.tip", "add.plus", "add.opening", "add.openingBare", "a
 DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
 A.name = 'auto-pipeline'; B.name = 'v4-plus'; A.here = true; B.here = true;
-function buildLand(view){ landState(view); }
+// city-office: the page reads names and here from the office view's repos; keep them in step with A and B
+const sync = () => { for (const t of [A, B]) { const r = V.repos.find(x => x.id === t.id); r.name = t.name;
+  if ('here' in t) r.here = t.here; else delete r.here; } };
+sync();
+const gB = () => railGroups().find(g => g.terr === B.id);
+function buildLand(view){ officeState(view); }
 const ag = (id, label, task, terr, extra) => Object.assign({ id, role: 'task-manager', label, task, stuck: false, done: false,
   tools: {}, terr, lead: '', office: null, relay: '' }, extra || {});
 const snap = adding => ({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [],
@@ -141,18 +146,18 @@ out.err = st({ s: 'err', why: 'Orca <b>broke</b>', retry: true });
 out.errNoRetry = st({ s: 'err', why: 'gone', retry: false });
 out.cmd = st({ s: 'cmd', cmd: "cd /r/v4-plus && claude --name 'v4-plus Manager' <x>" });
 out.copied = st({ s: 'cmd', cmd: 'cd /r', copied: true });
-out.direct = addHtml(railGroups()[1], undefined);
-out.directIcon = addIconHtml(railGroups()[1], undefined);
+out.direct = addHtml(gB(), undefined);
+out.directIcon = addIconHtml(gB(), undefined);
 out.closedOpening = sec(draw(new Map([[B.id, { s: 'opening', name: 'v4-plus Manager' }]]), new Set([B.id])), B.id);
 // a repo that is not on this machine: the group stays, the button goes
 B.here = false;
-apply({ type: 'world', world: V });
-out.notHere = { add: railGroups()[1].add, html: sec(draw(new Map([[B.id, { s: 'opening', name: 'x' }]])), B.id) };
+sync(); apply({ type: 'world', world: V });
+out.notHere = { add: gB().add, html: sec(draw(new Map([[B.id, { s: 'opening', name: 'x' }]])), B.id) };
 delete B.here;
-apply({ type: 'world', world: V });
-out.noFlag = railGroups()[1].add;
+sync(); apply({ type: 'world', world: V });
+out.noFlag = gB().add;
 B.here = true;
-apply({ type: 'world', world: V });
+sync(); apply({ type: 'world', world: V });
 // the server's answers
 const ans = (code, body, before) => { addState.clear(); if (before) addState.set(B.id, before);
   addAnswer(B.id, code, body); return addState.get(B.id) || null; };
@@ -223,7 +228,7 @@ class SimCase(unittest.TestCase):
 class TestEveryRepo(SimCase):
     def test_a_repo_with_nobody_keeps_its_group(self):
         self.assertEqual([(g["terr"], g["name"], g["rows"]) for g in self.r["groups"]],
-                         [(self.a, "auto-pipeline", 3), (self.b, "v4-plus", 0)])
+                         [(self.b, "2F · v4-plus", 0), (self.a, "1F · auto-pipeline", 2)])   # city-office: floors top first; subagents are no rows
 
     def test_the_quiet_line(self):
         b = self.r["plainB"]
@@ -264,15 +269,15 @@ class TestButton(SimCase):
         self.assertEqual([g["add"] for g in self.r["groups"]], [True, True])
         self.assertEqual(self.r["plainA"].count("data-add="), 1)
         self.assertEqual(self.r["plainB"].count("data-add="), 1)
-        self.assertIn(self.icon(self.a, "auto-pipeline"), self.r["plainA"])
-        self.assertIn(self.icon(self.b, "v4-plus"), self.r["plainB"])
-        self.assertEqual(self.r["directIcon"], self.icon(self.b, "v4-plus"))
+        self.assertIn(self.icon(self.a, "1F · auto-pipeline"), self.r["plainA"])
+        self.assertIn(self.icon(self.b, "2F · v4-plus"), self.r["plainB"])
+        self.assertEqual(self.r["directIcon"], self.icon(self.b, "2F · v4-plus"))
         self.assertEqual(self.r["direct"], "", "addHtml is the row of words: nothing to say, nothing drawn")
 
     def test_on_the_name_row_after_the_count(self):
         a = self.r["plainA"]
-        self.assertRegex(a, r'<div class="grp-row"><button type="button" class="grp-h" data-grp="%s"[^>]*>.*?<span class="n">\s*3\s*'
-                            r'</span></button>%s</div>' % (self.a, re.escape(self.icon(self.a, "auto-pipeline"))),
+        self.assertRegex(a, r'<div class="grp-row"><button type="button" class="grp-h" data-grp="%s"[^>]*>.*?<span class="n">\s*2\s*'
+                            r'</span></button>%s</div>' % (self.a, re.escape(self.icon(self.a, "1F · auto-pipeline"))),
                          "the name row: the head button (dot, name, count), then the +")
         self.assertLess(a.index("data-add="), a.index("data-focus="), "before the first person")
         self.assertNotIn('class="add"', a, "no full-width button any more")
@@ -288,7 +293,7 @@ class TestButton(SimCase):
         self.assertNotIn("＋", function_source("addIconHtml") or "")
 
     def test_adds_may_be_left_out(self):
-        self.assertIn(self.icon(self.b, "v4-plus"), self.r["noAdds"] or "")
+        self.assertIn(self.icon(self.b, "2F · v4-plus"), self.r["noAdds"] or "")
 
     def test_a_repo_that_is_not_on_this_machine_has_none(self):
         self.assertIs(self.r["notHere"]["add"], False)
@@ -310,7 +315,7 @@ class TestStates(SimCase):
     def test_opening(self):
         html = self.r["opening"]
         self.assertRegex(html, r'<button type="button" class="add-i" aria-disabled="true" title="加 agent" '
-                               r'aria-label="加 agent · v4-plus"><span class="spin"></span></button></div>',
+                               r'aria-label="加 agent · 2F · v4-plus"><span class="spin"></span></button></div>',
                          "the + shows the spinner while it opens")
         self.assertIn('<p class="add-line" role="status">正在打开 Manager…</p>', html)
         self.assertNotIn("Manager</b>", html)

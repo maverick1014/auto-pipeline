@@ -176,7 +176,7 @@ class TestTemplate(unittest.TestCase):
 
     def test_permission_mode_keeps_its_place(self):
         keys = [l.split("=", 1)[0] for l in self.lines]
-        self.assertEqual(keys[keys.index("permission_mode") - 1], "worker")
+        self.assertEqual(keys[keys.index("permission_mode") - 1], "interior_designer")   # city-office: the last role key
         self.assertEqual(keys[keys.index("permission_mode") + 1], "auto_resume")
 
     def test_valid(self):
@@ -241,7 +241,8 @@ class TestLaunchLine(LineCase):
     def test_the_signature(self):
         import inspect
         params = inspect.signature(ac.agent_command).parameters
-        self.assertEqual(list(params), ["name", "folder", "city_dir"])
+        # city-office O6: the interior designer's line takes its own model key, prompt and AGENT_ROLE
+        self.assertEqual(list(params), ["name", "folder", "city_dir", "model_key", "prompt", "role"])
 
     def test_local_uses_permission_mode(self):
         conf = conf_text(permission_mode="bypassPermissions")

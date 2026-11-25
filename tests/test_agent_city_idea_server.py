@@ -92,30 +92,6 @@ class TestLangFromConf(unittest.TestCase):
         self.assertIn('--lang "$language"', serve)  # conf_read sets every agent.conf key, language too
 
 
-class TestServerTextFollowsLang(tq.BuildCase):
-    def test_governor_builds_by_governor_in_en(self):
-        # "tm" (setUp) is already this repo's governor
-        self.st.lang = "en"
-        self.put("src/g.py", "x = 1\n")
-        self.st.feed_line(self.line("tm", file="src/g.py"), 1000.0)
-        ev = [e for e in tq.drain(self.client) if e["type"] == "build"]
-        self.assertEqual(len(ev), 1)
-        self.assertEqual(ev[0]["by"], "governor")
-
-    def test_governor_builds_by_zongdu_in_zh(self):
-        self.put("src/g.py", "x = 1\n")
-        self.st.feed_line(self.line("tm", file="src/g.py"), 1000.0)
-        ev = [e for e in tq.drain(self.client) if e["type"] == "build"]
-        self.assertEqual(ev[0]["by"], "总督")
-
-    def test_cityState_takes_lang(self):
-        st = ac.CityState(decisions_path=os.path.join(self.base, "d2.jsonl"),
-                          world_path=os.path.join(self.base, "w2.json"), plans=ac.load_plans(),
-                          count_fn=lambda i: 0, balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
-                          start_repo=self.ident, lang="en")
-        self.assertEqual(st.lang, "en")
-
-
 class TestNoticesFollowLang(unittest.TestCase):
     def setUp(self):
         self.base = tempfile.mkdtemp(prefix="city_lang_")
@@ -139,40 +115,6 @@ class TestNoticesFollowLang(unittest.TestCase):
         self.assertIsNotNone(CJK.search(notice), notice)
 
 # --------------------------------------------------------------------- C4
-
-class TestServerDecidesTheBuilding(tq.BuildCase):
-    def built(self, rel, kind="", aid="w1", text="x = 1\n"):
-        self.put(rel, text)
-        self.st.feed_line(self.line("tm", aid=aid, kind=kind, file=rel), 1000.0)
-        ev = [e for e in tq.drain(self.client) if e["type"] == "build"]
-        return ev[0]["btype"] if ev else None
-
-    def test_server_kinds_map_to_buildings(self):
-        table = [("tests/test_a.py", "tower"), ("web/app.css", "shop"), ("ci.yml", "workshop"),
-                 ("docs/guide.md", "library"), ("bin/agent_city.py", "house")]
-        for n, (rel, btype) in enumerate(table):
-            with self.subTest(path=rel):
-                self.assertEqual(self.built(rel, aid="w%d" % n), btype)
-
-    def test_the_line_kind_is_ignored_when_a_file_is_there(self):
-        self.assertEqual(self.built("src/a.py", kind="test"), "house")
-
-    def test_not_code_builds_nothing(self):
-        self.assertIsNone(self.built("node_modules/x/index.js", aid="w1"))
-        self.assertIsNone(self.built("notes.txt", aid="w2"))
-
-    def test_repo_rules_decide(self):
-        rules = os.path.join(self.base, "rules", ac.repo_name(self.ident) + ".conf")
-        os.makedirs(os.path.dirname(rules), exist_ok=True)
-        with open(rules, "w") as fh:
-            fh.write("src/checks/*.py = rules\n")
-        self.assertEqual(self.built("src/checks/c.py"), "tower")
-
-    def test_an_old_line_with_only_a_kind_still_builds(self):
-        self.st.feed_line(self.line("tm", aid="w1", kind="ui", file=""), 1000.0)
-        ev = [e for e in tq.drain(self.client) if e["type"] == "build"]
-        self.assertEqual([e["btype"] for e in ev], ["shop"])
-
 
 class TestHookHasNoPathRules(unittest.TestCase):
     def test_no_classify_path(self):

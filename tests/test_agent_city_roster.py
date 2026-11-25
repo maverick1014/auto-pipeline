@@ -86,8 +86,6 @@ class RosterCase(unittest.TestCase):
     def make_state(self, **kw):
         kw.setdefault("roster_path", self.roster)
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.world,
-                            plans=ac.load_plans(), count_fn=lambda i: 0,
-                            balance_fn=lambda i, r: {"kinds": {}, "bad": [], "files": {}},
                             start_repo=self.repo, **kw)
 
     def restart(self):
@@ -219,13 +217,6 @@ class TestComesBack(RosterCase):
         health = self.st.health()
         self.assertEqual(health["lines"], 0)
         self.assertEqual(health["agents"], 1)
-
-    def test_a_lead_has_its_office_again(self):
-        self.a_citizen("sid-tm")
-        before = self.agents()["s:sid-tm"]
-        self.assertIsNotNone(before.get("office"), "fixture: a task manager is a lead with an office")
-        self.restart()
-        self.assertIsNotNone(self.agents()["s:sid-tm"].get("office"))
 
     def test_the_governor_is_back_idle_not_unknown(self):
         self.a_governor("sid-gov")

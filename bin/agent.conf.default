@@ -6,6 +6,7 @@ fast_lane_deputy=sonnet-5:medium
 merge_deputy=sonnet-5:medium
 task_manager=opus-5.5:high
 worker=sonnet-5:medium
+interior_designer=sonnet-5:medium
 permission_mode=bypassPermissions
 auto_resume=yes
 language=en

@@ -48,6 +48,7 @@ ROLE_KEYS = [
     "merge_deputy",
     "task_manager",
     "worker",
+    "interior_designer",
 ]
 
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
@@ -69,6 +70,7 @@ HINTS = {
     "merge_deputy": "Model and effort for the merge deputy. Form: model-name:effort.",
     "task_manager": "Model and effort for a task manager. Form: model-name:effort. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
     "worker": "Model and effort for a worker. Form: model-name:effort.",
+    "interior_designer": "Model and effort for the interior designer the Agent City page opens. Form: model-name:effort.",
     "permission_mode": "How much an agent may do without asking. One of: " + ", ".join(PERMISSION_MODES) + ".",
     "auto_resume": "Run agent-resume.sh by itself when a main manager starts. yes or no.",
     "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",

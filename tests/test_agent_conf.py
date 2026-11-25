@@ -40,6 +40,7 @@ REAL_KEYS = [
     "merge_deputy",
     "task_manager",
     "worker",
+    "interior_designer",
     "permission_mode",
     "auto_resume",
     "language",
@@ -101,6 +102,7 @@ GOOD_CONF_TEXT = (
     "merge_deputy=sonnet-5:medium\n"
     "task_manager=opus-5.5:xhigh\n"
     "worker=sonnet-5:medium\n"
+    "interior_designer=sonnet-5:medium\n"
     "permission_mode=auto\n"
     "auto_resume=yes\n"
     "language=en\n"
@@ -265,6 +267,7 @@ class TestValidateRoles(unittest.TestCase):
         "merge_deputy",
         "task_manager",
         "worker",
+        "interior_designer",
     ]
 
     def test_all_six_role_keys_accept_a_good_value(self):
@@ -465,6 +468,7 @@ class TestGroups(unittest.TestCase):
                         "merge_deputy",
                         "task_manager",
                         "worker",
+                        "interior_designer",
                     ],
                 ),
                 ("permission", ["permission_mode", "auto_resume",

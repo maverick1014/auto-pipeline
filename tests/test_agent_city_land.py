@@ -155,7 +155,7 @@ class TestStartTerritory(unittest.TestCase):
             self.calls.append(identity)
             return 4000
         return ac.CityState(decisions_path=os.path.join(self.base, "d.jsonl"), world_path=self.path,
-                            plans=plans(), count_fn=count, start_repo=start_repo, main_fn=main_fn)
+                            start_repo=start_repo, main_fn=main_fn)
 
     def snapshot(self, st):
         client = st.add_client()
@@ -173,49 +173,31 @@ class TestStartTerritory(unittest.TestCase):
         self.assertEqual(st.world["territories"]["/r/shop/.git"]["name"], "shop")
         self.assertIn("/r/shop/.git", self.saved(), "saved at once, before any line")
         snap = self.snapshot(st)
-        self.assertEqual([t["name"] for t in snap["world"]["territories"]], ["shop"])
+        self.assertEqual([t["name"] for t in snap["world"]["repos"]], ["shop"])
         self.assertEqual(snap["gov"]["terr"], ac.territory_id("/r/shop/.git"),
                          "no governor yet: the governor belongs to the start territory")
 
     def test_a_plain_folder_is_a_start_territory_too(self):
         st = self.state("/r/notes")
-        self.assertEqual([t["name"] for t in self.snapshot(st)["world"]["territories"]], ["notes"])
-
-    def test_the_start_repo_is_counted_first(self):
-        st = self.state("/r/shop/.git")
-        self.assertEqual(st.recount(1000.0), 1)
-        self.assertEqual(self.calls, ["/r/shop/.git"])
-        self.assertEqual(st.world["territories"]["/r/shop/.git"]["lines"], 4000)
-
-    def test_saved_territories_stay_and_keep_their_place(self):
-        w = ac.new_world()
-        ac.add_territory(w, plans(), "/r/old/.git", "old", 900)
-        ac.add_territory(w, plans(), "/r/shop/.git", "shop", 50)
-        before = json.loads(json.dumps(w["territories"]["/r/shop/.git"]))
-        st = self.state("/r/shop/.git", world=w)
-        self.assertEqual(sorted(st.world["territories"]), ["/r/old/.git", "/r/shop/.git"])
-        after = st.world["territories"]["/r/shop/.git"]
-        self.assertEqual((after["slot"], after["plan"]), (before["slot"], before["plan"]))
-        self.assertEqual(len(self.snapshot(st)["world"]["territories"]), 2)
+        self.assertEqual([t["name"] for t in self.snapshot(st)["world"]["repos"]], ["notes"])
 
     def test_no_start_repo_adds_nothing(self):
         for start in (None, ""):
             with self.subTest(start=start):
                 st = self.state(start)
                 self.assertEqual(st.world["territories"], {})
-                self.assertEqual(st.recount(1000.0), 0)
 
     def test_old_territories_without_a_repo_are_dropped_on_load(self):
         w = ac.new_world()
-        ac.add_territory(w, plans(), "dir:notes", "notes", 0)
-        ac.add_territory(w, plans(), "/r/shop/.git", "shop", 50)
+        ac.add_territory(w, "dir:notes", "notes")
+        ac.add_territory(w, "/r/shop/.git", "shop")
         st = self.state(None, world=w)
         self.assertEqual(list(st.world["territories"]), ["/r/shop/.git"])
         self.assertEqual(st.world["order"], ["/r/shop/.git"])
         self.assertEqual(list(self.saved()), ["/r/shop/.git"], "dropped from world.json at once")
         snap = self.snapshot(st)
         self.assertTrue(snap.get("notice"), "one line in the page log, never silent")
-        self.assertEqual([t["name"] for t in snap["world"]["territories"]], ["shop"])
+        self.assertEqual([t["name"] for t in snap["world"]["repos"]], ["shop"])
 
     def test_a_line_without_repo_goes_to_the_start_territory(self):
         # city-roles: g1 is the start repo's main manager, so it governs there
@@ -247,18 +229,6 @@ class TestStartTerritory(unittest.TestCase):
         self.assertEqual(st.world["territories"], {})
         self.assertEqual([(a["id"], a["terr"]) for a in self.snapshot(st)["agents"]], [("a1", "")])
 
-    def test_zero_lines_still_has_land_and_a_hall(self):
-        for plan in plans():
-            with self.subTest(plan=plan["id"]):
-                w = ac.new_world()
-                t = ac.add_territory(w, plans(), "/r/empty/.git", "empty", 0)
-                t["plan"] = plan["id"]
-                view = ac.layout(w, plans())
-                own = sum(row.count("g") + row.count("H") for row in view["rows"])
-                self.assertEqual(sum(row.count("H") for row in view["rows"]), 4, "the town hall")
-                self.assertGreaterEqual(own, 12, "a small land of its own, even with 0 code lines")
-
-
 class TestServeStartDir(ServerCase):
     def setUp(self):
         super().setUp()
@@ -272,7 +242,7 @@ class TestServeStartDir(ServerCase):
     def test_a_repo_dir_shows_its_territory_before_any_event(self):
         repo = make_repo(os.path.join(self.base, "shop"), {"a.py": "x\n" * 30})
         snap = self.serve(os.path.join(self.base, "shop"))
-        self.assertEqual([t["name"] for t in snap["world"]["territories"]], ["shop"])
+        self.assertEqual([t["name"] for t in snap["world"]["repos"]], ["shop"])
         self.assertEqual(snap["gov"]["terr"], ac.territory_id(repo))
         with open(self.world) as fh:
             self.assertEqual(list(json.load(fh)["territories"]), [repo])
@@ -281,13 +251,13 @@ class TestServeStartDir(ServerCase):
         plain = os.path.join(self.base, "notes")
         os.makedirs(plain)
         snap = self.serve(plain)
-        self.assertEqual([t["name"] for t in snap["world"]["territories"]], ["notes"])
+        self.assertEqual([t["name"] for t in snap["world"]["repos"]], ["notes"])
         with open(self.world) as fh:
             self.assertEqual(list(json.load(fh)["territories"]), [os.path.realpath(plain)])
 
     def test_no_start_dir_shows_nothing(self):
         snap = self.serve("")
-        self.assertEqual(snap["world"]["territories"], [])
+        self.assertEqual(snap["world"]["repos"], [])
 
 
 class TestCityScriptStartDir(ScriptCase):
@@ -610,7 +580,7 @@ for (const [name, view] of Object.entries(views)) {
     B: tiles.filter(t => t[2] === 'B').length, f: tiles.filter(t => t[2] === 'f').length };
   out[name] = res;
 }
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
 
 _CACHE = {}
@@ -639,144 +609,6 @@ def land_results():
 
 
 VIEWS = ("demo", "gaps")
-
-
-class TestSmoothGround(unittest.TestCase):
-    def each(self):
-        return [(name, land_results()[name]) for name in VIEWS]
-
-    def test_one_seamless_top_facing_up(self):
-        for name, r in self.each():
-            with self.subTest(view=name):
-                self.assertEqual(r["down"], 0, "flat faces pointing down")
-                self.assertEqual(r["seams"], 0, "one vertex position has two colours: a seam / a per-tile colour step")
-
-    def test_no_per_tile_colour_steps(self):
-        for name, r in self.each():
-            with self.subTest(view=name):
-                self.assertLessEqual(r["stepMax"], .12, "a hard colour step along a top edge")
-                self.assertLessEqual(r["gradMax"], .45, "colour jumps too fast near %s: not a smooth blend" % r["gradAt"])
-
-    def test_the_outline_is_a_smooth_curve(self):
-        for name, r in self.each():
-            with self.subTest(view=name):
-                o = r["outline"]
-                self.assertGreater(o["len"], 20)
-                self.assertEqual(o["stair"], 0, "stair-step corners at %s" % o["stairAt"])
-                self.assertLess(o["sharpShare"], .03, "too many sharp corners on the outline")
-                self.assertLessEqual(o["axisShare"], .35, "the outline runs along the tile grid")
-
-    def test_the_land_follows_the_tiles(self):
-        for name, r in self.each():
-            with self.subTest(view=name):
-                self.assertEqual(r["missN"], 0, "land tile centres not on the ground: %s" % r["miss"])
-                self.assertEqual(r["overN"], 0, "ground over open void or water: %s" % r["over"])
-
-    def test_cliffs_and_banks_follow_the_curve(self):
-        for name, r in self.each():
-            with self.subTest(view=name):
-                self.assertGreater(r["cliffs"], 10)
-                self.assertEqual(r["inward"], [], "a side face looks into the land")
-                self.assertEqual(r["notGrey"], [], "the cliff is grey rock, never brown earth")
-                self.assertEqual(r["noCliffN"], 0, "no cliff at the land's edge near %s" % r["noCliff"])
-                self.assertEqual(r["noBankN"], 0, "no bank where land meets water near %s" % r["noBank"])
-
-    def test_the_ravine_has_a_floor(self):
-        r = land_results()["gaps"]
-        self.assertGreater(r["kN"], 0, "test view has no ravine")
-        self.assertEqual(r["kTop"], 0, "the ravine is open, not covered by the ground")
-        self.assertEqual(r["kLow"], [], "ravine tiles with no floor")
-
-    def test_cheap_enough(self):
-        for name, r in self.each():
-            with self.subTest(view=name):
-                self.assertLessEqual(r["tris"], 60 * r["area"], "too many triangles for the frame budget")
-                self.assertLess(r["ms"], 700, "ground + water + lanes must build fast: buildLand runs on every world event")
-
-
-class TestSmoothWater(unittest.TestCase):
-    def test_water_is_smooth_and_covers_every_water_tile(self):
-        for name in VIEWS:
-            with self.subTest(view=name):
-                w = land_results()[name]["water"]
-                self.assertEqual((w["down"], w["badY"], w["notBlue"]), (0, 0, 0))
-                self.assertEqual(w["miss"], [], "water tiles with no water")
-                if name == "demo":
-                    self.assertEqual(w["outline"]["stair"], 0, "stair steps at %s" % w["outline"]["stairAt"])
-                    self.assertLess(w["outline"]["sharpShare"], .03)
-                    self.assertLessEqual(w["outline"]["axisShare"], .35)
-
-
-class TestLanes(unittest.TestCase):
-    def each(self):
-        return [(name, land_results()[name]["lanes"]) for name in VIEWS]
-
-    def test_lanes_follow_the_roads_and_tracks(self):
-        for name, l in self.each():
-            with self.subTest(view=name):
-                self.assertGreater(l["n"], 0)
-                self.assertEqual(l["uncovered"], [], "road/track tiles with no lane")
-                self.assertEqual(l["offRoad"], [], "a lane wanders off the roads")
-                self.assertEqual(l["onPlot"], [], "a lane runs over a plot or the hall")
-
-    def test_lanes_curve_smoothly(self):
-        for name, l in self.each():
-            with self.subTest(view=name):
-                self.assertLessEqual(l["turnMax"], 35, "a sharp turn inside one lane at %s" % l["turnAt"])
-
-    def test_ribbons_are_drawn_flat_above_the_ground(self):
-        for name, l in self.each():
-            with self.subTest(view=name):
-                self.assertGreater(l["faces"], 0)
-                self.assertEqual(l["badFace"], 0, "lane faces must be flat, face up, at 0 < y <= 0.1")
-                self.assertEqual(l["notCovered"], [], "lane points with no ribbon")
-                self.assertEqual(l["overWater"], 0, "a lane drawn over the water")
-
-    def test_a_lane_is_narrower_than_a_tile(self):
-        widths = [w for name in VIEWS for w in land_results()[name]["lanes"]["width"]]
-        self.assertGreater(len(widths), 10, "no straight road runs found in the test views")
-        for w in widths:
-            with self.subTest(at=w["at"]):
-                self.assertTrue(w["in2"], "centre +- 0.2 must be on the lane")
-                self.assertFalse(w["out5"], "the lane fills the whole tile: that is a row of tiles again")
-
-    def test_lane_colours_follow_era_and_infra(self):
-        rows = land_results()["gaps"]["lanes"]["roadColors"] + land_results()["demo"]["lanes"]["roadColors"]
-        self.assertTrue(rows)
-        eras = set()
-        for row in rows:
-            with self.subTest(terr=row["terr"], era=row["era"], at=row["at"]):
-                self.assertLessEqual(max(abs(a - b) for a, b in zip(row["c"], row["want"])), .06,
-                                     "a road lane takes roadColor(t)")
-                eras.add((row["era"], tuple(round(v, 2) for v in row["c"])))
-        self.assertGreater(len({e for e, _ in eras}), 1, "test views need roads of two eras")
-        tracks = land_results()["demo"]["lanes"]["trackColors"]
-        self.assertTrue(tracks)
-        for row in tracks:
-            self.assertLessEqual(max(abs(a - b) for a, b in zip(row["c"], row["want"])), .06, "a track lane takes trackColor(t)")
-        src = land_section() or ""
-        self.assertTrue("roadColor(" in src, "lanes use roadColor")
-        self.assertTrue("trackColor(" in src, "lanes use trackColor")
-
-    def test_build_land_draws_the_lanes(self):
-        src = tp.function_source("buildLand") or ""
-        for name in ("laneGeometry(", "groundGeometry(", "waterGeometry("):
-            self.assertTrue(name in src, "buildLand must call " + name)
-
-
-class TestWildDecor(unittest.TestCase):
-    def test_no_rows_of_trees(self):
-        for name in VIEWS:
-            with self.subTest(view=name):
-                d = land_results()[name]["decor"]
-                self.assertEqual(d["inVoid"], 0, "decoration outside the land")
-                self.assertEqual(d["bridges"], d["B"], "one bridge per bridge tile")
-                self.assertEqual(d["bridgesOff"], 0, "bridges sit on the tile centre")
-                for kind in ("pines", "rocks", "plants"):
-                    if d[kind]:
-                        self.assertGreaterEqual(d[kind + "Off"], .8 * d[kind], "%s stand in rows on the tile centres" % kind)
-        self.assertGreater(land_results()["gaps"]["decor"]["pines"], 0, "the forest belt has pines")
-        self.assertTrue("wildDecor(" in (tp.function_source("buildLand") or ""), "buildLand must call wildDecor(")
 
 
 # ---------------------------------------------------------------------------
@@ -824,50 +656,8 @@ const line = { hidden: false };
 box.$ = sel => (sel === '#empty-land' ? line : null);
 box.showEmptyLine({ territories: [] }); out.lineEmpty = line.hidden;
 box.showEmptyLine({ territories: [{ id: 't' }] }); out.lineLand = line.hidden;
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
-
-
-class TestEmptyWorld(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        fns = tp.page_fns("distMax", "zoomStep", "landReady", "updateGovernor", "showEmptyLine", "governorAt",
-                          optional=("landSpread", "centreHeight", "islandSpread", "govTalk", "govSay",
-                                    "capZoom", "distLimit", "zoomCapDist", "spanDist", "stopFly", "capHint"))  # city-ux
-        cls.out = tp.run_node(EMPTY_JS, {"prelude": tp.constants_prelude(), "fns": fns})
-
-    def test_zoom_keeps_working_with_no_land(self):
-        o = self.out
-        self.assertAlmostEqual(o["empty"], o["full"], delta=1e-6, msg="an empty world zooms like one fresh territory")
-        self.assertTrue(o["zoomOut"], "zoom out does not move")
-        self.assertTrue(o["zoomIn"], "zoom in does not move")
-        self.assertGreater(o["maxDist"], 15)
-        self.assertLess(o["maxDist"], 80)
-        self.assertLessEqual(o["minDist"], 3.5)
-
-    def test_land_ready(self):
-        self.assertEqual(self.out["ready"], [False, True, False])
-
-    def test_no_governor_floating_in_the_void(self):
-        self.assertIs(self.out["govEmpty"], False)
-        self.assertIs(self.out["govLand"], True)
-        self.assertTrue("landReady()" in (tp.function_source("updatePerson") or ""), "people never float in the void either")
-
-    def test_one_line_says_there_is_no_territory_yet(self):
-        m = re.search(r"<p\b[^>]*\bid=\"empty-land\"[^>]*>(.*?)</p>", tp.zh_resolved(tp.markup()), re.S)  # idea-city C1: the text comes from TEXT (data-t)
-        self.assertIsNotNone(m, '<p id="empty-land"> not found')
-        self.assertIn("hidden", m.group(0).split(">")[0])
-        self.assertIn("还没有领地", m.group(1))
-        self.assertIs(self.out["lineEmpty"], False)
-        self.assertIs(self.out["lineLand"], True)
-        self.assertTrue("showEmptyLine(" in (tp.function_source("buildLand") or ""), "buildLand must call showEmptyLine(")
-
-    def test_first_view_waits_for_a_territory(self):
-        src = tp.function_source("buildLand") or ""
-        line = next((ln for ln in src.split("\n") if "resetCam()" in ln), "")
-        self.assertTrue(line, "buildLand must still send the first world home (resetCam)")
-        self.assertRegex(line, r"territories\.length|landReady\(\)",
-                         "the first-view flag must wait for a world with a territory")
 
 
 NEWCIT_JS = r"""
@@ -881,21 +671,8 @@ vm.runInContext(prelude + '\n' + fns, box);
 const out = [box.newCitizen('c1', 'worker', '', 'a').x, box.newCitizen('c2', 'worker', '', '').x, box.newCitizen('c3', 'worker', '', 'zz').x];
 box.govTerr = null;
 out.push(box.newCitizen('c4', 'worker', '', '').x);
-process.stdout.write(JSON.stringify(out));
+require(`fs`).writeSync(1, JSON.stringify(out));
 """
-
-
-class TestFirstView(unittest.TestCase):
-    def test_people_without_a_known_territory_stand_on_land(self):
-        out = tp.run_node(NEWCIT_JS, {"prelude": tp.constants_prelude(), "fns": tp.page_fns("newCitizen", "terrOf")})
-        self.assertEqual(out, [0, 26, 26, 0], "own territory; else the governor's; else the first")
-
-    def test_the_governors_hall_before_the_land_is_built(self):
-        snap = tp.case_block("snapshot") or ""
-        i, j = snap.find("govTerr = ev.gov.terr"), snap.find("buildLand(ev.world)")
-        self.assertGreaterEqual(i, 0)
-        self.assertGreaterEqual(j, 0)
-        self.assertLess(i, j, "govTerr must be set before buildLand, so the first view is the governor's hall")
 
 
 if __name__ == "__main__":

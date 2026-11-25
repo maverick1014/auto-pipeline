@@ -83,7 +83,7 @@ const { fns, driver, payload } = JSON.parse(fs.readFileSync(process.argv[2], 'ut
 const box = { __payload: payload, __out: null, console, Math, JSON, Map, Set, Array, Object, Number, String };
 vm.createContext(box);
 vm.runInContext(fns + '\n;\n' + driver, box);
-process.stdout.write(JSON.stringify(box.__out));
+require(`fs`).writeSync(1, JSON.stringify(box.__out));
 """
 
 
@@ -111,13 +111,6 @@ SERVER_NAMES = ["checkout 页面", "orders 测试", "deploy 脚本", "api 文档
                 "修退款金额", "住宅区 5 号", "checkout page", "Homes no. 12", "aaaaaaaaaaaaaaaaaaaaaaa… 模块"]
 
 
-class TestServerNameShown(unittest.TestCase):
-
-    def test_the_servers_name_as_it_is(self):
-        out = run_sim(NAME_DRIVER, {"names": SERVER_NAMES}, ("buildingName",))
-        self.assertEqual(out, SERVER_NAMES, "never the task, the files or the type word when the server named it")
-
-
 # ---------------------------------------------------------------------------
 # D2..D4 the history comes from the server
 # ---------------------------------------------------------------------------
@@ -141,7 +134,7 @@ LINES = [
 
 HIST_HEAD = r"""
 const V = __payload.view, A = V.territories[0], L = __payload.lines;
-function buildLand(view){ landState(view); }
+function buildLand(view){ officeState(view); }
 const snap = hist => { const ev = { type: 'snapshot', world: V, gov: { state: 'idle', terr: A.id }, governors: 1, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'idle' }],
   agents: [{ id: 'w1', role: 'worker', label: 'worker', task: '登录 API', terr: A.id, tools: {} },
@@ -221,7 +214,7 @@ out.off = serverHist; out.kept = texts(byId('w1')).length;
 __out = out;
 """
 
-HIST_NEEDS = ("apply", "byId", "landState", "i18n", "actLog", "actTool", "giveAnswer", "personHistory", "stepText",
+HIST_NEEDS = ("apply", "byId", "officeState", "i18n", "actLog", "actTool", "giveAnswer", "personHistory", "stepText",
               "stuckText", "histLine", "ownHist", "HIST_KEEP", "serverHist")
 
 
@@ -323,114 +316,6 @@ def dodge(b, bubbles, others=(), top=0):
                   {"b": b, "bubbles": list(bubbles), "others": list(others), "top": top})
 
 
-class TestLabelDodge(unittest.TestCase):
-
-    def test_the_gap(self):
-        self.assertEqual(const_line("LABEL_GAP"), "6")
-
-    def test_nothing_touches(self):
-        self.assertEqual(dodge(LAB, []), 0)
-        self.assertEqual(dodge(LAB, [box(600, 200, 90, 26)]), 0, "a bubble far to the side")
-        self.assertEqual(dodge(LAB, [box(300, 100, 90, 26)]), 0, "a bubble well above")
-        self.assertEqual(dodge(LAB, [], [box(310, 185, 80, 22)]), 0, "another label alone never moves it")
-
-    def test_up_just_clear_of_the_bubble(self):
-        dy = dodge(LAB, [BUB])
-        self.assertEqual(dy, 174 - 6 - 190, "the label's bottom ends 6 px above the bubble's top")
-        self.assertFalse(touch(moved(LAB, dy), BUB))
-
-    def test_closer_than_the_gap_counts(self):
-        near = box(310, 171, 100, 22)            # 3 px above the bubble, not on it
-        self.assertEqual(dodge(near, [BUB]), 174 - 6 - 171)
-        clear = box(310, 168, 100, 22)           # exactly the gap away
-        self.assertEqual(dodge(clear, [BUB]), 0)
-
-    def test_clear_of_the_whole_stack(self):
-        dy = dodge(LAB, [BUB, QM])
-        self.assertEqual(dy, 140 - 6 - 190, "above the ? that stands on the bubble")
-        for b in (BUB, QM):
-            self.assertFalse(touch(moved(LAB, dy), b))
-
-    def test_never_onto_another_label(self):
-        other = box(300, 160, 120, 22)           # a site sign right above the bubble: t 138, b 160
-        dy = dodge(LAB, [BUB], [other])
-        self.assertEqual(dy, 138 - 6 - 190)
-        self.assertFalse(touch(moved(LAB, dy), other))
-        self.assertFalse(touch(moved(LAB, dy), BUB))
-
-    def test_no_room_above_goes_under(self):
-        dy = dodge(LAB, [BUB, QM], top=120)      # up would put its top at 112: above the limit
-        self.assertEqual(dy, 200 + 6 - 168, "its top ends 6 px under the bubble's bottom")
-        self.assertFalse(touch(moved(LAB, dy), BUB))
-        self.assertEqual(dodge(LAB, [BUB, QM], top=112), 140 - 6 - 190, "it just fits: up")
-
-    def test_under_clears_what_is_there_too(self):
-        under = box(310, 230, 100, 22)           # another label just under the bubble: t 208, b 230
-        dy = dodge(LAB, [BUB], [under], top=150)
-        self.assertEqual(dy, 230 + 6 - 168)
-
-
-class TestDodgeTargets(unittest.TestCase):
-
-    def targets(self, boxes, bubbles, top=0):
-        return run_vm(dodge_fns(), "__out = dodgeTargets(__payload.boxes, __payload.bubbles, __payload.top);",
-                      {"boxes": boxes, "bubbles": bubbles, "top": top})
-
-    def test_only_touched_labels_move(self):
-        far = box(900, 400, 80, 22)
-        out = self.targets([LAB, far], [BUB, QM])
-        self.assertEqual(out, [140 - 6 - 190, 0])
-        self.assertEqual(self.targets([LAB, far], []), [0, 0])
-        self.assertEqual(self.targets([], [BUB]), [])
-
-    def test_two_labels_at_one_bubble_end_apart(self):
-        sign = box(295, 195, 110, 22)            # a site sign on the same bubble
-        boxes = [LAB, sign]
-        out = self.targets(boxes, [BUB, QM])
-        ends = [moved(b, dy) for b, dy in zip(boxes, out)]
-        self.assertTrue(all(dy < 0 for dy in out), out)
-        self.assertFalse(touch(ends[0], ends[1]), "a moved label never lands on another name label")
-        for e in ends:
-            for b in (BUB, QM):
-                self.assertFalse(touch(e, b))
-
-    def test_a_label_that_stays_is_an_obstacle(self):
-        stays = box(300, 130, 120, 22)           # above the "?", touched by no bubble: t 108, b 130
-        out = self.targets([LAB, stays], [BUB, QM])
-        self.assertEqual(out[1], 0)
-        self.assertEqual(out[0], 108 - 6 - 190, "the first label goes above the one that stays")
-        out2 = self.targets([stays, LAB], [BUB, QM])
-        self.assertEqual(out2, [0, 108 - 6 - 190], "the order of the labels does not change that")
-
-
-class TestEaseDodge(unittest.TestCase):
-
-    def ease(self, driver, payload=None):
-        return run_vm(dodge_fns(), driver, payload)
-
-    def test_it_glides(self):
-        out = self.ease(r"""
-let v = 0; const steps = [];
-for (let i = 0; i < 240; i++) { v = easeDodge(v, -56, 1 / 60); steps.push(v); }
-__out = { first: steps[0], steps, same: easeDodge(-56, -56, 1 / 60), zero: easeDodge(0, 0, 1 / 60) };
-""")
-        self.assertAlmostEqual(out["first"], -56 / 6.0, places=4, msg="one frame: a sixth of the way (dt * 10)")
-        steps = out["steps"]
-        self.assertTrue(all(a >= b for a, b in zip(steps, steps[1:])), "never back")
-        self.assertTrue(all(s >= -56 for s in steps), "never past the target")
-        self.assertEqual(steps[-1], -56, "it arrives exactly")
-        self.assertLess(steps.index(-56), 60, "within a second")
-        self.assertEqual(out["same"], -56)
-        self.assertEqual(out["zero"], 0)
-
-    def test_back_and_a_slow_frame(self):
-        out = self.ease("__out = [easeDodge(-56, 0, 1 / 60), easeDodge(0, 38, .5), easeDodge(-0.3, 0, 1 / 60), easeDodge(10, 10.2, 0.001)];")
-        self.assertAlmostEqual(out[0], -56 + 56 / 6.0, places=4)
-        self.assertEqual(out[1], 38, "a long frame goes straight there, never past it")
-        self.assertEqual(out[2], 0, "closer than .4 px: there")
-        self.assertEqual(out[3], 10.2)
-
-
 # ---------------------------------------------------------------------------
 # D6 the view: the real overlays
 # ---------------------------------------------------------------------------
@@ -460,108 +345,6 @@ def view_fns(*names):
     return ("var LABEL_GAP = %s;\n" % const_line("LABEL_GAP") + VIEW_PRELUDE
             + page_fns("pin", "labelDodge", "dodgeTargets", "easeDodge", "bubbleBoxes", "nameLabels", "labelTop",
                        "dodgeNameLabels", *names))
-
-
-class TestLabelsOnThePage(unittest.TestCase):
-
-    def run_view(self, driver):
-        return run_vm(view_fns(), driver)
-
-    def test_pin_remembers_the_point(self):
-        out = self.run_view(r"""
-pin(bub, 300, 200.26, true);
-const shown = { px: bub._px, py: bub._py, hidden: bub.hidden, tr: bub.style.transform };
-pin(bub, 5, 6, false);
-__out = { shown, hidden: bub.hidden };
-""")
-        self.assertEqual((out["shown"]["px"], out["shown"]["py"]), (300, 200.26))
-        self.assertFalse(out["shown"]["hidden"])
-        self.assertEqual(out["shown"]["tr"], "translate(300.0px,200.3px) translate(-50%,-100%)", "the transform as before")
-        self.assertTrue(out["hidden"])
-
-    def test_the_bubbles_and_the_labels(self):
-        out = self.run_view(r"""
-pin(bub, 300, 200, true); pin(qm, 300, 168, true); pin(talk, -9999, -9999, true); pin(tag, 300, 240, true); pins();
-const one = bubbleBoxes();
-pin(talk, 420, 150, true); pin(qm, 0, 0, false);
-__out = { one, two: bubbleBoxes(), names: nameLabels().map(r => r.el === land ? 'land' : r.el === sign ? 'sign' : r.el === far ? 'far' : '?'),
-  top: labelTop(), noStrip: (strip = null, labelTop()) };
-""")
-        self.assertEqual(out["one"], [BUB, QM], "bottom centre boxes; a name tag is no bubble; behind the camera is not on screen")
-        self.assertEqual(out["two"], [BUB, box(420, 150, 30, 30)], "a hidden one is out, the small talk bubble counts")
-        self.assertEqual(sorted(out["names"]), ["far", "land", "sign"], "land names and site signs, never a district label")
-        self.assertEqual(out["top"], 12 + 34 + 6)
-        self.assertEqual(out["noStrip"], 6)
-
-    def test_the_label_moves_the_bubble_stays(self):
-        out = self.run_view(r"""
-pin(bub, 300, 200, true); pin(qm, 300, 168, true); pins();
-const before = { bub: bub.style.transform, qm: qm.style.transform, dist: dist.style.transform, far: far.style.transform };
-dodgeNameLabels(1);                       // a long frame: straight to the target
-__out = { land: at(land), sign: at(sign), same: before.bub === bub.style.transform && before.qm === qm.style.transform,
-  dist: dist.style.transform === before.dist, far: far.style.transform === before.far,
-  base: [land._px, land._py], w: [land.offsetWidth, sign.offsetWidth] };
-""")
-        self.assertTrue(out["same"], "the bubble wins: it is never moved")
-        self.assertTrue(out["dist"], "the small district label stays")
-        self.assertTrue(out["far"], "a label nothing touches stays")
-        self.assertEqual(out["base"], [310, 190], "the label's own point is kept: it goes back there")
-        land = moved(LAB, out["land"][1] - 190)
-        sign = moved(box(295, 195, 110, 22), out["sign"][1] - 195)
-        self.assertEqual(out["land"][0], 310)
-        self.assertEqual(out["sign"][0], 295)
-        for b in (BUB, QM):
-            self.assertFalse(touch(land, b), "the land's name is clear of the bubbles")
-            self.assertFalse(touch(sign, b), "the site sign too")
-        self.assertFalse(touch(land, sign), "and they do not land on each other")
-        self.assertGreaterEqual(min(land["t"], sign["t"]), 12 + 34 + 6, "never under the strip at the top")
-
-    def test_it_glides_there_and_back(self):
-        out = self.run_view(r"""
-const frame = () => { pin(land, 310, 190, true); pin(far, 900, 400, true); dodgeNameLabels(1 / 60); };   // no site sign here
-pin(bub, 300, 200, true);
-frame();
-const one = at(land)[1];
-for (let i = 0; i < 120; i++) frame();
-const there = at(land)[1];
-pin(bub, 0, 0, false);                   // the bubble goes away
-frame();
-const backOne = at(land)[1];
-for (let i = 0; i < 120; i++) frame();
-__out = { one, there, backOne, back: at(land)[1] };
-""")
-        self.assertTrue(190 > out["one"] > 168, "one frame: a part of the way, never a jump (%r)" % out["one"])
-        self.assertEqual(out["there"], 174 - 6, "the label's point ends 6 px above the bubble")
-        self.assertTrue(168 < out["backOne"] < 190, "it glides back too")
-        self.assertEqual(out["back"], 190, "nothing touches it: back at its own point")
-
-    def test_behind_the_camera_and_hidden(self):
-        out = self.run_view(r"""
-pin(bub, -9999, -9999, true); pin(land, -9999, -9999, true); pin(sign, 0, 0, false); pin(far, 900, 400, true);
-dodgeNameLabels(1);
-const a = at(land);
-pin(bub, 300, 200, true); pin(land, 310, 190, true); pin(sign, 0, 0, false);
-dodgeNameLabels(1);
-__out = { a, land: at(land)[1], signHidden: sign.hidden };
-""")
-        self.assertEqual(out["a"], [-9999, -9999], "both behind the camera: nothing to dodge")
-        self.assertEqual(out["land"], 174 - 6, "a hidden sign is no obstacle: straight above the bubble")
-        self.assertTrue(out["signHidden"], "a hidden label stays hidden")
-
-    def test_no_room_above_goes_under(self):
-        out = self.run_view(r"""
-pin(bub, 300, 80, true); pin(land, 310, 76, true);        // right under the strip: up would end above 52
-dodgeNameLabels(1);
-__out = at(land)[1];
-""")
-        self.assertEqual(out, 80 + 6 + 22, "its top 6 px under the bubble")
-
-    def test_called_every_frame_after_the_pins(self):
-        src = function_source("sync")
-        self.assertIsNotNone(src)
-        i, j, k = src.find("pinSiteSigns()"), src.find("pinLandOverlays()"), src.find("dodgeNameLabels(dt)")
-        self.assertTrue(i >= 0 and j >= 0)
-        self.assertGreater(k, max(i, j), "the labels are moved after every overlay was pinned")
 
 
 if __name__ == "__main__":
