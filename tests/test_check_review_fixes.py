@@ -479,6 +479,65 @@ class TestG5DispatchCondition(unittest.TestCase):
         self.assertIn("merged into its target branch", line)
 
 
+class TestG6ReleaseWhileProductionIsCheckedOut(tp.PromoteCase):
+    def test_the_release_says_why_it_did_not_run(self):
+        log = os.path.join(self.repo.base, "release.log")
+        self.put("bin/agent-release.sh", "#!/usr/bin/env bash\necho ran > %s\n" % log)
+        os.chmod(os.path.join(self.repo.dir, "bin", "agent-release.sh"), 0o755)
+        self.commit_wb({}, "release build")
+        self.git("push", "-q", "origin", "%s:main" % self.wb)
+        self.git("switch", "-q", "main")                         # not switched yet (section 33)
+        self.git("merge", "-q", "--ff-only", "origin/main")
+        self.git("switch", "-q", "-c", "feat-r", "origin/main")
+        self.put("src/r.py", "r = 1\n")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "urgent")
+        self.git("push", "-q", "-u", "origin", "feat-r")
+        self.git("switch", "-q", "main")
+        r = self.repo.run("agent-promote.sh", "--task", "feat-r", "--branch", "feat-r", "--owner-quote", "publish it")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertFalse(os.path.exists(log))
+        self.assertIn("release: not run: local main is checked out in %s; switch that checkout to the working branch "
+                      "(section 33), then run bin/agent-release.sh --push" % os.path.realpath(self.repo.dir),
+                      [l.replace(self.repo.dir, os.path.realpath(self.repo.dir)) for l in r.stdout.splitlines()])
+
+
+class TestG7AFreshWorktreeIsNotSwept(tc.CleanupCase):
+    def test_a_worktree_just_branched_from_the_working_branch_stays(self):
+        d = self.repo.dir
+        tc.git(d, "switch", "-q", "-c", "ap-main-t", "main")
+        self.commit_in(d, "wb.txt")
+        tc.git(d, "push", "-q", "origin", "ap-main-t")
+        tc.git(d, "config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
+        fresh = os.path.join(self.repo.base, "fresh")
+        tc.git(d, "worktree", "add", "-q", "-b", "feat/fresh", fresh, "ap-main-t")
+        self.ok("--apply")
+        self.assertTrue(os.path.isdir(fresh), "a worktree with no own commits is not a merged one")
+
+
+class TestG8NightlyScratchPerRun(unittest.TestCase):
+    def test_every_scratch_name_has_the_pid(self):
+        src = read("bin", "agent_nightly.py")
+        # the --failures and record_misses scratch tree (the nightly's own run is one at a time: SCRATCH alone)
+        lines = [l for l in src.splitlines() if '"_failures"' in l and "SCRATCH" in l and not l.strip().startswith("#")]
+        self.assertTrue(lines)
+        for l in lines:
+            with self.subTest(line=l.strip()):
+                self.assertIn("getpid", l)
+
+
+class TestG9AndG10Texts(unittest.TestCase):
+    def test_r8_names_both_switches(self):
+        self.assertIn("init switches the main checkout of a new repo to the working branch; in a repo that already "
+                      "uses the plugin the main manager switches it at a quiet point after the start's WORKING BRANCH "
+                      "line", rule("R8. ", "W1. "))
+
+    def test_dispatch_says_suite_run(self):
+        d = read("skills", "dispatch", "SKILL.md")
+        self.assertNotIn("suite slot", d)
+        self.assertIn("suite run", d)
+
+
 class TestF11(unittest.TestCase):
     def test_docstring(self):
         head = read("bin", "agent_conf.py").split('"""')[1]

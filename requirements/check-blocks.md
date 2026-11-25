@@ -736,3 +736,9 @@ and "17 settings" where PRINCIPLES.md counts them.
 - G3 The merge deputy's brief gives `<production branch>` (the merge skill fills it from agent_repo.conf, else origin/HEAD's target, else main); step 2 compares `git branch --show-current` with `<working branch>` and `<production branch>` exactly; any other branch (release, master ...): FAIL, nothing merged.
 - G4 A stored name equal to the production branch is never returned: `working_branch(repo)` gives None with the F4 stderr line; `derive=True` works out the default form again and stores it.
 - G5 skills/dispatch step 9: "a fix from a still-running branch merged into its target branch", no "merged into main".
+- PR REVIEW delta (17:5x): pass, all 8 fixed; four low items, accepted:
+- G6 agent_promote.py: when the local production branch is checked out (a repo not switched yet, section 33) the release cannot build from it: the release step is not run and says `release: not run: local <production> is checked out in <path>; switch that checkout to the working branch (section 33), then run bin/agent-release.sh --push`; exit 1.
+- G7 agent_cleanup.py: "no own commits" also when the head is on origin/<working branch>'s first-parent line (a worktree just branched from the working branch is never swept as merged); task_finished likewise.
+- G8 agent_nightly.py: each scratch worktree of `--failures` and of record_misses has its own name (`..._<pid>`) and removes only its own.
+- G9 PRINCIPLES.md R8: "init switches the main checkout of a new repo to the working branch; in a repo that already uses the plugin the main manager switches it at a quiet point after the start's WORKING BRANCH line".
+- G10 skills/dispatch: the brief's list of waits says "suite run", not "suite slot" (section 39 a).
