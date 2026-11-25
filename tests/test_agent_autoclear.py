@@ -152,7 +152,8 @@ class ClearCase(ScriptCase):
     def waiter(self, sid="s1", env=None):
         full = {"AGENT_FAKE_NOW": NOW}
         full.update(env or {})
-        return self.repo.run("agent-autoclear.sh", HANDLE, sid, env=full, timeout=60)
+        # section 43 C9: these runs stand for a spawned task manager's pane (cleared without a transcript)
+        return self.repo.run("agent-autoclear.sh", HANDLE, sid, "--spawned", env=full, timeout=60)
 
     def hook(self, source, sid="s1", env=None, runtime="orca", handle=HANDLE):
         full = {"AGENT_ROLE": "task-manager", "AGENT_START_DEDUPE_SEC": "0"}

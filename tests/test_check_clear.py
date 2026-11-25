@@ -83,9 +83,11 @@ class TestHumanQuiet(ScriptCase):
         self.t.write([oo.owner("ok go", ago(30))])
         self.assertEqual(self.quiet().returncode, 0)
 
-    def test_no_transcript_is_quiet(self):
+    def test_no_transcript_is_unknown(self):
+        # section 43 C9: unreadable is not quiet
         r = self.quiet()
-        self.assertEqual((r.returncode, r.stdout.strip()), (0, "quiet"), r.stderr)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertTrue(r.stdout.strip().startswith("unknown: "), r.stdout)
 
     def test_only_a_typed_human_prompt_counts(self):
         self.t.write([

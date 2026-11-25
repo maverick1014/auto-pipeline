@@ -275,6 +275,16 @@ class TestCheckLine(Case):
 # ---------------------------------------------------------------- checks gate: the merge guard
 
 
+def main_launched(repo_dir, *tasks, at="2000-01-01 00:00"):
+    """Section 44 F2: the guard's durable records of a reviewer and a check deputy launched by the main manager."""
+    gd = subprocess.run(["git", "-C", repo_dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                        capture_output=True, text=True, check=True).stdout.strip()
+    with open(os.path.join(gd, "agent_launches.jsonl"), "a") as fh:
+        for t in tasks:
+            for kind in ("reviewer", "check-deputy"):
+                fh.write(json.dumps({"task": t, "type": kind, "by": "main", "at": at}) + "\n")
+
+
 class TestGate(Case):
     """The task's branch is committed and pushed (core review defect 4: the gate plans what merges)."""
 

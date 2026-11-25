@@ -235,7 +235,7 @@ W8. Merge and cleanup
 - After any direct merge into production, production is merged back into the working branch at once, so they never drift
 - The merge deputy runs `agent-file.sh checks gate <task>` first: GATE REFUSED → no merge, the task goes back
 - Deputy deletes the branch (local + remote) and the worktree right after merge
-- A failed run after the merge is undone with `git reset --merge ORIG_HEAD`, never --hard (that wipes the uncommitted agent_*.txt of the main checkout)
+- Never `git reset --hard` in the main checkout: it wipes the uncommitted agent_*.txt
 - Every merge ends with cleanup, in every case: a task manager pane, a subagent's git worktree, a human-direct Helper (its own pane stays), a worktree on another machine (agents/merge-deputy.md)
 - The worktree line of a merged task is always removed or rewritten at merge, also when the folder stays
 - human-direct protects only the human's own session pane; the sweep never closes a Claude pane, only a shell pane that never got a prompt and is idle over 30 minutes (`unused_pane_min`)

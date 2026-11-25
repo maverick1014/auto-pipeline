@@ -216,7 +216,8 @@ class TestPrinciplesOtherRules(unittest.TestCase):
 
     def test_w8_merge_gate_and_cleanup(self):
         w8 = self.rule("W8. ", "W9. ")
-        for phrase in ("checks gate", "after every merge", "git reset --merge ORIG_HEAD", "never --hard"):
+        # section 42 B2: no run at the merge, so no undo line; the --hard warning stays in its own words
+        for phrase in ("checks gate", "after every merge", "Never `git reset --hard` in the main checkout"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w8)
 

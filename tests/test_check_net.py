@@ -367,9 +367,13 @@ class TestRoom(RoomCase):
         import time
         older = self.hold(2000, "build")
         time.sleep(1.1)
-        p = subprocess.Popen(["sleep", "30"])
-        self.addCleanup(p.kill)
-        self.room("reserve", str(p.pid), "1500", "related", "--kind", "test", "--unmeasured")
+        # section 43 C1: relief signals only a run the runner started (a hand reservation never)
+        p = self.repo.popen("agent-test-run.sh", "--key", "related", "--", "sleep", "30", env=self.env())
+        self.addCleanup(lambda: p.poll() is None and p.kill())
+        for _ in range(50):
+            if any(j.get("pid") == p.pid for j in self.jobs()):
+                break
+            time.sleep(0.2)
         pane = subprocess.Popen(["sleep", "30"])
         self.addCleanup(pane.kill)
         self.room("reserve", str(pane.pid), "600", "pane", "--kind", "pane")

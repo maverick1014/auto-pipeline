@@ -803,3 +803,4 @@ Decided by the main manager (listed for the owner):
 - F14 Every promote first removes leftover `<git common dir>/agent_promote_wt_<pid>` worktrees whose pid is dead.
 - tests/check_blocks_demo.sh shows F1-F4 and F7.
 - B2 (also): W8 drops the undo line of a failed run after the merge (no run there); it keeps: "Never `git reset --hard` in the main checkout: it wipes the uncommitted agent_*.txt".
+- C8 (also): the waiter calls the gate through `bin/agent-owner-order.sh human-quiet` (its documented entry), not the Python file.

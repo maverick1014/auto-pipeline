@@ -699,6 +699,8 @@ class ScriptRepo:
         env.setdefault("AGENT_RESERVE_FILE", os.path.join(self.base, "reservations.json"))
         env.setdefault("AGENT_FAKE_RAM", "10")
         env.setdefault("AGENT_FAKE_CPU", "10")
+        # check-blocks section 44 F2: the scripts honour AGENT_FAKE_NOW only under this switch
+        env.setdefault("AGENT_TESTING", "1")
         # relief run by a test stops only what lies under this test's own
         # temp tree, never another session's monitors or test runs
         env["AGENT_RELIEF_ONLY_UNDER"] = self.base
