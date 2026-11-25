@@ -12,7 +12,7 @@ CONTRACT for bin/agent_conf.py:
     user_config()             the plugin.json "userConfig" object built from SETTINGS
                               (same key order; fields type, title, description, default,
                               options / min / max only when set)
-    CONSTANTS                 the 27 fixed internal values, by old agent.conf key
+    CONSTANTS                 the 28 fixed internal values, by old agent.conf key
     get(key, env=None)        the value: Configure (settings.json pluginConfigs), else
                               CLAUDE_PLUGIN_OPTION_<KEY> env, else the default. A
                               constant key gives its constant. An old role key
@@ -127,6 +127,7 @@ CONSTANTS = {
     "state_warn_lines": 300, "state_header_lines": 40, "state_trim_auto": "on",
     "compact_clear_at": 2, "compact_clear_check_sec": 30, "cleanup_days": 14,
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
+    "check_budget_s": 60,   # check-blocks: BUILD and GUARD TESTS per task only under it
 }
 
 CHANGE_LINE = "change: /plugin -> Installed -> auto-pipeline -> Configure"
