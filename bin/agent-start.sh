@@ -449,17 +449,17 @@ Q37. You are the main manager. The owner runs /auto-pipeline:question; agent-fil
   C. Run agent-file.sh questions --page, publish the page with the Artifact tool, then one line: the count, the link, "answer all, then tell me"
   D. Read every agent_state.txt and write your own summary
 
-Q38. A task changes one colour value in one component: #1e88e5 becomes #43a047. Its risk type:
-  A. A: text, style or simple move, the main manager reads the diff
+Q38. A diff only rewords two lines in PRINCIPLES.md, a path on the Danger paths list. Its risk type:
+  A. A: doc or text only, even in PRINCIPLES.md; the main manager reads the diff
   B. B: UI, Chrome compare with the approved mock
   C. C: logic, failing tests first
-  D. D: danger, the owner signs before merge
+  D. D: it is on the Danger paths list, the owner signs before merge
 
-Q39. The todo line says type B (UI). Before merge, agent-level.sh check --declared B prints REQUIRED TYPE B+C and RAISE: api/total.py is a C file. You:
-  A. Merge: the dispatch said UI
-  B. Raise the whole task to D and run the full suite
-  C. Raise the todo line to C, bounce it back, check the api/total.py part by type C (failing tests first, touched feature) and the UI part by type B
-  D. Run the check again without --declared
+Q39. agent-level.sh prints "touches core path bin/agent_conf.py: judge from the brief whether it is D". The brief adds one new setting. You:
+  A. Raise the task to D: the path is on the list
+  B. Ignore the line: it is only a hint
+  C. Judge from the brief: a new feature is normally C, D only when core code many things depend on changes; a second read-only agent checks the type, a disagreement goes to the owner
+  D. Ask the owner before every task that touches the list
 QUIZ
   exit 0
 fi

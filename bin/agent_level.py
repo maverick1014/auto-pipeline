@@ -1125,7 +1125,7 @@ def type_of(level):
     return TYPES[level]
 
 
-def level_of(path, status, chk, danger):
+def level_of(path, status, chk):
     name = os.path.basename(path)
     if name == "package.json":
         if package_deps_changed(chk.top, chk.mb, path, status):
@@ -1134,9 +1134,6 @@ def level_of(path, status, chk, danger):
         kind = builtin_l4(path)
         if kind:
             return 4, "built-in D: %s" % kind
-    glob = first_glob(danger, path)
-    if glob is not None:
-        return 4, "danger_paths %s" % glob
     ext = ext_of(path)
     if ext in STYLE_EXT:
         return 1, "style file"
@@ -1229,9 +1226,12 @@ def run(argv):
             changed[path] = "A"
 
     chk = Checker(top, mb)
-    lines, parts = [], {}
+    lines, parts, hints = [], {}, []
     for path in sorted(changed):
-        lvl, why = level_of(path, changed[path], chk, danger)
+        lvl, why = level_of(path, changed[path], chk)
+        if first_glob(danger, path) is not None:
+            # a hint only (owner 2A): the type stays what the content gives; the manager judges from the brief
+            hints.append("touches core path %s: judge from the brief whether it is D" % path)
         typ = type_of(lvl)
         parts.setdefault(typ, []).append(path)
         lines.append("%s: %s %s" % (path, typ, why))
@@ -1241,7 +1241,7 @@ def run(argv):
     out = ["REQUIRED TYPE %s" % "+".join(sorted(parts) or ["A"])] + lines
     for typ in sorted(parts):
         out.append("PART %s: %s" % (typ, ", ".join(parts[typ])))
-    out += notes
+    out += hints + notes
     code = 0
     if declared is not None:
         # RAISE only for a C or D file above the declared type; A and B files never raise (R8)
