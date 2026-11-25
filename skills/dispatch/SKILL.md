@@ -18,11 +18,11 @@ Pick the brief blocks (R8) from what the owner approved: what changes for the us
 - REAL DATA COUNT: a rule, limit or validation is added or tightened, or a list, print or export changes
 - CORE REVIEW: the brief changes who can see or do what, or a posting rule
 
-Every `todo add` line carries them as `--checks "<BLOCK>,<BLOCK>"`. A requirement table copies its defaults from the released template and lists every changed default for the owner. A second agent only for CORE REVIEW or when someone wants a tool-triggered block removed (a removal needs a verified owner order).
+Every `todo add` line carries them as `--checks "<BLOCK>,<BLOCK>"`. A requirement table copies its defaults from the released template and lists every changed default for the owner. Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed (a removal needs a verified owner order).
 
 Decide the target from the request words, per task (R1, W9): "publish or merge to main" → `--target production`; no such words, or unclear → none = the working branch (ap-main-<name>); nothing goes to production by itself. Tasks given together get `--batch <name>`. The base branch is the production branch for target production, else the working branch. Before dispatch ask one thing: does an urgent task need code that only a non-urgent one brings? Yes → it cannot ship alone: tell the owner at once, never guess. A new request may also wait until the working branch is tested and published; say which is faster.
 
-URGENT FIX (production is broken): branch from the production branch (`--target production`, base = the production branch). A fast-lane deputy makes the smallest fix, a reviewer does the PR REVIEW, the light related tests run, you get the owner's yes, then `agent-promote.sh --task "<name>" --branch <branch> --owner-quote "<his words>"` merges it to production and the deploy follows by itself; production is merged back into the working branch at once.
+URGENT FIX (production is broken): branch from the production branch (`git switch -c <branch> origin/<production branch>`) (`--target production`, base = the production branch). A fast-lane deputy makes the smallest fix, a reviewer does the PR REVIEW, the light related tests run, you get the owner's yes, then `agent-promote.sh --task "<name>" --branch <branch> --owner-quote "<his words>"` merges it to production and the deploy follows by itself; production is merged back into the working branch at once.
 
 Parallel features? → first find the code they share (models, components, APIs). The shared part is its own task, merged first; the features that need it get `todo wait "<name>" on queue --after <shared task>` (W9).
 
@@ -64,7 +64,7 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
 
 8. Task manager done and verified, waiting for the owner's yes → first run `agent-file.sh checks gather "<name>" --dir "<worktree path>"` (its CHECK lines go to the main repo), then close its pane, remove its worktree, keep the pushed branch, start the next task (W8). Owner yes → `/merge`. Owner no → a new task manager from that branch. Fix orders to a task manager always have: where, what is seen, what is expected, evidence (screenshot) (W6). Never re-run tests the task manager passed (W4).
 
-9. Early merge: a fix from a still-running branch merged into main → at once `SendMessage` that task manager: merge main back into your branch now. Never cherry-pick slices; merge the branch (or its prefix) — cherry-picks cost a conflict round at the final merge.
+9. Early merge: a fix from a still-running branch merged into main → at once `SendMessage` that task manager: merge its base branch back into your branch now (the working branch, or the production branch for a direct fix). Never cherry-pick slices; merge the branch (or its prefix) — cherry-picks cost a conflict round at the final merge.
 
 ## Board records
 

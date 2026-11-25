@@ -796,8 +796,9 @@ class TestMergeSkillLine(unittest.TestCase):
             lines = fh.read().splitlines()
         hits = [l for l in lines if "bin/agent-release.sh --push" in l]
         self.assertEqual(len(hits), 1, "one line with bin/agent-release.sh --push")
-        self.assertIn("before", hits[0])
-        self.assertIn("main", hits[0])
+        # check-blocks section 28 (owner 2026-11-25): the publish is agent-promote.sh, the release build right after
+        self.assertIn("agent-promote.sh --owner-quote", hits[0])
+        self.assertIn("right after", hits[0])
         self.assertIn("auto-pipeline", hits[0])
 
 

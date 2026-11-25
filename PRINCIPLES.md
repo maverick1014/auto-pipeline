@@ -50,7 +50,7 @@ R5. Task files
 - `agent_todo.txt` = open tasks only, always current
 - Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, work, wait, clock, bounces, workers, files, lines, tests, adds. No test results, that is report material
 - No other task tracking
-- The housekeep pass never closes a todo line: it flags one whose branch is merged into origin/main, or one that is stale (no worktree line, no open wait, quiet longer than housekeep_interval_min)
+- The housekeep pass never closes a todo line: it flags one whose branch is merged into the working branch or the production branch, or one that is stale (no worktree line, no open wait, quiet longer than housekeep_interval_min)
 - All four `agent_*.txt` files are written only through `./agent-file.sh`. No agent for that, it costs tokens
 - `agent_completed.txt` is never deleted, trimmed or cleaned (every clean-up skips it); only on an explicit owner order
 
@@ -101,7 +101,7 @@ R8. Check blocks
 - Blocks are only added; removing one needs a verified owner order: `todo checks <task> --remove <BLOCK> --owner-quote "<his words>"`
 - One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
 - The merge gate `agent-file.sh checks gate <task>` refuses while a planned block has no pass line
-- PR REVIEW, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (the todo line's builder or its LAUNCH records)
+- PR REVIEW, CORE REVIEW, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (the todo line's builder or its LAUNCH records)
 - No task runs the full suite (owner 1A 2026-11-25): MODULE TESTS is the largest per-task check
 - OWNER SIGN is planned when a sign fires: MODULE TESTS on a dependency, lockfile, CI or test-config change, DATA CHECK, DB CHECK on a data change, CORE REVIEW on a permission change
 - Dispatch plans OWNER SIGN with CORE REVIEW when the brief changes who can see or do what
@@ -136,7 +136,7 @@ R8. Check blocks
   - Research only (no diff): no blocks; the report is the deliverable
 - Repo facts live in the committed `agent_repo.conf`, written by init and kept by agents, never by the user: core paths, guard tests, test commands, the edge list, real-data access
 - After each bug fix the fixing agent asks "which example would have shown it" and adds one line with `agent-file.sh edge add "<text>"` when the list lacks it
-- A second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed
+- Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed
 - A requirement table copies its defaults from the released template and lists every changed default for the owner
 
 ## B. Work
@@ -190,12 +190,12 @@ W5. Web UI testing
 W6. Roles
 - Main manager (Opus 5.5, xhigh) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else
 - Fast-lane deputy (Sonnet 5, medium) = `agents/fast-lane-deputy.md`, new one per small task: works in its own git worktree, writes the example tests of a small logic task, runs its blocks, pushes a branch
-- Merge deputy (Sonnet 5, medium) = `.claude/agents/merge-deputy.md`. Merges, then deletes branch and worktree
+- Merge deputy (Sonnet 5, medium) = `agents/merge-deputy.md`. Merges, then deletes branch and worktree
 - Reviewer (Reviewer model, default opus-5.5:high) = `agents/reviewer.md`: PR REVIEW of every task and CORE REVIEW; read only; a fail is a fix order to the builder
 - Check deputy (Sonnet 5, medium) = `agents/check-deputy.md`, read and browser tools only: FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE; a verdict with evidence, the main manager decides
 - The main manager stays free for the human: it runs no long check itself; it sends the check deputy and gets a short verdict with evidence
 - Task manager (Opus 5.5, xhigh) = one agent per big feature, in its own worktree (exception: human-direct, W10). Writes the tests, briefs workers, judges, verifies every worker result before reporting done to the main manager. Never writes product code
-- Worker (Sonnet 5, medium) = `.claude/agents/worker.md`, subagent of a task manager. Writes code until the task manager's tests pass
+- Worker (Sonnet 5, medium) = `agents/worker.md`, subagent of a task manager. Writes code until the task manager's tests pass
 - Managers never write product code. A defect goes back to the worker that wrote it, with evidence
 - A main manager fix order to a task manager has a fixed shape: where, what is seen, what is expected, evidence (screenshot). The task manager reassigns a subagent
 - Names: `bin/agent-name.sh` (SessionStart hook) shows `<repo> Manager`, `<feature> Task Manager`, `<repo> Helper - <Task Name>` (human-direct); it is the SendMessage address after `claude --name`, `/rename` or a resume. `Agent` descriptions: `<feature> Worker <n>: <slice>`, `<task> Deputy`, `<feature> Merge`
@@ -237,7 +237,7 @@ W8. Merge and cleanup
 - It then acts on the other flags of the block
 - Main manager only. Task managers, Helpers and workers never run it
 - Own repo only: this machine and every paired Orca machine
-- Removes only safe items: merged into origin/main, no live agent, no uncommitted or unpushed work, no working/final/human-direct line
+- Removes only safe items: merged into the working branch or the production branch (origin/main here), no live agent, no uncommitted or unpushed work, no working/final/human-direct line
 - Everything else is never deleted: one table to the human (what, where, why kept, suggestion)
 - A done pane (finished, idle) in a kept worktree: closed when its task is done or dropped, or its line is gone and its branch merged; else one kept row
 - A paired machine unreachable → one line, skipped. Never hangs the start
@@ -251,7 +251,7 @@ W9. Task routing (main manager, before every dispatch)
 - Task manager in final stage (compiling worker results) → do not disturb. Hold the task until it finishes
 - Otherwise → new worktree (W7). Never an Orca worktree and a task manager for a small task
 - `todo done <X>` releases every task queued after X
-- The main manager runs `agent-file.sh next` at every wake (a report, a watch signal, a human message) and dispatches what can start: a free slot under the machine caps, RAM under the cap, no open task on the same files
+- The main manager runs `agent-file.sh next` at every wake (a report, a watch signal, a human message) and dispatches what can start: room under the Max memory % limit (S3), no open task on the same files
 - A task the owner already approved needs no new question
 - A new worktree or pane goes to the connected machine first that has room (W7, S3)
 - Target and base (R1): a task that goes straight to production branches from the production branch; a task for the working branch branches from the working branch (it sees the batch's earlier merges): `todo add ... --target production|working --batch <name>`
@@ -284,7 +284,7 @@ W10. Second session in the same repo
 W11. Time
 - Every task gets an estimate in minutes before dispatch, on its todo line
 - Write your own guess in minutes first, then `estimate ... --guess <m>`; est and guess both go on the todo line (`todo add ... --guess <m>`)
-- Estimate = agent work only. Waiting is not work: mock gate, owner question, owner review, hold, suite slot
+- Estimate = agent work only. Waiting is not work: mock gate, owner question, owner review, hold, suite run
 - Every done report has one line: `TIME: est <n>m, actual <n>m, wait <n>m`. Actual = agent work only
 - Done = merged and cleaned. The main manager passes work, wait and the task facts to `bin/agent-file.sh todo done`
 - Work over 2× estimate → say it in the report, never silent
@@ -332,7 +332,8 @@ W14. Todo board
 - Status of a wait: `waiting <who> · <what> · waited <n>`, held `hold · <what> · waited <n>`, queued `queue · after <task>`; no stage, no wait: not started. Time cells `-` (not started keeps est)
 - Sort: waiting on the owner, running, waiting on others, queued and not started, held, OWNER TODO, parked questions last; oldest first in each group
 - Times come from the files, never guessed. Work counts from the first stage minus later waits. Waited: since a run of waits began. Done by = now + est - work; over: by progress, else 超出 <n>m
-- Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary. Task manager: brief register mock tests workers verify push report. Main manager: e2e merge
+- Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary.
+- Stages, task manager: brief register mock tests workers verify push report. Main manager: e2e (the review and the checks), merge
 - Stage weights are fixed (`bin/agent_conf.py`)
 - Live: `board --watch` · `statusline` on or off, 5 lines at most (a warning line counts), queued/held/not started own row if room, rest `+N queued/held`. Language: the Language setting
 - Record as it happens: `todo wait <name> on <kind> ["<note>"] [--who <name>] [--after <task>]|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
@@ -342,12 +343,15 @@ W14. Todo board
 
 W15. Watch
 - After a watch wake the first action is to start the watch again, then handle the signal
-- The watch also wakes the main manager when a slot is free and a task is queued (WATCH SLOT)
+- The watch also wakes the main manager when there is room for a queued task (WATCH SLOT)
 - A board warning (watch not running, not confirmed, a pane without a task line) reaches the main manager through `agent-file.sh next` and the board warning hook; it reacts in the same turn
 - Stall detection is the watch: each sweep reads the pane screen and the `agent_state.txt` file; 3 sweeps with neither changed = STALL. The same watch runs the housekeep timer (W8)
 - Verify every launch within 2 min
 - One `agent-watch.sh --all` in the background (Bash run_in_background) watches every task manager, local and on another machine: its pane and its worktree `agent_state.txt` (a report goes under `=== REPORT ===`); restart it after each wake
 - A task manager's HEARTBEAT, ACK, report and question go into `agent_state.txt` only, never SendMessage; only DONE PASS, DONE FAIL, QUESTION:, MOCK READY, CLOSE CASE and the watch's STALL and LOST wake the main manager
+- DONE FAIL → the main manager reviews the report, then sends the task manager a fix order (where, what is seen, what is expected, evidence). Never merged, never closed silently
+- LOST (the watch cannot reach a machine or a pane) → wait one more sweep; still lost → tell the owner in one line with the machine and the task
+- Never redispatch a LOST task on another machine by itself
 - The watch carries a task's stage to the main repo from the newest STAGE line or HEARTBEAT step (0-7 = brief to report); the heartbeat's work minutes and text go to the board's progress cell
 - A manager at its idle prompt while its own background run goes (pane shows shells or monitors, or its newest state line says started, for watch_quiet_min) is not a stall
 - Long text to a task manager: `agent-file.sh tell <task> "<msg>"` (the block goes into its file, one pointer line to its pane, receipt checked)
@@ -357,7 +361,8 @@ W15. Watch
 - Every brief says how to report, how to ask, how to report done (pass/fail) and the heartbeat
 
 W16. Known traps
-- A push to the integration branch denied by the auto-mode classifier → never retry or work around. Hand the owner one `! git push ...` line, or ask for an allow rule (init prints `Bash(git push origin main)` as optional)
+- A push to the working branch denied by the auto-mode classifier → never retry or work around
+- Hand the owner one `! git push ...` line, or ask for an allow rule (init prints `Bash(git push origin <working branch>)` as optional)
 - A cross-session message held because permission modes differ → say so, ask the owner to click Deliver, never type it into the pane
 - MODE MISMATCH line at start (this session's mode differs from the Permission mode setting) → tell the owner once, plainly; never change a mode, never skip the approval
 - Remote Orca pane: a long `terminal send` (~4 KB) arrives cut → write the brief into the worktree's `agent_state.txt` in chunks, send a one-line pointer
@@ -562,7 +567,7 @@ The pieces. Rules are in A-E; this is where things live.
 
 Roles and routing: W9. Check blocks: R8; installing into a cloud repo: the cloud-pack skill (`/auto-pipeline:cloud-pack`, `bin/agent-cloud-pack.sh`; `--update` refreshes only bin, PRINCIPLES.md, VERSION and packed skills/agents). A cloud session reads only what is committed: `git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh`, then commit and push (the Claude GitHub App must be on the repo), then open a new session. The pack lands in `.claude/auto-pipeline/` (bin, PRINCIPLES.md, VERSION), `.claude/skills`, `.claude/agents`, `.claude/settings.json`, one pointer line in `CLAUDE.md`, the four `agent_*.txt`, `.secrets/`, `AGENTS.md`.
 
-Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge` (E2E, then merge deputy), `/auto-pipeline:cloud-pack`. A second session in a repo becomes a task manager by itself (W10).
+Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge` (the reviewer and the check deputy, then the merge deputy), `/auto-pipeline:cloud-pack`. A second session in a repo becomes a task manager by itself (W10).
 
 ### Tree
 
