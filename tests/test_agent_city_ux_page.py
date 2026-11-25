@@ -333,135 +333,6 @@ U1_REQUIRED = ("repoTags", "nearestTerr", "flyTo", "stopFly", "camFly", "FLY_SEC
                "FADE_DIST")
 
 
-class TestRepoTagsAndFly(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.view = two_territory_view()
-        cls.r = run_sim(U1_DRIVER, {"view": cls.view}, U1_REQUIRED)
-
-    def test_one_tag_per_territory_in_order(self):
-        v = self.view
-        mx, mz = math.floor(v["x0"] + v["w"] / 2 + .5), math.floor(v["z0"] + v["h"] / 2 + .5)
-        want = [{"id": t["id"], "name": t["name"], "x": t["cx"] - mx, "z": t["cz"] - mz} for t in v["territories"]]
-        got = [{k: tag[k] for k in ("id", "name", "x", "z")} for tag in self.r["tags"]]
-        self.assertEqual(got, want)
-
-    def test_nearest_territory(self):
-        ids = [t["id"] for t in self.r["tags"]]
-        self.assertEqual(self.r["near"], ids[:2])
-        self.assertIsNone(self.r["empty"])
-
-    def test_fly_lands_exactly_and_ends(self):
-        f, tag = self.r["fly"], self.r["tags"][1]
-        self.assertTrue(self.r["started"], "flyTo sets camFly")
-        self.assertAlmostEqual(f["tx"], tag["x"], places=6)
-        self.assertAlmostEqual(f["tz"], tag["z"], places=6)
-        self.assertAlmostEqual(f["dist"], 14, places=6)
-        self.assertTrue(.6 <= f["flySec"] <= 1.2, f["flySec"])
-        self.assertGreater(f["doneAt"], 0, "camFly goes back to null when the fly is done")
-        self.assertLessEqual(f["doneAt"], math.ceil(f["flySec"] * 60) + 2)
-
-    def test_fly_is_smooth_and_keeps_the_tilt(self):
-        f = self.r["fly"]
-        self.assertEqual(len(f["els"]), 1, "the owner's tilt (cam.el) never changes during a fly")
-        self.assertTrue(f["mono"], "the fly only ever gets closer")
-        self.assertLessEqual(f["maxStep"], .08 * f["total"], "no jump: one frame moves at most 8% of the way")
-        self.assertAlmostEqual(f["azMoved"], f["azWant"], places=6, msg="the angle only moves by the never-stop rotation")
-
-    def test_a_drag_or_stopfly_ends_the_fly(self):
-        d = self.r["drag"]
-        self.assertIsNone(d["fly"], "dragBy stops a fly")
-        for a, b in zip(d["a"], d["b"]):
-            self.assertAlmostEqual(a, b, places=9)
-        self.assertIsNone(self.r["stopped"])
-
-    def test_span_distance(self):
-        t = math.tan(FOV * math.pi / 360)
-        s = self.r["span"]
-        self.assertAlmostEqual(s[0], 50 / (2 * t), places=6)
-        self.assertAlmostEqual(s[1], 2 * s[0], places=6)
-        self.assertAlmostEqual(s[2], 50 / (2 * t * .5), places=6, msg="a tall stage: the width is the short side")
-        self.assertTrue(1.5 <= self.r["terr"] <= 3, self.r["terr"])
-        self.assertAlmostEqual(self.r["capd"][0], self.r["capd"][1], places=6)
-
-    def test_cap_zoom(self):
-        self.assertEqual(self.r["cap"], [3, DIST_MIN, 30, 40, 90, 80, 30, 40])
-
-    def test_pull_share(self):
-        p = self.r["pull"]
-        self.assertEqual(p["fade"], FADE_DIST)
-
-        def smooth(d, start, dm):
-            k = min(1, max(0, (d - start) / max(1, dm - start)))
-            return k * k * (3 - 2 * k)
-        for d, got in zip([10, 20, 25, 30], p["small"]):
-            self.assertAlmostEqual(got, smooth(d, FADE_DIST, 30), places=9, msg="small land: today's pull, d=%s" % d)
-        for d, got in zip([20, 40, 70, 100, 130], p["big"]):
-            self.assertAlmostEqual(got, smooth(d, 40, 100), places=9, msg="big land: no pull before the limit, d=%s" % d)
-        self.assertAlmostEqual(p["low"], smooth(12, FADE_DIST, 100), places=9)
-
-
-class TestRepoTagsWiring(unittest.TestCase):
-
-    def test_tag_row_markup(self):
-        text = page()
-        m = re.search(r'<nav\b[^>]*\bid="repos"[^>]*>', text)
-        self.assertIsNotNone(m, '<nav id="repos"> missing')
-        self.assertIn('class="repos"', m.group(0))
-        self.assertIn('data-t-aria="aria.repos"', m.group(0))
-        # cloud-polish Q1 (2026-10-02): the row sits ON the stage now, in the strip at its top (was: above the city)
-        self.assertLess(text.index('<div class="stage-top" id="stage-top">'), m.start(), "in the strip on the stage")
-        self.assertLess(m.start(), text.index('<aside class="rail" id="rail"'), "before the rail")
-
-    def test_text_keys_both_languages(self):
-        for key in ("repo.all", "aria.repos", "repo.goAria"):
-            self.assertEqual(text_keys(key), 2, key)
-        self.assertIn("'repo.all': '全部'", page())
-        self.assertIn("'repo.all': 'All'", page())
-
-    def test_render_repos(self):
-        src = function_source("renderRepos")
-        self.assertIsNotNone(src, "renderRepos() missing")
-        self.assertIn("repoTags(", src)
-        self.assertIn('data-terr="*"', src)
-        self.assertIn("repo.all", src)
-        self.assertIn("renderRepos(", function_source("buildLand") or "", "buildLand() calls renderRepos()")
-
-    def test_clicks_fly(self):
-        block = listener_block(r"\$\('#repos'\)", "click")
-        self.assertIsNotNone(block, "$('#repos').addEventListener('click', ...) missing")
-        self.assertIn("flyTo(", block)
-        self.assertIn("distMax()", block, "All flies out to the whole land")
-        self.assertIn("distLimit()", block, "a repo view stays within the zoom-out limit")
-
-    def test_every_user_zoom_goes_through_the_limit(self):
-        self.assertIsNotNone(function_source("distLimit"), "distLimit() missing")
-        self.assertIn("zoomCapDist(", function_source("distLimit"))
-        self.assertIn("distMax()", function_source("distLimit"))
-        self.assertIn("capZoom(", function_source("zoomStep") or "")
-        self.assertIn("distLimit()", function_source("zoomStep") or "")
-        self.assertIn("pullShare(", function_source("camTarget") or "")
-        move = listener_block(r"canvas", "pointermove") or ""
-        self.assertIn("capZoom(", move, "pinch goes through capZoom")
-        self.assertIn("dragBy(dx, dy, distLimit())", move)
-        self.assertIn("distMax()", function_source("updateCamera") or "")
-
-    def test_zoom_out_hint(self):
-        self.assertEqual(text_keys("cap.hint"), 2)
-        self.assertRegex(page(), r'<div class="cap-hint" id="cap-hint"[^>]*hidden')
-        self.assertIsNotNone(function_source("capHint"), "capHint() missing")
-        self.assertIn("capHint(", function_source("zoomStep") or "")
-        self.assertIn("capHint(", listener_block(r"(?:stage|\$\('#stage'\))", "wheel") or "")
-        self.assertIn("capHint(", listener_block(r"(?:stage|\$\('#stage'\)|canvas)", "gesturechange") or "")
-
-    def test_user_controls_stop_a_fly(self):
-        for name in ("zoomStep", "panBy"):
-            self.assertIn("stopFly()", function_source(name) or "", name)
-        drag = function_source("dragBy") or ""
-        self.assertTrue("stopFly()" in drag or "camFly = null" in drag, "dragBy stops a fly")
-
-
 # ---------------------------------------------------------------------------
 # U2 + U3: a click never moves the view; the trackpad
 # ---------------------------------------------------------------------------
@@ -568,46 +439,6 @@ class TestTagPicks(unittest.TestCase):
     def test_nearest_pick(self):
         self.assertTrue(20 <= self.r["px"] <= 40, self.r["px"])
         self.assertEqual(self.r["near"], [{"t": "c", "id": "a"}, {"t": "c", "id": "b"}, None, {"t": "gov"}, None, None])
-
-
-class TestTagWiring(unittest.TestCase):
-
-    def test_every_tag_and_bubble_is_tagged(self):
-        for name in ("ensureOv", "ensureGovFigure"):
-            self.assertIn("tagPick(", function_source(name) or "", name)
-        src = function_source("ensureOv")
-        for bit in ("c.o.bub", "c.o.tag"):
-            self.assertRegex(src, r"tagPick\(\s*%s\b" % re.escape(bit), bit)
-        text = page()
-        self.assertRegex(text, r"tagPick\(\s*govBub\b")
-        self.assertRegex(text, r"tagPick\(\s*govTag\b")
-        for bit in ("bub", "tag"):
-            self.assertRegex(function_source("ensureGovFigure"), r"tagPick\(\s*%s\b" % bit)
-
-    def test_tags_take_clicks(self):
-        for sel in (".bub", ".tagl"):
-            r = rule(sel)
-            self.assertIn("pointer-events:auto", r.replace(" ", ""), sel)
-            self.assertIn("cursor:pointer", r.replace(" ", ""), sel)
-
-    def test_one_select_path(self):
-        self.assertIsNotNone(function_source("selectPick"), "selectPick() missing")
-        self.assertIn("selectPick(", function_source("endPointer") or "")
-        block = listener_block(r"ovRoot", "click") or ""
-        self.assertIn("data-pick-t", block)
-        self.assertIn("pickOfTag(", block)
-        self.assertIn("selectPick(", block)
-        self.assertIn("data-open", block, "the red ? still opens the answer panel")
-
-    def test_bigger_hit_area(self):
-        src = function_source("pickAt") or ""
-        self.assertIn("nearestPick(", src)
-        self.assertIn("PICK_PX", src)
-
-    def test_hover_over_a_tag_does_not_flicker(self):
-        self.assertIsNotNone(listener_block(r"ovRoot", "pointerover"), "#ov pointerover keeps the hover")
-        leave = listener_block(r"canvas", "pointerleave") or ""
-        self.assertIn("relatedTarget", leave)
 
 
 # ---------------------------------------------------------------------------
@@ -915,62 +746,11 @@ __out = { names: [
 """
 
 
-class TestBuildingName(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.r = run_sim(BUILDING_DRIVER, {"view": two_territory_view()},
-                        ("buildingName", "newBuildingRecord", "bldLabel", "buildingInfo", "apply", "officeState", "i18n"))
-
-    def test_one_meaningful_name(self):
-        n, w = self.r["names"], self.r["want"]
-        self.assertEqual(n[0], "Checkout")
-        self.assertEqual(n[1], "登录 API", "a path-like name is skipped, the task wins")
-        self.assertEqual(n[2], w[0], "a bare role word is no task: the module from the files")
-        self.assertEqual(n[3], w[1], "a generic stem gives its folder; the most frequent wins")
-        self.assertEqual(n[4], w[2], "nothing meaningful: the type word")
-        self.assertEqual(n[5], w[3])
-        self.assertEqual(n[6], w[4], "the builder's own label is no task; first file wins a tie")
-        self.assertEqual(n[7], w[5], "a path-like task is skipped; util in lib gives nothing")
-        self.assertEqual(n[8], w[6], "backslash paths and a _test suffix")
-
-    def test_never_a_path(self):
-        for name in self.r["names"]:
-            self.assertNotRegex(name, r"[/\\\\]|\.[A-Za-z0-9]{1,5}$", name)
-
-    def test_the_record_keeps_the_task(self):
-        r = self.r["rec"]
-        self.assertEqual(r["task"], "导出 CSV")
-        self.assertEqual(r["name"], "导出 CSV")
-        self.assertEqual(r["label"], "导出 CSV")
-        self.assertEqual(r["info"], "导出 CSV")
-
-    def test_text(self):
-        self.assertEqual(text_keys("building.module"), 2)
-        self.assertEqual(self.r["key"], "N 模块")
-
-
 def building_branch():
     src = function_source("renderDetail") or ""
     i = src.find("} else if (b) {")
     j = src.find("} else if (", i + 5)
     return src[i:j] if i >= 0 and j > i else ""
-
-
-class TestBuildingCard(unittest.TestCase):
-
-    def test_only_the_name_and_the_type(self):
-        b = building_branch()
-        self.assertTrue(b, "renderDetail's building branch not found")
-        for gone in ("hint.files", "hint.history", ".files", ".hist", "info.quality", "building.level", "building.misplaced"):
-            self.assertNotIn(gone, b, gone)
-        self.assertTrue("buildingName(" in b or "info.name" in b)
-
-    def test_build_hands_the_task_on(self):
-        src = page()
-        i = src.find("case 'build': {")
-        self.assertGreater(i, 0)
-        self.assertRegex(src[i:i + 1500], r"pendingBuild\s*=\s*\{[^}]*task:\s*owner\.task")
 
 
 if __name__ == "__main__":

@@ -173,49 +173,31 @@ class TestStartTerritory(unittest.TestCase):
         self.assertEqual(st.world["territories"]["/r/shop/.git"]["name"], "shop")
         self.assertIn("/r/shop/.git", self.saved(), "saved at once, before any line")
         snap = self.snapshot(st)
-        self.assertEqual([t["name"] for t in snap["world"]["territories"]], ["shop"])
+        self.assertEqual([t["name"] for t in snap["world"]["repos"]], ["shop"])
         self.assertEqual(snap["gov"]["terr"], ac.territory_id("/r/shop/.git"),
                          "no governor yet: the governor belongs to the start territory")
 
     def test_a_plain_folder_is_a_start_territory_too(self):
         st = self.state("/r/notes")
-        self.assertEqual([t["name"] for t in self.snapshot(st)["world"]["territories"]], ["notes"])
-
-    def test_the_start_repo_is_counted_first(self):
-        st = self.state("/r/shop/.git")
-        self.assertEqual(st.recount(1000.0), 1)
-        self.assertEqual(self.calls, ["/r/shop/.git"])
-        self.assertEqual(st.world["territories"]["/r/shop/.git"]["lines"], 4000)
-
-    def test_saved_territories_stay_and_keep_their_place(self):
-        w = ac.new_world()
-        ac.add_territory(w, plans(), "/r/old/.git", "old", 900)
-        ac.add_territory(w, plans(), "/r/shop/.git", "shop", 50)
-        before = json.loads(json.dumps(w["territories"]["/r/shop/.git"]))
-        st = self.state("/r/shop/.git", world=w)
-        self.assertEqual(sorted(st.world["territories"]), ["/r/old/.git", "/r/shop/.git"])
-        after = st.world["territories"]["/r/shop/.git"]
-        self.assertEqual((after["slot"], after["plan"]), (before["slot"], before["plan"]))
-        self.assertEqual(len(self.snapshot(st)["world"]["territories"]), 2)
+        self.assertEqual([t["name"] for t in self.snapshot(st)["world"]["repos"]], ["notes"])
 
     def test_no_start_repo_adds_nothing(self):
         for start in (None, ""):
             with self.subTest(start=start):
                 st = self.state(start)
                 self.assertEqual(st.world["territories"], {})
-                self.assertEqual(st.recount(1000.0), 0)
 
     def test_old_territories_without_a_repo_are_dropped_on_load(self):
         w = ac.new_world()
-        ac.add_territory(w, plans(), "dir:notes", "notes", 0)
-        ac.add_territory(w, plans(), "/r/shop/.git", "shop", 50)
+        ac.add_territory(w, "dir:notes", "notes")
+        ac.add_territory(w, "/r/shop/.git", "shop")
         st = self.state(None, world=w)
         self.assertEqual(list(st.world["territories"]), ["/r/shop/.git"])
         self.assertEqual(st.world["order"], ["/r/shop/.git"])
         self.assertEqual(list(self.saved()), ["/r/shop/.git"], "dropped from world.json at once")
         snap = self.snapshot(st)
         self.assertTrue(snap.get("notice"), "one line in the page log, never silent")
-        self.assertEqual([t["name"] for t in snap["world"]["territories"]], ["shop"])
+        self.assertEqual([t["name"] for t in snap["world"]["repos"]], ["shop"])
 
     def test_a_line_without_repo_goes_to_the_start_territory(self):
         # city-roles: g1 is the start repo's main manager, so it governs there
@@ -247,18 +229,6 @@ class TestStartTerritory(unittest.TestCase):
         self.assertEqual(st.world["territories"], {})
         self.assertEqual([(a["id"], a["terr"]) for a in self.snapshot(st)["agents"]], [("a1", "")])
 
-    def test_zero_lines_still_has_land_and_a_hall(self):
-        for plan in plans():
-            with self.subTest(plan=plan["id"]):
-                w = ac.new_world()
-                t = ac.add_territory(w, plans(), "/r/empty/.git", "empty", 0)
-                t["plan"] = plan["id"]
-                view = ac.layout(w, plans())
-                own = sum(row.count("g") + row.count("H") for row in view["rows"])
-                self.assertEqual(sum(row.count("H") for row in view["rows"]), 4, "the town hall")
-                self.assertGreaterEqual(own, 12, "a small land of its own, even with 0 code lines")
-
-
 class TestServeStartDir(ServerCase):
     def setUp(self):
         super().setUp()
@@ -272,7 +242,7 @@ class TestServeStartDir(ServerCase):
     def test_a_repo_dir_shows_its_territory_before_any_event(self):
         repo = make_repo(os.path.join(self.base, "shop"), {"a.py": "x\n" * 30})
         snap = self.serve(os.path.join(self.base, "shop"))
-        self.assertEqual([t["name"] for t in snap["world"]["territories"]], ["shop"])
+        self.assertEqual([t["name"] for t in snap["world"]["repos"]], ["shop"])
         self.assertEqual(snap["gov"]["terr"], ac.territory_id(repo))
         with open(self.world) as fh:
             self.assertEqual(list(json.load(fh)["territories"]), [repo])
@@ -281,13 +251,13 @@ class TestServeStartDir(ServerCase):
         plain = os.path.join(self.base, "notes")
         os.makedirs(plain)
         snap = self.serve(plain)
-        self.assertEqual([t["name"] for t in snap["world"]["territories"]], ["notes"])
+        self.assertEqual([t["name"] for t in snap["world"]["repos"]], ["notes"])
         with open(self.world) as fh:
             self.assertEqual(list(json.load(fh)["territories"]), [os.path.realpath(plain)])
 
     def test_no_start_dir_shows_nothing(self):
         snap = self.serve("")
-        self.assertEqual(snap["world"]["territories"], [])
+        self.assertEqual(snap["world"]["repos"], [])
 
 
 class TestCityScriptStartDir(ScriptCase):

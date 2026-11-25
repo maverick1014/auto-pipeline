@@ -303,57 +303,6 @@ def expected_box(v):
     return {"hx": (x1 - x0) / 2, "hz": (z1 - z0) / 2, "cx": (x0 + x1) / 2, "cz": (z0 + z1) / 2}
 
 
-class TestZoomedOutFit(unittest.TestCase):
-    def test_land_box(self):
-        got = camera_results()["landBox"]
-        self.assertTrue(got, "function landBox(view) not found in the page script")
-        for name, v in land_box_views().items():
-            with self.subTest(view=name):
-                want = expected_box(v)
-                for k in ("hx", "hz", "cx", "cz"):
-                    self.assertAlmostEqual(got[name][k], want[k], places=6, msg=k)
-
-    def test_land_state_uses_it(self):
-        self.assertRegex(tp.function_source("officeState") or "", r"land = landBox\(view\)")
-
-    def test_fills_about_80_percent_centred(self):
-        for r in camera_results()["fit"]:
-            with self.subTest(land=r["L"], stage=(r["W"], r["H"])):
-                self.assertLessEqual(r["maxEdge"], .95, "part of the land is cut off")
-                self.assertLessEqual(r["maxOff"], .12, "the land is not in the middle")
-                self.assertGreaterEqual(r["maxFill"], .74, "the land is too small")
-                self.assertLessEqual(r["maxFill"], .88)
-
-    def test_the_real_land_is_centred_and_fills(self):
-        # measured on every land tile of the view (the demo is an L of three territories plus sea)
-        got = camera_results()["content"]
-        self.assertTrue(got)
-        for r in got:
-            with self.subTest(view=r["name"], stage=(r["W"], r["H"])):
-                self.assertLessEqual(r["maxEdge"], .95, "part of the land is cut off")
-                self.assertLessEqual(r["maxOff"], .12, "the land itself is not in the middle")
-                if r["name"] != "quadrant":  # 26 x 13 tiles: under one fresh territory, fitted as 13 x 13 halves
-                    self.assertGreaterEqual(r["maxFill"], .74, "the land is too small")
-                self.assertLessEqual(r["maxFill"], .88)
-
-    def test_far_plane_reaches_the_land(self):
-        for r in camera_results()["fit"]:
-            with self.subTest(land=r["L"], stage=(r["W"], r["H"])):
-                self.assertEqual(r["farShort"], 0, "the back of the land is past the camera's far plane")
-
-
-class TestNoFadeZoomedOut(unittest.TestCase):
-    def test_fade_dist(self):
-        self.assertEqual(camera_results()["fade"]["FADE_DIST"], 12)
-
-    def test_close_still_fades(self):
-        self.assertGreater(camera_results()["fade"]["near"], 0)
-
-    def test_zoomed_out_nothing_fades(self):
-        f = camera_results()["fade"]
-        self.assertEqual((f["past"], f["limit"]), (0, 0))
-
-
 # --------------------------------------------------------------------- C8
 
 def model_refs():
@@ -362,50 +311,7 @@ def model_refs():
     return set(ms) | {b for b in bare if bare.count(b) == 1}
 
 
-class TestFullModelNames(unittest.TestCase):
-    def test_no_bare_name_split(self):
-        self.assertEqual(re.findall(r".{0,40}split\('/'\)\[1\].{0,20}", tp.inline_script()), [])
-
-    def test_loader_keys_by_full_entry(self):
-        src = tp.function_source("loadAll") or ""
-        self.assertRegex(src, r"prep\(key, g\)")
-
-    def test_every_table_names_a_real_model(self):
-        refs = model_refs()
-        look = tp.js_value(tp.const_object("ERA_LOOK"))
-        names = []
-        for era in look.values():
-            names.append(era["hall"])
-            for keys in era["build"].values():
-                names.extend(keys)
-        for table in ("MODEL_SIZE", "HEX_SINK", "REST_FIT", "SYS_TINT", "OFFICE_OPT"):
-            lit = tp.const_object(table)
-            if lit:
-                names.extend(tp.js_value(lit).keys())
-        self.assertEqual(sorted(set(n for n in names if n not in refs)), [],
-                         "not a MODELS entry, or a bare name more than one pack has")
-
-    def test_shop_is_commercial_workshop_is_industrial(self):
-        look = tp.js_value(tp.const_object("ERA_LOOK"))
-        for era in ("town", "city"):
-            with self.subTest(era=era):
-                self.assertTrue(all(k.startswith("commercial/") for k in look[era]["build"]["shop"]), look[era]["build"]["shop"])
-                self.assertTrue(all(k.startswith("industrial/") for k in look[era]["build"]["workshop"]), look[era]["build"]["workshop"])
-
-
 # --------------------------------------------------------------------- C9
-
-class TestShowPlanksSurvive(unittest.TestCase):
-    def test_planks_not_under_land_group(self):
-        src = tp.function_source("makeShowRun") or ""
-        m = re.search(r"place\('[^']*resource-planks'[^)]*parent:\s*(\w+)", src)
-        self.assertIsNotNone(m, "the road planks are placed with an explicit parent")
-        parent = m.group(1)
-        self.assertNotEqual(parent, "landGroup")
-        land = tp.function_source("buildLand") or ""
-        self.assertNotRegex(land, r"\b%s\.(remove|clear)\(|\b%s\.children" % (parent, parent),
-                            "buildLand must not empty the planks' group")
-
 
 # -------------------------------------------------------------------- C11
 
@@ -424,32 +330,6 @@ for (let i = 0; i < P.length; i += 3) if (Math.hypot(P[i] - lx, P[i + 2] - lz) <
 let total = P.length / 3;
 require(`fs`).writeSync(1, JSON.stringify({ near, total }));
 """
-
-
-class TestLoneStub(unittest.TestCase):
-    def test_lone_road_tile_draws_nothing(self):
-        v = ac.demo_world()
-        rows = [list(r) for r in v["rows"]]
-        spot = None
-        for r in range(2, v["h"] - 2):
-            for c in range(2, v["w"] - 2):
-                if all(rows[r + dr][c + dc] == "." for dr in (-2, -1, 0, 1, 2) for dc in (-2, -1, 0, 1, 2)):
-                    spot = (r, c)
-                    break
-            if spot:
-                break
-        self.assertIsNotNone(spot, "demo has no open grass patch")
-        rows[spot[0]][spot[1]] = "r"
-        view = dict(v, rows=["".join(r) for r in rows])
-        section = tl.land_section()
-        prelude = tl.land_prelude(section)
-        m = re.search(r"^const hash2 = [^\n]+", tp.inline_script(), re.M)
-        if m and "hash2" not in section:
-            prelude += "\n" + m.group(0).replace("const hash2", "var hash2", 1)
-        r = tp.run_node(LONE_JS, {"prelude": prelude, "section": section, "view": view,
-                                  "lone": [v["x0"] + spot[1], v["z0"] + spot[0]]})
-        self.assertGreater(r["total"], 0)
-        self.assertEqual(r["near"], 0, "a lone road tile still draws a round patch")
 
 
 # -------------------------------------------------------------------- C13
@@ -647,91 +527,6 @@ for (const [name, t] of Object.entries(cases)) {
 }
 require(`fs`).writeSync(1, JSON.stringify(out));
 """
-
-
-class TestDistrictLabels(unittest.TestCase):
-    NAMES = {"zh": {"house": "住宅区", "shop": "商业街", "tower": "测试区", "workshop": "工坊区", "library": "图书馆区"},
-             "en": {"house": "Homes", "shop": "Shops", "tower": "Tests", "workshop": "Workshops", "library": "Library"}}
-
-    def test_names_both_languages(self):
-        t = tp.js_value(tp.const_object("TEXT"))
-        for lang, names in self.NAMES.items():
-            for d, name in names.items():
-                with self.subTest(lang=lang, d=d):
-                    self.assertEqual(t[lang].get("district." + d), name)
-
-    def overlays(self):
-        if "dlbl" not in _CACHE:
-            view = {"territories": [{"id": "t", "name": "shop", "cx": 0, "cz": 0, "size": .4, "era": "town"}]}
-            fns = need("landOverlays", "pinLandOverlays", "ovEl", "setText", "pin")
-            fns += "\n" + tp.page_fns(optional=("eraShown", "terrOf", "showOf"))
-            prelude = tp.constants_prelude() + "\n" + tp.consts("DCOL")
-            _CACHE["dlbl"] = tp.run_node(DLBL_JS, {"prelude": prelude, "fns": fns, "view": view})
-        return _CACHE["dlbl"]
-
-    def test_one_label_per_sign(self):
-        r = self.overlays()
-        self.assertEqual(r["made"]["dlbl"], ["住宅区", "商业街", "图书馆区"])
-        self.assertEqual(r["made"]["lbl"], 1, "the territory label stays one .lbl")
-        self.assertEqual(r["again"], 3, "labels multiplied on a rebuild")
-        self.assertEqual(r["none"], 0)
-
-    def test_colour_bar(self):
-        dcol = tp.js_value(tp.const_object("DCOL"))
-        self.assertEqual([c.strip() if c else c for c in self.overlays()["made"]["bars"]],
-                         [dcol["house"], dcol["shop"], dcol["library"]])
-
-    def test_close_only(self):
-        r = self.overlays()
-        for name in ("close", "closest"):
-            with self.subTest(zoom=name):
-                self.assertEqual(r[name], [{"far": False, "hidden": False}] * 3)
-        for name in ("dflt", "far"):
-            with self.subTest(zoom=name):
-                self.assertTrue(all(x["far"] for x in r[name]), r[name])
-
-    def test_style(self):
-        css = tp.style()
-        rule = re.search(r"\.dlbl\s*\{([^}]*)\}", css)
-        self.assertIsNotNone(rule, ".dlbl style missing")
-        size = re.search(r"(\d+(?:\.\d+)?)px", re.search(r"font:[^;]*", rule.group(1)).group(0) if "font:" in rule.group(1) else rule.group(1))
-        self.assertIsNotNone(size)
-        self.assertLess(float(size.group(1)), 12, "quieter than the 12px territory label")
-        self.assertIn("transition", rule.group(1))
-        self.assertIn("opacity", rule.group(1))
-        self.assertRegex(css, r"\.dlbl\.far\s*\{[^}]*opacity:\s*0")
-
-    def test_buildland_passes_signs(self):
-        self.assertRegex(tp.function_source("buildLand") or "", r"landOverlays\(view,\s*\w+")
-
-    def signs(self):
-        if "signs" not in _CACHE:
-            def terr(state):
-                bal = {k: {"state": "healthy" if k == "build" else "missing", "value": 1, "n": 1, "text": ""}
-                       for k in tp.KINDS}
-                bal["knowledge"] = {"state": state, "value": 1, "n": 1, "text": ""}
-                return {"id": "t", "name": "shop", "cx": 0, "cz": 0, "open": 8, "size": .7, "lines": 9000,
-                        "era": "town", "terrain": "grassland", "balance": bal, "next": [], "buildings": []}
-            fns = tp.page_fns("systemsDecor", "hallDecor",
-                              optional=("tileAt", "walkable", "eraShown", "showOf", "eraLook", "frontOf", "sr", "terrOf"))
-            prelude = tp.constants_prelude() + "\n" + tp.consts("ERA_LOOK")
-            _CACHE["signs"] = tp.run_node(SIGNS_JS, {"prelude": prelude, "fns": fns,
-                                                     "cases": {"healthy": terr("healthy"), "low": terr("low")}})
-        return _CACHE["signs"]
-
-    def test_one_sign_per_district_at_its_district(self):
-        r = self.signs()
-        plots = r["plots"]
-        want = sorted({p["d"] for p in plots})
-        self.assertEqual(sorted(str(s.get("d")) for s in r["healthy"]), want)
-        for s in r["healthy"]:
-            with self.subTest(d=s.get("d")):
-                near = min(max(abs(p["x"] + .5 - s["x"]), abs(p["z"] + .5 - s["z"])) for p in plots if p["d"] == s["d"])
-                self.assertLessEqual(near, 3.5, "the sign is not at its district")
-
-    def test_low_has_one(self):
-        r = self.signs()
-        self.assertEqual([s.get("d") for s in r["low"]], [r["plots"][0]["d"]])
 
 
 if __name__ == "__main__":

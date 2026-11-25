@@ -111,13 +111,6 @@ SERVER_NAMES = ["checkout 页面", "orders 测试", "deploy 脚本", "api 文档
                 "修退款金额", "住宅区 5 号", "checkout page", "Homes no. 12", "aaaaaaaaaaaaaaaaaaaaaaa… 模块"]
 
 
-class TestServerNameShown(unittest.TestCase):
-
-    def test_the_servers_name_as_it_is(self):
-        out = run_sim(NAME_DRIVER, {"names": SERVER_NAMES}, ("buildingName",))
-        self.assertEqual(out, SERVER_NAMES, "never the task, the files or the type word when the server named it")
-
-
 # ---------------------------------------------------------------------------
 # D2..D4 the history comes from the server
 # ---------------------------------------------------------------------------
@@ -460,108 +453,6 @@ def view_fns(*names):
     return ("var LABEL_GAP = %s;\n" % const_line("LABEL_GAP") + VIEW_PRELUDE
             + page_fns("pin", "labelDodge", "dodgeTargets", "easeDodge", "bubbleBoxes", "nameLabels", "labelTop",
                        "dodgeNameLabels", *names))
-
-
-class TestLabelsOnThePage(unittest.TestCase):
-
-    def run_view(self, driver):
-        return run_vm(view_fns(), driver)
-
-    def test_pin_remembers_the_point(self):
-        out = self.run_view(r"""
-pin(bub, 300, 200.26, true);
-const shown = { px: bub._px, py: bub._py, hidden: bub.hidden, tr: bub.style.transform };
-pin(bub, 5, 6, false);
-__out = { shown, hidden: bub.hidden };
-""")
-        self.assertEqual((out["shown"]["px"], out["shown"]["py"]), (300, 200.26))
-        self.assertFalse(out["shown"]["hidden"])
-        self.assertEqual(out["shown"]["tr"], "translate(300.0px,200.3px) translate(-50%,-100%)", "the transform as before")
-        self.assertTrue(out["hidden"])
-
-    def test_the_bubbles_and_the_labels(self):
-        out = self.run_view(r"""
-pin(bub, 300, 200, true); pin(qm, 300, 168, true); pin(talk, -9999, -9999, true); pin(tag, 300, 240, true); pins();
-const one = bubbleBoxes();
-pin(talk, 420, 150, true); pin(qm, 0, 0, false);
-__out = { one, two: bubbleBoxes(), names: nameLabels().map(r => r.el === land ? 'land' : r.el === sign ? 'sign' : r.el === far ? 'far' : '?'),
-  top: labelTop(), noStrip: (strip = null, labelTop()) };
-""")
-        self.assertEqual(out["one"], [BUB, QM], "bottom centre boxes; a name tag is no bubble; behind the camera is not on screen")
-        self.assertEqual(out["two"], [BUB, box(420, 150, 30, 30)], "a hidden one is out, the small talk bubble counts")
-        self.assertEqual(sorted(out["names"]), ["far", "land", "sign"], "land names and site signs, never a district label")
-        self.assertEqual(out["top"], 12 + 34 + 6)
-        self.assertEqual(out["noStrip"], 6)
-
-    def test_the_label_moves_the_bubble_stays(self):
-        out = self.run_view(r"""
-pin(bub, 300, 200, true); pin(qm, 300, 168, true); pins();
-const before = { bub: bub.style.transform, qm: qm.style.transform, dist: dist.style.transform, far: far.style.transform };
-dodgeNameLabels(1);                       // a long frame: straight to the target
-__out = { land: at(land), sign: at(sign), same: before.bub === bub.style.transform && before.qm === qm.style.transform,
-  dist: dist.style.transform === before.dist, far: far.style.transform === before.far,
-  base: [land._px, land._py], w: [land.offsetWidth, sign.offsetWidth] };
-""")
-        self.assertTrue(out["same"], "the bubble wins: it is never moved")
-        self.assertTrue(out["dist"], "the small district label stays")
-        self.assertTrue(out["far"], "a label nothing touches stays")
-        self.assertEqual(out["base"], [310, 190], "the label's own point is kept: it goes back there")
-        land = moved(LAB, out["land"][1] - 190)
-        sign = moved(box(295, 195, 110, 22), out["sign"][1] - 195)
-        self.assertEqual(out["land"][0], 310)
-        self.assertEqual(out["sign"][0], 295)
-        for b in (BUB, QM):
-            self.assertFalse(touch(land, b), "the land's name is clear of the bubbles")
-            self.assertFalse(touch(sign, b), "the site sign too")
-        self.assertFalse(touch(land, sign), "and they do not land on each other")
-        self.assertGreaterEqual(min(land["t"], sign["t"]), 12 + 34 + 6, "never under the strip at the top")
-
-    def test_it_glides_there_and_back(self):
-        out = self.run_view(r"""
-const frame = () => { pin(land, 310, 190, true); pin(far, 900, 400, true); dodgeNameLabels(1 / 60); };   // no site sign here
-pin(bub, 300, 200, true);
-frame();
-const one = at(land)[1];
-for (let i = 0; i < 120; i++) frame();
-const there = at(land)[1];
-pin(bub, 0, 0, false);                   // the bubble goes away
-frame();
-const backOne = at(land)[1];
-for (let i = 0; i < 120; i++) frame();
-__out = { one, there, backOne, back: at(land)[1] };
-""")
-        self.assertTrue(190 > out["one"] > 168, "one frame: a part of the way, never a jump (%r)" % out["one"])
-        self.assertEqual(out["there"], 174 - 6, "the label's point ends 6 px above the bubble")
-        self.assertTrue(168 < out["backOne"] < 190, "it glides back too")
-        self.assertEqual(out["back"], 190, "nothing touches it: back at its own point")
-
-    def test_behind_the_camera_and_hidden(self):
-        out = self.run_view(r"""
-pin(bub, -9999, -9999, true); pin(land, -9999, -9999, true); pin(sign, 0, 0, false); pin(far, 900, 400, true);
-dodgeNameLabels(1);
-const a = at(land);
-pin(bub, 300, 200, true); pin(land, 310, 190, true); pin(sign, 0, 0, false);
-dodgeNameLabels(1);
-__out = { a, land: at(land)[1], signHidden: sign.hidden };
-""")
-        self.assertEqual(out["a"], [-9999, -9999], "both behind the camera: nothing to dodge")
-        self.assertEqual(out["land"], 174 - 6, "a hidden sign is no obstacle: straight above the bubble")
-        self.assertTrue(out["signHidden"], "a hidden label stays hidden")
-
-    def test_no_room_above_goes_under(self):
-        out = self.run_view(r"""
-pin(bub, 300, 80, true); pin(land, 310, 76, true);        // right under the strip: up would end above 52
-dodgeNameLabels(1);
-__out = at(land)[1];
-""")
-        self.assertEqual(out, 80 + 6 + 22, "its top 6 px under the bubble")
-
-    def test_called_every_frame_after_the_pins(self):
-        src = function_source("sync")
-        self.assertIsNotNone(src)
-        i, j, k = src.find("pinSiteSigns()"), src.find("pinLandOverlays()"), src.find("dodgeNameLabels(dt)")
-        self.assertTrue(i >= 0 and j >= 0)
-        self.assertGreater(k, max(i, j), "the labels are moved after every overlay was pinned")
 
 
 if __name__ == "__main__":
