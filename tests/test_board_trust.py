@@ -88,12 +88,21 @@ class GuardCase(tb.BoardCase):
     def put_launch(self, line, folder=None):
         self.state(line, folder)
 
+
+    def sync_cfg(self):
+        """settings-configure: the hook and the status line run with CLAUDE_CONFIG_DIR=self.cfg;
+        the Configure values set_conf wrote (repo.claude_dir()) go there too."""
+        src = os.path.join(self.repo.claude_dir(), "settings.json")
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(self.cfg, "settings.json"))
+
     # ---- the hook
 
     def hook(self, payload, role=None, pid=LIVE, now=NOW, cwd=None, extra_env=None):
         cwd = cwd or self.repo.dir
         payload = dict({"session_id": "s1", "transcript_path": os.path.join(self.cfg, "t.jsonl"), "cwd": cwd,
                         "permission_mode": "bypassPermissions"}, **payload)
+        self.sync_cfg()
         env = {"AGENT_FAKE_NOW": now, "AGENT_FAKE_HOST": tb.HOST, "CLAUDE_PID": str(pid),
                "CLAUDE_CONFIG_DIR": self.cfg}
         if role:
@@ -584,7 +593,7 @@ class TestFailOpen(GuardCase):
         self.assertTrue(lines[0].startswith("board guard: ") and lines[0].endswith("allowed"), lines[0])
 
     def test_not_a_pipeline_repo_is_silent(self):
-        os.remove(self.repo.path("agent.conf"))
+        os.remove(self.repo.path("agent_todo.txt"))   # settings-configure: the set-up mark
         r = self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy")
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
         self.assertFalse(os.path.exists(self.repo.path("agent_state.txt")))
@@ -595,8 +604,10 @@ class TestFailOpen(GuardCase):
         self.assertEqual((r.returncode, r.stderr), (0, ""))
 
     def test_missing_todo_file(self):
+        # settings-configure: no agent_todo.txt = not a set-up repo, so silent (was a loud allow)
         os.remove(self.repo.path("agent_todo.txt"))
-        self.assertLoudAllow(self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy"))
+        r = self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy")
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
 
     def test_unreadable_todo_file(self):
         self.put_todo("board-trust")
@@ -711,7 +722,7 @@ class TestSwitch(GuardCase):
         self.assertRecordsOnly()
 
     def test_a_bad_value_falls_back_to_the_default_on(self):
-        self.repo.set_conf("todo_before_agent", "maybe")
+        self.repo._settings(lambda o: o.__setitem__("todo_before_agent", "maybe"))
         self.assertBlocked(self.pre_agent("old-task Merge", "auto-pipeline:merge-deputy"))
 
     def test_an_old_agent_conf_board_guard_is_not_read(self):
@@ -849,6 +860,7 @@ class TestStatusLine(BoardOnly):
         folder = folder or self.repo.dir
         stdin = json.dumps({"session_id": "s1", "cwd": folder,
                             "workspace": {"current_dir": folder, "project_dir": folder}})
+        self.sync_cfg()
         r = self.repo.run("agent-statusline.sh", cwd=self.repo.base, stdin=stdin,
                           env={"AGENT_FAKE_NOW": NOW, "CLAUDE_CONFIG_DIR": self.cfg}, timeout=20)
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -889,15 +901,6 @@ class TestStatusLine(BoardOnly):
         after = self.line()
         self.assertEqual(pick(after, "board-waiting"), pick(before, "board-waiting") + " · 2 代理")
         self.assertEqual(pick(after, "state-trim"), pick(before, "state-trim") + " · 1 代理")
-
-    def test_off_shows_no_records(self):
-        # review 15: board_guard=off is the rollback: the board and the status line ignore LAUNCH lines
-        self.put_todo("board-waiting")
-        before = self.line()
-        self.rec(1)
-        self.repo.set_conf("board_guard", "off")
-        self.assertEqual(self.line(), before)
-        self.assertNotIn("board-waiting 工人 1", [x["Task"] for x in self.rows(now=NOW)])
 
     def test_self_view_counts_its_worktree(self):
         self.put_todo("board-waiting")
@@ -1022,7 +1025,7 @@ class TestRuleText(unittest.TestCase):
         w14 = section(read("PRINCIPLES.md"), "W14. Todo board")
         self.assertIn("agent-guard.sh", w14)
         self.assertIn("no open todo task", w14)
-        self.assertIn("board_guard", w14)
+        self.assertIn("Todo before agent", w14)
         self.assertNotIn("`worker on <n>` / `worker off <n>` for each worker;", w14)
 
     def test_dispatch_skill(self):
@@ -1045,17 +1048,18 @@ class TestRuleText(unittest.TestCase):
     def test_readme(self):
         self.assertIn("bin/agent-guard.sh", read("PRINCIPLES.md"))
 
-    def test_the_texts_say_the_default_records_only(self):
-        # bounce 3 (owner 3A 2026-11-20): record is the default, only board_guard=on refuses
+    def test_the_texts_name_the_setting(self):
+        # settings-configure (owner 1A 2026-11-25): "Rules: Todo before agent", on by default,
+        # replaces board_guard (old default record, owner 3A 2026-11-20)
         line = [l for l in read("PRINCIPLES.md").splitlines() if "bin/agent-guard.sh" in l][0]
-        self.assertIn("board_guard=on", line)
-        self.assertRegex(line, r"default.{0,30}record|record.{0,30}default")
+        self.assertIn("Todo before agent", line)
+        self.assertIn("off records only", line)
         w14 = section(read("PRINCIPLES.md"), "W14. Todo board")
-        self.assertRegex(w14, r"default.{0,30}record|record.{0,30}default")
+        self.assertRegex(w14, r"on \(default\)")
         s = read("skills", "dispatch", "SKILL.md")
         board = s[s.index("## Board records"):s.index("## Time question")]
-        self.assertIn("board_guard=on", board)
-        self.assertIn("board_guard=on", read("skills", "merge", "SKILL.md"))
+        self.assertIn("Todo before agent", board)
+        self.assertIn("Todo before agent", read("skills", "merge", "SKILL.md"))
 
     def test_release(self):
         v = json.loads(read(".claude-plugin", "plugin.json"))["version"]
@@ -1068,9 +1072,10 @@ class TestRuleText(unittest.TestCase):
             import agent_conf
         finally:
             sys.path.pop(0)
-        self.assertIn("board_guard", agent_conf.HINTS)
-        self.assertIsNone(agent_conf.validate_value("board_guard", "record"))
-        self.assertIsNotNone(agent_conf.validate_value("board_guard", "maybe"))
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        self.assertEqual(by["todo_before_agent"]["title"], "Rules: Todo before agent")
+        self.assertIsNone(agent_conf.validate_value("todo_before_agent", True))
+        self.assertIsNotNone(agent_conf.validate_value("todo_before_agent", "maybe"))
 
 
 if __name__ == "__main__":
