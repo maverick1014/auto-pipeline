@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """agent_repo_init.py: write or complete agent_repo.conf (v1) in a project root.
 
-    agent_repo_init.py <root> [--no-measure] [--cap <percent>] [--resources <agent-resources.sh>]
+    agent_repo_init.py <root> [--no-measure] [--no-branch] [--cap <percent>] [--resources <agent-resources.sh>]
 
 Called by agent-init.sh. Scans the tracked files (git ls-files) and the NAMES in .secrets/
 (never their contents). Missing file: writes version 1 with every key, the edge= lines that
@@ -218,16 +218,26 @@ def production_branch(root, conf_text):
     return git_ok(root, "symbolic-ref", "--short", "-q", "HEAD").strip() or "main"
 
 
+def first_line(raw):
+    lines = raw.decode(errors="replace").strip().splitlines() if isinstance(raw, bytes) else str(raw).strip().splitlines()
+    return lines[0].strip() if lines else "unknown"
+
+
 def ensure_working_branch(root, conf_text, out):
     """Create, when missing, the working branch (per person, agent_conf.working_branch) from the production
-    branch, switch the main checkout to it (local changes carried), push it when origin exists. No worktree."""
+    branch and push it when origin exists. A new repo (no agent_state.txt in its root) is switched to it; a repo
+    that already uses the plugin gets the start's WORKING BRANCH line instead. No worktree."""
     try:
         import agent_conf
-        name = agent_conf.working_branch(root)
+        try:
+            name = agent_conf.working_branch(root, derive=True)
+        except TypeError:
+            name = agent_conf.working_branch(root)
     except Exception:
         return
     prod = production_branch(root, conf_text)
     ref = "refs/heads/" + name
+    created = False
     if git_ok(root, "rev-parse", "--verify", "-q", ref).strip():
         out.append("working branch: kept %s" % name)
     else:
@@ -235,27 +245,33 @@ def ensure_working_branch(root, conf_text, out):
             ("origin/" + prod if git_ok(root, "rev-parse", "--verify", "-q", "refs/remotes/origin/" + prod).strip() else "")
         if not base:
             return
-        if not run(["git", "-C", root, "branch", name, base], root) and \
-                not git_ok(root, "rev-parse", "--verify", "-q", ref).strip():
+        r = subprocess.run(["git", "-C", root, "branch", name, base], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.PIPE)
+        if r.returncode != 0 and not git_ok(root, "rev-parse", "--verify", "-q", ref).strip():
+            out.append("working branch: not created: %s" % first_line(r.stderr))
             return
+        created = True
         out.append("working branch: created %s from %s" % (name, prod))
     cur = git_ok(root, "symbolic-ref", "--short", "-q", "HEAD").strip()
+    new_repo = not os.path.exists(os.path.join(root, "agent_state.txt"))
     if cur == name:
         out.append("checkout: on %s" % name)
-    else:
+    elif new_repo:
         r = subprocess.run(["git", "-C", root, "switch", "-q", name], stdout=subprocess.DEVNULL,
                            stderr=subprocess.PIPE)
         if r.returncode == 0:
             out.append("checkout: switched to %s" % name)
         else:
-            why = r.stderr.decode(errors="replace").strip().splitlines()
-            out.append("checkout: not switched to %s (git refused: %s)" % (name, why[0] if why else "unknown"))
+            out.append("checkout: not switched to %s (git refused: %s)" % (name, first_line(r.stderr)))
+    else:
+        tail = ("switch the main checkout to %s at a quiet point (no uncommitted work, no merge running): "
+                "git switch %s" % (name, name))
+        out.append("WORKING BRANCH: " + ("created %s from %s; " % (name, prod) if created else "") + tail)
     if git_ok(root, "remote", "get-url", "origin").strip():
         p = subprocess.run(["git", "-C", root, "push", "-q", "-u", "origin", name],
                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         if p.returncode != 0:
-            why = p.stderr.decode(errors="replace").strip().splitlines()
-            out.append("working branch: push failed (%s)" % (why[-1] if why else "unknown"))
+            out.append("working branch: not pushed: %s" % first_line(p.stderr))
 
 
 def fix_subjects(root):
@@ -453,7 +469,8 @@ def main(argv):
             out.append("agent_repo.conf: kept")
     try:
         with open(path) as fh:
-            ensure_working_branch(root, fh.read(), out)
+            if "--no-branch" not in argv:
+                ensure_working_branch(root, fh.read(), out)
     except Exception:
         pass
     for line in out:

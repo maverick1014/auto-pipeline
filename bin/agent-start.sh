@@ -536,7 +536,7 @@ if ! repo_set_up; then
     # alive either way (|| true), then check the one thing that matters —
     # agent_todo.txt is really there now — before saying so.
     init_ok=yes
-    "$PLUGIN_ROOT/bin/agent-init.sh" "$PROJECT_ROOT" >/dev/null 2>&1 || init_ok=no
+    "$PLUGIN_ROOT/bin/agent-init.sh" --no-measure --no-branch "$PROJECT_ROOT" >/dev/null 2>&1 || init_ok=no
     if [ "$init_ok" = yes ] && repo_set_up; then
       SETUP_TEXT="auto-pipeline: first run, created the task files
 auto-pipeline: run /auto-pipeline:init once to see the permission block and the cloud setup line to paste
@@ -1013,11 +1013,17 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
       fi
       wb_base=$wb_prod
       git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_base" >/dev/null 2>&1 || wb_base="origin/$wb_prod"
-      if [ -n "$wb_prod" ] && git -C "$PROJECT_ROOT" branch "$wb_name" "$wb_base" >/dev/null 2>&1 </dev/null; then
+      wb_err=$(git -C "$PROJECT_ROOT" branch "$wb_name" "$wb_base" 2>&1 >/dev/null </dev/null) && wb_rc=0 || wb_rc=$?
+      if [ -n "$wb_prod" ] && [ "$wb_rc" -eq 0 ]; then
         wb_made=$wb_prod
         if git -C "$PROJECT_ROOT" remote get-url origin >/dev/null 2>&1; then
-          git -C "$PROJECT_ROOT" push -q -u origin "$wb_name" >/dev/null 2>&1 </dev/null || true
+          wb_err=$(git -C "$PROJECT_ROOT" push -q -u origin "$wb_name" 2>&1 >/dev/null </dev/null) || \
+            WATCH_TEXT="${WATCH_TEXT}working branch: not pushed: $(printf '%s' "$wb_err" | head -n 1)
+"
         fi
+      else
+        WATCH_TEXT="${WATCH_TEXT}working branch: not created: $(printf '%s' "${wb_err:-no production branch found}" | head -n 1)
+"
       fi
     fi
     if git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1 \

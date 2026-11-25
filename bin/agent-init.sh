@@ -27,6 +27,8 @@
 #                                  settings file; repo files are left alone.
 #   bin/agent-init.sh --no-measure [<dir>]
 #                                  set up, but do not time the build and the guard tests
+#   bin/agent-init.sh --no-branch [<dir>]
+#                                  set up, but no working-branch step (the start makes the branch itself)
 #   bin/agent-init.sh -h           print this block, create nothing, exit 0
 #
 # Creates, only when missing, in the project root: the four agent_*.txt task
@@ -121,6 +123,7 @@ SCOPE=""
 
 ADD_PERMS=0
 NO_MEASURE=""
+NO_BRANCH=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode|--auto-update)
@@ -128,6 +131,7 @@ while [ $# -gt 0 ]; do
       exit 2;;
     --add-permissions) ADD_PERMS=1; shift;;
     --no-measure) NO_MEASURE="--no-measure"; shift;;
+    --no-branch) NO_BRANCH="--no-branch"; shift;;
     --scope)
       case "${2:-}" in
         all|selected) SCOPE="$2";;
@@ -315,7 +319,7 @@ repo_conf() {
   local cap
   cap=$(setting max_usage_percent 2>/dev/null) || cap=80
   case "$cap" in ''|*[!0-9]*) cap=80;; esac
-  python3 "$(dirname "$0")/agent_repo_init.py" "$ROOT" $NO_MEASURE --cap "$cap" \
+  python3 "$(dirname "$0")/agent_repo_init.py" "$ROOT" $NO_MEASURE $NO_BRANCH --cap "$cap" \
     --resources "$(dirname "$0")/agent-resources.sh" </dev/null \
     || echo "agent_repo.conf: scan failed, nothing written"
 }
@@ -341,7 +345,9 @@ BLOCK
 echo "Those permission rules go into .claude/settings.json in this project."
 echo "A plugin cannot add permission rules by itself: either paste the block, or run $PLUGIN_ROOT/bin/agent-init.sh --add-permissions and it merges them for you."
 ask_add_permissions
-echo "Optional: if the auto-mode classifier denies the merge push to your integration branch, also allow \"Bash(git push origin main)\" (use your integration branch name)."
+wb_allow=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" working-branch "$ROOT" 2>/dev/null </dev/null) || wb_allow=""
+[ -n "$wb_allow" ] || wb_allow="<your working branch>"
+echo "Optional: if the auto-mode classifier denies the push of your working branch, also allow \"Bash(git push origin $wb_allow)\"."
 
 echo "For cloud sessions (claude.ai/code): the default cloud image already ships Playwright and Chromium. Paste this into the cloud environment's Setup script only if $PLUGIN_ROOT/bin/agent-runtime.sh browser prints none there, it is not a repo file, a plugin cannot set it:"
 echo "npx playwright install --with-deps chromium || true"
