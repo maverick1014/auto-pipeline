@@ -8407,7 +8407,7 @@ Promise.all([
   new ResizeObserver(() => resize()).observe(stage);
   // cloud-polish Q1: --top-h = the height of the strip of rows on the stage (the banner, the follow chip and the
   // "not connected" chip sit under it); and each row that has more to the right than fits gets .more (it fades at the cut edge)
-  const stageTop = $('#stage-top'), stageRows = [$('#machines'), $('#repos')];
+  const stageTop = $('#stage-top'), stageRows = [$('#repos')];
   // city-layout L4: the arrange control is pinned at the right end of the repo row: --repos-w = the width of that row,
   // --arr-w = what the control takes (its width and the gap), and .has-arr leaves the repo row that room
   const fitStageTop = () => {

@@ -102,11 +102,7 @@ clean_session() {
     return 1
   fi
   # the gate, checked not guessed: what is left running (crons: a script cannot see them)
-  mp=""; [ -f "$PROJECT_GITDIR/agent_monitor.pid" ] && read -r mp _ < "$PROJECT_GITDIR/agent_monitor.pid"
   n=0
-  case "$mp" in ''|*[!0-9]*) ;; *)
-    if pid_alive "$mp"; then echo "LEFT RUNNING: monitor pid $mp -> $PLUGIN_ROOT/bin/agent-monitor.sh stop"; n=1; fi;;
-  esac
   if [ -f "$PROJECT_ROOT/agent_worktree.txt" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       case "$line" in *[![:space:]]*) ;; *) continue;; esac
@@ -431,7 +427,7 @@ Q33. You are a task manager. The owner runs /auto-pipeline:todo in your pane.
 
 Q34. You open a new terminal for an agent (dispatch, resume, a Helper, a city click). Its --permission-mode:
   A. auto, always
-  B. permission_mode from agent.conf; a session started from the cloud page uses cloud_permission_mode
+  B. permission_mode from agent.conf (this machine's ~/.claude/auto-pipeline.conf wins over it)
   C. bypassPermissions, always
   D. Whatever the session that opens it runs with
 
@@ -528,7 +524,7 @@ conf_read
 # plugin on. An agent.conf already there means the repo was set up by hand
 # or by us before: nothing new happens, whatever the scope is. No agent.conf
 # and no self-enable: this repo is untouched, print one line and stop, no
-# lock, no monitor, no files, no directories. ----
+# lock, no files, no directories. ----
 SETUP_TEXT=""
 if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
   self_enabled=no
@@ -762,15 +758,12 @@ print_compact_lines() {
 # PERMISSION, USER CONF, YOU, then (main manager / human-direct only) AUTO UPDATE
 # and UPDATE. Every python call may fail: the start never breaks.
 print_mode_lines() {
-  local conf="$PROJECT_ROOT/agent.conf" pyp="$PLUGIN_ROOT/bin" m c rk ign upd
+  local conf="$PROJECT_ROOT/agent.conf" pyp="$PLUGIN_ROOT/bin" m rk ign upd
   local v src
   m=$(python3 "$pyp/agent_conf.py" effective permission_mode "$conf" 2>/dev/null </dev/null) || m=""
-  c=$(python3 "$pyp/agent_conf.py" effective cloud_permission_mode "$conf" 2>/dev/null </dev/null) || c=""
   IFS=$'\t' read -r v src <<<"$m"
   if [ -n "$v" ]; then m="$v (from $src)"; else m="auto (default)"; fi
-  IFS=$'\t' read -r v src <<<"$c"
-  if [ -n "$v" ]; then c="$v (from $src)"; else c="auto (default)"; fi
-  echo "PERMISSION: $m, cloud page $c"
+  echo "PERMISSION: $m"
   ign=$(PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
 v,i=a.read_user_conf()
 if i: print("USER CONF: ignored in %s: %s" % (a.display_path(a.user_conf_path()), ", ".join(i)))' 2>/dev/null </dev/null) || ign=""
@@ -809,19 +802,6 @@ print_normal_lines() {
       sed 's/^/  /' "$PROJECT_ROOT/$name"
     fi
   done
-  return 0
-}
-
-print_monitor_block() {
-  local f cn
-  f="$PROJECT_ROOT/agent_monitor.txt"
-  if [ -f "$f" ]; then
-    cn=$(count_lines "$f")
-    if [ "$cn" -gt 0 ]; then
-      echo "agent_monitor.txt: $cn lines"
-      sed 's/^/  /' "$f"
-    fi
-  fi
   return 0
 }
 
@@ -954,7 +934,7 @@ fi
 
 # ---- cleanup sweep: main manager or takeover only, before the counts and the
 # worktree lines are built, so they show the cleaned state. Its --short lines
-# (empty when there is nothing to report) print after the monitor block. Never
+# (empty when there is nothing to report) print after the WATCH line. Never
 # fails the hook: stderr dropped, any exit code ignored. ----
 CLEAN_TEXT=""
 if [ "$role" = main ] || [ "$role" = takeover ]; then
@@ -963,7 +943,6 @@ fi
 
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
-MON_TEXT=$(print_monitor_block; printf 'X'); MON_TEXT=${MON_TEXT%X}
 # F1/F2: one WATCH line for the main manager or a takeover, orca only. The line comes from the files (no orca call);
 # the runtime probe is made only when there is a line to print.
 WATCH_TEXT=""
@@ -991,7 +970,7 @@ if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
    && [ "$auto_resume" = yes ]; then
   resume_out=$(AGENT_CLEANUP_DONE=1 AGENT_WATCH_LINE_DONE=1 "$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
   header="=== auto resume ==="
-  other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") + $(text_bytes "$WATCH_TEXT") \
+  other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$WATCH_TEXT") \
                  + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
   candidate_bytes=$(( $(line_bytes "$header") + $(text_bytes "$resume_out") + 1 ))
   if [ $(( other_fixed + candidate_bytes )) -gt "$CAP" ]; then
@@ -1005,13 +984,13 @@ $resume_out
 fi
 
 calc_fixed() {
-  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$MON_TEXT") + $(text_bytes "$WATCH_TEXT") \
+  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$WATCH_TEXT") \
           + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
 }
 calc_fixed
 
 # The state block must keep at least its pointer line. Cuts, in order, while
-# fixed + pointer is over the CAP: 1 auto resume body, 2 monitor rows,
+# fixed + pointer is over the CAP: 1 auto resume body, 2 the WATCH line,
 # 3 the AUTO UPDATE line's long form, 4 worktree rows (last, W9).
 ptr_bytes=0
 if [ -f "$STATE_DIR/agent_state.txt" ]; then
@@ -1025,23 +1004,6 @@ if [ -n "$RESUME_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
 (cut to fit, run agent-resume.sh)
 "
   calc_fixed
-fi
-
-# 2. monitor rows: cut from the end (the header keeps the real count) until
-# the state header and its "truncated" marker fit.
-if [ -n "$MON_TEXT" ] && [ $(( fixed + 70 )) -gt "$CAP" ]; then
-  mon_total=$(printf '%s' "$MON_TEXT" | awk 'END{print NR}')
-  mon_keep=$mon_total; mon_orig=$MON_TEXT; mon_fixed=$fixed
-  while [ "$mon_keep" -gt 1 ]; do
-    mon_keep=$(( mon_keep - 1 ))
-    new_mon=$(printf '%s' "$mon_orig" | head -n "$mon_keep"; printf 'X'); new_mon=${new_mon%X}
-    mon_more="  ($(( mon_total - mon_keep )) more: $PROJECT_ROOT/agent_monitor.txt)"
-    new_mon="$new_mon$mon_more
-"
-    fixed=$(( mon_fixed - $(text_bytes "$mon_orig") + $(text_bytes "$new_mon") ))
-    MON_TEXT=$new_mon
-    [ $(( fixed + 70 )) -le "$CAP" ] && break
-  done
 fi
 
 # 2b. WATCH line: short forms, the command part is never cut: first without the "(<names>)" list.
@@ -1091,7 +1053,6 @@ budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 
 printf '%s' "$ROLE_TEXT"
 printf '%s' "$NORMAL_TEXT"
-printf '%s' "$MON_TEXT"
 printf '%s' "$WATCH_TEXT"
 printf '%s' "$CLEAN_TEXT"
 printf '%s' "$WARN_TEXT"

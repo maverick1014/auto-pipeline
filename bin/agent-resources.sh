@@ -14,12 +14,12 @@
 #   ./agent-resources.sh relief          run this file directly with this one
 #                                        argument (S4) to bring load back under cap
 #   ./agent-resources.sh stop-leftovers  run directly: stops only the pipeline's own
-#                                        leftovers (finished test monitors, orphan
-#                                        monitors), prints "stopped ..." lines, no
+#                                        leftovers (finished test watches, orphan
+#                                        watches), prints "stopped ..." lines, no
 #                                        human table, no RESOURCES line, no RAM/CPU read
 #
-# relief stops only what the pipeline owns: test-run monitor loops, and
-# monitors of repos with no live main manager. It never touches a process it
+# relief stops only what the pipeline owns: test-run watches
+# (agent-watch.sh --all), and watches of repos with no live main manager. It never touches a process it
 # does not own — the human's apps, other repos' sessions, Gradle or node
 # runners are only ever listed in one table for the human to act on.
 #
@@ -31,8 +31,8 @@
 # for minutes).
 #
 # AGENT_RELIEF_REPO=<folder> (stop-leftovers only; relief never sets it):
-# the orphan-monitor pass leaves alone every monitor whose repo root is not
-# that folder (real paths compared). A monitor whose folder is gone has no
+# the orphan-watch pass leaves alone every watch whose repo root is not
+# that folder (real paths compared). A watch whose folder is gone has no
 # repo root: it is left alone too, unless its old working folder lies under
 # that folder. Unset or empty -> every repo, as before.
 
@@ -127,38 +127,38 @@ relief_stop_loop() {
   return $rc
 }
 
-# Kills every "auto_pipeline_*/plugin/bin/agent-monitor.sh" process: monitor
-# loops a test run started and left behind. This pattern only ever matches a
+# Kills every "auto_pipeline_*/plugin/bin/agent-watch.sh|agent_watch.py" process:
+# watches a test run started and left behind. This pattern only ever matches a
 # throwaway test copy's own plugin tree, never a real install.
-relief_kill_test_monitors() {
-  pids=$(pgrep -f 'auto_pipeline_[a-z0-9_]*/plugin/bin/agent-monitor\.sh' 2>/dev/null || true)
+relief_kill_test_watches() {
+  pids=$(pgrep -f 'auto_pipeline_[a-z0-9_]*/plugin/bin/agent[-_]watch\.(sh|py) --all' 2>/dev/null || true)
   n=0
   for pid in $pids; do
     relief_scope_ok "$pid" || continue
     relief_stop_loop "$pid" && n=$((n + 1))
   done
-  echo "stopped $n test monitors"
+  echo "stopped $n test watches"
 }
 
-# Kills the test monitor loops whose test is over: the same processes as
-# relief_kill_test_monitors, but only those whose ".../auto_pipeline_<x>"
+# Kills the test watches whose test is over: the same processes as
+# relief_kill_test_watches, but only those whose ".../auto_pipeline_<x>"
 # folder (taken out of the command line) no longer exists. A test still
 # running keeps its loop. A folder that cannot be told (not an absolute path)
 # is kept. Prints the count, also when it is 0.
-relief_kill_finished_test_monitors() {
-  pids=$(pgrep -f 'auto_pipeline_[a-z0-9_]*/plugin/bin/agent-monitor\.sh' 2>/dev/null || true)
+relief_kill_finished_test_watches() {
+  pids=$(pgrep -f 'auto_pipeline_[a-z0-9_]*/plugin/bin/agent[-_]watch\.(sh|py) --all' 2>/dev/null || true)
   n=0
   for pid in $pids; do
     relief_scope_ok "$pid" || continue
     test_args=$(ps -o args= -p "$pid" 2>/dev/null || true)
     test_folder=$(printf '%s\n' "$test_args" \
-      | sed -En 's#(^|.*[[:space:]])([^[:space:]]*auto_pipeline_[a-z0-9_]*)/plugin/bin/agent-monitor\.sh.*#\2#p' \
+      | sed -En 's#(^|.*[[:space:]])([^[:space:]]*auto_pipeline_[a-z0-9_]*)/plugin/bin/agent[-_]watch\.(sh|py).*#\2#p' \
       | head -n 1)
     case "$test_folder" in /*) ;; *) continue ;; esac
     [ -e "$test_folder" ] && continue
     relief_stop_loop "$pid" && n=$((n + 1))
   done
-  echo "stopped $n finished test monitors"
+  echo "stopped $n finished test watches"
 }
 
 # $1 resolved with cd -P when it exists, else as given (no trailing slash).
@@ -174,11 +174,11 @@ relief_path_under() {
   return 1
 }
 
-# Every other "agent-monitor.sh start" process still alive after
-# relief_kill_test_monitors: find the repo it watches, and stop it only when
+# Every other "agent-watch.sh --all" process still alive after
+# relief_kill_test_watches: find the repo it watches, and stop it only when
 # that repo's own main-manager lock is missing or its owner is dead.
-relief_kill_orphan_monitors() {
-  pids=$(pgrep -f 'agent-monitor\.sh start' 2>/dev/null || true)
+relief_kill_orphan_watches() {
+  pids=$(pgrep -f 'agent[-_]watch\.(sh|py) --all' 2>/dev/null || true)
   only_repo="${AGENT_RELIEF_REPO:-}"
   only_repo_real=""
   if [ -n "$only_repo" ]; then
@@ -186,9 +186,9 @@ relief_kill_orphan_monitors() {
     only_repo_real=$(relief_realpath "$only_repo")
   fi
   for pid in $pids; do
-    # skip anything the test-monitor pass above already owns/would have killed
+    # skip anything the test-watch pass above already owns/would have killed
     case "$(ps -o args= -p "$pid" 2>/dev/null)" in
-      *auto_pipeline_*/plugin/bin/agent-monitor.sh*) continue ;;
+      *auto_pipeline_*/plugin/bin/agent-watch.sh*|*auto_pipeline_*/plugin/bin/agent_watch.py*) continue ;;
     esac
 
     cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '/^n/{print substr($0,2); exit}')
@@ -198,14 +198,14 @@ relief_kill_orphan_monitors() {
 
     if [ ! -d "$cwd" ]; then
       # folder is gone (deleted E2E temp repo, deleted scratchpad clone):
-      # "agent-monitor.sh stop" cannot run from a folder that no longer
-      # exists, so kill the loop and any child it left running (its sleep).
+      # nothing can run from a folder that no longer exists, so kill the
+      # watch and any child it left running.
       # With AGENT_RELIEF_REPO set, only when that folder held it.
       if [ -n "$only_repo" ]; then
         relief_path_under "$cwd" "$only_repo" || relief_path_under "$cwd" "$only_repo_real" || continue
       fi
       relief_stop_loop "$pid"
-      echo "stopped monitor of $cwd (folder gone)"
+      echo "stopped watch of $cwd (folder gone)"
       continue
     fi
 
@@ -228,20 +228,8 @@ relief_kill_orphan_monitors() {
     fi
 
     repo_name=$(basename "$repo_root")
-    if [ -x "$repo_root/bin/agent-monitor.sh" ]; then
-      # An old copy's `stop` may not stop the sleep, or its pid file may be
-      # gone: read the children first, run `stop`, then finish the loop and
-      # its children off ourselves if either is still alive.
-      children=$(pgrep -P "$pid" 2>/dev/null || true)
-      ( cd "$repo_root" && "$repo_root/bin/agent-monitor.sh" stop ) >/dev/null 2>&1 || true
-      kill -0 "$pid" 2>/dev/null && kill "$pid" 2>/dev/null
-      for child in $children; do
-        kill "$child" 2>/dev/null || true
-      done
-    else
-      relief_stop_loop "$pid"
-    fi
-    echo "stopped monitor of $repo_name (no live main manager)"
+    relief_stop_loop "$pid"
+    echo "stopped watch of $repo_name (no live main manager)"
   done
 }
 
@@ -303,8 +291,8 @@ relief_human_table() {
 }
 
 do_relief() {
-  relief_kill_test_monitors
-  relief_kill_orphan_monitors
+  relief_kill_test_watches
+  relief_kill_orphan_watches
   relief_human_table
   resources_read
   resources_line "${max_usage_percent:-80}"
@@ -313,8 +301,8 @@ do_relief() {
 # The pipeline's own leftovers only: no human table, no RESOURCES line, no
 # RAM/CPU reading.
 do_stop_leftovers() {
-  relief_kill_finished_test_monitors
-  relief_kill_orphan_monitors
+  relief_kill_finished_test_watches
+  relief_kill_orphan_watches
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

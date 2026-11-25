@@ -319,7 +319,7 @@ class TestTemplate(InitCase):
 
         conf = agent_conf.load(self.repo.plugin_path("bin", "agent.conf.default"))
         for key in list(agent_conf.NUMBER_BOUNDS) + agent_conf.ROLE_KEYS \
-                + ["permission_mode", "cloud_permission_mode", "runtime", "language", "auto_resume"]:
+                + ["permission_mode", "runtime", "language", "auto_resume"]:
             with self.subTest(key=key):
                 self.assertIn(key, conf)
 
@@ -560,3 +560,93 @@ class TestAddPermissions(InitCase):
     def test_it_creates_no_other_project_file(self):
         self.assertOk(self.init("--add-permissions"))
         self.assertFalse(os.path.exists(os.path.join(self.project, "agent.conf")))
+
+
+KEY = "auto-pipeline@auto-pipeline"
+
+
+class TestScope(InitCase):
+    def setUp(self):
+        super().setUp()
+        self.cfg = os.path.join(self.repo.base, "fake-config")
+        os.makedirs(self.cfg)
+        self.user = os.path.join(self.cfg, "settings.json")
+        self.repo2 = os.path.join(self.repo.base, "repo2")
+        os.makedirs(self.repo2)
+
+    def scope(self, *args):
+        return self.init("--scope", *args, env={"CLAUDE_CONFIG_DIR": self.cfg})
+
+    def put(self, path, data):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh:
+            fh.write(data if isinstance(data, str) else json.dumps(data))
+
+    def load(self, path):
+        with open(path) as fh:
+            return json.load(fh)
+
+    def repo_file(self, repo=None):
+        return os.path.join(repo or self.project, ".claude", "settings.json")
+
+    def test_selected_writes_repo_true_and_user_false_keeping_keys(self):
+        self.put(self.repo_file(), {"model": "opus", "enabledPlugins": {"x@y": True}})
+        self.put(self.user, {"theme": "dark", "enabledPlugins": {KEY: True, "x@y": True}})
+        result = self.scope("selected", self.project, self.repo2)
+        self.assertOk(result)
+        self.assertEqual(self.load(self.repo_file()),
+                         {"model": "opus", "enabledPlugins": {"x@y": True, KEY: True}})
+        self.assertEqual(self.load(self.repo_file(self.repo2)), {"enabledPlugins": {KEY: True}})
+        self.assertEqual(self.load(self.user),
+                         {"theme": "dark", "enabledPlugins": {KEY: False, "x@y": True}})
+        self.assertEqual(self.load(self.user + ".bak")["enabledPlugins"][KEY], True)
+        self.assertEqual(len(result.stdout.strip().splitlines()), 3)
+
+    def test_selected_is_idempotent(self):
+        self.put(self.user, {"enabledPlugins": {KEY: True}})
+        self.assertOk(self.scope("selected", self.project))
+        with open(self.user) as fh:
+            first = fh.read()
+        with open(self.repo_file()) as fh:
+            first_repo = fh.read()
+        result = self.scope("selected", self.project)
+        self.assertOk(result)
+        self.assertNotIn("updated", result.stdout)
+        with open(self.user) as fh:
+            self.assertEqual(fh.read(), first)
+        with open(self.repo_file()) as fh:
+            self.assertEqual(fh.read(), first_repo)
+
+    def test_invalid_json_is_refused_and_nothing_is_written(self):
+        self.put(self.repo_file(), "{ not json")
+        self.put(self.user, {"enabledPlugins": {KEY: True}})
+        result = self.scope("selected", self.repo2, self.project)
+        self.assertNotEqual(result.returncode, 0)
+        with open(self.repo_file()) as fh:
+            self.assertEqual(fh.read(), "{ not json")
+        self.assertEqual(self.load(self.user), {"enabledPlugins": {KEY: True}})
+        self.assertFalse(os.path.exists(self.repo_file(self.repo2)))
+
+    def test_invalid_user_json_is_refused(self):
+        self.put(self.user, "oops")
+        self.assertNotEqual(self.scope("selected", self.project).returncode, 0)
+        self.assertFalse(os.path.exists(self.repo_file()))
+
+    def test_config_dir_is_honoured(self):
+        self.assertOk(self.scope("selected", self.project))
+        self.assertEqual(self.load(self.user), {"enabledPlugins": {KEY: False}})
+
+    def test_all_sets_user_true_and_leaves_repo_files(self):
+        self.put(self.user, {"theme": "dark", "enabledPlugins": {KEY: False}})
+        self.put(self.repo_file(), {"enabledPlugins": {KEY: True}})
+        self.assertOk(self.scope("all"))
+        self.assertEqual(self.load(self.user), {"theme": "dark", "enabledPlugins": {KEY: True}})
+        self.assertEqual(self.load(self.repo_file()), {"enabledPlugins": {KEY: True}})
+
+    def test_selected_needs_a_repo_and_a_real_directory(self):
+        self.assertEqual(self.scope("selected").returncode, 2)
+        self.assertEqual(self.scope("selected", "/no/such/dir").returncode, 2)
+        self.assertFalse(os.path.exists(self.user))
+
+    def test_bad_scope_value(self):
+        self.assertEqual(self.scope("nope").returncode, 2)

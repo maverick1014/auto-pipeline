@@ -27,6 +27,8 @@ Bash(orca worktree rm *)
 Bash(orca terminal close *)
 ```
 
+Setup asks whether to use auto-pipeline in all repos or only selected ones; change it later with `bin/agent-init.sh --scope ...` (or rerun `/auto-pipeline:init`).
+
 Cloud sessions (claude.ai/code): the agent handles them with cloud-pack. Nothing to do here.
 
 ## With or without Orca

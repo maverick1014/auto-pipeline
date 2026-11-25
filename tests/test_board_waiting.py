@@ -742,7 +742,7 @@ def read(*parts):
 class TestRuleTexts(unittest.TestCase):
     def test_principles_w14(self):
         text = read("PRINCIPLES.md")
-        w14 = text[text.index("W14. Show todo"):text.index("W15.")]
+        w14 = text[text.index("W14. Todo board"):text.index("W15.")]
         for word in ("--who", "--after", "not started", "waiting on others", "first stage"):
             with self.subTest(word=word):
                 self.assertIn(word, w14)

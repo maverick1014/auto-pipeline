@@ -535,7 +535,7 @@ class TestRuleAndRelease(unittest.TestCase):
         self.assertLessEqual(len(line), 200, line)
 
     def test_readme_lists_the_script(self):
-        self.assertIn("bin/agent-version.sh", read("README.md"))
+        self.assertIn("bin/agent-version.sh", read("PRINCIPLES.md"))
 
     def test_the_script_is_executable(self):
         self.assertTrue(os.access(os.path.join(ROOT, "bin", "agent-version.sh"), os.X_OK))

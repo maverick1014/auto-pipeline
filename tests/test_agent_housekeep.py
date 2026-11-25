@@ -13,10 +13,10 @@ CONTRACT the workers implement.
    bin/agent.conf.default   housekeep_interval_min=120, the LAST line (newer
                             keys are appended, never inserted)
    bin/agent_conf.py        NUMBER_BOUNDS (0, 1440); a hint that says 0 = off;
-                            group "limits", after stall_min
+                            group "limits", after max_agents (stall_min is gone, 2026-11-24)
    bin/agent-settings.sh    sets and syncs it like every other key (generic)
 
-2. MONITOR LOOP (bin/agent-monitor.sh)
+2. WATCH LOOP (was bin/agent-monitor.sh, now `agent-watch.sh --all`; its tests: tests/test_watch_housekeep.py)
    The forked loop, after each of ITS sweeps (never the first sweep that
    `start` runs itself, never `once`), runs
        <plugin>/bin/agent-housekeep.sh --apply
@@ -195,7 +195,7 @@ the task that wrote the idea, the rest bare names of files outside the repo).
                                 repo, a repo with a space, " | " or a line break
    repos                        read only, no file touched: one real path per
                                 line, this repo first, then world.json
-                                territories, then joined-repos.txt, each once;
+                                territories, each once;
                                 a missing folder is not printed
 
 5. DOCS + RELEASE: PRINCIPLES.md R5 R6 R7 W8 W12 (+ S8 or W8 for the block),
@@ -1232,7 +1232,8 @@ class RelatedCase(HousekeepCase):
         self.join(self.peer)
 
     def join(self, *paths):
-        write(os.path.join(self.city, "joined-repos.txt"), "".join(p + "\n" for p in paths))
+        write(os.path.join(self.city, "world.json"),
+              json.dumps({"territories": {p + "/.git": {} for p in paths}}))
 
     def peer_file(self, name, lines):
         write(os.path.join(self.peer, name), "".join(l + "\n" for l in lines))
@@ -1296,7 +1297,7 @@ class TestRelated(RelatedCase):
         self.apply()
         self.assertEqual(self.related(), ["related: nowhere: not found on this machine, skipped"])
 
-    def test_a_joined_folder_that_is_gone_is_not_found(self):
+    def test_a_territory_folder_that_is_gone_is_not_found(self):
         shutil.rmtree(self.peer)
         self.set_file("agent_todo.txt", [self.todo("shared", extra=" | cross peer")])
         self.apply()
@@ -1370,15 +1371,13 @@ class TestFileVerbs(RelatedCase):
         out = self.assertOk(self.af("board"))
         self.assertIn("shared", out)
 
-    def test_repos_lists_this_repo_first_then_the_joined_ones(self):
+    def test_repos_lists_this_repo_first_then_the_territories(self):
         out = self.assertOk(self.af("repos"))
         self.assertEqual(out.splitlines(), [os.path.realpath(self.repo.dir), self.peer])
 
-    def test_repos_world_json_before_joined_each_once(self):
+    def test_repos_each_once(self):
         other = os.path.realpath(self.repo.make_project("worldpeer"))
-        write(os.path.join(self.city, "world.json"),
-              json.dumps({"territories": {other + "/.git": {}, self.peer + "/.git": {}}}))
-        self.join(self.peer, other, self.repo.dir)
+        self.join(other, self.peer, self.repo.dir)
         out = self.assertOk(self.af("repos"))
         self.assertEqual(out.splitlines(), [os.path.realpath(self.repo.dir), other, self.peer])
 
@@ -1463,10 +1462,6 @@ class TestConfKey(unittest.TestCase):
         self.assertIn("0", hint)
         self.assertIn("off", hint)
 
-    def test_it_sits_in_limits_after_stall_min(self):
-        keys = dict(agent_conf.GROUPS)["limits"]
-        self.assertEqual(keys[-2:], ["stall_min", "housekeep_interval_min"])
-
     def test_the_template_has_it_last_on_by_default(self):
         lines = [l for l in read_root("bin", "agent.conf.default").splitlines() if l.strip()]
         # it was the last line; estimate-blend (2026-11-13) appended its keys after it
@@ -1504,254 +1499,6 @@ class TestSettingsKey(ScriptCase):
         self.assertEqual(self.value(), "120")
 
 
-# ================================================================ the monitor loop
-
-
-class LoopCase(ScriptCase):
-    script = "agent-monitor.sh"
-
-    def setUp(self):
-        super().setUp()
-        r = self.repo
-        r.set_conf("runtime", "orca")
-        r.set_conf("monitor_interval_min", "1")
-        r.set_conf("housekeep_interval_min", "120")
-        self.hk_log = os.path.join(r.base, "hk_calls.log")
-        open(self.hk_log, "w").close()
-        self.stamp = r.path(".git", "agent_housekeep.last")
-        r.write_bin_script("agent-housekeep.sh", FAKE_HK.replace("@LOG@", self.hk_log)
-                           .replace("@STAMP@", self.stamp))
-        # a worktree line, so every sweep calls `orca worktree ps`: the count of
-        # those calls proves the loop went round
-        wt = r.make_worktree("loopwt")
-        r.set_worktree_lines([(wt, "loopwt", "working")])
-        r.set_panes([{"path": wt, "agents": ["working"]}])
-        self.helpers = []
-        self.addCleanup(self.stop_helpers)
-
-    def stop_helpers(self):
-        for proc in self.helpers:
-            try:
-                proc.kill()
-                proc.wait(timeout=5)
-            except Exception:
-                pass
-
-    def live_pid(self):
-        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
-        self.helpers.append(proc)
-        return proc.pid
-
-    def fast_sleep(self):
-        self.repo.stub_tool("sleep", "#!/bin/bash\nexec %s 0.2\n" % REAL_SLEEP)
-
-    def lock(self, pid):
-        write(self.repo.path(".git", "agent_main.lock"), "%d 2026-11-13 10:00 - -\n" % pid)
-
-    def set_stamp(self, minutes_ago):
-        when = time.time() - minutes_ago * 60
-        write(self.stamp, "%d %s\n" % (when, time.strftime("%Y-%m-%d %H:%M", time.localtime(when))))
-
-    def start(self, **env):
-        env.setdefault("CLAUDE_PID", str(os.getpid()))
-        out = self.assertOk(self.repo.run("agent-monitor.sh", "start", env=env))
-        self.assertRegex(out, r"monitor: started \(pid \d+\)")
-        return int(open(self.repo.path(".git", "agent_monitor.pid")).read().split()[0])
-
-    def hk_calls(self):
-        with open(self.hk_log) as fh:
-            return [l.rstrip("\n").split("\t") for l in fh if l.strip()]
-
-    def ps_calls(self):
-        return [c for c in self.repo.calls() if c[:2] == ["worktree", "ps"]]
-
-    @staticmethod
-    def wait_for(cond, timeout=20):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if cond():
-                return True
-            time.sleep(0.1)
-        return False
-
-    def rounds(self, n=4):
-        base = len(self.ps_calls())
-        self.assertTrue(self.wait_for(lambda: len(self.ps_calls()) >= base + n),
-                        "the loop did not go round")
-
-    def assertNeverCalled(self):
-        self.rounds()
-        self.assertEqual(self.hk_calls(), [])
-
-    def assertGone(self, pid, what):
-        deadline = time.time() + 8
-        while time.time() < deadline:
-            try:
-                os.kill(pid, 0)
-            except OSError:
-                return
-            time.sleep(0.1)
-        self.fail("%s (pid %d) is still alive" % (what, pid))
-
-
-class TestLoopRuns(LoopCase):
-    def test_due_with_no_stamp_runs_once_as_the_lock_owner(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        open(self.hk_log + ".stamp", "w").close()   # the fake writes the stamp like the real one
-        self.start()
-        self.assertTrue(self.wait_for(lambda: self.hk_calls()), "the pass never ran")
-        self.rounds()
-        calls = self.hk_calls()
-        self.assertEqual(len(calls), 1, calls)
-        self.assertEqual(calls[0], ["--apply", str(os.getpid()), ""])
-
-    def test_the_lock_and_the_stamp_are_read_again_every_round(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        self.set_stamp(0)
-        self.start()
-        self.rounds(2)
-        self.assertEqual(self.hk_calls(), [])
-        new_owner = self.live_pid()      # a new main manager after a restart
-        self.lock(new_owner)
-        self.set_stamp(24 * 60)
-        self.assertTrue(self.wait_for(lambda: self.hk_calls()), "the pass never ran")
-        self.assertEqual(self.hk_calls()[0], ["--apply", str(new_owner), ""])
-
-    def test_an_old_stamp_is_due(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        self.set_stamp(121)
-        self.start()
-        self.assertTrue(self.wait_for(lambda: self.hk_calls()), "the pass never ran")
-
-    def test_a_stamp_that_does_not_read_is_due(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        write(self.stamp, "garbage\n")
-        self.start()
-        self.assertTrue(self.wait_for(lambda: self.hk_calls()), "the pass never ran")
-
-    def test_a_missing_key_means_120(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        self.repo.unset_conf("housekeep_interval_min")
-        self.set_stamp(100)
-        self.start()
-        self.assertNeverCalled()
-        self.set_stamp(125)
-        self.assertTrue(self.wait_for(lambda: self.hk_calls()), "the pass never ran")
-
-    def test_the_interval_is_read_again_every_round(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        self.repo.set_conf("housekeep_interval_min", "0")
-        self.start()
-        self.rounds(2)
-        self.assertEqual(self.hk_calls(), [])
-        self.repo.set_conf("housekeep_interval_min", "120")
-        self.assertTrue(self.wait_for(lambda: self.hk_calls()), "the pass never ran")
-
-
-class TestLoopDoesNotRun(LoopCase):
-    def test_a_fresh_stamp_is_not_due(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        self.set_stamp(30)
-        self.start()
-        self.assertNeverCalled()
-
-    def test_interval_zero_is_off(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        self.repo.set_conf("housekeep_interval_min", "0")
-        self.start()
-        self.assertNeverCalled()
-
-    def test_no_lock_no_pass(self):
-        self.fast_sleep()
-        self.start()
-        self.assertNeverCalled()
-
-    def test_a_dead_lock_owner_no_pass(self):
-        self.fast_sleep()
-        self.lock(999999)
-        self.start(CLAUDE_PID="999999")
-        self.assertNeverCalled()
-
-    def test_a_loop_started_by_a_spawned_agent_never_runs_it(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        self.start(AGENT_ROLE="task-manager")
-        self.assertNeverCalled()
-
-    def test_a_loop_started_by_a_helper_never_runs_it(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        self.start(CLAUDE_PID="999999")
-        self.assertNeverCalled()
-
-    def test_once_never_runs_it(self):
-        self.lock(os.getpid())
-        self.assertOk(self.repo.run("agent-monitor.sh", "once", env={"CLAUDE_PID": str(os.getpid())}))
-        self.assertEqual(self.hk_calls(), [])
-
-    def test_the_first_sweep_of_start_never_runs_it(self):
-        self.lock(os.getpid())          # real sleep: the loop's first round is a minute away
-        self.start()
-        time.sleep(1.5)
-        self.assertEqual(self.hk_calls(), [])
-
-
-class TestLoopLeavesNothing(LoopCase):
-    def running_pass(self):
-        self.fast_sleep()
-        self.lock(os.getpid())
-        open(self.hk_log + ".hold", "w").close()
-        loop = self.start()
-        pidfile = self.hk_log + ".pid"
-        self.assertTrue(self.wait_for(lambda: os.path.exists(pidfile) and open(pidfile).read().strip()),
-                        "the pass never started")
-        return loop, int(open(pidfile).read().strip())
-
-    def test_stop_ends_a_running_pass(self):
-        loop, hk = self.running_pass()
-        self.assertOk(self.repo.run("agent-monitor.sh", "stop"))
-        self.assertGone(loop, "the loop after stop")
-        self.assertGone(hk, "the pass after stop")
-
-    def test_a_term_to_the_loop_ends_a_running_pass(self):
-        loop, hk = self.running_pass()
-        os.kill(loop, signal.SIGTERM)
-        self.assertGone(loop, "the loop after TERM")
-        self.assertGone(hk, "the pass after TERM")
-        self.assertFalse(os.path.exists(self.repo.path(".git", "agent_monitor.pid")))
-
-
-class TestLoopStatusAndHelp(LoopCase):
-    def status(self):
-        return self.assertOk(self.repo.run("agent-monitor.sh", "status"))
-
-    def test_status_with_a_stamp(self):
-        write(self.stamp, "1763000000 2026-11-13 11:00\n")
-        self.assertIn("housekeep: every 120 minutes, last 2026-11-13 11:00", self.status())
-
-    def test_status_with_no_stamp(self):
-        self.assertIn("housekeep: every 120 minutes, last (none)", self.status())
-
-    def test_status_when_off(self):
-        self.repo.set_conf("housekeep_interval_min", "0")
-        self.assertIn("housekeep: off", self.status())
-
-    def test_help(self):
-        out = self.assertOk(self.repo.run("agent-monitor.sh", "-h"))
-        self.assertIn("housekeep_interval_min", out)
-        self.assertIn("agent-housekeep.sh", out)
-        lines = [l for l in out.splitlines() if "plain" in l and "cloud" in l]
-        self.assertTrue(lines, "the help does not say plain and cloud have no loop")
-
-
 # ================================================================ docs, release
 
 
@@ -1768,8 +1515,8 @@ class TestDocs(unittest.TestCase):
                 lines = [l for l in principles_section(code) if "housekeep" in l.lower()]
                 self.assertEqual(len(lines), 1, "%s needs one housekeep line" % code)
 
-    def test_w8_runs_it_from_the_monitor_loop(self):
-        self.assertSectionHas("W8", "housekeep_interval_min", "agent-housekeep.sh")
+    def test_w8_runs_it_from_the_watch_loop(self):
+        self.assertSectionHas("W8", "housekeep_interval_min", "agent-housekeep.sh", "agent-watch.sh --all")
 
     def test_the_main_manager_reads_the_block(self):
         lines = [l for code in ("W8", "S8") for l in principles_section(code)

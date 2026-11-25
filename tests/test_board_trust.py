@@ -1042,7 +1042,7 @@ def section(text, head):
 
 class TestRuleText(unittest.TestCase):
     def test_w14_launches_record_themselves(self):
-        w14 = section(read("PRINCIPLES.md"), "W14. Show todo")
+        w14 = section(read("PRINCIPLES.md"), "W14. Todo board")
         self.assertIn("agent-guard.sh", w14)
         self.assertIn("no open todo task", w14)
         self.assertIn("board_guard", w14)
@@ -1073,7 +1073,7 @@ class TestRuleText(unittest.TestCase):
         line = [l for l in read("PRINCIPLES.md").splitlines() if "bin/agent-guard.sh" in l][0]
         self.assertIn("board_guard=on", line)
         self.assertRegex(line, r"default.{0,30}record|record.{0,30}default")
-        w14 = section(read("PRINCIPLES.md"), "W14. Show todo")
+        w14 = section(read("PRINCIPLES.md"), "W14. Todo board")
         self.assertRegex(w14, r"default.{0,30}record|record.{0,30}default")
         s = read("skills", "dispatch", "SKILL.md")
         board = s[s.index("## Board records"):s.index("## Time question")]

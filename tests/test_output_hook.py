@@ -248,11 +248,6 @@ class TestTheRealSizeOnABusyProject(ScriptCase):
             for i in range(4):
                 fh.write("/very/long/path/to/worktree/number_%d | module_%d | "
                          "working | since 2026-09-22 10:00\n" % (i, i))
-        with open(self.repo.path("agent_monitor.txt"), "w") as fh:
-            for i in range(4):
-                fh.write("/very/long/path/to/worktree/number_%d | module_%d | "
-                         "pane working | commit 2m ago | activity 1m ago | OK "
-                         "| 2026-09-22 10:00\n" % (i, i))
         with open(self.repo.path("agent_state.txt"), "w") as fh:
             for i in range(60):
                 fh.write("%02d %s\n" % (i, long_line))

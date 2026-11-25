@@ -101,8 +101,8 @@ class TestDispatchSkill(unittest.TestCase):
 
 class TestReadme(unittest.TestCase):
 
-    def test_g3_readme_lists_the_tool(self):
-        hits = [l for l in read("README.md").splitlines()
+    def test_g3_map_lists_the_tool(self):
+        hits = [l for l in read("PRINCIPLES.md").splitlines()
                 if l.strip().startswith("bin/agent-owner-order.sh")]
         self.assertEqual(len(hits), 1, hits)
         self.assertIn("owner", hits[0].lower())
@@ -132,16 +132,6 @@ class TestConfKeys(unittest.TestCase):
                 self.assertTrue(agent_conf.validate_value(key, str(low - 1)))
                 self.assertTrue(agent_conf.validate_value(key, str(high + 1)))
                 self.assertTrue(agent_conf.validate_value(key, "abc"))
-
-    def test_g4_hints(self):
-        for key in self.KEYS:
-            with self.subTest(key=key):
-                self.assertTrue(agent_conf.HINTS.get(key, "").strip())
-
-    def test_g4_group_relay_last(self):
-        self.assertEqual(agent_conf.GROUPS[-1], ("relay", ["owner_order_hours", "owner_order_min_chars"]))
-        for key in self.KEYS:
-            self.assertEqual(agent_conf.group_of(key), "relay")
 
     def test_g4_template_defaults_appended_last(self):
         with open(os.path.join(BIN, "agent.conf.default")) as fh:

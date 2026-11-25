@@ -19,7 +19,7 @@
 #   agent-file.sh backfill [--dry-run]                        -> old lines: take work and wait from the text of each line
 #   agent-file.sh backfill <name> [--dry-run] [--force] <todo done options>   -> set the data of one finished line
 #   agent-file.sh data [--what] [<repo path>...]              -> table: one row per finished task, every repo on this machine
-#   agent-file.sh repos                                       -> read only: real paths one per line: this repo, then world.json territories, then joined-repos.txt; each once, a missing folder is skipped
+#   agent-file.sh repos                                       -> read only: real paths one per line: this repo, then world.json territories; each once, a missing folder is skipped
 #   agent-file.sh todo cross "<name>" <repo>                  -> the todo line says the other repo of a two-repo task: " | cross <repo>" (replaced in place, else appended)
 #   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] [--guess <m>] "<what>"   -> work minutes, range, like tasks
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
@@ -89,8 +89,7 @@
 #     1. this repo
 #     2. the keys of "territories" in world.json in the city home ($AGENT_CITY_HOME, default ~/.claude/agent-city);
 #        a key "<repo>/.git" names <repo>, any other key is passed over; no python3 or a bad file: passed over
-#     3. the lines of joined-repos.txt in the city home (absolute paths; blank lines and "#" comments are passed over)
-#     4. the paths given as arguments
+#     3. the paths given as arguments
 #   It reads only <repo>/agent_completed.txt of another repo and writes nothing there.
 #   No such file or folder: one line "skipped ..." on stderr, exit stays 0.
 #   guess = the manager's own minutes from the todo line, "-" when none. --what adds one last column, what: the text between the name and the data block ("-" when empty).
@@ -448,21 +447,11 @@ $rp
     fi
   done < "$rp/agent_completed.txt"
 }
-# repos_list: the real paths of this repo, the world.json territories, then joined-repos.txt; each once, a missing folder skipped
+# repos_list: the real paths of this repo, the world.json territories; each once, a missing folder skipped
 repos_list() {
-  local city="${AGENT_CITY_HOME:-${HOME:-}/.claude/agent-city}" p rp all joined= seen="
+  local city="${AGENT_CITY_HOME:-${HOME:-}/.claude/agent-city}" p rp all seen="
 "
   all=$(printf '%s\n' "$ROOT"; world_repos "$city/world.json")
-  if [ -f "$city/joined-repos.txt" ]; then
-    while read -r p || [ -n "$p" ]; do
-      case "$p" in
-        /*) joined="$joined$p
-";;
-      esac
-    done < "$city/joined-repos.txt"
-    all="$all
-$joined"
-  fi
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     rp=$(cd "$p" 2>/dev/null && pwd -P) || { echo "skipped: no such folder: $p" >&2; continue; }

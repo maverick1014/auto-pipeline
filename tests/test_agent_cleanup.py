@@ -121,10 +121,10 @@ counted). "stopped <N> ..." counts N, any other "stopped ..." line counts 1.
 agent-resources.sh stop-leftovers (new verb, run directly like relief): the
 pipeline's own leftovers only, no human table, no RESOURCES line, no RAM/CPU
 reading:
-    "stopped <n> finished test monitors": test monitor loops
-        (auto_pipeline_*/plugin/bin/agent-monitor.sh) whose auto_pipeline_*
+    "stopped <n> finished test watches": test watches
+        (auto_pipeline_*/plugin/bin/agent-watch.sh --all) whose auto_pipeline_*
         folder no longer exists; a test still running keeps its loop
-    then relief_kill_orphan_monitors, limited to monitors whose repo root is
+    then relief_kill_orphan_watches, limited to watches whose repo root is
         AGENT_RELIEF_REPO when that is set (another repo's monitor stays)
     AGENT_RELIEF_ONLY_UNDER scopes both, as for relief.
 
@@ -1133,7 +1133,7 @@ class TestStopLeftovers(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
 
     def spawn(self, script, cwd=None):
-        proc = subprocess.Popen(["bash", script, "start"], cwd=cwd,
+        proc = subprocess.Popen(["bash", script, "--all"], cwd=cwd,
                                 stdin=subprocess.DEVNULL,
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL,
@@ -1183,27 +1183,27 @@ class TestStopLeftovers(unittest.TestCase):
 
     def test_a_test_monitor_whose_folder_is_gone_is_stopped(self):
         script = self.fake("auto_pipeline_gone1", "plugin", "bin",
-                           "agent-monitor.sh")
+                           "agent-watch.sh")
         proc = self.spawn(script)
         shutil.rmtree(os.path.join(self.base, "auto_pipeline_gone1"))
         result = self.run_it()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("stopped 1 finished test monitors", result.stdout)
+        self.assertIn("stopped 1 finished test watches", result.stdout)
         self.assertTrue(wait_until(lambda: not alive(proc)))
 
     def test_a_test_monitor_still_running_its_test_stays(self):
         script = self.fake("auto_pipeline_live1", "plugin", "bin",
-                           "agent-monitor.sh")
+                           "agent-watch.sh")
         proc = self.spawn(script)
         result = self.run_it()
-        self.assertIn("stopped 0 finished test monitors", result.stdout)
+        self.assertIn("stopped 0 finished test watches", result.stdout)
         time.sleep(0.3)
         self.assertTrue(alive(proc))
 
     def test_an_orphan_monitor_of_another_repo_stays(self):
         mine = self.repo("mine")
         other = self.repo("other")
-        script = self.fake("tools", "agent-monitor.sh")
+        script = self.fake("tools", "agent-watch.sh")
         proc = self.spawn(script, cwd=other)
         self.run_it(repo=mine)
         time.sleep(0.3)
@@ -1211,10 +1211,10 @@ class TestStopLeftovers(unittest.TestCase):
 
     def test_an_orphan_monitor_of_this_repo_is_stopped(self):
         mine = self.repo("mine")
-        script = self.fake("tools", "agent-monitor.sh")
+        script = self.fake("tools", "agent-watch.sh")
         proc = self.spawn(script, cwd=mine)
         result = self.run_it(repo=mine)
-        self.assertIn("stopped monitor of mine", result.stdout)
+        self.assertIn("stopped watch of mine", result.stdout)
         self.assertTrue(wait_until(lambda: not alive(proc)))
 
     def test_no_table_and_no_resources_line(self):
@@ -1536,8 +1536,8 @@ class TestTheRules(unittest.TestCase):
                 if line.startswith("- "):
                     self.assertLessEqual(len(line), 200, line)
 
-    def test_the_readme_tree_names_the_script(self):
-        with open(os.path.join(ROOT, "README.md")) as fh:
+    def test_the_map_names_the_script(self):
+        with open(os.path.join(ROOT, "PRINCIPLES.md")) as fh:
             self.assertIn("bin/agent-cleanup.sh", fh.read())
 
 

@@ -7,6 +7,9 @@ One watcher for every task manager (TM) of this repo: it re-reads the targets (a
 agent_todo.txt) every sweep, reads each TM pane and its agent_state.txt (local: the file; another
 machine: one short command through the task's shell pane), prints one sweep line, then one WATCH line
 per event and exits 0. The TM pane is only read, never sent to.
+After each sweep, for the main manager only (no AGENT_ROLE, a live main-manager lock), it runs
+bin/agent-housekeep.sh --apply when housekeep_interval_min minutes (agent.conf, 0 = off, default 120)
+have passed since <git dir>/agent_housekeep.last.
 
 The functions that find a task's targets and panes (read_targets, locate, resolve_tm, resolve_shell,
 orca) are plain module functions on a Ctx, so another command (tell) can reuse them.
@@ -959,11 +962,46 @@ class Engine:
                 time.sleep(max(0.0, next_at - time.time()))      # R8: a fixed cadence
             next_at = max(next_at + self.iv, time.time())
             n += 1
-            if self.one_sweep():
+            events = self.one_sweep()
+            self.housekeep_round()
+            if events:
                 return 0
             if n >= self.max:
                 out("WATCH MAX all")
                 return 0
+
+    # ---- housekeep timer (W8): the main manager's pass every housekeep_interval_min minutes
+
+    def hk_interval(self):
+        v = ""
+        for line in read_lines(self.ctx.file("agent.conf")):
+            if line.startswith("housekeep_interval_min="):
+                v = line.split("=", 1)[1]
+        v = re.sub(r"[\s\"']", "", v)
+        return int(v) if v.isdigit() else 120
+
+    def housekeep_round(self):
+        """Runs agent-housekeep.sh --apply when it is due. Never raises, never ends the watch. Main manager only:
+        no AGENT_ROLE, and the main-manager lock names a live pid (that pid is the CLAUDE_PID the pass checks)."""
+        try:
+            n = self.hk_interval()
+            if n <= 0 or os.environ.get("AGENT_ROLE"):
+                return
+            lock = (read_text(os.path.join(self.ctx.gitdir, "agent_main.lock")) or "").split()
+            if not lock or not lock[0].isdigit() or not pid_alive(int(lock[0])):
+                return
+            last = (read_text(os.path.join(self.ctx.gitdir, "agent_housekeep.last")) or "").split()
+            if last and last[0].isdigit() and time.time() - int(last[0]) < n * 60:
+                return
+            script = os.path.join(HERE, "agent-housekeep.sh")
+            if not os.access(script, os.X_OK):
+                return
+            env = dict(os.environ, CLAUDE_PID=lock[0], CLAUDE_PROJECT_DIR=self.ctx.main)
+            env.pop("AGENT_ROLE", None)
+            subprocess.run([script, "--apply"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, env=env, cwd=self.ctx.main, timeout=900)
+        except Exception:
+            return
 
     def on_term(self, signum, frame):
         """R9: a newer --all replaced this one (it wrote its pid into the status file first)."""

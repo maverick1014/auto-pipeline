@@ -3333,7 +3333,7 @@ class CityState:
 
     def scan_sites(self):
         """Rescans every territory's construction sites: agent_worktree.txt
-        and agent_monitor.txt, re-read only when their size or mtime
+        and agent_watch.json (<git dir>), re-read only when their size or mtime
         changed. Takes self.lock itself -- recount_loop and the tests call
         it directly, never already holding the lock."""
         with self.lock:
@@ -3355,11 +3355,11 @@ class CityState:
         terr = territory_id(identity)
         watch = self._site_watch.setdefault(identity, {"wt": None, "mon": None, "rows": []})
         wt_stat = self._stat_key(os.path.join(root, "agent_worktree.txt"))
-        mon_stat = self._stat_key(os.path.join(root, "agent_monitor.txt"))
+        mon_stat = self._stat_key(os.path.join(identity, "agent_watch.json"))
         if wt_stat != watch["wt"] or mon_stat != watch["mon"]:
             watch["wt"] = wt_stat
             watch["mon"] = mon_stat
-            watch["rows"] = read_sites(root)
+            watch["rows"] = read_sites(root, identity)
 
         known = t.setdefault("sites", {})
         seen = set()
@@ -5695,16 +5695,16 @@ def repo_name(identity):
 # -- worktrees: construction sites (requirements/city.md, "Worktrees") ------
 #
 # One worktree = one construction site inside its repo's territory. These
-# helpers read agent_worktree.txt/agent_monitor.txt (bin/agent-file.sh,
-# bin/agent-monitor.sh) and a linked worktree's own git files, never running
+# helpers read agent_worktree.txt and the watch status <git dir>/agent_watch.json
+# (bin/agent-file.sh, bin/agent_watch.py) and a linked worktree's own git files, never running
 # git for read_sites/site_id/site_branch/site_head -- see the CONTRACT in
 # tests/test_agent_city_worktrees.py.
 
-def read_sites(root):
+def read_sites(root, gitdir=None):
     """[{"path", "module", "status", "human", "stalled"}], one per
     non-blank line of <root>/agent_worktree.txt, file order. Missing file
-    -> []. stalled comes from <root>/agent_monitor.txt (missing -> none
-    stalled)."""
+    -> []. stalled comes from the watch status <root>/.git/agent_watch.json (or
+    GITDIR when given; missing -> none stalled): a task with a non-empty stall."""
     wt_path = os.path.join(root, "agent_worktree.txt")
     try:
         with open(wt_path, encoding="utf-8") as fh:
@@ -5714,14 +5714,13 @@ def read_sites(root):
 
     stalled = set()
     try:
-        with open(os.path.join(root, "agent_monitor.txt"), encoding="utf-8") as fh:
-            for mline in fh:
-                if not mline.strip():
-                    continue
-                fields = [f.strip() for f in mline.split("|")]
-                if len(fields) >= 6 and fields[5] == "STALL":
-                    stalled.add(fields[0])
-    except OSError:
+        with open(os.path.join(gitdir or os.path.join(root, ".git"), "agent_watch.json"),
+                  encoding="utf-8") as fh:
+            data = json.load(fh)
+        for task in (data.get("tasks") or {}).values():
+            if isinstance(task, dict) and task.get("stall") and task.get("path"):
+                stalled.add(str(task["path"]))
+    except (OSError, ValueError, AttributeError):
         pass
 
     out = []

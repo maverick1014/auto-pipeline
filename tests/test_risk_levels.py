@@ -827,17 +827,6 @@ class TestConfKeys(unittest.TestCase):
                 with self.subTest(key=key, value=value):
                     self.assertTrue(agent_conf.validate_value(key, value))
 
-    def test_hints_and_the_levels_group(self):
-        for key in self.KEYS:
-            with self.subTest(key=key):
-                self.assertTrue(agent_conf.HINTS.get(key, "").strip())
-                self.assertEqual(agent_conf.group_of(key), "levels")
-        # state-trim (2026-11-20) appended its "state" group after it: levels is no longer the last group
-        self.assertIn(("levels", ["level3_paths", "level4_paths"]), agent_conf.GROUPS)
-        # later groups (watch, cleanup, relay...) are appended after it: check order, not the tail
-        names = [g[0] for g in agent_conf.GROUPS]
-        self.assertLess(names.index("state"), names.index("watch"))
-
 
 class TestSettings(ScriptCase):
     script = "agent-settings.sh"
@@ -1100,7 +1089,7 @@ class TestTheRule(unittest.TestCase):
         rule = self.rule().lower()
         for phrase in ("a = text, style, simple move", "b = ui", "c = logic", "d = danger",
                        "dispatch", "--level", "agent-level.sh check", "raise", "only goes up",
-                       "level3_paths", "level4_paths", "full lane", "reads the diff", "e2e",
+                       "level3_paths", "level4_paths", "reads the diff", "e2e",
                        "mock", "phone", "console clean", "owner not seen",
                        "failing tests first", "touched features", "full suite only when really needed",
                        "dry-run", "rollback plan", "owner signs",

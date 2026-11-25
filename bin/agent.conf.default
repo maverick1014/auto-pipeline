@@ -1,8 +1,6 @@
 max_usage_percent=80
 heavy_test_slots=1
 max_agents=4
-monitor_interval_min=5
-stall_min=10
 main_manager=opus-5.5:high
 fast_lane_deputy=sonnet-5:medium
 merge_deputy=sonnet-5:medium
@@ -15,8 +13,6 @@ runtime=auto
 city_port=4777
 city_idle_min=30
 city_governor_wait_sec=60
-city_relay_sec=5
-cloud_permission_mode=auto
 stage_brief=1
 stage_register=1
 stage_mock=4

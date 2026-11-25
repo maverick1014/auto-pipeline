@@ -17,8 +17,8 @@ directory, and must tell two roots apart:
 
   Per-project files, in the PROJECT ROOT:
       agent.conf, agent_todo.txt, agent_completed.txt, agent_ideas.txt,
-      agent_worktree.txt, agent_monitor.txt, .secrets/
-  In the project's shared git dir: the main-manager lock, the monitor pid.
+      agent_worktree.txt, .secrets/
+  In the project's shared git dir: the main-manager lock, the watch status.
   agent_state.txt is per working directory: the git toplevel of the directory
   the agent is in, so a worktree keeps its own state file.
 
@@ -85,7 +85,6 @@ class TestPluginRoot(RootsCase):
         before = sorted(os.listdir(self.repo.plugin))
         self.assertOk(self.start())
         self.assertOk(self.repo.run("agent-file.sh", "idea", "add", "x"))
-        self.assertOk(self.repo.run("agent-monitor.sh", "once"))
         self.assertEqual(sorted(os.listdir(self.repo.plugin)), before)
 
     def test_no_agent_txt_file_lands_in_the_plugin(self):
@@ -271,21 +270,6 @@ class TestSettingsFromAnywhere(RootsCase):
             self.assertEqual(fh.read(), before)
 
 
-class TestMonitorFromAnywhere(RootsCase):
-    script = "agent-monitor.sh"
-
-    def test_the_monitor_file_lands_in_the_project(self):
-        self.assertOk(self.repo.run("agent-monitor.sh", "once"))
-        self.assertTrue(os.path.exists(self.repo.path("agent_monitor.txt")))
-        self.assertFalse(os.path.exists(
-            self.repo.plugin_path("agent_monitor.txt")))
-
-    def test_the_pid_file_lands_in_the_project_git_dir(self):
-        self.assertOk(self.repo.run("agent-monitor.sh", "start"))
-        self.assertTrue(os.path.exists(self.repo.path(".git",
-                                                      "agent_monitor.pid")))
-
-
 class TestProjectWithoutAgentConf(RootsCase):
     """A project that has not run agent-init.sh yet is the first thing the
     plugin meets. Nothing may fail silently there: the scripts fall back to
@@ -308,13 +292,6 @@ class TestProjectWithoutAgentConf(RootsCase):
         self.assertIn("QUIZ:", out)
         self.assertTrue(os.path.exists(self.repo.path("agent.conf")))
 
-    def test_agent_monitor_runs(self):
-        result = self.repo.run("agent-monitor.sh", "once")
-        self.assertEqual(result.returncode, 0,
-                         "exit %d, stdout %r, stderr %r"
-                         % (result.returncode, result.stdout, result.stderr))
-        self.assertTrue(result.stdout.strip(), "it printed nothing at all")
-
     def test_agent_resume_runs(self):
         result = self.repo.run("agent-resume.sh", "--dry-run")
         self.assertEqual(result.returncode, 0,
@@ -335,8 +312,7 @@ class TestProjectWithoutAgentConf(RootsCase):
 
     def test_nothing_fails_without_a_word(self):
         """A non-zero exit with an empty output is the worst case of all."""
-        for script, args in (("agent-monitor.sh", ("once",)),
-                             ("agent-resume.sh", ("--dry-run",)),
+        for script, args in (("agent-resume.sh", ("--dry-run",)),
                              ("agent-settings.sh", ())):
             with self.subTest(script=script):
                 result = self.repo.run(script, *args)
@@ -403,31 +379,14 @@ class TestPlainDirectory(RootsCase):
         self.assertIn("not set up in this repo", out)
         self.assertEqual(sorted(os.listdir(plain)), before)
 
-    def test_agent_monitor_works_there(self):
-        plain = self.plain()
-        result = self.repo.run("agent-monitor.sh", "once", cwd=plain)
-        self.assertEqual(result.returncode, 0,
-                         "exit %d, stdout %r, stderr %r"
-                         % (result.returncode, result.stdout, result.stderr))
-
     def test_no_fake_git_directory_is_made(self):
         """`.git` is a name git owns. An empty one makes git call the folder
         a broken repo, so no script may create it."""
         plain = self.plain()
-        self.assertOk(self.repo.run("agent-monitor.sh", "once", cwd=plain))
         self.assertOk(self.start(cwd=plain))
         self.assertOk(self.repo.run("agent-resume.sh", "--dry-run", cwd=plain))
         self.assertFalse(os.path.exists(os.path.join(plain, ".git")),
                          "a .git directory was invented in a plain folder")
-
-    def test_the_private_files_go_in_a_folder_of_our_own(self):
-        plain = self.plain()
-        self.assertOk(self.repo.run("agent-monitor.sh", "once", cwd=plain))
-        self.assertTrue(
-            os.path.exists(os.path.join(plain, ".auto-pipeline",
-                                        "agent_monitor.lastsweep")),
-            "no git dir here, so the pid and sweep files belong in "
-            ".auto-pipeline/")
 
     def test_the_lock_goes_there_too(self):
         plain = self.plain()
@@ -438,7 +397,6 @@ class TestPlainDirectory(RootsCase):
     def test_nothing_complains_about_a_missing_path(self):
         plain = self.plain()
         for script, args in (("agent-start.sh", ()),
-                             ("agent-monitor.sh", ("once",)),
                              ("agent-resume.sh", ("--dry-run",))):
             with self.subTest(script=script):
                 result = self.repo.run(script, *args, cwd=plain)

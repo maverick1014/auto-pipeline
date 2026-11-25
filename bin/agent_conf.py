@@ -11,13 +11,10 @@ NUMBER_BOUNDS = {
     "max_usage_percent": (1, 100),
     "heavy_test_slots": (1, 8),
     "max_agents": (1, 16),
-    "monitor_interval_min": (1, 60),
-    "stall_min": (1, 120),
     "housekeep_interval_min": (0, 1440),
     "city_port": (1024, 65535),
     "city_idle_min": (1, 240),
     "city_governor_wait_sec": (5, 3600),
-    "city_relay_sec": (2, 60),
     "stage_brief": (0, 100),
     "stage_register": (0, 100),
     "stage_mock": (0, 100),
@@ -66,16 +63,13 @@ HINTS = {
     "max_usage_percent": "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.",
     "heavy_test_slots": "How many heavy test runs may run at once. Whole number, 1 to 8.",
     "max_agents": "How many agents may run at once on this machine. Whole number, 1 to 16.",
-    "monitor_interval_min": "How often the monitor checks every worktree. Whole number, 1 to 60.",
-    "stall_min": "How long all three signals may stay quiet before a worktree is called stalled. Whole number, 1 to 120.",
-    "housekeep_interval_min": "Minutes between housekeep passes (bin/agent-housekeep.sh) run by the monitor loop. 0 = off. Whole number, 0 to 1440.",
+    "housekeep_interval_min": "Minutes between housekeep passes (bin/agent-housekeep.sh) run from the agent-watch.sh --all loop. 0 = off. Whole number, 0 to 1440.",
     "main_manager": "Model and effort for the main manager. Form: model-name:effort. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
     "fast_lane_deputy": "Model and effort for the fast-lane deputy. Form: model-name:effort.",
     "merge_deputy": "Model and effort for the merge deputy. Form: model-name:effort.",
     "task_manager": "Model and effort for a task manager. Form: model-name:effort. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
     "worker": "Model and effort for a worker. Form: model-name:effort.",
     "permission_mode": "How much an agent may do without asking. One of: " + ", ".join(PERMISSION_MODES) + ".",
-    "cloud_permission_mode": "Permission mode of a session started from the Agent City cloud page. One of: " + ", ".join(PERMISSION_MODES) + ". Missing or refused means auto.",
     "auto_resume": "Run agent-resume.sh by itself when a main manager starts. yes or no.",
     "language": "Language for talking to the human, e.g. en, zh, ms. Code and rules stay English.",
     "board_guard": "Launch guard. One of: record (default: record launches on the board only), on (also block a launch naming no open todo task), off.",
@@ -83,7 +77,6 @@ HINTS = {
     "city_port": "Port the agent city listens on, on 127.0.0.1 only. Whole number, 1024 to 65535.",
     "city_idle_min": "Minutes the agent city keeps running with no browser open, then it stops by itself. Whole number, 1 to 240.",
     "city_governor_wait_sec": "Seconds the governor has to answer an agent's question before the owner gets it in the city page. Whole number, 5 to 3600.",
-    "city_relay_sec": "Seconds between syncs with a joined team relay. Whole number, 2 to 60.",
     "stage_brief": "How much of the progress bar the brief step of the task manager is worth. Relative weight, whole number 0 to 100.",
     "stage_register": "How much of the progress bar the register step (the todo line and worktree) is worth. Relative weight, whole number 0 to 100.",
     "stage_mock": "How much of the progress bar the mock step is worth. Relative weight, whole number 0 to 100.",
@@ -108,7 +101,7 @@ HINTS = {
     "compact_clear_at": "Compaction number at which the pane gets a save prompt and /clear. 0 = off. Whole number, 0 to 20.",
     "compact_clear_check_sec": "Seconds between checks that the input box is empty before the auto clear types. Whole number, 1 to 600.",
     "watch_quiet_min": "Minutes a running task's state file may stay unchanged before the board adds not confirmed to its row. Whole number, 1 to 240.",
-    "cleanup_days": "Days after which a state copy, the monitor file or a quiet todo line counts as old for the clean-up skill. Whole number, 1 to 3650.",
+    "cleanup_days": "Days after which a state copy, a leftover monitor file or a quiet todo line counts as old for the clean-up skill. Whole number, 1 to 3650.",
     "docs_keep": "Extra docs a repo keeps in the clean-up skill. Comma-separated, a folder ends in /, other entries are globs from the repo top, e.g. docs/,CHANGELOG.md,*/README.md. Empty = none.",
     "owner_order_hours": "Hours old an owner prompt may be for a relayed owner order to verify. Whole number, 1 to 720.",
     "owner_order_min_chars": "Shortest quote a relayed owner order may carry; a wide character counts 2. Whole number, 8 to 200.",
@@ -117,11 +110,11 @@ HINTS = {
 
 GROUPS = [
     ("limits", ["max_usage_percent", "heavy_test_slots", "max_agents",
-                "monitor_interval_min", "stall_min", "housekeep_interval_min"]),
+                "housekeep_interval_min"]),
     ("roles", list(ROLE_KEYS)),
-    ("permission", ["permission_mode", "cloud_permission_mode", "auto_resume", "language", "board_guard"]),
+    ("permission", ["permission_mode", "auto_resume", "language", "board_guard"]),
     ("runtime", ["runtime"]),
-    ("city", ["city_port", "city_idle_min", "city_governor_wait_sec", "city_relay_sec"]),
+    ("city", ["city_port", "city_idle_min", "city_governor_wait_sec"]),
     ("progress", ["stage_brief", "stage_register", "stage_mock", "stage_tests", "stage_workers",
                   "stage_verify", "stage_push", "stage_report", "stage_e2e", "stage_merge",
                   "board_watch_sec", "progress_eta_min_pct", "statusline_refresh_sec"]),
@@ -282,7 +275,7 @@ def validate_value(key, value):
         return _validate_decider(value)
     if key in ROLE_KEYS:
         return _validate_role(value)
-    if key in ("permission_mode", "cloud_permission_mode"):
+    if key == "permission_mode":
         return _validate_permission_mode(value)
     if key == "auto_resume":
         return _validate_yes_no(value)
@@ -310,7 +303,7 @@ MODEL_FAMILIES = ("opus", "sonnet", "haiku", "fable")
 
 
 USER_CONF_ENV = "AUTO_PIPELINE_USER_CONF"
-USER_KEYS = ("permission_mode", "cloud_permission_mode", "auto_update")
+USER_KEYS = ("permission_mode", "auto_update")
 
 
 def user_conf_path():

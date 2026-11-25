@@ -6,7 +6,7 @@ CONTRACT
 
 1. bin/agent_conf.py, the user-wide file
    USER_CONF_ENV = "AUTO_PIPELINE_USER_CONF"
-   USER_KEYS = ("permission_mode", "cloud_permission_mode", "auto_update")
+   USER_KEYS = ("permission_mode", "auto_update")
      (auto_update is part C, auto-update; it is never an agent.conf key)
    user_conf_path() -> $AUTO_PIPELINE_USER_CONF when set and not empty, else
      ~/.claude/auto-pipeline.conf ($HOME read at call time). One per machine,
@@ -33,7 +33,7 @@ CONTRACT
 2. bin/agent-settings.sh
    get <key>   exactly ONE stdout line "<value> (from <source>)", exit 0, from
                effective(): the user file, else agent.conf. Not set anywhere:
-               permission_mode / cloud_permission_mode -> "auto (default)",
+               permission_mode -> "auto (default)",
                auto_update -> "on (default)", any other key -> nothing on
                stdout, a message on stderr, exit 1. Run from a worktree: still
                one line (no main-repo note), so its first word is the value.
@@ -53,11 +53,8 @@ CONTRACT
 
 3. Launch points use the effective value (user file, else agent.conf, else
    today's fallback)
-   bin/agent_city.py agent_command(name, folder, city_dir=None, cloud=False):
-     local: effective permission_mode, none -> no --permission-mode;
-     cloud: effective cloud_permission_mode, none -> --permission-mode auto.
-     The user file's permission_mode never decides a cloud line, its
-     cloud_permission_mode never a local one. Never raises.
+   bin/agent_city.py agent_command(name, folder, city_dir=None):
+     effective permission_mode, none -> no --permission-mode. Never raises.
    bin/agent-resume.sh: --permission-mode is effective permission_mode, none
      -> auto.
    skills/dispatch/SKILL.md: <mode> comes from
@@ -69,7 +66,7 @@ CONTRACT
 
 4. Start text (bin/agent-start.sh), every role, not on the compact path:
    exactly one line
-     "PERMISSION: <m> (from <src>), cloud page <c> (from <src>)"
+     "PERMISSION: <m> (from <src>)"
    with "auto (default)" in place of "<v> (from <src>)" for a part not set
    anywhere. User file entries that are ignored -> exactly one line
      "USER CONF: ignored in <display path>: <key>=<value>, <key>=<value>"
@@ -143,7 +140,7 @@ class TestUserConfPath(TmpCase):
     def test_constants(self):
         self.assertEqual(agent_conf.USER_CONF_ENV, ENV)
         self.assertEqual(tuple(agent_conf.USER_KEYS),
-                         ("permission_mode", "cloud_permission_mode", "auto_update"))
+                         ("permission_mode", "auto_update"))
 
     def test_the_env_var_wins(self):
         self.assertEqual(agent_conf.user_conf_path(), self.user)
@@ -181,18 +178,18 @@ class TestReadUserConf(TmpCase):
         self.assertEqual(agent_conf.read_user_conf(), ({}, []))
 
     def test_honoured_keys(self):
-        self.write_user("permission_mode=bypassPermissions\ncloud_permission_mode=plan\nauto_update=off\n")
+        self.write_user("permission_mode=bypassPermissions\nauto_update=off\n")
         values, ignored = agent_conf.read_user_conf()
-        self.assertEqual(values, {"permission_mode": "bypassPermissions",
-                                  "cloud_permission_mode": "plan", "auto_update": "off"})
+        self.assertEqual(values, {"permission_mode": "bypassPermissions", "auto_update": "off"})
         self.assertEqual(ignored, [])
 
     def test_refused_values_and_other_keys_are_ignored_and_named(self):
         self.write_user("# mine\n\npermission_mode=yolo\nworker=sonnet-5:low\n"
                         "cloud_permission_mode = auto \nnot a line\nlanguage=zh\n")
         values, ignored = agent_conf.read_user_conf()
-        self.assertEqual(values, {"cloud_permission_mode": "auto"})
-        self.assertEqual(ignored, ["permission_mode=yolo", "worker=sonnet-5:low", "language=zh"])
+        self.assertEqual(values, {})
+        self.assertEqual(ignored, ["permission_mode=yolo", "worker=sonnet-5:low",
+                                   "cloud_permission_mode=auto", "language=zh"])
 
     def test_an_explicit_path(self):
         other = os.path.join(self.base, "other.conf")
@@ -212,14 +209,12 @@ class TestReadUserConf(TmpCase):
 
 
 class TestEffective(TmpCase):
-    CONF = {"permission_mode": "auto", "cloud_permission_mode": "manual", "auto_update": "off"}  # five-fixes S1: default is refused
+    CONF = {"permission_mode": "auto", "auto_update": "off"}  # five-fixes S1: default is refused
 
     def test_user_file_wins(self):
         self.write_user("permission_mode=bypassPermissions\n")
         self.assertEqual(agent_conf.effective("permission_mode", self.CONF),
                          ("bypassPermissions", agent_conf.display_path(self.user)))
-        self.assertEqual(agent_conf.effective("cloud_permission_mode", self.CONF),
-                         ("manual", "agent.conf"))
 
     def test_agent_conf_next(self):
         self.assertEqual(agent_conf.effective("permission_mode", self.CONF), ("auto", "agent.conf"))
@@ -248,20 +243,22 @@ class TestEffective(TmpCase):
         conf = os.path.join(self.base, "agent.conf")
         with open(conf, "w") as fh:
             fh.write("permission_mode=auto\n")
-        self.write_user("cloud_permission_mode=bypassPermissions\n")
+        self.write_user("permission_mode=plan\n")
 
         def run(*args):
             return subprocess.run([sys.executable, os.path.join(BIN, "agent_conf.py"), "effective"] + list(args),
                                   capture_output=True, text=True, env=dict(os.environ), timeout=30)
 
         r = run("permission_mode", conf)
-        self.assertEqual((r.returncode, r.stdout), (0, "auto\tagent.conf\n"))
-        r = run("cloud_permission_mode", conf)
         self.assertEqual((r.returncode, r.stdout),
-                         (0, "bypassPermissions\t%s\n" % agent_conf.display_path(self.user)))
+                         (0, "plan\t%s\n" % agent_conf.display_path(self.user)))
+        r = run("cloud_permission_mode", conf)
+        self.assertEqual((r.returncode, r.stdout), (1, ""))
         r = run("auto_update", conf)
         self.assertEqual((r.returncode, r.stdout), (1, ""))
         r = run("permission_mode", os.path.join(self.base, "missing.conf"))
+        self.assertEqual((r.returncode, r.stdout), (0, "plan\t%s\n" % agent_conf.display_path(self.user)))
+        r = run("language", os.path.join(self.base, "missing.conf"))
         self.assertEqual((r.returncode, r.stdout), (1, ""))
         self.assertNotIn("Traceback", r.stderr)
 
@@ -295,15 +292,13 @@ class TestSettingsGet(SettingsCase):
         home = self.repo.fake_home()
         os.makedirs(os.path.join(home, ".claude"))
         with open(os.path.join(home, ".claude", "auto-pipeline.conf"), "w") as fh:
-            fh.write("cloud_permission_mode=plan\n")
-        out = self.assertOk(self.settings("get", "cloud_permission_mode", env={ENV: ""}))
+            fh.write("permission_mode=plan\n")
+        out = self.assertOk(self.settings("get", "permission_mode", env={ENV: ""}))
         self.assertEqual(out, "plan (from ~/.claude/auto-pipeline.conf)\n")
 
     def test_not_set_anywhere(self):
         self.repo.unset_conf("permission_mode")
-        self.repo.unset_conf("cloud_permission_mode")
         self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "auto (default)\n")
-        self.assertEqual(self.assertOk(self.settings("get", "cloud_permission_mode")), "auto (default)\n")
         self.assertEqual(self.assertOk(self.settings("get", "auto_update")), "on (default)\n")
 
     def test_another_key(self):
@@ -333,12 +328,12 @@ class TestSettingsUser(SettingsCase):
         self.assertEqual(open(self.repo.path("agent.conf")).read(), before, "agent.conf is never written")
 
     def test_replaces_one_line_and_keeps_the_rest(self):
-        self.repo.set_user_conf("# mine\npermission_mode=auto\ncloud_permission_mode=plan\n")
+        self.repo.set_user_conf("# mine\npermission_mode=auto\nauto_update=off\n")
         self.assertOk(self.settings("--user", "permission_mode", "manual"))
-        self.assertEqual(self.user_text(), "# mine\npermission_mode=manual\ncloud_permission_mode=plan\n")
-        self.assertOk(self.settings("--user", "cloud_permission_mode", "bypassPermissions"))
+        self.assertEqual(self.user_text(), "# mine\npermission_mode=manual\nauto_update=off\n")
+        self.assertOk(self.settings("--user", "permission_mode", "bypassPermissions"))
         self.assertEqual(agent_conf.load(self.repo.user_conf),
-                         {"permission_mode": "manual", "cloud_permission_mode": "bypassPermissions"})
+                         {"permission_mode": "bypassPermissions", "auto_update": "off"})
 
     def test_only_the_user_keys(self):
         for key, value in (("worker", "sonnet-5:high"), ("language", "zh"), ("max_agents", "3")):
@@ -395,38 +390,34 @@ class TestCityCommand(TmpCase):
                 fh.write(conf)
         return folder
 
-    def mode(self, folder, cloud):
-        words = shlex.split(ac.agent_command("shop Manager", folder, cloud=cloud))
+    def mode(self, folder):
+        words = shlex.split(ac.agent_command("shop Manager", folder))
         if "--permission-mode" not in words:
             return None
         return words[words.index("--permission-mode") + 1]
 
     def test_local_user_file_wins(self):
-        folder = self.repo_dir("main_manager=opus-5.5:high\npermission_mode=auto\ncloud_permission_mode=auto\n")
+        folder = self.repo_dir("main_manager=opus-5.5:high\npermission_mode=auto\n")
         self.write_user("permission_mode=bypassPermissions\n")
-        self.assertEqual(self.mode(folder, False), "bypassPermissions")
-        self.assertEqual(self.mode(folder, True), "auto", "permission_mode never decides a cloud line")
+        self.assertEqual(self.mode(folder), "bypassPermissions")
 
-    def test_cloud_user_file_wins(self):
-        folder = self.repo_dir("main_manager=opus-5.5:high\npermission_mode=plan\ncloud_permission_mode=auto\n")
+    def test_the_old_cloud_key_in_the_user_file_decides_nothing(self):
+        folder = self.repo_dir("main_manager=opus-5.5:high\npermission_mode=plan\n")
         self.write_user("cloud_permission_mode=bypassPermissions\n")
-        self.assertEqual(self.mode(folder, True), "bypassPermissions")
-        self.assertEqual(self.mode(folder, False), "plan", "cloud_permission_mode never decides a local line")
+        self.assertEqual(self.mode(folder), "plan")
 
     def test_a_refused_user_value_falls_back(self):
         folder = self.repo_dir("main_manager=opus-5.5:high\npermission_mode=plan\n")
-        self.write_user("permission_mode=yolo\ncloud_permission_mode=$(touch pwned)\n")
-        self.assertEqual(self.mode(folder, False), "plan")
-        self.assertEqual(self.mode(folder, True), "auto")
+        self.write_user("permission_mode=$(touch pwned)\n")
+        self.assertEqual(self.mode(folder), "plan")
         self.assertFalse(os.path.exists(os.path.join(folder, "pwned")))
 
     def test_no_agent_conf_the_user_file_still_counts(self):
         folder = self.repo_dir(None)
         self.write_user("permission_mode=acceptEdits\n")
-        self.assertEqual(self.mode(folder, False), "acceptEdits")
+        self.assertEqual(self.mode(folder), "acceptEdits")
         self.write_user("")
-        self.assertIsNone(self.mode(folder, False), "nothing set: as before, no flag")
-        self.assertEqual(self.mode(folder, True), "auto")
+        self.assertIsNone(self.mode(folder), "nothing set: as before, no flag")
 
     def test_the_rest_of_the_line_is_unchanged(self):
         folder = self.repo_dir("main_manager=opus-5.5:high\npermission_mode=auto\n")
@@ -438,8 +429,7 @@ class TestCityCommand(TmpCase):
     def test_never_raises(self):
         folder = self.repo_dir("main_manager=opus-5.5:high\npermission_mode=auto\n")
         os.makedirs(self.user)
-        self.assertEqual(self.mode(folder, False), "auto")
-        self.assertEqual(self.mode(folder, True), "auto")
+        self.assertEqual(self.mode(folder), "auto")
 
 
 class TestResume(ScriptCase):
@@ -456,7 +446,7 @@ class TestResume(ScriptCase):
 
     def test_user_file_wins(self):
         self.repo.set_conf("permission_mode", "auto")
-        self.repo.set_user_conf("permission_mode=bypassPermissions\ncloud_permission_mode=plan\n")
+        self.repo.set_user_conf("permission_mode=bypassPermissions\n")
         self.assertTrue(self.command().endswith("--permission-mode bypassPermissions"))
 
     def test_agent_conf_without_a_user_file(self):
@@ -496,7 +486,7 @@ class TestLaunchText(unittest.TestCase):
         text = read("PRINCIPLES.md")
         line = next(l for l in text.splitlines() if l.startswith("- New terminals"))
         self.assertIn("~/.claude/auto-pipeline.conf", line)
-        self.assertIn("cloud_permission_mode", line)
+        self.assertNotIn("cloud_permission_mode", line)
         self.assertIn("permission_mode", line)
 
     def test_s1_names_the_user_file(self):
@@ -522,9 +512,8 @@ class StartCase(ScriptCase):
 class TestStartPermissionLine(StartCase):
     def test_from_agent_conf(self):
         self.repo.set_conf("permission_mode", "acceptEdits")
-        self.repo.set_conf("cloud_permission_mode", "auto")
         self.assertEqual(self.lines_with(self.start(), "PERMISSION:"),
-                         ["PERMISSION: acceptEdits (from agent.conf), cloud page auto (from agent.conf)"])
+                         ["PERMISSION: acceptEdits (from agent.conf)"])
 
     def test_from_the_home_user_file(self):
         home = self.repo.fake_home()
@@ -532,17 +521,14 @@ class TestStartPermissionLine(StartCase):
         with open(os.path.join(home, ".claude", "auto-pipeline.conf"), "w") as fh:
             fh.write("permission_mode=bypassPermissions\n")
         self.repo.set_conf("permission_mode", "auto")
-        self.repo.set_conf("cloud_permission_mode", "auto")
         lines = self.lines_with(self.start(env={ENV: ""}), "PERMISSION:")
-        self.assertEqual(lines, ["PERMISSION: bypassPermissions (from ~/.claude/auto-pipeline.conf), "
-                                 "cloud page auto (from agent.conf)"])
+        self.assertEqual(lines, ["PERMISSION: bypassPermissions (from ~/.claude/auto-pipeline.conf)"])
         self.assertTrue(lines[0].startswith("PERMISSION: bypassPermissions (from ~/.claude/auto-pipeline.conf)"))
 
     def test_not_set(self):
         self.repo.unset_conf("permission_mode")
-        self.repo.unset_conf("cloud_permission_mode")
         self.assertEqual(self.lines_with(self.start(), "PERMISSION:"),
-                         ["PERMISSION: auto (default), cloud page auto (default)"])
+                         ["PERMISSION: auto (default)"])
 
     def test_the_main_manager_gets_it_too(self):
         out = self.assertOk(self.repo.run("agent-start.sh"))
@@ -550,13 +536,13 @@ class TestStartPermissionLine(StartCase):
 
     def test_ignored_entries_one_line(self):
         self.repo.set_conf("permission_mode", "plan")
-        self.repo.set_user_conf("permission_mode=yolo\nworker=sonnet-5:low\ncloud_permission_mode=auto\n")
+        self.repo.set_user_conf("permission_mode=yolo\nworker=sonnet-5:low\n")
         out = self.start()
         self.assertEqual(self.lines_with(out, "USER CONF:"),
                          ["USER CONF: ignored in %s: permission_mode=yolo, worker=sonnet-5:low"
                           % self.repo.user_conf])
         self.assertEqual(self.lines_with(out, "PERMISSION:"),
-                         ["PERMISSION: plan (from agent.conf), cloud page auto (from %s)" % self.repo.user_conf])
+                         ["PERMISSION: plan (from agent.conf)"])
 
     def test_nothing_ignored_no_line(self):
         self.repo.set_user_conf("permission_mode=auto\n")

@@ -19,6 +19,17 @@
 #                                  kept; no duplicates; file created when
 #                                  missing). Invalid JSON or a wrong shape:
 #                                  exit 1, file untouched. Nothing else is done.
+#   bin/agent-init.sh --scope selected <repo path>...
+#                                  run auto-pipeline only in those repos: merge
+#                                  enabledPlugins["auto-pipeline@auto-pipeline"]=true
+#                                  into each <repo>/.claude/settings.json (created
+#                                  when missing, other keys kept), then set it false
+#                                  in the user settings file (~/.claude/settings.json,
+#                                  or $CLAUDE_CONFIG_DIR/settings.json; .bak copy
+#                                  first). Invalid JSON anywhere: exit 1, nothing
+#                                  written. One line per file changed.
+#   bin/agent-init.sh --scope all  run in all repos: set it true in the user
+#                                  settings file; repo files are left alone.
 #   bin/agent-init.sh -h           print this block, create nothing, exit 0
 #
 # Creates, only when missing, in the project root: agent.conf (a copy of
@@ -64,11 +75,66 @@ set -eu
 . "$(dirname "$0")/agent-roots.sh"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,62p' "$0"; exit 0;;
+  -h|--help) sed -n '2,72p' "$0"; exit 0;;
 esac
+
+# Plugin on/off per repo or per user. Python does the JSON. Args: all|selected,
+# then repo paths. All files are checked first; any bad one = exit 1, no write.
+scope_run() {
+  python3 - "$@" <<'PY'
+import json, os, shutil, sys
+
+KEY = "auto-pipeline@auto-pipeline"
+scope, repos = sys.argv[1], sys.argv[2:]
+cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+user = os.path.join(cfg, "settings.json")
+
+def load(path):
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as fh:
+            text = fh.read()
+        data = json.loads(text) if text.strip() else {}
+    except ValueError as exc:
+        sys.stderr.write("agent-init.sh: %s is not valid JSON (%s). Nothing written.\n" % (path, exc))
+        sys.exit(1)
+    if not isinstance(data, dict) or not isinstance(data.get("enabledPlugins", {}), dict):
+        sys.stderr.write("agent-init.sh: %s has the wrong shape (enabledPlugins). Nothing written.\n" % path)
+        sys.exit(1)
+    return data
+
+jobs = []
+if scope == "selected":
+    for r in repos:
+        jobs.append((os.path.join(r, ".claude", "settings.json"), True, False))
+    jobs.append((user, False, True))
+else:
+    jobs.append((user, True, True))
+loaded = [(p, v, b, load(p)) for p, v, b in jobs]
+for path, value, backup, data in loaded:
+    ep = data.setdefault("enabledPlugins", {})
+    if ep.get(KEY) is value:
+        print("kept: %s (%s already %s)" % (path, KEY, str(value).lower()))
+        continue
+    existed = os.path.exists(path)
+    ep[KEY] = value
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if backup and existed:
+        shutil.copy2(path, path + ".bak")
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(data, fh, indent=2)
+        fh.write("\n")
+    os.replace(tmp, path)
+    print("updated: %s (%s set to %s)" % (path, KEY, str(value).lower()))
+PY
+}
 
 MODE=""
 MODE_GIVEN=0
+SCOPE=""
+
 ADD_PERMS=0
 AUTO_UPDATE=""
 while [ $# -gt 0 ]; do
@@ -96,9 +162,29 @@ while [ $# -gt 0 ]; do
       esac
       shift 2;;
     --add-permissions) ADD_PERMS=1; shift;;
+    --scope)
+      case "${2:-}" in
+        all|selected) SCOPE="$2";;
+        *) echo "agent-init.sh: --scope must be all or selected, got: ${2:-}" >&2; exit 2;;
+      esac
+      shift 2;;
     *) break;;
   esac
 done
+
+if [ -n "$SCOPE" ]; then
+  if [ "$SCOPE" = selected ]; then
+    if [ $# -eq 0 ]; then
+      echo "agent-init.sh: --scope selected needs at least one repo path" >&2
+      exit 2
+    fi
+    for d in "$@"; do
+      [ -d "$d" ] || { echo "agent-init.sh: no such directory: $d" >&2; exit 2; }
+    done
+  fi
+  scope_run "$SCOPE" "$@"
+  exit $?
+fi
 
 TARGET="${1:-}"
 if [ -n "$TARGET" ] && [ ! -d "$TARGET" ]; then

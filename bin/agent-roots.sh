@@ -41,8 +41,8 @@
 #                files into the project's main repo.
 #
 # Per-project files live in PROJECT_ROOT: agent.conf, agent_todo.txt,
-# agent_completed.txt, agent_ideas.txt, agent_worktree.txt, agent_monitor.txt,
-# .secrets/. The main-manager lock, the closed list and the monitor pid live in
+# agent_completed.txt, agent_ideas.txt, agent_worktree.txt,
+# .secrets/. The main-manager lock, the closed list and the watch status (agent_watch.json) live in
 # PROJECT_GITDIR, the project's shared git dir, or "$PROJECT_ROOT/.auto-pipeline" when there is
 # no git (never ".git" — that name belongs to git, not us). agent_state.txt
 # lives in STATE_DIR, the git toplevel of the directory the agent is in, so a
