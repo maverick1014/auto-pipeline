@@ -93,6 +93,14 @@ class TestTodoAddChecks(Case):
         r = self.refused("todo", "add", "x", "small", "x", "5", "--checks", "DIFF READ,SMOKE TEST")
         self.assertIn("SMOKE TEST", r.stderr)
 
+    def test_owner_sign_may_be_planned(self):
+        # core review defect 6: a permission change needs the owner's sign; dispatch plans it
+        self.ok("todo", "add", "p", "big", "who can approve", "60", "--checks", "CORE REVIEW,OWNER SIGN")
+        self.assertIn("checks CORE REVIEW, OWNER SIGN", self.fields("p"))
+        self.ok("todo", "add", "q", "big", "x", "60")
+        self.ok("todo", "checks", "q", "OWNER SIGN")
+        self.assertIn("checks OWNER SIGN", self.fields("q"))
+
     def test_a_tool_block_may_be_planned_too(self):
         self.ok("todo", "add", "x", "small", "x", "5", "--checks", "CORE REVIEW,DIFF READ")
         self.assertIn("checks CORE REVIEW, DIFF READ", self.fields("x"))
@@ -151,6 +159,10 @@ class TestTodoChecks(Case):
         self.assertIn("--quote", args)
         self.assertIn("drop the diff read", args)
         self.assertIn("--repo", args)
+        # core review defect 1: agent-owner-order.sh verify wants an absolute folder
+        repo_arg = args[args.index("--repo") + 1]
+        self.assertTrue(os.path.isabs(repo_arg), repo_arg)
+        self.assertEqual(os.path.realpath(repo_arg), os.path.realpath(self.repo.dir))
 
 
 # ---------------------------------------------------------------- todo est
@@ -203,11 +215,25 @@ class TestCheckLine(Case):
         self.assertNotIn("CHECK", self.todo())
 
     def test_fail_and_owner_sign(self):
+        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("check", "t", "BUILD", "fail", "--by", "tm", "--evidence", "tsc: 2 errors")
-        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--evidence", "merge it (verified)")
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it")
         lines = self.state().strip().splitlines()
         self.assertTrue(lines[-2].startswith("CHECK t BUILD: fail | by tm | tsc: 2 errors | "))
-        self.assertTrue(lines[-1].startswith("CHECK t OWNER SIGN: pass | by owner | "))
+        self.assertTrue(lines[-1].startswith("CHECK t OWNER SIGN: pass | by owner | owner order verified: "
+                                             "yes merge it | "), lines[-1])
+
+    def test_owner_sign_needs_a_verified_owner_quote(self):
+        # core review defect 7: any agent could write an OWNER SIGN pass line
+        before = self.state()
+        r = self.af("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--evidence", "yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("--owner-quote", r.stderr)
+        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho 'refused: not typed'\nexit 1\n")
+        r = self.af("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("not typed", r.stderr)
+        self.assertEqual(self.state(), before)
 
     def test_refusals(self):
         for args in (("check", "t", "LOOKED", "pass", "--by", "x", "--evidence", "y"),
@@ -226,29 +252,47 @@ class TestCheckLine(Case):
 
 
 class TestGate(Case):
+    """The task's branch is committed and pushed (core review defect 4: the gate plans what merges)."""
 
-    def git(self, *args):
-        return subprocess.run(["git", "-C", self.repo.dir] + list(args), check=True,
+    def git(self, *args, cwd=None):
+        return subprocess.run(["git", "-C", cwd or self.repo.dir] + list(args), check=True,
                               capture_output=True, text=True).stdout
+
+    def write(self, files, cwd=None):
+        for rel, body in files.items():
+            full = os.path.join(cwd or self.repo.dir, rel)
+            os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
+            with open(full, "w") as fh:
+                fh.write(body)
+
+    def commit_push(self, files, cwd=None, push=True):
+        self.write(files, cwd)
+        self.git("add", *files, cwd=cwd)
+        self.git("commit", "-q", "-m", "change", cwd=cwd)
+        if push:
+            self.git("push", "-q", "-u", "origin", "HEAD", cwd=cwd)
 
     def setUp(self):
         super().setUp()
-        with open(os.path.join(self.repo.dir, "app.js"), "w") as fh:
-            fh.write("x()\n")
-        self.git("add", "-A")
+        self.origin = os.path.join(self.repo.base, "origin.git")
+        subprocess.run(["git", "init", "-q", "--bare", self.origin], check=True, capture_output=True)
+        self.write({"app.js": "x()\n"})
+        self.git("add", "app.js")
         self.git("commit", "-q", "-m", "base")
         self.git("tag", "base")
-        with open(os.path.join(self.repo.dir, "app.js"), "w") as fh:
-            fh.write("y()\n")
+        self.git("remote", "add", "origin", self.origin)
+        self.git("checkout", "-q", "-b", "feat")
+        self.git("push", "-q", "-u", "origin", "feat")
         # tool blocks of this diff: DIFF SCAN, BUILD, RELATED TESTS (none found)
+        self.commit_push({"app.js": "y()\n"})
         self.ok("todo", "add", "t", "small", "task", "10", "--checks", "DIFF READ")
 
-    def gate(self, *extra):
-        return self.af("checks", "gate", "t", "--dir", self.repo.dir, "--base", "base", *extra)
+    def gate(self, *extra, env=None, dirpath=None):
+        return self.af("checks", "gate", "t", "--dir", dirpath or self.repo.dir, "--base", "base", *extra, env=env)
 
-    def passes(self, *blocks):
+    def passes(self, *blocks, cwd=None):
         for b in blocks:
-            self.ok("check", "t", b, "pass", "--by", "tm", "--evidence", "ok")
+            self.ok("check", "t", b, "pass", "--by", "tm", "--evidence", "ok", cwd=cwd)
 
     def test_refused_while_a_planned_block_has_no_pass_line(self):
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
@@ -287,14 +331,93 @@ class TestGate(Case):
         self.assertEqual(self.gate().returncode, 1)
 
     def test_a_signing_block_plans_owner_sign(self):
-        with open(os.path.join(self.repo.dir, "package-lock.json"), "w") as fh:
-            fh.write('{"a": 2}\n')
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ", "FULL SUITE")
+        self.commit_push({"package-lock.json": '{"a": 2}\n'})
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ", "MODULE TESTS")
         r = self.gate()
         self.assertEqual(r.returncode, 1)
         self.assertIn("OWNER SIGN: missing", r.stdout.splitlines())
-        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--evidence", "yes, merge")
+        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes, merge")
         self.assertEqual(self.gate().returncode, 0)
+
+    def test_a_planned_owner_sign_is_gated(self):
+        # core review defect 6
+        self.ok("todo", "checks", "t", "OWNER SIGN")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("OWNER SIGN: missing", r.stdout.splitlines())
+
+    # -- core review defect 4: the gate plans what merges
+
+    def test_a_dirty_tree_is_refused(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ")
+        self.write({"app.js": "z()\n"})
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(r.stdout.splitlines()[-1],
+                         "GATE REFUSED t: uncommitted changes in %s (commit and push them, or drop them)" % self.repo.dir)
+
+    def test_agent_files_do_not_make_it_dirty(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ")
+        self.write({"agent_state.trim-2026-11-25.txt": "x\n"})
+        self.assertEqual(self.gate().returncode, 0, self.gate().stdout)
+
+    def test_an_unpushed_head_is_refused(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ")
+        self.commit_push({"app.js": "w()\n"}, push=False)
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(r.stdout.splitlines()[-1], "GATE REFUSED t: HEAD is not its pushed branch origin/feat")
+
+    def test_no_upstream_is_a_note(self):
+        self.git("checkout", "-q", "-b", "local-only")
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ")
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("note: no upstream: the gate plans this local HEAD", r.stdout.splitlines())
+
+    # -- core review defect 3: --dir decides, not CLAUDE_PROJECT_DIR
+
+    def test_claude_project_dir_does_not_move_the_plan(self):
+        # the task's worktree bumps the lockfile; the main folder (CLAUDE_PROJECT_DIR of a hook or the
+        # watch) does not: the plan must come from --dir, so OWNER SIGN is planned
+        wt = os.path.join(self.repo.base, "wt_lock")
+        self.git("worktree", "add", "-q", "-b", "feat-lock", wt, "feat")
+        self.commit_push({"package-lock.json": '{"a": 2}\n'}, cwd=wt)
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ", "MODULE TESTS")
+        r = self.gate(env={"CLAUDE_PROJECT_DIR": self.repo.dir}, dirpath=wt)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("OWNER SIGN: missing", r.stdout.splitlines())
+
+    # -- core review defect 2: result lines written from the main repo count
+
+    def test_lines_in_the_main_repos_state_count_for_a_worktree(self):
+        wt = os.path.join(self.repo.base, "wt_t")
+        self.git("worktree", "add", "-q", "-b", "feat-wt", wt, "feat")
+        self.git("push", "-q", "-u", "origin", "feat-wt", cwd=wt)
+        self.passes("DIFF SCAN", "BUILD", cwd=wt)                    # the task manager, in its worktree
+        self.passes("RELATED TESTS")                                 # a deputy of the main manager, in main
+        self.ok("check", "t", "DIFF READ", "pass", "--by", "t Check", "--evidence", "read it")
+        r = self.gate(dirpath=wt)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    # -- core review defect 5: builders by name
+
+    def test_the_task_manager_worker_and_deputy_are_builders_by_name(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        for who in ("t Task Manager", "t Worker 2", "t Worker 1: toast", "t Deputy"):
+            with self.subTest(who=who):
+                self.ok("check", "t", "DIFF READ", "pass", "--by", who, "--evidence", "read it")
+                r = self.gate()
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("DIFF READ: pass by the builder (%s), not accepted" % who, r.stdout.splitlines())
+
+    def test_the_check_deputy_is_no_builder(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        self.ok("check", "t", "DIFF READ", "pass", "--by", "t Check", "--evidence", "read it")
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stdout)
 
     def test_results_from_a_file(self):
         path = os.path.join(self.repo.base, "report.txt")

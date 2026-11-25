@@ -21,8 +21,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from scripthelp import ROOT, BIN, ScriptCase  # noqa: E402
 
-TOOL = ["DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK",
-        "FULL SUITE", "CORE REVIEW"]
+# owner 1A 2026-11-25 (requirement section 15): FULL SUITE is gone, MODULE TESTS is the largest per-task check
+TOOL = ["DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK",
+        "CORE REVIEW"]
 BRIEF = ["DIFF READ", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK", "REAL DATA COUNT"]
 FILE_LINE = re.compile(r"^FILE (\S+): (\S+) \((.*)\)$")
 
@@ -63,7 +64,7 @@ class TestTheTable(unittest.TestCase):
     def test_who_signs(self):
         sign = {b["name"]: b["sign"] for b in self.mod.BLOCKS}
         self.assertEqual(sign["DATA CHECK"], "yes")
-        self.assertEqual(sign["FULL SUITE"], "yes")
+        self.assertEqual(sign["MODULE TESTS"], "a dependency, lockfile, CI or test-config change")
         self.assertIn("changes or removes data or columns", sign["DB CHECK"])
         self.assertIn("permission", sign["CORE REVIEW"])
         for name in ("DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS") + tuple(BRIEF):
@@ -77,12 +78,15 @@ class TestTheTable(unittest.TestCase):
         self.assertEqual(trig["GUARD TESTS"], "code or text changed")
         self.assertEqual(trig["DB CHECK"], "a migration or schema file is in the diff")
         self.assertEqual(trig["DATA CHECK"], "a script that changes live data")
-        self.assertEqual(trig["FULL SUITE"], "dependencies, lockfile, CI or test config changed")
+        self.assertEqual(trig["MODULE TESTS"],
+                         "code used by other modules changed, or dependencies, lockfile, CI or test config changed")
+        self.assertNotIn("API change", {b["name"]: b["runs"] for b in self.mod.BLOCKS}["RELATED TESTS"])
+        self.assertNotIn("FULL SUITE", [b["name"] for b in self.mod.BLOCKS])
         self.assertIn("core path", trig["CORE REVIEW"])
         self.assertIn("posting rule", trig["CORE REVIEW"])
 
     def test_the_net_is_outside_tasks(self):
-        self.assertEqual([n["name"] for n in self.mod.NET], ["NIGHTLY SUITE", "RELEASE SMOKE"])
+        self.assertEqual([n["name"] for n in self.mod.NET], ["NIGHTLY RUN", "RELEASE SMOKE"])
         for n in self.mod.NET:
             self.assertTrue(n["runs"].strip())
 
@@ -413,12 +417,20 @@ class TestTriggers(BlocksCase):
         r = self.run_case({"img/a.png": b"\x89PNG1"}, {"img/a.png": b"\x89PNG2"}, conf=CONF_JS)
         self.assertEqual(self.blocks(r), ["DIFF SCAN"])
 
-    def test_ci_config_is_full_suite_and_owner_sign(self):
+    def test_ci_config_is_every_module_and_owner_sign(self):
         r = self.run_case({".github/workflows/ci.yml": "a: 1\n"}, {".github/workflows/ci.yml": "a: 2\n"}, conf=CONF_JS)
         got = self.blocks(r)
-        self.assertIn("FULL SUITE", got)
+        self.assertIn("MODULE TESTS", got)
         self.assertIn("OWNER SIGN", got)
-        self.assertEqual(self.detail(r, "FULL SUITE"), ".github/workflows/ci.yml | run: npx jest --maxWorkers=2")
+        self.assertEqual(self.detail(r, "MODULE TESTS"),
+                         "every module (.github/workflows/ci.yml) | run: npx jest --maxWorkers=2")
+
+    def test_every_module_runs_each_group_when_the_repo_has_groups(self):
+        conf = CONF_JS + "group.src/a=npm run test:a\ngroup.src/b=npm run test:b\n"
+        r = self.run_case({"yarn.lock": "a\n"}, {"yarn.lock": "b\n"}, conf=conf)
+        self.assertEqual(self.detail(r, "MODULE TESTS"),
+                         "every module (yarn.lock) | run: npm run test:a ; npm run test:b")
+        self.assertIn("MODULE TESTS (yarn.lock)", self.detail(r, "OWNER SIGN"))
 
     def test_core_review(self):
         r = self.run_case({"src/auth/login.py": "x = 1\n"}, {"src/auth/login.py": "x = 2\n"},
@@ -534,17 +546,19 @@ class TestRelated(BlocksCase):
                            "src/billing/pay.js": "pay()\n",
                            "src/lib/validate.test.js": "require('./validate')\n"},
                           {"src/lib/validate.js": "module.exports = v2\n"}, conf=conf)
-        lines = r.stdout.splitlines()
-        self.assertIn("group src/orders: npm run test:orders", lines)
-        self.assertIn("group src/users: npm run test:users", lines)
-        self.assertNotIn("group src/billing: npm run test:billing", lines)
+        # section 15: the importing modules' groups are MODULE TESTS now, no sign for a code change
+        self.assertIn("MODULE TESTS", self.blocks(r))
+        self.assertEqual(self.detail(r, "MODULE TESTS"),
+                         "src/orders, src/users | run: npm run test:orders ; npm run test:users")
+        self.assertNotIn("OWNER SIGN", self.blocks(r))
+        self.assertFalse([l for l in r.stdout.splitlines() if l.startswith("group ")], r.stdout)
 
     def test_no_groups_for_a_style_change(self):
         conf = CONF_JS + "group.src/pages=npm run test:pages\n"
         r = self.run_case({"src/components/Button.css": ".b{}\n",
                            "src/pages/Home.jsx": "import './../components/Button.css'\n"},
                           {"src/components/Button.css": ".c{}\n"}, conf=conf)
-        self.assertNotIn("group src/pages", r.stdout)
+        self.assertNotIn("MODULE TESTS", self.blocks(r))
 
 
 class TestDb(BlocksCase):
@@ -555,7 +569,7 @@ class TestDb(BlocksCase):
         got = self.blocks(r)
         self.assertIn("DB CHECK", got)
         self.assertNotIn("OWNER SIGN", got)
-        self.assertNotIn("FULL SUITE", got)
+        self.assertNotIn("MODULE TESTS", got)
         self.assertEqual(self.detail(r, "DB CHECK"), "db/migrations/0002.sql | owner signs: no (adds only)")
 
     def test_update_or_drop_signs(self):
@@ -644,6 +658,98 @@ class TestDiffScan(BlocksCase):
         self.assertFalse(any("a.test.js" in g for g in got), got)
 
 
+# ---------------------------------------------------------------- core review defects 8-11
+
+
+class TestReviewDbSign(BlocksCase):
+    """Defect 8: unsure = sign. A migration signs unless it only adds."""
+
+    def sign_of(self, path, body):
+        TestKinds.tearDown_repo(self)
+        r = self.run_case({"seed.txt": "x\n"}, {path: body})
+        self.assertIn("DB CHECK", self.blocks(r), r.stdout)
+        return "OWNER SIGN" in self.blocks(r)
+
+    def test_removals_and_changes_sign(self):
+        for path, body in (
+                ("db/migrate/20261125_a.js", "await queryInterface.removeColumn('users', 'email')\n"),
+                ("db/migrate/20261125_b.js", "await queryInterface.changeColumn('users', 'email', {})\n"),
+                ("db/migrate/20261125_c.js", "await queryInterface.bulkDelete('users', null, {})\n"),
+                ("database/migrations/2026_11_25_d.php", "Schema::dropIfExists('users');\n"),
+                ("priv/repo/migrations/20261125_e.exs", "alter table(:users) do\n  remove :email\nend\n"),
+                ("db/migrate/20261125_f.rb", "def change\n  remove_reference :orders, :user\nend\n"),
+                ("db/migrate/20261125_g.rb", "def change\n  remove_timestamps :orders\nend\n"),
+                ("migrations/20261125_h.js", "db.users.updateMany({}, {$set: {a: 1}})\n"),
+                ("Migrations/20261125_DropEmail.cs", "migrationBuilder.DropColumn(name: \"Email\", table: \"Users\");\n")):
+            with self.subTest(path=path):
+                self.assertTrue(self.sign_of(path, body))
+
+    def test_adds_only_do_not_sign(self):
+        for path, body in (
+                ("db/migrations/0002.sql", "ALTER TABLE o ADD COLUMN note text;\nCREATE INDEX o_note ON o (note);\n"),
+                ("db/migrate/20261125_add_note.rb",
+                 "class AddNote < ActiveRecord::Migration[7.0]\n  def change\n    add_column :orders, :note, :string\n"
+                 "  end\nend\n"),
+                ("app/migrations/0002_note.py",
+                 "from django.db import migrations, models\n\nclass Migration(migrations.Migration):\n"
+                 "    dependencies = [('app', '0001')]\n    operations = [\n"
+                 "        migrations.AddField(model_name='order', name='note', field=models.TextField(null=True)),\n"
+                 "    ]\n")):
+            with self.subTest(path=path):
+                self.assertFalse(self.sign_of(path, body))
+
+
+class TestReviewDodges(BlocksCase):
+    """Defects 9 and 10: dependency lists, a capitalised Migrations folder, data scripts."""
+
+    def kind(self, before, after, path, conf=None):
+        TestKinds.tearDown_repo(self)
+        r = self.run_case(before, after, conf)
+        return self.files(r)[path][0], r
+
+    def test_more_dependency_lists(self):
+        for path in ("requirements/prod.txt", "composer.json", "setup.py", "setup.cfg"):
+            with self.subTest(path=path):
+                k, r = self.kind({path: "a==1\n"}, {path: "a==2\n"}, path)
+                self.assertEqual(k, "deps")
+                self.assertIn("OWNER SIGN", self.blocks(r))
+
+    def test_a_capitalised_migrations_folder(self):
+        k, r = self.kind({"seed.txt": "x\n"}, {"Migrations/20261125_AddNote.cs": "migrationBuilder.AddColumn();\n"},
+                         "Migrations/20261125_AddNote.cs")
+        self.assertIn("migration", k.split("+"))
+        self.assertIn("DB CHECK", self.blocks(r))
+
+    def test_multi_line_sql_in_a_script(self):
+        body = 'cur.execute("""\n    UPDATE accounts\n    SET balance = 0\n    WHERE id = 5\n""")\n'
+        k, r = self.kind({"seed.txt": "x\n"}, {"scripts/fix_balance.py": body}, "scripts/fix_balance.py")
+        self.assertEqual(k, "data-script")
+        self.assertIn("OWNER SIGN", self.blocks(r))
+
+    def test_orm_bulk_writes_in_task_folders(self):
+        for path, body in (("lib/tasks/fix.rake", "Account.where(x: 1).update_all(balance: 0)\n"),
+                           ("tools/clean.js", "await db.collection('a').deleteMany({})\n"),
+                           ("app/management/commands/fix.py", "Order.objects.filter(a=1).delete()\n")):
+            with self.subTest(path=path):
+                k, _ = self.kind({"seed.txt": "x\n"}, {path: body}, path)
+                self.assertEqual(k, "data-script")
+
+    def test_a_dict_update_is_no_data_script(self):
+        k, _ = self.kind({"seed.txt": "x\n"}, {"scripts/report.py": "rows.update({'a': 1})\nprint(rows)\n"},
+                         "scripts/report.py")
+        self.assertEqual(k, "code")
+
+
+class TestReviewCorePaths(BlocksCase):
+    """Defect 11: one bad core_paths item must not drop the others (fail closed)."""
+
+    def test_the_good_items_stay(self):
+        r = self.run_case({"src/auth/login.py": "x = 1\n"}, {"src/auth/login.py": "x = 2\n"},
+                          conf="core_paths=src/auth/,Payment Service/\n")
+        self.assertIn("CORE REVIEW", self.blocks(r))
+        self.assertIn("Payment Service/", r.stderr)
+
+
 # ---------------------------------------------------------------- section 5: the owner's use cases
 
 
@@ -666,7 +772,7 @@ class TestAcceptanceExamples(BlocksCase):
                            "src/pages/Orders.test.jsx": "render(<Orders />)\n",
                            "src/pages/Users.test.jsx": "render(<Users />)\n"},
                           {"src/pages/Orders.jsx": "<div>\n  {toast(saved)}\n</div>\n"}, conf=CONF_JS)
-        self.assert_case(r, ["DIFF SCAN", "BUILD", "RELATED TESTS"], ["FULL SUITE", "DB CHECK", "OWNER SIGN"])
+        self.assert_case(r, ["DIFF SCAN", "BUILD", "RELATED TESTS"], ["MODULE TESTS", "DB CHECK", "OWNER SIGN"])
         self.assertTrue(self.detail(r, "RELATED TESTS").startswith("src/pages/Orders.test.jsx | run: "))
 
     def test_style_change_of_a_shared_component(self):
@@ -674,7 +780,7 @@ class TestAcceptanceExamples(BlocksCase):
                            "src/components/Card.test.jsx": "render(<Card />)\n",
                            "src/pages/Home.test.jsx": "render(<Card />)\n"},
                           {"src/components/Card.css": ".card{padding:8px}\n"}, conf=CONF_JS)
-        self.assert_case(r, ["DIFF SCAN", "BUILD", "RELATED TESTS"], ["FULL SUITE", "OWNER SIGN"])
+        self.assert_case(r, ["DIFF SCAN", "BUILD", "RELATED TESTS"], ["MODULE TESTS", "OWNER SIGN"])
         self.assertNotIn("Home.test.jsx", self.detail(r, "RELATED TESTS"))
 
     def test_wording_in_locale_values(self):
@@ -682,13 +788,13 @@ class TestAcceptanceExamples(BlocksCase):
                            "tests/tree.test.js": "walk()\n",
                            "tests/report.test.js": "expect(t).toBe('Monthly report')\n"},
                           {"src/locales/en.json": '{"title": "Report of the month"}\n'}, conf=CONF_JS)
-        self.assert_case(r, ["DIFF SCAN", "RELATED TESTS", "GUARD TESTS"], ["BUILD", "FULL SUITE"])
+        self.assert_case(r, ["DIFF SCAN", "RELATED TESTS", "GUARD TESTS"], ["BUILD", "MODULE TESTS"])
 
     def test_new_export_column_one_feature(self):
         r = self.run_case({"src/export/csv.js": "cols = ['a']\n",
                            "src/export/csv.test.js": "require('./csv')\n"},
                           {"src/export/csv.js": "cols = ['a', 'b']\nrow.b = total(x)\n"}, conf=CONF_JS)
-        self.assert_case(r, ["BUILD", "RELATED TESTS"], ["FULL SUITE", "OWNER SIGN"])
+        self.assert_case(r, ["BUILD", "RELATED TESTS"], ["MODULE TESTS", "OWNER SIGN"])
 
     def test_a_shared_validator_changes(self):
         conf = CONF_JS + "group.src/orders=npm run test:orders\n"
@@ -696,12 +802,12 @@ class TestAcceptanceExamples(BlocksCase):
                            "src/lib/validator.test.js": "require('./validator')\n",
                            "src/orders/form.js": "require('../lib/validator')\n"},
                           {"src/lib/validator.js": "max = 20\n"}, conf=conf)
-        self.assert_case(r, ["BUILD", "RELATED TESTS"], ["FULL SUITE"])
-        self.assertIn("group src/orders: npm run test:orders", r.stdout.splitlines())
+        self.assert_case(r, ["BUILD", "RELATED TESTS", "MODULE TESTS"], ["OWNER SIGN"])
+        self.assertEqual(self.detail(r, "MODULE TESTS"), "src/orders | run: npm run test:orders")
 
     def test_migration_that_only_adds_a_column(self):
         r = self.run_case({}, {"db/migrations/0002.sql": "ALTER TABLE o ADD COLUMN note text;\n"}, conf=CONF_JS)
-        self.assert_case(r, ["DB CHECK"], ["OWNER SIGN", "FULL SUITE"])
+        self.assert_case(r, ["DB CHECK"], ["OWNER SIGN", "MODULE TESTS"])
 
     def test_migration_with_update_or_drop(self):
         r = self.run_case({}, {"db/migrations/0003.sql": "UPDATE o SET a = 1;\nALTER TABLE o DROP COLUMN b;\n"},
@@ -722,7 +828,7 @@ class TestAcceptanceExamples(BlocksCase):
         r = self.run_case({"PRINCIPLES.md": before, "tests/tree.test.js": "walk()\n",
                            "tests/r8.test.js": "has('R8')\n"},
                           {"PRINCIPLES.md": before.replace("a rule", "a better rule")}, conf=CONF_JS)
-        self.assert_case(r, ["RELATED TESTS", "GUARD TESTS"], ["FULL SUITE", "BUILD"])
+        self.assert_case(r, ["RELATED TESTS", "GUARD TESTS"], ["MODULE TESTS", "BUILD"])
         self.assertTrue(self.detail(r, "RELATED TESTS").startswith("tests/r8.test.js | run: "))
 
     def test_banner_to_toast_stays_a_five_minute_task_on_the_budget(self):
@@ -731,14 +837,14 @@ class TestAcceptanceExamples(BlocksCase):
                   "src/pages/Orders.test.jsx": "render(<Orders />)\n"},
                  {"src/pages/Orders.jsx": "{toast(saved)}\n"})
         r = self.run_case(*files, conf=CONF_JS + "build_seconds=20\nguard_seconds=30\n")
-        self.assert_case(r, ["DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS"], ["FULL SUITE"])
+        self.assert_case(r, ["DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS"], ["MODULE TESTS"])
         self.assertFalse(any(l.startswith("NET: ") for l in r.stdout.splitlines()), r.stdout)
 
     def test_dependency_bump(self):
         r = self.run_case({"package.json": '{"dependencies": {"left-pad": "1.0.0"}}\n'},
                           {"package.json": '{"dependencies": {"left-pad": "1.3.0"}}\n'}, conf=CONF_JS)
-        self.assert_case(r, ["FULL SUITE", "OWNER SIGN"], [])
-        self.assertIn("FULL SUITE (package.json)", self.detail(r, "OWNER SIGN"))
+        self.assert_case(r, ["MODULE TESTS", "OWNER SIGN"], [])
+        self.assertIn("MODULE TESTS (package.json)", self.detail(r, "OWNER SIGN"))
 
 
 if __name__ == "__main__":

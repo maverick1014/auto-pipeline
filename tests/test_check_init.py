@@ -316,3 +316,15 @@ class TestSkillAndRule(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReviewInit(InitCase):
+    """Core review defect 11: init never proposes a core path with a space (it would be refused)."""
+
+    def test_no_core_path_with_a_space(self):
+        self.put({"Payment Service/pay.js": "x\n", "src/auth/login.js": "x\n"})
+        self.commit("tree")
+        self.init("--no-measure")
+        core = self.conf()["core_paths"].split(",")
+        self.assertIn("src/auth/", core)
+        self.assertFalse([c for c in core if " " in c], core)

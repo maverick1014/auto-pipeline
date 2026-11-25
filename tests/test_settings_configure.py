@@ -12,7 +12,7 @@ CONTRACT for bin/agent_conf.py:
     user_config()             the plugin.json "userConfig" object built from SETTINGS
                               (same key order; fields type, title, description, default,
                               options / min / max only when set)
-    CONSTANTS                 the 29 fixed internal values, by old agent.conf key
+    CONSTANTS                 the 32 fixed internal values, by old agent.conf key
     get(key, env=None)        the value: Configure (settings.json pluginConfigs), else
                               CLAUDE_PLUGIN_OPTION_<KEY> env, else the default. A
                               constant key gives its constant. An old role key
@@ -108,7 +108,7 @@ ORDER = [
     ("helper_model", "Models: Helper model", "string", "sonnet-5:medium"),
     ("max_agents", "Load: Max agents", "number", 4),
     ("max_usage_percent", "Load: Max memory %", "number", 80),
-    ("heavy_test_slots", "Load: Heavy test slot/time", "number", 1),
+    ("heavy_test_slots", "Load: Heavy test slot/time", "number", 2),   # owner 2026-11-25 (TELL de03b3fb): 1 -> 2
     ("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions"),   # owner order 2026-11-25
     ("auto_resume", "Permissions: Auto resume", "boolean", True),
     ("todo_before_agent", "Rules: Todo before agent", "boolean", True),
@@ -129,6 +129,7 @@ CONSTANTS = {
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
     "check_budget_s": 60,   # check-blocks: BUILD and GUARD TESTS per task only under it
     "unused_pane_min": 30,  # check-blocks slice 8: the sweep closes a pane that never got a prompt, idle over it
+    "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024,   # check-blocks section 15 (owner 1A)
 }
 
 CHANGE_LINE = "change: /plugin -> Installed -> auto-pipeline -> Configure"

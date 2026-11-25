@@ -20,8 +20,8 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 from scripthelp import BIN, ScriptCase  # noqa: E402
 
-NAMES = ["DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK",
-         "FULL SUITE", "CORE REVIEW", "DIFF READ", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK",
+NAMES = ["DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK",
+         "CORE REVIEW", "DIFF READ", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK",
          "REAL DATA COUNT"]
 ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
            "18D 19C 20A 21D 22C 23B 24D 25C 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39C")
@@ -109,7 +109,10 @@ class TestPrinciplesR8(unittest.TestCase):
                        "agent-level.sh check", "todo add", "--checks", "only added",
                        "verified owner order", "--remove", "--owner-quote", "agent-file.sh check",
                        "checks gate", "no pass line", "OWNER SIGN", "not the builder",
-                       "check_budget_s", "60 s", "the net", "NIGHTLY SUITE", "RELEASE SMOKE",
+                       "check_budget_s", "60 s", "the net", "NIGHTLY RUN", "RELEASE SMOKE",
+                       # owner 1A 2026-11-25 (section 15)
+                       "No task runs the full suite", "MODULE TESTS", "gates nothing", "selection miss",
+                       "agent-nightly.sh", "the last nightly on that main", "agent-nightly.sh --release-ok",
                        "agent_repo.conf", "edge add", "which example would have shown it",
                        "Refactor", "Urgent fix", "Rollback", "Research only",
                        "skipped with one printed line", "second agent's opinion only for CORE REVIEW",
@@ -129,7 +132,7 @@ class TestPrinciplesR8(unittest.TestCase):
         # never a rule line that the table of blocks does not back
         text = read("PRINCIPLES.md").split("## Notice")[0]
         found = set(re.findall(r"\b([A-Z]{2,}(?: [A-Z]{2,})+)\b", text))
-        extra = {"OWNER SIGN", "NIGHTLY SUITE", "RELEASE SMOKE",          # the sign and the net, agent_blocks.py
+        extra = {"OWNER SIGN", "NIGHTLY RUN", "RELEASE SMOKE", "TEST RUN",   # the sign, the net, the runner
                  "DONE PASS", "DONE FAIL", "CLOSE CASE", "NEEDS HUMAN", "MOCK READY", "STALE PLUGIN",
                  "STATE LONG", "OWNER TODO", "QUESTIONS PAGE", "OWNER ORDER", "REPO TASK",   # report words
                  "GATE PASS", "GATE REFUSED", "CHECK PASS", "CHECK FAIL", "MERGE PASS", "MERGE FAIL",
@@ -163,11 +166,13 @@ class TestPrinciplesOtherRules(unittest.TestCase):
 
     def test_w4_tests_follow_the_blocks(self):
         w4 = self.rule("W4. ", "W5. ")
-        for phrase in ("RELATED TESTS", "GUARD TESTS", "FULL SUITE", "only when its trigger fires",
+        for phrase in ("RELATED TESTS", "GUARD TESTS", "MODULE TESTS", "only when its trigger fires",
                        "never re-run tests the task manager already passed", "re-run only the tests that failed"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w4)
         self.assertNotIn("Full suite only when really needed", w4)
+        self.assertNotIn("FULL SUITE", w4)
+        self.assertIn("No task runs the full suite", w4)
 
     def test_w5_the_check_deputy_drives_the_browser(self):
         w5 = self.rule("W5. ", "W6. ")
@@ -429,3 +434,29 @@ class TestAgentFileHeader(unittest.TestCase):
                     "agent-file.sh check "):
             with self.subTest(cmd=cmd):
                 self.assertIn(cmd, text)
+
+
+class TestHeavySlots(unittest.TestCase):
+    """Owner 2026-11-25 (TELL de03b3fb, "1. A will do"): the Heavy test slot/time default is 2; RAM stays the
+    real limit. Owner 1A (section 15): light or heavy by measured weight."""
+
+    def s5(self):
+        return section(read("PRINCIPLES.md"), "S5. ", "S6. ")
+
+    def test_s5_states_the_default_and_the_ram_rule(self):
+        s5 = self.s5()
+        self.assertIn('Setting "Load: Heavy test slot/time" = 2', s5)
+        self.assertIn("only if RAM is still more than 50% free", s5)
+
+    def test_s5_light_or_heavy_by_measured_weight(self):
+        s5 = self.s5()
+        for phrase in ("measured weight", "never by its name", "Light", "under 120 s and under 1 GB",
+                       "no slot", "Heavy", "heavy-test slot", "Unknown weight counts as heavy",
+                       "agent-test-run.sh"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, s5)
+
+    def test_plugin_json_default(self):
+        import json
+        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as fh:
+            self.assertEqual(json.load(fh)["userConfig"]["heavy_test_slots"]["default"], 2)

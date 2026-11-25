@@ -146,6 +146,21 @@ class TestWarnHook(twb.WatchBoardCase):
     def test_only_the_main_manager(self):
         self.assertEqual(self.hook(main=False), "")
 
+    def test_not_a_subagent_of_the_main_manager(self):
+        # core review defect 14: a deputy runs in the main manager's process; its payload has agent_id
+        env = {"AGENT_FAKE_NOW": NOW, "AGENT_FAKE_HOST": tb.HOST, "CLAUDE_PID": MAIN_PID}
+        payload = {"hook_event_name": "PostToolUse", "session_id": "s1", "cwd": self.repo.dir,
+                   "agent_id": "a123", "agent_type": "auto-pipeline:merge-deputy",
+                   "tool_name": "Bash", "tool_input": {"command": "ls"}}
+        r = self.repo.run("agent-board-warn.sh", stdin=json.dumps(payload), env=env)
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+        self.assertTrue(self.hook(), "the subagent's call must not use up the main manager's warning")
+
+    def test_a_growing_quiet_time_is_the_same_warning(self):
+        self.watch(changed="2026-11-02 14:40", confirmed="2026-11-02 14:59")
+        self.assertEqual(self.hook().splitlines(), [FIRST, warn_quiet("alpha", 20)])
+        self.assertEqual(self.hook(now="2026-11-02 15:05"), "", "only the minutes changed")
+
     def test_no_orca_calls(self):
         self.repo.clear_calls()
         self.hook()

@@ -229,9 +229,27 @@ class TestUnusedPanes(SweepCase):
         self.assertIn("would close pane t_sh (Terminal 1) in %s: never got a prompt, idle 40m" % self.wip,
                       self.lines(out))
 
-    def test_an_unused_claude_pane_with_no_record_is_closed(self):
-        self.run_with([self.pane("t_c", self.wip, 45, preview="", agent="claude")], "--apply")
-        self.assertEqual(self.closed(), ["t_c"])
+    def test_an_idle_claude_pane_with_no_record_is_listed_not_closed(self):
+        # core review defect 12: no record is no proof it never got a prompt (a default task manager pane,
+        # a human's own session): the sweep never closes a Claude pane, it lists it
+        out = self.run_with([self.pane("t_c", self.wip, 45, preview="", agent="claude")], "--apply")
+        self.assertEqual(self.closed(), [])
+        row = self.row_for(out, "pane t_c")
+        self.assertEqual(row[1], self.wip)
+        self.assertEqual(row[2], "idle agent pane, no task record, idle 45m")
+        self.assertEqual(row[3], "close it by hand if nobody uses it")
+
+    def test_a_truncated_terminal_list_closes_and_prunes_nothing(self):
+        # core review defect 13: a truncated list is no proof a pane is gone or unused
+        self.state(self.repo.dir, self.launch("k_gone", pane="term_gone"))
+        self.terminals = [self.pane("t_sh", self.wip, 40)]
+        self.repo.set_orca_answer("terminals.json", {"ok": True, "result": {
+            "terminals": self.terminals, "truncated": True, "totalCount": 9}})
+        self.repo.clear_calls()
+        out = self.ok("--apply")
+        self.assertEqual(self.closed(), [])
+        self.assertNotIn("k_gone", out)
+        self.assertIn("k_gone", "\n".join(self.state_lines(self.repo.dir)))
 
     def test_panes_that_stay(self):
         self.state(self.repo.dir, self.launch("k_l", task="wip", pane="t_launched"))
