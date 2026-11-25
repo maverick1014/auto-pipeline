@@ -247,10 +247,6 @@ class TestMainManagerOnly(_TestMainManagerOnlyFixture, HousekeepCase):
     def test_a_worker_is_refused_even_in_list_mode(self):
         self.assertRefused(self.hk(env={"AGENT_ROLE": "worker"}))
 
-    def test_a_human_direct_helper_is_refused(self):
-        self.lock_me()
-        self.assertRefused(self.hk("--apply", env={"CLAUDE_PID": "999999"}))
-
 
 class TestMainManagerOnlyWrites(_TestMainManagerOnlyFixture, HousekeepCase):
     IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
@@ -268,6 +264,10 @@ class TestMainManagerOnlyWrites(_TestMainManagerOnlyFixture, HousekeepCase):
     def test_no_lock_at_all_runs(self):
         self.apply()
         self.assertEqual(self.file_lines("agent_worktree.txt"), [])
+
+    def test_a_human_direct_helper_is_refused(self):
+        self.lock_me()   # writes the lock: one repo of its own, not the shared one
+        self.assertRefused(self.hk("--apply", env={"CLAUDE_PID": "999999"}))
 
 
 # ---------------------------------------------------------------- stamp, block, file

@@ -205,9 +205,13 @@ class PackCase(unittest.TestCase):
                 env.pop(key)
         for key in ("CLAUDE_PROJECT_DIR", "CLAUDE_PLUGIN_ROOT", "AGENT_ROLE",
                     "CLAUDE_CODE_REMOTE", "AGENT_RUNTIME",
-                    "AGENT_START_DEDUPE_SEC", "PYTHONDONTWRITEBYTECODE"):
+                    "AGENT_START_DEDUPE_SEC", "PYTHONDONTWRITEBYTECODE",
+                    "CLAUDE_CONFIG_DIR"):
             env.pop(key, None)
         env["HOME"] = self.home
+        # a cloud VM has no user settings: the packed scripts read an empty
+        # config dir, never this machine's own (its pluginConfigs set language)
+        env["CLAUDE_CONFIG_DIR"] = os.path.join(self.base, "no-claude-config")
         env["AGENT_FAKE_RAM"] = "10"
         env["AGENT_FAKE_CPU"] = "10"
         env.update(extra or {})

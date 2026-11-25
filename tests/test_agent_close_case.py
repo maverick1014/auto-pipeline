@@ -75,6 +75,15 @@ class CloseCaseCase(ScriptCase):
 
 @shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo per class, each run once; the tests only read
 class TestNoKeywordHook(CloseCaseCase):
+    def test_the_script_has_no_keyword_logic(self):
+        text = read("bin", "agent-close-case.sh")
+        self.assertNotIn("close\\s+case", text)
+        self.assertNotIn("CLOSE CASE <", text)
+
+
+class TestNoKeywordHookLock(CloseCaseCase):
+    """Writes the lock, so it has its own repo (no shared fixture)."""
+
     def test_close_case_in_a_prompt_prints_nothing(self):
         for role_env in ({"AGENT_ROLE": "task-manager", "CLAUDE_PID": NOBODY},
                          {"CLAUDE_PID": str(os.getpid())}, {"CLAUDE_PID": NOBODY}):
@@ -82,11 +91,6 @@ class TestNoKeywordHook(CloseCaseCase):
             for prompt in ("close case", "CLOSE CASE alpha: finished", "please close case now"):
                 with self.subTest(env=role_env, prompt=prompt):
                     self.assertEqual(self.hook(prompt, env=role_env), "")
-
-    def test_the_script_has_no_keyword_logic(self):
-        text = read("bin", "agent-close-case.sh")
-        self.assertNotIn("close\\s+case", text)
-        self.assertNotIn("CLOSE CASE <", text)
 
     def test_empty_stdin_prints_nothing(self):
         self.set_lock(os.getpid())
