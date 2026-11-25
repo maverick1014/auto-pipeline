@@ -713,7 +713,8 @@ class TestScopes(unittest.TestCase):
         self.assertIn("cd %s && claude plugin update auto-pipeline@auto-pipeline --scope project" % self.wt, out[0])
 
     def test_auto_update_off_prints_the_command_and_runs_nothing(self):
-        self.h.installed([{"scope": "user", "version": "0.43.0"}])
+        self.h.installed([{"scope": "user", "version": "0.43.0"},
+                          {"scope": "project", "projectPath": "/somewhere/else", "version": "0.44.0"}])
         self.h.configure({"auto_update": False})
         out = self.sync([self.repo])
         self.assertEqual(self.h.calls(), [])
@@ -722,14 +723,16 @@ class TestScopes(unittest.TestCase):
         self.assertIn("claude plugin update auto-pipeline@auto-pipeline --scope user", out[0])
 
     def test_a_fresh_lock_means_another_start_is_updating(self):
-        self.h.installed([{"scope": "user", "version": "0.43.0"}])
+        self.h.installed([{"scope": "user", "version": "0.43.0"},
+                          {"scope": "project", "projectPath": "/somewhere/else", "version": "0.44.0"}])
         os.mkdir(os.path.join(self.h.cfg, "plugins", ".auto-pipeline-update.lock"))
         out = self.sync([self.repo])
         self.assertEqual(self.h.calls(), [])
         self.assertIn("STALE SCOPE: user", out[0])
 
     def test_an_old_lock_is_taken_over_and_removed_after(self):
-        self.h.installed([{"scope": "user", "version": "0.43.0"}])
+        self.h.installed([{"scope": "user", "version": "0.43.0"},
+                          {"scope": "project", "projectPath": "/somewhere/else", "version": "0.44.0"}])
         lock = os.path.join(self.h.cfg, "plugins", ".auto-pipeline-update.lock")
         os.mkdir(lock)
         old = time.time() - 3600

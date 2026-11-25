@@ -1,26 +1,13 @@
-"""Failing tests for agent_conf.py. Written by the task manager, before any code.
+"""agent_conf.py value checks (settings-configure, 2026-11-25).
 
-CONTRACT the worker must implement in agent_conf.py (module at repo root):
-
-    load(path)                -> dict, key -> value (str). Insertion order = file order.
-    dumps(conf)               -> str, the whole file text. Same order. Ends with "\n".
-    save(conf, path)          -> None. Writes dumps(conf) to path.
-    validate(conf)            -> dict, key -> error message (str). Empty dict = all good.
-    validate_value(key, val)  -> error message (str), or None when the value is good.
-    HINTS                     -> dict, known key -> one short plain-English hint.
-    hint_for(key)             -> str, never empty, also for an unknown key.
-    GROUPS                    -> list of (group_name, [key, ...]) in display order.
-    group_of(key)             -> group name, or "other" for an unknown key.
-
-Rules:
-  - Unknown keys are kept, in place, and are always valid.
-  - Blank lines and lines starting with "#" are skipped by load().
-  - A line is split on the FIRST "=" only. Key and value are stripped.
+The settings live in Configure now (tests/test_settings_configure.py holds that contract).
+What stays here: validate_value(key, value) -> None when good, else a message naming the
+allowed values. Used for every stored Configure value and for an old value before it is
+moved. load/dumps/save/GROUPS/HINTS of agent.conf are gone with agent.conf.
 """
 
 import os
 import sys
-import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,200 +16,6 @@ if BIN not in sys.path:
     sys.path.insert(0, BIN)
 
 import agent_conf
-
-
-REAL_KEYS = [
-    "max_usage_percent",
-    "heavy_test_slots",
-    "max_agents",
-    "main_manager",
-    "fast_lane_deputy",
-    "merge_deputy",
-    "task_manager",
-    "worker",
-    "permission_mode",
-    "auto_resume",
-    "language",
-    "runtime",
-    "city_port",
-    "city_idle_min",
-    "city_governor_wait_sec",
-    # progress-bar (owner 2026-11-11): stage weights and the board watch, tests/test_agent_progress.py
-    "stage_brief",
-    "stage_register",
-    "stage_mock",
-    "stage_tests",
-    "stage_workers",
-    "stage_verify",
-    "stage_push",
-    "stage_report",
-    "stage_e2e",
-    "stage_merge",
-    "board_watch_sec",
-    "progress_eta_min_pct",
-    # statusline-vertical (owner 2026-11-12): the status line refresh, tests/test_statusline_vertical.py
-    "statusline_refresh_sec",
-    # housekeep-2h (owner 2026-11-13): the housekeep pass of the monitor loop, tests/test_agent_housekeep.py
-    "housekeep_interval_min",
-    # estimate-blend (owner 2026-11-13): the estimator target and limits, tests/test_agent_estimate_blend.py
-    "estimate_target_pct",
-    "estimate_bias_min",
-    "estimate_big_min",
-    # test-levels (owner 2026-11-20): core and danger folders, tests/test_risk_levels.py
-    "level3_paths",
-    "level4_paths",
-    # state-trim (owner 2026-11-20): state trim, the start warning, the auto clear, tests/test_state_trim.py
-    "state_keep_hours",
-    "state_warn_lines",
-    "state_header_lines",
-    "state_trim_auto",
-    "compact_clear_at",
-    "compact_clear_check_sec",
-    # board-trust (owner 2026-11-20): the board guard switch, tests/test_board_trust.py
-    "board_guard",
-    # one-watcher (owner 2026-11-24): the board's quiet limit, tests/test_watch_board.py
-    "watch_quiet_min",
-    # clean-up (owner 2026-11-24): old state copies and quiet todo lines, a repo's own docs, tests/test_agent_cleanfiles.py
-    "cleanup_days",
-    "docs_keep",
-    # owner-relay (owner 2026-11-24): the relayed owner order check, tests/test_agent_owner_order.py
-    "owner_order_hours",
-    "owner_order_min_chars",
-]
-# the keys this repo's own agent.conf had before progress-bar
-OLD_KEYS = REAL_KEYS[:REAL_KEYS.index("city_governor_wait_sec") + 1]
-
-GOOD_CONF_TEXT = (
-    "max_usage_percent=80\n"
-    "heavy_test_slots=1\n"
-    "max_agents=4\n"
-    "main_manager=fable-5.1:xhigh\n"
-    "fast_lane_deputy=sonnet-5:medium\n"
-    "merge_deputy=sonnet-5:medium\n"
-    "task_manager=opus-5.5:xhigh\n"
-    "worker=sonnet-5:medium\n"
-    "permission_mode=auto\n"
-    "auto_resume=yes\n"
-    "language=en\n"
-    "runtime=auto\n"
-    "city_port=4777\n"
-    "city_idle_min=30\n"
-    "city_governor_wait_sec=60\n"
-    "stage_brief=1\n"
-    "stage_register=1\n"
-    "stage_mock=4\n"
-    "stage_tests=20\n"
-    "stage_workers=40\n"
-    "stage_verify=15\n"
-    "stage_push=2\n"
-    "stage_report=2\n"
-    "stage_e2e=10\n"
-    "stage_merge=5\n"
-    "board_watch_sec=60\n"
-    "progress_eta_min_pct=20\n"
-    "statusline_refresh_sec=60\n"
-    "housekeep_interval_min=120\n"
-    "estimate_target_pct=50\n"
-    "estimate_bias_min=5\n"
-    "estimate_big_min=120\n"
-    "level3_paths=\n"
-    "level4_paths=\n"
-    # state-trim (owner 2026-11-20): appended last, like the template
-    "state_keep_hours=24\n"
-    "state_warn_lines=300\n"
-    "state_header_lines=40\n"
-    "state_trim_auto=on\n"
-    "compact_clear_at=2\n"
-    "compact_clear_check_sec=30\n"
-    # board-trust (owner 2026-11-20): appended last, like the template
-    "board_guard=on\n"
-    # one-watcher (owner 2026-11-24): appended last, like the template
-    "watch_quiet_min=15\n"
-    "cleanup_days=14\n"
-    "docs_keep=\n"
-    # owner-relay (owner 2026-11-24): appended last, like the template
-    "owner_order_hours=24\n"
-    "owner_order_min_chars=20\n"
-)
-
-
-def write_tmp(text):
-    fd, path = tempfile.mkstemp(prefix="agent_conf_", suffix=".conf")
-    with os.fdopen(fd, "w") as fh:
-        fh.write(text)
-    return path
-
-
-class TempConfCase(unittest.TestCase):
-    def setUp(self):
-        self.paths = []
-
-    def tearDown(self):
-        for path in self.paths:
-            if os.path.exists(path):
-                os.unlink(path)
-
-    def make(self, text):
-        path = write_tmp(text)
-        self.paths.append(path)
-        return path
-
-
-class TestLoad(TempConfCase):
-    def test_reads_every_key_and_value(self):
-        conf = agent_conf.load(self.make(GOOD_CONF_TEXT))
-        self.assertEqual(conf["max_usage_percent"], "80")
-        self.assertEqual(conf["max_agents"], "4")
-        self.assertEqual(conf["main_manager"], "fable-5.1:xhigh")
-        self.assertEqual(conf["permission_mode"], "auto")
-
-    def test_keeps_file_order(self):
-        conf = agent_conf.load(self.make(GOOD_CONF_TEXT))
-        self.assertEqual(list(conf.keys()), REAL_KEYS)
-
-    def test_keeps_unknown_keys_in_place(self):
-        text = "max_agents=4\nsome_new_key=hello world\npermission_mode=auto\n"
-        conf = agent_conf.load(self.make(text))
-        self.assertEqual(list(conf.keys()), ["max_agents", "some_new_key", "permission_mode"])
-        self.assertEqual(conf["some_new_key"], "hello world")
-
-    def test_strips_spaces_around_key_and_value(self):
-        conf = agent_conf.load(self.make("  max_agents  =   4   \n"))
-        self.assertEqual(conf["max_agents"], "4")
-
-    def test_splits_on_first_equals_only(self):
-        conf = agent_conf.load(self.make("note=a=b=c\n"))
-        self.assertEqual(conf["note"], "a=b=c")
-
-    def test_skips_blank_lines_and_comments(self):
-        text = "# a comment\n\nmax_agents=4\n\n#another=1\npermission_mode=auto\n"
-        conf = agent_conf.load(self.make(text))
-        self.assertEqual(list(conf.keys()), ["max_agents", "permission_mode"])
-
-    def test_empty_value_is_kept(self):
-        conf = agent_conf.load(self.make("max_agents=\n"))
-        self.assertEqual(conf["max_agents"], "")
-
-
-class TestDumpsAndSave(TempConfCase):
-    def test_round_trip_is_byte_identical(self):
-        path = self.make(GOOD_CONF_TEXT)
-        conf = agent_conf.load(path)
-        self.assertEqual(agent_conf.dumps(conf), GOOD_CONF_TEXT)
-
-    def test_dumps_ends_with_one_newline(self):
-        out = agent_conf.dumps({"max_agents": "4"})
-        self.assertEqual(out, "max_agents=4\n")
-
-    def test_save_then_load_keeps_order_and_unknown_keys(self):
-        path = self.make("max_agents=4\nmy_extra=keep me\npermission_mode=auto\n")
-        conf = agent_conf.load(path)
-        conf["max_agents"] = "9"
-        agent_conf.save(conf, path)
-        again = agent_conf.load(path)
-        self.assertEqual(list(again.keys()), ["max_agents", "my_extra", "permission_mode"])
-        self.assertEqual(again["max_agents"], "9")
-        self.assertEqual(again["my_extra"], "keep me")
 
 
 class TestValidateNumbers(unittest.TestCase):
@@ -261,13 +54,11 @@ class TestValidateNumbers(unittest.TestCase):
 class TestValidateRoles(unittest.TestCase):
     ROLE_KEYS = [
         "main_manager",
-        "fast_lane_deputy",
-        "merge_deputy",
         "task_manager",
-        "worker",
+        "helper_model",
     ]
 
-    def test_all_six_role_keys_accept_a_good_value(self):
+    def test_every_model_setting_accepts_a_good_value(self):
         for key in self.ROLE_KEYS:
             with self.subTest(key=key):
                 self.assertIsNone(agent_conf.validate_value(key, "opus-5.5:medium"))
@@ -275,12 +66,12 @@ class TestValidateRoles(unittest.TestCase):
     def test_every_effort_level_is_accepted(self):
         for effort in ("low", "medium", "high", "xhigh", "max"):
             with self.subTest(effort=effort):
-                self.assertIsNone(agent_conf.validate_value("worker", "opus-5:" + effort))
+                self.assertIsNone(agent_conf.validate_value("helper_model", "opus-5:" + effort))
 
     def test_real_model_names_are_accepted(self):
         for value in ("fable-5.1:xhigh", "opus-5:xhigh", "haiku-4.5:low", "sonnet-5:medium"):
             with self.subTest(value=value):
-                self.assertIsNone(agent_conf.validate_value("worker", value))
+                self.assertIsNone(agent_conf.validate_value("helper_model", value))
 
     def test_bad_shapes_are_rejected(self):
         for value in (
@@ -295,10 +86,10 @@ class TestValidateRoles(unittest.TestCase):
             "medium",
         ):
             with self.subTest(value=value):
-                self.assertTrue(agent_conf.validate_value("worker", value))
+                self.assertTrue(agent_conf.validate_value("helper_model", value))
 
     def test_error_message_names_the_effort_levels(self):
-        message = agent_conf.validate_value("worker", "sonnet-5:ultra")
+        message = agent_conf.validate_value("helper_model", "sonnet-5:ultra")
         self.assertTrue(message)
         for effort in ("low", "medium", "high", "xhigh", "max"):
             self.assertIn(effort, message)
@@ -339,171 +130,12 @@ class TestValidatePermissionMode(unittest.TestCase):
                     self.assertIn(mode, message)
 
 
-class TestValidateAutoResume(unittest.TestCase):
-    def test_yes_is_accepted(self):
-        self.assertIsNone(agent_conf.validate_value("auto_resume", "yes"))
-
-    def test_no_is_accepted(self):
-        self.assertIsNone(agent_conf.validate_value("auto_resume", "no"))
-
-    def test_maybe_is_rejected(self):
-        self.assertTrue(agent_conf.validate_value("auto_resume", "maybe"))
-
-
 class TestValidateLanguage(unittest.TestCase):
     def test_zh_is_accepted(self):
         self.assertIsNone(agent_conf.validate_value("language", "zh"))
 
     def test_english_is_rejected(self):
         self.assertTrue(agent_conf.validate_value("language", "english"))
-
-
-class TestValidateUnknownKey(unittest.TestCase):
-    def test_unknown_key_is_always_good(self):
-        for value in ("", "anything at all", "99999"):
-            with self.subTest(value=value):
-                self.assertIsNone(agent_conf.validate_value("some_new_key", value))
-
-
-class TestValidateWholeConf(TempConfCase):
-    def test_the_real_default_conf_has_no_errors(self):
-        conf = agent_conf.load(self.make(GOOD_CONF_TEXT))
-        self.assertEqual(agent_conf.validate(conf), {})
-
-    def test_one_error_per_bad_key(self):
-        conf = agent_conf.load(self.make(GOOD_CONF_TEXT))
-        conf["max_agents"] = "99"
-        conf["permission_mode"] = "yolo"
-        errors = agent_conf.validate(conf)
-        self.assertEqual(sorted(errors.keys()), ["max_agents", "permission_mode"])
-        for message in errors.values():
-            self.assertTrue(message)
-
-    def test_repo_agent_conf_is_valid(self):
-        conf = agent_conf.load(os.path.join(ROOT, "agent.conf"))
-        self.assertEqual(agent_conf.validate(conf), {})
-        # bypass-mode: this repo's own agent.conf is the main manager's to
-        # change (agent-settings.sh sync appends the new keys at the end), so it
-        # may still lack the progress-bar keys
-        keys = list(conf.keys())
-        self.assertEqual(keys, REAL_KEYS[:len(keys)])
-        self.assertGreaterEqual(len(keys), len(OLD_KEYS) - 1)
-
-
-class TestHints(unittest.TestCase):
-    def test_every_real_key_has_a_hint(self):
-        for key in REAL_KEYS:
-            with self.subTest(key=key):
-                self.assertTrue(agent_conf.HINTS.get(key, "").strip())
-
-    def test_hint_for_unknown_key_is_not_empty(self):
-        self.assertTrue(agent_conf.hint_for("some_new_key").strip())
-
-    def test_hint_for_known_key_matches_hints(self):
-        self.assertEqual(agent_conf.hint_for("max_agents"), agent_conf.HINTS["max_agents"])
-
-
-class TestMonitorBounds(unittest.TestCase):
-    """Number keys of the limits group (S1). The monitor keys are gone with the monitor (2026-11-24)."""
-
-    BOUNDS = {"heavy_test_slots": (1, 8), "max_agents": (1, 16)}
-
-    def test_the_monitor_keys_are_gone(self):
-        for key in ("monitor_interval_min", "stall_min"):
-            with self.subTest(key=key):
-                self.assertNotIn(key, agent_conf.NUMBER_BOUNDS)
-                self.assertNotIn(key, agent_conf.HINTS)
-
-    def test_both_keys_are_numbers_with_bounds(self):
-        for key, bounds in self.BOUNDS.items():
-            with self.subTest(key=key):
-                self.assertEqual(agent_conf.NUMBER_BOUNDS.get(key), bounds)
-
-    def test_good_values_pass(self):
-        for key, (low, high) in self.BOUNDS.items():
-            for value in (low, (low + high) // 2, high):
-                with self.subTest(key=key, value=value):
-                    self.assertIsNone(agent_conf.validate_value(key, str(value)))
-
-    def test_zero_is_refused(self):
-        for key in self.BOUNDS:
-            with self.subTest(key=key):
-                self.assertTrue(agent_conf.validate_value(key, "0"))
-
-    def test_over_the_top_bound_is_refused(self):
-        for key, (_, high) in self.BOUNDS.items():
-            with self.subTest(key=key):
-                self.assertTrue(agent_conf.validate_value(key, str(high + 1)))
-
-    def test_error_message_names_the_range(self):
-        for key, (low, high) in self.BOUNDS.items():
-            with self.subTest(key=key):
-                message = agent_conf.validate_value(key, "0")
-                self.assertIn(str(low), message)
-                self.assertIn(str(high), message)
-
-
-class TestGroups(unittest.TestCase):
-    def test_group_order_and_membership(self):
-        self.assertEqual(
-            agent_conf.GROUPS,
-            [
-                (
-                    "limits",
-                    [
-                        "max_usage_percent",
-                        "heavy_test_slots",
-                        "max_agents",
-                        "housekeep_interval_min",
-                    ],
-                ),
-                (
-                    "roles",
-                    [
-                        "main_manager",
-                        "fast_lane_deputy",
-                        "merge_deputy",
-                        "task_manager",
-                        "worker",
-                    ],
-                ),
-                ("permission", ["permission_mode", "auto_resume",
-                                "language", "board_guard"]),
-                ("runtime", ["runtime"]),
-                ("city", ["city_port", "city_idle_min", "city_governor_wait_sec"]),
-                ("progress", ["stage_brief", "stage_register", "stage_mock", "stage_tests",
-                              "stage_workers", "stage_verify", "stage_push", "stage_report",
-                              "stage_e2e", "stage_merge", "board_watch_sec",
-                              "progress_eta_min_pct", "statusline_refresh_sec"]),
-                ("estimate", ["estimate_target_pct", "estimate_bias_min", "estimate_big_min"]),
-                ("levels", ["level3_paths", "level4_paths"]),
-                ("state", ["state_keep_hours", "state_warn_lines", "state_header_lines", "state_trim_auto",
-                           "compact_clear_at", "compact_clear_check_sec"]),
-                # one-watcher (owner 2026-11-24)
-                ("watch", ["watch_quiet_min"]),
-                # clean-up (owner 2026-11-24)
-                ("cleanup", ["cleanup_days", "docs_keep"]),
-                # owner-relay (owner 2026-11-24)
-                ("relay", ["owner_order_hours", "owner_order_min_chars"]),
-            ],
-        )
-
-    def test_every_real_key_sits_in_a_group(self):
-        placed = [key for _, keys in agent_conf.GROUPS for key in keys]
-        self.assertEqual(sorted(placed), sorted(REAL_KEYS))
-
-    def test_every_placed_key_has_a_hint_and_knows_its_group(self):
-        for name, keys in agent_conf.GROUPS:
-            for key in keys:
-                with self.subTest(key=key):
-                    self.assertTrue(agent_conf.HINTS.get(key, "").strip())
-                    self.assertEqual(agent_conf.group_of(key), name)
-
-    def test_group_of_known_and_unknown(self):
-        self.assertEqual(agent_conf.group_of("max_agents"), "limits")
-        self.assertEqual(agent_conf.group_of("worker"), "roles")
-        self.assertEqual(agent_conf.group_of("permission_mode"), "permission")
-        self.assertEqual(agent_conf.group_of("some_new_key"), "other")
 
 
 class TestRuntimeKey(unittest.TestCase):
@@ -527,43 +159,9 @@ class TestRuntimeKey(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertIn(value, message)
 
-    def test_it_has_a_hint(self):
-        self.assertTrue(agent_conf.HINTS.get("runtime", "").strip())
-
-
-
-class TestCityKeys(unittest.TestCase):
-    """The keys bin/agent-city.sh reads: where the city listens, how long it
-    lives with no browser open before it quits by itself, and how long the
-    governor has to answer an agent's question before the owner gets it."""
-
-    BOUNDS = {"city_port": (1024, 65535), "city_idle_min": (1, 240),
-              "city_governor_wait_sec": (5, 3600)}
-
-    def test_bounds(self):
-        for key, bounds in self.BOUNDS.items():
-            with self.subTest(key=key):
-                self.assertEqual(agent_conf.NUMBER_BOUNDS.get(key), bounds)
-
-    def test_edges_pass_and_outside_fails(self):
-        for key, (low, high) in self.BOUNDS.items():
-            with self.subTest(key=key):
-                self.assertIsNone(agent_conf.validate_value(key, str(low)))
-                self.assertIsNone(agent_conf.validate_value(key, str(high)))
-                self.assertTrue(agent_conf.validate_value(key, str(low - 1)))
-                self.assertTrue(agent_conf.validate_value(key, str(high + 1)))
-
-    def test_template_defaults(self):
-        conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
-        self.assertEqual(conf.get("city_port"), "4777")
-        self.assertEqual(conf.get("city_idle_min"), "30")
-        self.assertEqual(conf.get("city_governor_wait_sec"), "60")
-
-    def test_no_switch_for_the_governor_approving(self):
-        # Owner decision 2026-09-24: permission requests are the owner's only.
-        conf = agent_conf.load(os.path.join(ROOT, "bin", "agent.conf.default"))
-        self.assertNotIn("city_governor_approves", conf)
-        self.assertNotIn("city_governor_approves", agent_conf.HINTS)
+    def test_it_has_a_description(self):
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        self.assertTrue(by["runtime"]["description"].strip())
 
 
 if __name__ == "__main__":
