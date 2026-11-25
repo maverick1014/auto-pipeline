@@ -35,7 +35,7 @@ class PromoteCase(ScriptCase):
         super().setUp()
         sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
         import agent_conf
-        self.wb = agent_conf.WORKING_BRANCH_DEFAULT
+        self.wb = "ap-main-t"   # section 34: per person; the fixture's git user.name is t
         self.git("branch", "-M", "main")
         self.origin = os.path.join(self.repo.base, "origin.git")
         subprocess.run(["git", "init", "-q", "--bare", self.origin], check=True, capture_output=True)
@@ -197,6 +197,47 @@ class TestDirectToProduction(PromoteCase):
         self.git("fetch", "-q", "origin")
         self.assertEqual(self.git("rev-parse", "origin/main"), before)
         self.assertEqual(self.git("worktree", "list"), before_wt)
+
+
+class TestSync(PromoteCase):
+    """Section 34: production is merged into the working branch at the start of a batch and before a publish."""
+
+    def production_moves(self):
+        self.git("switch", "-q", "-c", "other", "main")
+        self.put("other.txt", "someone else published\n")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "another person's publish")
+        self.git("push", "-q", "origin", "other:main")
+        self.git("switch", "-q", self.wb)
+
+    def test_sync_merges_production_in_and_pushes(self):
+        self.production_moves()
+        r = self.repo.run("agent-promote.sh", "--sync")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(r.stdout.splitlines()[0].startswith("sync: main merged into %s (" % self.wb), r.stdout)
+        self.git("fetch", "-q", "origin")
+        self.assertEqual(subprocess.run(["git", "-C", self.repo.dir, "merge-base", "--is-ancestor", "origin/main",
+                                         "origin/" + self.wb]).returncode, 0)
+        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD"), self.wb)
+
+    def test_sync_when_already_in(self):
+        r = self.repo.run("agent-promote.sh", "--sync")
+        self.assertEqual(r.stdout.strip(), "sync: %s already has main" % self.wb)
+
+    def test_sync_waits_on_a_dirty_checkout(self):
+        self.production_moves()
+        self.put("src/a.py", "half done\n")
+        r = self.repo.run("agent-promote.sh", "--sync")
+        self.assertTrue(r.stdout.strip().startswith("sync waits: "), r.stdout)
+        with open(os.path.join(self.repo.dir, "src", "a.py")) as fh:
+            self.assertEqual(fh.read(), "half done\n")
+
+    def test_a_publish_syncs_first(self):
+        self.production_moves()
+        self.green()                                   # green on the old tip: after the sync it is not the tip
+        r = self.promote()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("sync: main merged into %s" % self.wb, r.stdout)
 
 
 if __name__ == "__main__":

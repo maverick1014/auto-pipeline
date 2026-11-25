@@ -338,7 +338,7 @@ class TestWorkingBranch(InitCase):
     def branch(self):
         sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
         import agent_conf
-        return agent_conf.WORKING_BRANCH_DEFAULT
+        return "ap-main-t"   # section 34: per person; the fixture's git user.name is t
 
     def head(self):
         return self.git("rev-parse", "--abbrev-ref", "HEAD").strip()
@@ -383,7 +383,7 @@ class TestStartMovesNothing(unittest.TestCase):
         subprocess.run(["git", "-C", self.repo.dir, "branch", "-M", "main"], check=True, capture_output=True)
         sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
         import agent_conf
-        self.wb = agent_conf.WORKING_BRANCH_DEFAULT
+        self.wb = "ap-main-t"   # section 34: the fixture's git user.name is t
 
     def start(self, **env):
         e = {"CLAUDE_PID": str(os.getpid())}
@@ -423,3 +423,55 @@ class TestStartMovesNothing(unittest.TestCase):
         r = self.start(AGENT_ROLE="task-manager")
         self.assertFalse(self.has_branch(self.wb))
         self.assertEqual(self.line(r.stdout), [])
+
+
+class TestWorkingBranchName(unittest.TestCase):
+    """Section 34 (owner 2026-11-25): per person, worked out once per clone and stored."""
+
+    def setUp(self):
+        self.repo = ScriptRepo()
+        self.addCleanup(self.repo.cleanup)
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_conf
+        self.ac = agent_conf
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", self.repo.dir] + list(args), capture_output=True, text=True).stdout.strip()
+
+    def resolve(self):
+        env = self.repo._env(None)
+        r = subprocess.run([sys.executable, os.path.join(self.repo.plugin, "bin", "agent_conf.py"), "working-branch",
+                            self.repo.dir], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    def test_the_default_form(self):
+        self.assertEqual(self.ac.WORKING_BRANCH_DEFAULT, "ap-main-<name>")
+
+    def test_the_git_user_name_cleaned(self):
+        self.git("config", "user.name", "Maverick O'Neil  Jr.")
+        self.assertEqual(self.resolve(), "ap-main-maverick-o-neil-jr")
+
+    def test_stored_once_per_clone(self):
+        self.git("config", "user.name", "Maverick")
+        self.assertEqual(self.resolve(), "ap-main-maverick")
+        self.assertEqual(self.git("config", "--local", "--get", "auto-pipeline.workingbranch"), "ap-main-maverick")
+        self.git("config", "user.name", "Somebody Else")
+        self.assertEqual(self.resolve(), "ap-main-maverick", "never derived again")
+
+    def test_a_fixed_team_name(self):
+        self.repo.set_conf("working_branch", "team-main")
+        self.assertEqual(self.resolve(), "team-main")
+
+
+class TestWorkingBranchPushed(InitCase):
+    """Section 34: the branch is pushed to origin (other machines need it)."""
+
+    def test_init_pushes_it(self):
+        origin = os.path.join(self.repo.base, "origin.git")
+        subprocess.run(["git", "init", "-q", "--bare", origin], check=True, capture_output=True)
+        self.git("remote", "add", "origin", origin)
+        self.init("--no-measure")
+        out = subprocess.run(["git", "-C", origin, "branch", "--list", "ap-main-t"], capture_output=True,
+                             text=True).stdout
+        self.assertIn("ap-main-t", out)

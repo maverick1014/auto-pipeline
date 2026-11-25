@@ -51,14 +51,14 @@ QUIZ_Q16 = """Q16. A small logic task (one function, about 30 minutes) needs a n
   D. Nobody: skip the test, it is small"""
 
 QUIZ_Q23 = """Q23. One request has x1, x2, x3, x4; x1 and x2 are urgent ("after done direct merge"). You:
-  A. Merge all four into ap-main, run the full suite, then publish them together
-  B. x1 and x2 branch from production and each merges straight into production when done (production merged back into ap-main after each); x3 and x4 branch from ap-main and merge there; one full suite on ap-main after both are in; first check that x1 and x2 need no code only x3 or x4 brings
+  A. Merge all four into your working branch, run the full suite, then publish them together
+  B. x1 and x2 branch from production and each merges straight into production when done (production merged back into your working branch after each); x3 and x4 branch from your working branch and merge there; one full suite there after both are in; first check that x1 and x2 need no code only x3 or x4 brings
   C. Wait until all four are done, then merge them straight into production
-  D. Branch all four from ap-main and push ap-main to production after x1"""
+  D. Branch all four from your working branch and push it to production after x1"""
 
-QUIZ_Q25 = """Q25. The owner writes: "fix the export total and publish it". Two other tasks of a batch run for ap-main. Where does this task merge?
-  A. Into ap-main, and it waits for the batch
-  B. Straight into the production branch once its own checks pass (merged in a short-lived worktree of production), the deploy follows by itself, then production is merged back into ap-main at once
+QUIZ_Q25 = """Q25. The owner writes: "fix the export total and publish it". Two other tasks of a batch run for your working branch (ap-main-<name>). Where does this task merge?
+  A. Into your working branch, and it waits for the batch
+  B. Straight into the production branch once its own checks pass (merged in a short-lived worktree of production), the deploy follows by itself, then production is merged back into your working branch at once
   C. Into the main checkout after switching it to the production branch
   D. Nowhere until the nightly run is green"""
 
@@ -558,7 +558,7 @@ class TestWorkingBranchRules(unittest.TestCase):
         r1 = section(read("PRINCIPLES.md"), "R1. ", "R2. ")
         for phrase in ("Merge into the target branch + cleanup", "the user's request decides",
                        "publish or merge to main", "straight into the production branch", "the deploy follows by itself",
-                       "ap-main", "nothing goes to production by itself"):
+                       "ap-main-<name>", "nothing goes to production by itself"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r1)
 
@@ -566,7 +566,11 @@ class TestWorkingBranchRules(unittest.TestCase):
         r8 = section(read("PRINCIPLES.md"), "R8. Check blocks", "## B. Work")
         for phrase in ("Flow: Working branch", "the main checkout is switched to the working branch",
                        "never on the production branch by accident",
-                       "when the last one of the batch is merged, ONE full suite runs on ap-main",
+                       "when the last one of the batch is merged, ONE full suite runs on the working branch",
+                       "per person", "ap-main-<name>", "worked out once per clone and stored", "every brief names the branch",
+                       "never derives it again", "nobody else merges into it", "the sweep never deletes it",
+                       "merged into the working branch at the start of a batch and again before a publish",
+                       "agent-promote.sh --sync",
                        "only on the owner's approval", "only from a green commit",
                        "agent-promote.sh", "merged to production = published", "new fixer agent",
                        "never back to the builder"):
@@ -576,12 +580,12 @@ class TestWorkingBranchRules(unittest.TestCase):
     def test_w8_and_w9(self):
         w8 = section(read("PRINCIPLES.md"), "W8. ", "W9. ")
         for phrase in ("working branch", "agent-promote.sh --task", "a short-lived worktree of the production branch",
-                       "production is merged back into ap-main at once"):
+                       "production is merged back into the working branch at once"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w8)
         w9 = section(read("PRINCIPLES.md"), "W9. ", "W10. ")
-        for phrase in ("branches from the production branch", "branches from ap-main", "--batch",
-                       "may also wait until ap-main is tested and published",
+        for phrase in ("branches from the production branch", "branches from the working branch", "--batch",
+                       "may also wait until the working branch is tested and published",
                        "The target is per task, not per request",
                        "does an urgent task need code that only a non-urgent one brings",
                        "tell the owner at once", "never guess"):

@@ -130,7 +130,7 @@ class TestTargetAndBatch(Case):
         r = self.ok("todo", "done", "x1")
         self.assertNotIn("batch b1", r.stdout)
         r = self.ok("todo", "done", "x2")
-        self.assertIn("batch b1: all merged: run the full suite on ap-main: agent-nightly.sh --start",
+        self.assertIn("batch b1: all merged: agent-promote.sh --sync, then the full suite: agent-nightly.sh --start",
                       r.stdout.splitlines())
 
 

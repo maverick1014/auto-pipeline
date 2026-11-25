@@ -316,13 +316,22 @@ class TestWorkingBranchStays(SweepCase):
     def test_the_working_branch_is_never_a_row_and_never_removed(self):
         sys.path.insert(0, BIN)
         import agent_conf
-        wb = agent_conf.WORKING_BRANCH_DEFAULT
+        wb = "ap-main-t"   # section 34: per person; the fixture's git user.name is t
         tc.git(self.repo.dir, "branch", wb)
         tc.git(self.repo.dir, "push", "-q", "origin", wb)
         out = self.ok("--apply")
         self.assertFalse([row for row in self.rows(out) if wb in row[0]], out)
         self.assertTrue(self.has_local(wb))
         self.assertTrue(self.has_origin(wb))
+
+    def test_another_persons_working_branch_is_never_touched(self):
+        # section 34: it belongs to that person; merged and stale or not, the sweep leaves it and never lists it
+        tc.git(self.repo.dir, "branch", "ap-main-bob")
+        tc.git(self.repo.dir, "push", "-q", "origin", "ap-main-bob")
+        out = self.ok("--apply")
+        self.assertFalse([row for row in self.rows(out) if "ap-main-bob" in row[0]], out)
+        self.assertTrue(self.has_local("ap-main-bob"))
+        self.assertTrue(self.has_origin("ap-main-bob"))
 
 
 class TestRemoteListsToo(unittest.TestCase):
