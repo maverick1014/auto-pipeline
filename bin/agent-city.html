@@ -467,27 +467,31 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .ed-top .sp{flex:1}.ed-cnt{font-size:12px;color:var(--ink-3);white-space:nowrap}
 .ed-name{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-3)}.ed-name input{width:11em;border:1.5px solid var(--line);border-radius:9px;background:var(--panel-2);color:var(--ink);font:600 13px/1 var(--round);padding:7px 9px}
 .seg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}.seg button{all:unset;cursor:pointer;padding:7px 11px;font:600 12px/1 var(--round);color:var(--ink-3)}.seg button.on{background:var(--ink);color:var(--paper)}
-.ed-left{position:absolute;top:70px;left:10px;bottom:56px;width:262px;display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:14px;box-shadow:0 3px 0 rgba(42,43,69,.18);overflow:hidden}
+.ed-left{position:absolute;top:var(--ed-top,70px);left:10px;bottom:56px;width:262px;display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:14px;box-shadow:0 3px 0 rgba(42,43,69,.18);overflow:hidden}
 .ed-tabs{display:flex;border-bottom:1.5px solid var(--line)}.ed-tabs button{all:unset;cursor:pointer;flex:1;text-align:center;padding:9px 2px;font:700 13px/1 var(--display);color:var(--ink-3)}.ed-tabs button.on{color:var(--ink);box-shadow:inset 0 -3px 0 var(--ink)}
-.ed-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px;overflow:auto}
-.ed-card{all:unset;cursor:grab;display:grid;justify-items:center;gap:3px;border:1.5px solid var(--line);border-radius:12px;padding:6px 4px 8px;background:var(--panel-2);touch-action:none;user-select:none}
+.ed-grid{touch-action:pan-y;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px;overflow:auto}
+.ed-card{all:unset;cursor:grab;display:grid;justify-items:center;gap:3px;border:1.5px solid var(--line);border-radius:12px;padding:6px 4px 8px;background:var(--panel-2);touch-action:pan-y;user-select:none}
 .ed-card:hover{border-color:var(--ink)}.ed-card img{width:84px;height:84px;display:block}.ed-card .ph{width:84px;height:84px;background:var(--line);border-radius:8px}.ed-card b{font:700 12px/1.1 var(--display)}.ed-card small{font-size:11px;color:var(--ink-3)}
 .ed-note{margin:0 10px 10px;font-size:12px;color:var(--ink-3)}
 .ed-styles{display:grid;gap:8px;padding:10px;overflow:auto}.ed-style{all:unset;cursor:pointer;display:grid;gap:5px;border:1.5px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--panel-2)}.ed-style:hover{border-color:var(--ink)}
 .ed-style .pal{display:flex;gap:3px}.ed-style .pal i{flex:1;height:22px;border-radius:5px;border:1px solid rgba(0,0,0,.08)}.ed-style b{font:700 13px/1 var(--display)}
 .ed-surfs{display:grid;gap:6px;padding:10px;overflow:auto}.ed-surf{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;border:1.5px solid var(--line);border-radius:10px;padding:7px 9px;background:var(--panel-2);font-size:13px}
 .ed-surf.on,.ed-surf:hover{border-color:var(--ink)}.ed-surf i{width:26px;height:26px;border-radius:7px;border:1px solid rgba(0,0,0,.12);flex:none}
-.ed-right{position:absolute;top:70px;right:10px;width:236px;max-height:calc(100% - 128px);overflow:auto;display:grid;gap:9px;align-content:start;background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:10px;box-shadow:0 3px 0 rgba(42,43,69,.18);box-sizing:border-box}
+.ed-right{position:absolute;top:var(--ed-top,70px);right:10px;width:236px;max-height:calc(100% - var(--ed-top,70px) - 58px);overflow:auto;display:grid;gap:9px;align-content:start;background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:10px;box-shadow:0 3px 0 rgba(42,43,69,.18);box-sizing:border-box}
 .ed-ins-h{display:grid;grid-template-columns:auto 1fr;column-gap:9px;align-items:center}.ed-ins-h img{width:54px;height:54px;grid-row:span 2}.ed-ins-h i.big{width:42px;height:42px;border-radius:10px;grid-row:span 2;border:1px solid rgba(0,0,0,.12)}
+.ed-right{position:absolute}.ed-x{all:unset;cursor:pointer;position:absolute;top:6px;right:8px;width:26px;height:26px;display:grid;place-items:center;font:700 18px/1 var(--round);color:var(--ink-3);border-radius:8px;z-index:1}.ed-x:hover{background:var(--panel-2);color:var(--ink)}
 .ed-ins-h b{font:700 15px/1.15 var(--display)}.ed-ins-h small{font-size:11px;color:var(--ink-3)}
 .ed-acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}.ed-l{font:700 12px/1 var(--display);color:var(--ink-2);margin-top:2px}
 .ed-sw{display:flex;flex-wrap:wrap;gap:6px}.ed-sw .sw{all:unset;cursor:pointer;width:24px;height:24px;border-radius:7px;border:1px solid rgba(0,0,0,.15);box-sizing:border-box}
 .ed-sw .sw.on{outline:3px solid var(--ink);outline-offset:1px}.ed-sw .cust{width:auto;display:inline-flex;align-items:center;gap:4px;padding:0 6px;font-size:11px;color:var(--ink-3);background:var(--panel-2)}.ed-sw .cust input{width:20px;height:20px;border:0;padding:0;background:none}
 .ed-tips{margin:0;padding-left:18px;display:grid;gap:5px;font-size:12px;color:var(--ink-2)}
 .ed-msg{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);max-width:min(620px,calc(100% - 560px));min-width:280px;font-size:13px;padding:8px 12px;border-radius:11px;background:#EAF7EF;color:#1E6B45;border:1.5px solid #BFE6CF;box-sizing:border-box}
+.ed-msg{pointer-events:none!important}
 .ed-msg.err{background:#FDECEC;color:#B3262B;border-color:#F1B7B9}
 .ed-ghost{position:fixed;z-index:50;pointer-events:none;transform:translate(-50%,-60%);width:70px;height:70px;display:grid;place-items:center;border-radius:14px;background:rgba(255,255,255,.85);border:2px dashed var(--ink);font-size:28px}.ed-ghost img{width:64px;height:64px}
 .optb.new{border-color:#FFB800;background:#FFF8E1}.newtag{font-style:normal;font-size:11px;background:#FF7593;color:#fff;border-radius:6px;padding:1px 5px;margin-left:4px}
+@media (max-width:1100px){.ed-cnt{display:none}}
+.ed-top .btn,.ed-top .seg{flex:none}
 @media (max-width:760px){
   .stage.editing .cam{display:none}
   .ed-left{top:auto;bottom:10px;left:10px;right:10px;width:auto;height:38%}.ed-grid{grid-template-columns:repeat(4,1fr)}.ed-card img,.ed-card .ph{width:58px;height:58px}
@@ -4009,14 +4013,14 @@ function matCanvas(kind, col){
   let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   g.fillStyle = col; g.fillRect(0, 0, 256, 256);
   const line = (c, w) => { g.strokeStyle = c; g.lineWidth = w; };
-  if (kind === 'plain') { for (let i = 0; i < 900; i++) { g.fillStyle = 'rgba(0,0,0,' + (.03 + rnd() * .04) + ')'; g.fillRect(rnd() * 256, rnd() * 256, 1.5, 1.5); } }
+  if (kind === 'plain') { for (let i = 0; i < 900; i++) { g.fillStyle = 'rgba(0,0,0,' + (.07 + rnd() * .06) + ')'; g.fillRect(rnd() * 256, rnd() * 256, 2, 2); } }
   else if (kind === 'wood') {
     for (let r = 0; r < 8; r++) {
       const off = (r % 2) * 64 + (r % 3) * 21;
       for (let x = -128; x < 256; x += 128) {
-        g.fillStyle = tone(col, (rnd() - .5) * .07); g.fillRect(x + off, r * 32, 128, 32);
-        line(tone(col, -.16), 2); g.strokeRect(x + off + 1, r * 32 + 1, 126, 30);
-        g.strokeStyle = 'rgba(0,0,0,0.06)'; g.lineWidth = 1;
+        g.fillStyle = tone(col, -.04 - rnd() * .1); g.fillRect(x + off, r * 32, 128, 32);
+        line(tone(col, -.3), 2.5); g.strokeRect(x + off + 1, r * 32 + 1, 126, 30);
+        g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 1;
         for (let k = 0; k < 3; k++) { g.beginPath(); const yy = r * 32 + 6 + rnd() * 20; g.moveTo(x + off + 4, yy); g.bezierCurveTo(x + off + 40, yy + 3, x + off + 80, yy - 3, x + off + 124, yy + 1); g.stroke(); }
       }
     }
@@ -4024,30 +4028,30 @@ function matCanvas(kind, col){
   else if (kind === 'herringbone') {
     for (let r = -1; r < 9; r++) for (let c = -1; c < 9; c++) {
       const x = c * 32, y = r * 32, left = (c % 2 === 0);
-      g.fillStyle = tone(col, (rnd() - .5) * .08); g.beginPath();
+      g.fillStyle = tone(col, -.04 - rnd() * .12); g.beginPath();
       if (left) { g.moveTo(x, y); g.lineTo(x + 32, y + 32); g.lineTo(x + 32, y + 48); g.lineTo(x, y + 16); }
       else { g.moveTo(x, y + 32); g.lineTo(x + 32, y); g.lineTo(x + 32, y + 16); g.lineTo(x, y + 48); }
-      g.closePath(); g.fill(); line(tone(col, -.15), 1.5); g.stroke();
+      g.closePath(); g.fill(); line(tone(col, -.32), 2); g.stroke();
     }
   }
   else if (kind === 'tile' || kind === 'bigtile' || kind === 'checker') {
     const n = kind === 'bigtile' ? 2 : 4, sz = 256 / n;
-    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { g.fillStyle = kind === 'checker' ? ((i + j) % 2 ? tone(col, -.12) : col) : tone(col, (rnd() - .5) * .03); g.fillRect(i * sz, j * sz, sz, sz); }
-    line(kind === 'checker' ? tone(col, -.2) : tone(col, .06), kind === 'bigtile' ? 3 : 2.5);
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { g.fillStyle = kind === 'checker' ? ((i + j) % 2 ? tone(col, -.24) : col) : tone(col, -rnd() * .06); g.fillRect(i * sz, j * sz, sz, sz); }
+    line(kind === 'checker' ? tone(col, -.34) : tone(col, -.3), kind === 'bigtile' ? 4 : 3);
     for (let k = 0; k <= n; k++) { g.beginPath(); g.moveTo(k * sz, 0); g.lineTo(k * sz, 256); g.stroke(); g.beginPath(); g.moveTo(0, k * sz); g.lineTo(256, k * sz); g.stroke(); }
   }
   else if (kind === 'marble') {
     for (let v = 0; v < 7; v++) {
-      g.strokeStyle = 'rgba(110,110,120,' + (.15 + rnd() * .25) + ')'; g.lineWidth = .8 + rnd() * 1.6; g.beginPath();
+      g.strokeStyle = 'rgba(90,90,105,' + (.3 + rnd() * .3) + ')'; g.lineWidth = 1.2 + rnd() * 2; g.beginPath();
       let x = rnd() * 256, y = 0; g.moveTo(x, y);
       while (y < 256) { const nx = x + (rnd() - .5) * 60, ny = y + 20 + rnd() * 30; g.quadraticCurveTo(x + (rnd() - .5) * 40, y + 10, nx, ny); x = nx; y = ny; }
       g.stroke();
     }
   }
   else if (kind === 'concrete') {
-    for (let i = 0; i < 3500; i++) { const d = rnd(); g.fillStyle = d < .5 ? 'rgba(0,0,0,' + (.05 + rnd() * .09) + ')' : 'rgba(255,255,255,' + (.06 + rnd() * .12) + ')'; g.fillRect(rnd() * 256, rnd() * 256, 1 + rnd() * 2.5, 1 + rnd() * 2.5); }
-    for (let i = 0; i < 14; i++) { g.fillStyle = 'rgba(0,0,0,' + (.03 + rnd() * .04) + ')'; g.beginPath(); g.arc(rnd() * 256, rnd() * 256, 8 + rnd() * 26, 0, Math.PI * 2); g.fill(); }
-    line('rgba(0,0,0,0.08)', 2); g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 256); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke();
+    for (let i = 0; i < 3500; i++) { const d = rnd(); g.fillStyle = d < .5 ? 'rgba(0,0,0,' + (.1 + rnd() * .14) + ')' : 'rgba(255,255,255,' + (.06 + rnd() * .12) + ')'; g.fillRect(rnd() * 256, rnd() * 256, 1 + rnd() * 2.5, 1 + rnd() * 2.5); }
+    for (let i = 0; i < 14; i++) { g.fillStyle = 'rgba(0,0,0,' + (.07 + rnd() * .08) + ')'; g.beginPath(); g.arc(rnd() * 256, rnd() * 256, 8 + rnd() * 26, 0, Math.PI * 2); g.fill(); }
+    line('rgba(0,0,0,0.2)', 3); g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 256); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke();
   }
   return cv2;
 }
@@ -4447,7 +4451,7 @@ function syncFigs(dt){
     pinOv(f, st);
   }
 }
-const DEMO_WORLD = {"v": 2, "repos": [{"id": "4d5d7e95", "name": "auto-pipeline", "here": true, "n": 0}, {"id": "8329562e", "name": "v4-plus", "here": true, "n": 1}, {"id": "7b94683e", "name": "v4-office", "here": true, "n": 2}, {"id": "0a8b5440", "name": "v3", "here": true, "n": 3}], "floors": ["4d5d7e95", "8329562e", "7b94683e"], "designs": {"8329562e": {"v": 1, "name": "\u6536\u94f6\u53f0\u98ce\u683c", "why": "POS \u6536\u94f6\u7684 repo", "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0", "desk": "#EFDAB5", "desk_leg": "#BBA27C", "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"}, "decor": ["cashier", "none", "goods"]}, "7b94683e": {"v": 2, "name": "\u6e05\u723d\u84dd\u767d", "why": "\u540e\u53f0\u529e\u516c\uff0c\u5e72\u51c0\u660e\u4eae", "colors": {"accent": "#3B82C4", "carpet": "#E6EEF7", "manager_floor": "#CFDDEE", "pantry_floor": "#EAF0F6", "desk": "#F4F7FB", "desk_leg": "#9FB3C8", "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"}, "materials": {"carpet": "wood", "manager_floor": "herringbone", "pantry_floor": "checker"}, "layout": {"items": [{"k": "tm", "x": -5.4, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -3.0, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -5.4, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -3.0, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -0.6, "z": 0.2, "yaw": 90}, {"k": "helper", "x": 3.4, "z": -1.2, "yaw": 0}, {"k": "helper", "x": 5.4, "z": -1.2, "yaw": 0}, {"k": "meet", "x": 3.8, "z": 3.6, "yaw": 0}, {"k": "plant", "x": -1.2, "z": -3.8, "yaw": 0, "s": 1}, {"k": "plant", "x": -0.8, "z": 5.4, "yaw": 0, "s": 0.8}, {"k": "decor", "id": "bookshelf", "x": -5.2, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "plants", "x": -1.6, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "clock", "x": 6.45, "z": 0.8, "yaw": 270}]}}}, "asked": ["8329562e", "7b94683e"]};
+const DEMO_WORLD = {"v": 2, "repos": [{"id": "4d5d7e95", "name": "auto-pipeline", "here": true, "n": 0}, {"id": "8329562e", "name": "v4-plus", "here": true, "n": 1}, {"id": "7b94683e", "name": "v4-office", "here": true, "n": 2}, {"id": "0a8b5440", "name": "v3", "here": true, "n": 3}], "floors": ["4d5d7e95", "8329562e", "7b94683e"], "designs": {"8329562e": {"v": 1, "name": "\u6536\u94f6\u53f0\u98ce\u683c", "why": "POS \u6536\u94f6\u7684 repo", "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0", "desk": "#EFDAB5", "desk_leg": "#BBA27C", "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"}, "decor": ["cashier", "none", "goods"]}, "7b94683e": {"v": 2, "name": "\u6e05\u723d\u84dd\u767d", "why": "\u540e\u53f0\u529e\u516c\uff0c\u5e72\u51c0\u660e\u4eae", "colors": {"accent": "#3B82C4", "carpet": "#DDD6C7", "manager_floor": "#C9B79A", "pantry_floor": "#E3DED2", "desk": "#F4F7FB", "desk_leg": "#9FB3C8", "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"}, "materials": {"carpet": "wood", "manager_floor": "herringbone", "pantry_floor": "checker"}, "layout": {"items": [{"k": "tm", "x": -5.4, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -3.0, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -5.4, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -3.0, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -0.6, "z": 0.2, "yaw": 90}, {"k": "helper", "x": 3.4, "z": -1.2, "yaw": 0}, {"k": "helper", "x": 5.4, "z": -1.2, "yaw": 0}, {"k": "meet", "x": 3.8, "z": 3.6, "yaw": 0}, {"k": "plant", "x": -1.2, "z": -3.8, "yaw": 0, "s": 1}, {"k": "plant", "x": -0.8, "z": 5.4, "yaw": 0, "s": 0.8}, {"k": "decor", "id": "bookshelf", "x": -5.2, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "plants", "x": -1.6, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "clock", "x": 6.45, "z": 0.8, "yaw": 270}]}}}, "asked": ["8329562e", "7b94683e"]};
 
 /* ---------- the camera: the sim's cam {az, el, dist, tx, tz} (az turns round, el tilts, (tx, ty, tz) is the look point)
    plus ty and wantDist, the zoom it eases to. No auto-rotate. ---------- */
@@ -4946,8 +4950,10 @@ function setLook(co){
 }
 /* lightness the server's way: (max + min) / 2 of the three bytes; ok from 55 to 95 percent */
 function lightOf(hex){
-  const c = h2r(hex), twice = Math.max(c[0], c[1], c[2]) + Math.min(c[0], c[1], c[2]);
-  return { pct:Math.floor(twice * 100 / 510 + .5), ok:twice * 100 >= 55 * 510 && twice * 100 <= 95 * 510 };
+  const c = h2r(hex), twice = Math.max(c[0], c[1], c[2]) + Math.min(c[0], c[1], c[2]), exact = twice * 100 / 510;
+  let pct = Math.floor(exact + .5);
+  if (pct >= 55 && pct <= 95) pct = (exact < 55 ? Math.floor(exact * 10) : Math.ceil(exact * 10)) / 10;   // rounding would land inside the range: one decimal
+  return { pct, ok:twice * 100 >= 55 * 510 && twice * 100 <= 95 * 510 };
 }
 /* the small 3D pictures of the catalogue, drawn in code (no image files) */
 const THUMB = {};
@@ -4980,10 +4986,40 @@ function edSet(s){ ED.plan = clonePlan(s.plan); ED.colors = Object.assign({}, s.
 /* draw the floor again from ED, and the editor's panels */
 function edRedraw(){ ED.rev++; buildFloor(); renderEditor(); needFrame = true; }
 function edSay(msg, err){ ED.msg = msg; ED.err = !!err; }
+/* on a phone the sheet covers the bottom: set the camera so the whole floor fits in the band above it */
+function edFitBand(){
+  const top = $('#edUI').querySelector('.ed-top'), tb = top ? top.getBoundingClientRect().bottom - canvas.getBoundingClientRect().top + 8 : 100;
+  const bot = H * .62 - 52, midX = W / 2, midY = (tb + bot) / 2, bw = W - 16, bh = bot - tb;
+  if (bh < 60) return;
+  const tmp = new THREE.PerspectiveCamera(camera.fov, W / H, camera.near, camera.far);
+  const corners = [[-7, -7], [7, -7], [-7, 7], [7, 7]].map(q => new THREE.Vector3(q[0], 0, q[1]));
+  const shot = (dist, tx, tz) => {
+    const cp = Math.cos(cam.el);
+    tmp.position.set(tx + Math.sin(cam.az) * cp * dist, Math.sin(cam.el) * dist, tz + Math.cos(cam.az) * cp * dist);
+    tmp.lookAt(tx, 0, tz); tmp.updateMatrixWorld(); tmp.updateProjectionMatrix();
+    const ps = corners.map(c => { const v = c.clone().project(tmp); return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * H]; });
+    const xs = ps.map(q => q[0]), ys = ps.map(q => q[1]);
+    return { w:Math.max(...xs) - Math.min(...xs), h:Math.max(...ys) - Math.min(...ys), cx:(Math.max(...xs) + Math.min(...xs)) / 2, cy:(Math.max(...ys) + Math.min(...ys)) / 2 };
+  };
+  let dist = cam.wantDist || cam.dist, tx = 0, tz = 0;
+  for (let k = 0; k < 4; k++) {
+    let s = shot(dist, tx, tz);
+    dist = clamp(dist * Math.max(s.w / bw, s.h / bh), 8, 70);
+    s = shot(dist, tx, tz);
+    const a = shot(dist, tx + 1, tz), b = shot(dist, tx, tz + 1);
+    const j11 = a.cx - s.cx, j21 = a.cy - s.cy, j12 = b.cx - s.cx, j22 = b.cy - s.cy, det = j11 * j22 - j12 * j21;
+    if (Math.abs(det) < 1e-6) break;
+    const ex = midX - s.cx, ey = midY - s.cy;
+    tx += (ex * j22 - j12 * ey) / det; tz += (j11 * ey - j21 * ex) / det;
+  }
+  cam.wantDist = dist; cam.tx = tx; cam.tz = tz;
+}
 function setEdView(two){
   ED.two = two;
   if (two) { cam.az = 0; cam.el = 1.5; } else { cam.az = -.45; cam.el = 1; }
-  cam.wantDist = fitDist() * (two ? .95 : .98) * (W < 700 ? 1.12 : 1); cam.tx = W > 900 ? -.4 : 0; cam.ty = 0; cam.tz = (two ? -.7 : .3) + (W < 700 ? (two ? 3.4 : 4.5) : 0);   // on a phone the sheet covers the bottom: the floor moves up needFrame = true;
+  cam.wantDist = fitDist() * (two ? .95 : .98) * (W < 700 ? 1.12 : 1); cam.tx = W > 900 ? -.4 : 0; cam.ty = 0; cam.tz = two ? -.7 : .3;
+  if (W < 700) edFitBand();
+  needFrame = true;
 }
 /* openEditor(terr): the editor of the floor in view (the floor's plan, colours, materials and name are the start) */
 function openEditor(terr){
@@ -4996,7 +5032,7 @@ function openEditor(terr){
     msg:i18n('ed.start'), err:false, badI:null, rev:0, down:null, dragI:null };
   $('#dPop').hidden = true; $('#renoBg').hidden = true; stopFollow();
   stage.classList.add('editing'); figG.visible = false;
-  setEdView(false); buildFloor(); renderEditor(); needFrame = true;
+  renderEditor(); setEdView(false); buildFloor(); needFrame = true;
 }
 function endEditor(){
   if (!ED) return;
@@ -5124,6 +5160,7 @@ function edStyle(i){
   if (!ED.name.trim() || STYLES.some(x => x.name === ED.name)) ED.name = s.name;
   edPush(prev); edSay(i18n('ed.styleSet', { name:s.name }), false); edRedraw();
 }
+let edNoClick = 0;
 const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitPt = new THREE.Vector3();
 function edRay(e){
   const r = canvas.getBoundingClientRect();
@@ -5179,19 +5216,20 @@ function renderEditor(){
   let right;
   if (ED.sel != null && ED.plan.items[ED.sel]) {
     const it = ED.plan.items[ED.sel], nm = edName(ED.sel), deskish = it.k === 'tm' || it.k === 'helper', tk = it.k === 'decor' ? 'decor:' + it.id : it.k;
-    right = '<div class="ed-ins-h">' + (THUMB[tk] ? thumbImg(tk) : '') + '<b>' + esc(nm) + '</b><small>x ' + it.x.toFixed(1) + ' · z ' + it.z.toFixed(1) + ' · ' + it.yaw + '°</small></div>' +
+    right = '<button type="button" class="ed-x" data-act="close" aria-label="' + esc(i18n('btn.close')) + '">×</button><div class="ed-ins-h">' + (THUMB[tk] ? thumbImg(tk) : '') + '<b>' + esc(nm) + '</b><small>x ' + it.x.toFixed(1) + ' · z ' + it.z.toFixed(1) + ' · ' + it.yaw + '°</small></div>' +
       '<div class="ed-acts"><button type="button" class="btn" data-act="rotl">' + esc(i18n('ed.rotl')) + '</button><button type="button" class="btn" data-act="rotr">' + esc(i18n('ed.rotr')) + '</button><button type="button" class="btn" data-act="copy">' + esc(i18n('ed.copy')) + '</button><button type="button" class="btn danger" data-act="del">' + esc(i18n('ed.del')) + '</button></div>' +
       (deskish ? '<div class="ed-l">' + esc(i18n('ed.allDesks')) + '</div>' + swatches('desk', ANY_SW) + '<div class="ed-l">' + esc(i18n('color.desk_leg')) + '</div>' + swatches('desk_leg', ANY_SW) + '<div class="ed-l">' + esc(i18n('color.chair')) + '</div>' + swatches('chair', ANY_SW) : '') +
       (it.k === 'meet' ? '<div class="ed-l">' + esc(i18n('color.meeting_rug')) + '</div>' + swatches('meeting_rug', ANY_SW) : '') +
       (it.k === 'decor' ? '<div class="ed-l">' + esc(i18n('ed.decorAccent')) + '</div>' + swatches('accent', ANY_SW) : '');
   } else if (ED.surf) {
     const k = ED.surf, light = LIGHT_SURF.includes(k);
-    right = '<div class="ed-ins-h"><i class="big" style="' + (light ? 'background-image:url(' + matThumb(ED.mats[k], ED.colors[k]) + ')' : 'background:' + ED.colors[k]) + '"></i><b>' + esc(surfName(k)) + '</b><small>' + (light ? esc(matName(ED.mats[k])) + ' · ' : '') + ED.colors[k] + '</small></div>' +
+    right = '<button type="button" class="ed-x" data-act="close" aria-label="' + esc(i18n('btn.close')) + '">×</button><div class="ed-ins-h"><i class="big" style="' + (light ? 'background-image:url(' + matThumb(ED.mats[k], ED.colors[k]) + ')' : 'background:' + ED.colors[k]) + '"></i><b>' + esc(surfName(k)) + '</b><small>' + (light ? esc(matName(ED.mats[k])) + ' · ' : '') + ED.colors[k] + '</small></div>' +
       (light ? '<div class="ed-l">' + esc(i18n('ed.material')) + '</div><div class="ed-mats">' + FLOOR_MATERIALS.map(m => '<button type="button" class="ed-mat' + (ED.mats[k] === m ? ' on' : '') + '" data-mat="' + k + '|' + m + '"><img src="' + matThumb(m, ED.colors[k]) + '" alt=""><span>' + esc(matName(m)) + '</span></button>').join('') + '</div><div class="ed-l">' + esc(i18n('ed.colour')) + '</div>' : '') +
       swatches(k, light ? LIGHT_SW : ANY_SW) + (light ? '<p class="ed-note">' + esc(i18n('ed.lightNote')) + '</p>' : '');
   } else {
     right = '<div class="ed-ins-h"><b>' + esc(i18n('ed.tipsTitle')) + '</b></div><ul class="ed-tips">' + [1, 2, 3, 4, 5].map(n => '<li>' + esc(i18n('ed.tip' + n)) + '</li>').join('') + '</ul>';
   }
+  el.hidden = false;
   el.innerHTML =
     '<div class="ed-top">' +
       '<button type="button" class="btn" id="edQuit">' + esc(i18n('ed.quit')) + '</button>' +
@@ -5206,10 +5244,17 @@ function renderEditor(){
     '<aside class="ed-left"><div class="ed-tabs">' + ['style', 'furniture', 'decor', 'color'].map(k => '<button type="button" class="' + (ED.tab === k ? 'on' : '') + '" data-tab="' + k + '">' + esc(i18n('ed.tab.' + k)) + '</button>').join('') + '</div>' + left + '</aside>' +
     '<aside class="ed-right' + (ED.sel == null && !ED.surf ? ' tips' : '') + '">' + right + '</aside>' +
     '<div class="ed-msg' + (ED.err ? ' err' : '') + '" id="edMsg" role="status">' + esc(ED.msg) + '</div>';
+  edLayout();
 }
+/* the panels start below the top bar, whatever height it wraps to */
+function edLayout(){
+  const el = $('#edUI'), top = el.querySelector('.ed-top');
+  if (top) el.style.setProperty('--ed-top', (top.offsetHeight + 18) + 'px');
+}
+window.addEventListener('resize', () => { if (ED) edLayout(); });
 /* the editor's buttons (one listener; the panels are drawn again at every change) */
 $('#edUI').addEventListener('click', e => {
-  if (!ED) return;
+  if (!ED || performance.now() < edNoClick) return;   // the click that follows a touch select lands under the finger: ignored
   const id = e.target.closest('button') && e.target.closest('button').id;
   if (id === 'edQuit') return closeEditor(false);
   if (id === 'edSave') return closeEditor(true);
@@ -5225,6 +5270,7 @@ $('#edUI').addEventListener('click', e => {
   else if (b.dataset.surf) { ED.surf = b.dataset.surf; ED.sel = null; edRedraw(); }
   else if (b.dataset.col) { const p = b.dataset.col.split('|'); edColor(p[0], p[1]); }
   else if (b.dataset.mat) { const p = b.dataset.mat.split('|'); edMaterial(p[0], p[1]); }
+  else if (b.dataset.act === 'close') { ED.sel = null; ED.surf = null; ED.badI = null; edRedraw(); }
   else if (b.dataset.act === 'rotl') edRotate(-1);
   else if (b.dataset.act === 'rotr') edRotate(1);
   else if (b.dataset.act === 'copy') edCopy();
@@ -5232,38 +5278,58 @@ $('#edUI').addEventListener('click', e => {
 });
 $('#edUI').addEventListener('change', e => { const inp = e.target.closest('[data-colin]'); if (ED && inp) edColor(inp.dataset.colin, inp.value); });
 $('#edUI').addEventListener('input', e => { if (ED && e.target.id === 'edName') { ED.name = e.target.value; ED.dirty = true; } });
-/* drag from the catalogue: a chip follows the pointer; let go over the floor = placed there; a plain click = auto place */
+/* drag from the catalogue: a chip follows the pointer; let go over the floor = placed there; a plain click = auto place.
+   By touch a vertical swipe scrolls the list (touch-action: pan-y); a drag starts when the move is mainly sideways, or
+   after a hold of about 300 ms */
 let cardDrag = null;
 $('#edUI').addEventListener('pointerdown', e => {
   const card = e.target.closest('[data-add]');
   if (!ED || !card || e.button > 0) return;
-  e.preventDefault();
-  const key = card.dataset.add;
-  cardDrag = { key, sx:e.clientX, sy:e.clientY, moved:false, ghost:null };
-  const mv = ev => {
-    if (!cardDrag) return;
-    if (!cardDrag.moved && Math.hypot(ev.clientX - cardDrag.sx, ev.clientY - cardDrag.sy) > 6) {
-      cardDrag.moved = true;
-      const g = document.createElement('div'); g.className = 'ed-ghost'; g.innerHTML = THUMB[key] ? '<img src="' + THUMB[key] + '" alt="">' : '+';
-      document.body.appendChild(g); cardDrag.ghost = g;
-    }
-    if (cardDrag.ghost) { cardDrag.ghost.style.left = ev.clientX + 'px'; cardDrag.ghost.style.top = ev.clientY + 'px'; }
+  const touch = e.pointerType !== 'mouse';
+  if (!touch) e.preventDefault();
+  const key = card.dataset.add, me = { key, sx:e.clientX, sy:e.clientY, lx:e.clientX, ly:e.clientY, moved:false, ghost:null, timer:0 };
+  cardDrag = me;
+  const start = () => {
+    if (cardDrag !== me || me.moved) return;
+    me.moved = true;
+    const g = document.createElement('div'); g.className = 'ed-ghost'; g.innerHTML = THUMB[key] ? '<img src="' + THUMB[key] + '" alt="">' : '+';
+    document.body.appendChild(g); me.ghost = g; g.style.left = me.lx + 'px'; g.style.top = me.ly + 'px';
   };
+  const stop = () => {
+    clearTimeout(me.timer);
+    window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel);
+    document.removeEventListener('touchmove', tm, { passive:false });
+    if (me.ghost) me.ghost.remove();
+    if (cardDrag === me) cardDrag = null;
+  };
+  const mv = ev => {
+    if (cardDrag !== me) return;
+    me.lx = ev.clientX; me.ly = ev.clientY;
+    const dx = ev.clientX - me.sx, dy = ev.clientY - me.sy, d = Math.hypot(dx, dy);
+    if (!me.moved) {
+      if (!touch && d > 6) start();
+      else if (touch && d > 8) { if (Math.abs(dx) > Math.abs(dy)) start(); else stop(); }   // sideways: a drag; mainly vertical: the list scrolls
+    }
+    if (me.ghost) { me.ghost.style.left = ev.clientX + 'px'; me.ghost.style.top = ev.clientY + 'px'; }
+  };
+  const tm = ev => { if (me.moved && ev.cancelable) ev.preventDefault(); };   // a drag started: the page must not scroll under it
+  const cancel = () => stop();
   const up = ev => {
-    window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
-    const d = cardDrag; cardDrag = null;
-    if (!d) return;
-    if (d.ghost) d.ghost.remove();
-    if (!ED) return;
+    const d = cardDrag === me ? me : null, moved = d && d.moved;
+    stop();
+    if (!d || !ED) return;
+    if (touch) edNoClick = performance.now() + 450;
     const kind = d.key.indexOf(':') >= 0 ? 'decor' : d.key, id = d.key.indexOf(':') >= 0 ? d.key.split(':')[1] : null;
-    if (!d.moved) { edPlace(kind, id); return; }
+    if (!moved) { edPlace(kind, id); return; }
     const r = canvas.getBoundingClientRect(), over = document.elementFromPoint(ev.clientX, ev.clientY);
     if ((over && over.closest && over.closest('.ed-left, .ed-right, .ed-top')) || ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) { edSay(i18n('ed.dropOnFloor'), false); renderEditor(); return; }
     edRay(ev);
     if (!ray.ray.intersectPlane(floorPlane, hitPt)) return;
     edPlace(kind, id, hitPt.x, hitPt.z);
   };
-  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  if (touch) me.timer = setTimeout(start, 300);
+  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel);
+  document.addEventListener('touchmove', tm, { passive:false });
 });
 /* the pointer on the floor while editing: a press on a piece drags it (snapped to 0.2, the pointer is captured), a tap
    picks it; a tap on the floor picks the floor area; anything else turns the camera as before */
@@ -5295,6 +5361,7 @@ canvas.addEventListener('pointermove', e => {
 canvas.addEventListener('pointerup', e => {
   if (!ED) return;
   const d = ED.dragI;
+  if (e.pointerType !== 'mouse') edNoClick = performance.now() + 450;
   if (d && d.id === e.pointerId) {
     ED.dragI = null; e.stopImmediatePropagation();
     if (!d.moved) { ED.sel = d.i; ED.surf = null; edSay(i18n('ed.piecePicked', { name:edName(d.i) }), false); edRedraw(); return; }

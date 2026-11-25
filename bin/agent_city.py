@@ -1717,11 +1717,16 @@ def _check_design(obj):
                 rgb = [int(value[i:i + 2], 16) for i in (1, 3, 5)]
                 twice = max(rgb) + min(rgb)             # lightness = twice / 510
                 if not 55 * 510 <= twice * 100 <= 95 * 510:
-                    pct = int(twice * 100 / 510 + 0.5)
+                    exact = twice * 100 / 510
+                    pct = int(exact + 0.5)
+                    if 55 <= pct <= 95:                 # rounding would land inside the range: one decimal, toward the outside
+                        shown = ("%.1f" % (math.floor(exact * 10) / 10 if exact < 55 else math.ceil(exact * 10) / 10))
+                    else:
+                        shown = "%d" % pct
                     probs.append(_design_problem(
                         "colors.%s" % key,
-                        "%s的亮度是 %d%%，要在 55%%–95%% 之间" % (DESIGN_LIGHT_LABEL[key], pct),
-                        "%s has lightness %d%%; it must be between 55%% and 95%%" % (key, pct)))
+                        "%s的亮度是 %s%%，要在 55%%–95%% 之间" % (DESIGN_LIGHT_LABEL[key], shown),
+                        "%s has lightness %s%%; it must be between 55%% and 95%%" % (key, shown)))
     if v2:
         probs.extend(_check_materials(obj))
         probs.extend(_check_layout(obj.get("layout")))
@@ -6014,8 +6019,8 @@ def demo_world():
                           "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"},
                "decor": ["cashier", "none", "goods"]}
     fresh = {"v": 2, "name": "清爽蓝白", "why": "后台办公，干净明亮",
-             "colors": {"accent": "#3B82C4", "carpet": "#E6EEF7", "manager_floor": "#CFDDEE",
-                        "pantry_floor": "#EAF0F6", "desk": "#F4F7FB", "desk_leg": "#9FB3C8",
+             "colors": {"accent": "#3B82C4", "carpet": "#DDD6C7", "manager_floor": "#C9B79A",
+                        "pantry_floor": "#E3DED2", "desk": "#F4F7FB", "desk_leg": "#9FB3C8",
                         "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"},
              "materials": {"carpet": "wood", "manager_floor": "herringbone", "pantry_floor": "checker"},
              "layout": {"items": [
