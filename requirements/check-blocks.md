@@ -806,3 +806,16 @@ Decided by the main manager (listed for the owner):
 - C8 (also): the waiter calls the gate through `bin/agent-owner-order.sh human-quiet` (its documented entry), not the Python file.
 - F3 (also): a PR REVIEW, FLOW CHECK or UI CHECK line without `at` (an old line, or one appended by hand) is not accepted: `<BLOCK>: pass with no commit, not accepted`. "Before the task opened" compares days (the worker's reading, kept).
 - F10 (as applied): code files only (not markup such as .html .jsx .tsx .vue, not config such as .yml .json): a changed quoted string is code, except a docstring and a comment line; markup text and config values keep their rules.
+
+## 45. FIX ORDER 4 from the main manager (TELL fe33c244, bounce 2: second pass of the review of the rule text at 6be98d2)
+
+- A1 (blocker) A check line records the commit it saw; the reviewer and the check deputy are subagents whose shell starts in the main checkout, so they always pass `--commit <the head they looked at>`: agents/reviewer.md and agents/check-deputy.md write `agent-file.sh check "<name>" "<BLOCK>" pass|fail --by ... --commit <head> --evidence ...`; skills/merge gives that head in their brief (`head: <sha>`, read with `git -C <worktree path> rev-parse HEAD`, or `git rev-parse origin/<branch>` for another machine); PRINCIPLES.md R8 says so. The gate's refusal names both commits (`pass at <c>, not at the head <h>`).
+- A2 skills/dispatch's fast-lane brief names `target:`, `base:` (origin/<production branch> for target production, else origin/<working branch>), `working branch:` and `production branch:`; agents/fast-lane-deputy.md takes them from the brief (never derives a name) and starts its branch from `base:`.
+- A3 agents/fast-lane-deputy.md: the report carries the click path when FLOW CHECK or UI CHECK is planned.
+- A4 skills/dispatch: `orca terminal create` first, then `agent-room.sh reserve-pane <the new handle> <mb>` (as agent-resume.sh does).
+- A5 bin/agent-promote.sh usage: `--task "<task>" --branch <branch>` takes no --owner-quote (the words stored at todo add --target production).
+- A6 agents/merge-deputy.md: one meaning: a production task is merged by `agent-promote.sh --task` (not by you); with `merged: <merge hash>` you do its cleanup and todo done.
+- A7 skills/dispatch's list of watch signals names WATCH ROOM.
+- A8 PRINCIPLES.md F tree: "Reviewer (Reviewer model setting)"; skills/merge: the reviewer's Agent call passes the model and the effort of the Reviewer model setting (agents/reviewer.md holds only `model: opus`).
+- A9 (decided by the main manager) No second yes after an urgent fix: the owner's verified words at dispatch that name the publish are his final yes (W12, P1). R8 URGENT FIX, skills/dispatch and skills/merge say so and drop "the owner's yes" after the fix.
+- Walks: tests/check_blocks_demo.sh walks (1) a small task from dispatch to todo done on the working branch and (2) a task with target production, with only the commands of the skill and agent texts, each gate passed by check lines written from another checkout with --commit.
