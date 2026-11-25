@@ -71,11 +71,11 @@ R8. Check blocks
 |---|---|---|---|---|
 | DIFF SCAN | tool | every task | the tool scans the diff: files outside the task's scope, deleted or skipped tests, secrets, debug leftovers | no |
 | BUILD | tool | code changed | lint + type-check or syntax check of the app that was touched | no |
-| RELATED TESTS | tool | code, text or rule files changed | only the tests that import or name the changed files. API change: also the integration groups of every module that imports the changed file. Style-only change of a shared component: the component's own tests. Rule text: the tests that name the changed section | no |
+| RELATED TESTS | tool | code, text or rule files changed | only the tests that import or name the changed files. Style-only change of a shared component: the component's own tests. Rule text: the tests that name the changed section | no |
+| MODULE TESTS | tool | code used by other modules changed, or dependencies, lockfile, CI or test config changed | the tests of every module that uses the changed code; a dependency, lockfile, CI or test-config change: the tests of every module | a dependency, lockfile, CI or test-config change |
 | GUARD TESTS | tool | code or text changed | the repo's tree-scanning tests (listed in the repo file) | no |
 | DB CHECK | tool | a migration or schema file is in the diff | dry run on a data copy, counts before and after, rollback plan | only when the migration changes or removes data or columns |
 | DATA CHECK | tool | a script that changes live data | preview of the rows (the count must match the expected one), backup | yes |
-| FULL SUITE | tool | dependencies, lockfile, CI or test config changed | the full suite, once | yes |
 | CORE REVIEW | tool | a core path of the repo is touched (money, permission), or the brief says who can see or do what changes, or a posting rule changes | an independent read-only agent reads the logic against the rules the owner approved | a permission change |
 | DIFF READ | brief | text, style, a simple move (banner -> toast) | someone who did not write it reads the diff. That is the acceptance. A 5-minute task stays a 5-minute task | no |
 | EXAMPLES TEST | brief | behaviour or logic changes | failing tests first, written from the examples in the requirement doc; they cover the fitting lines of the repo's edge list. Money and permission rules: the owner approves the examples before code | no |
@@ -90,11 +90,17 @@ R8. Check blocks
 - One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
 - The merge gate `agent-file.sh checks gate <task>` refuses while a planned block has no pass line
 - DIFF READ, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (the todo line's builder or its LAUNCH records)
-- OWNER SIGN is planned when a sign fires: FULL SUITE, DATA CHECK, DB CHECK on a data change, CORE REVIEW on a permission change
+- No task runs the full suite (owner 1A 2026-11-25): MODULE TESTS is the largest per-task check
+- OWNER SIGN is planned when a sign fires: MODULE TESTS on a dependency, lockfile, CI or test-config change, DATA CHECK, DB CHECK on a data change
+- Dispatch plans OWNER SIGN with CORE REVIEW when the brief changes who can see or do what
 - BUILD and GUARD TESTS run per task only when their measured time in agent_repo.conf is under `check_budget_s` (60 s)
-- Slower = heavy: it runs in the net; a heavy BUILD is queued like a heavy test (S5)
+- Slower = heavy: it runs in the net; a heavy BUILD takes the heavy-test slot (S5)
 - REAL DATA COUNT with no read access: skipped with one printed line, never silently
-- Outside tasks, the net: NIGHTLY SUITE (the full suite every night or before a release, in the background on the heavy-test machine; nobody waits; red = the first task next morning)
+- Outside tasks, the net: NIGHTLY RUN, all tests once every night in the background on the heavy-test machine (`agent-nightly.sh`); it gates nothing
+- A failure the nightly finds that the causing task's own RELATED or MODULE run did not find is a selection miss: one line, the test and the merge (`agent-nightly.sh --misses`)
+- After two weeks the owner reads the selection miss count and decides whether the nightly goes too
+- The watch's housekeep pass starts it once a day after 22:00 (`nightly_hour`) when no heavy test runs; no watch alive: the next session start, when the last run is older than 24 hours
+- A release needs the last nightly on that main to be green, or one background run (`agent-nightly.sh --release-ok`); no other pre-release run
 - RELEASE SMOKE after every release: a fresh session uses the released version for real (start, one subagent launch and finish, the user-facing flows that changed)
 - Four kinds of request, one line each:
   - Refactor (no behaviour change): BUILD + RELATED TESTS; no new examples, the existing tests are the acceptance
@@ -133,8 +139,8 @@ W3. TDD
 
 W4. Multi-agent tests
 - Tests are organised module → feature
-- Which tests run follows the blocks (R8): RELATED TESTS (the tests that import or name the changed files) and GUARD TESTS per task
-- FULL SUITE only when its trigger fires: once, never twice
+- No task runs the full suite (owner 1A 2026-11-25). Which tests run follows the blocks (R8): RELATED TESTS and GUARD TESTS per task; MODULE TESTS only when its trigger fires
+- Every test run goes through `agent-test-run.sh`: light or heavy by measured weight (S5)
 - The main manager and the merge deputy never re-run tests the task manager already passed. Only on a merge conflict: test the conflicted part
 - After a bounce: re-run only the tests that failed, not the suite
 
@@ -183,7 +189,7 @@ W8. Merge and cleanup
 - A failed run after the merge is undone with `git reset --merge ORIG_HEAD`, never --hard (that wipes the uncommitted agent_*.txt of the main checkout)
 - Every merge ends with cleanup, in every case: a task manager pane, a subagent's git worktree, a human-direct Helper (its own pane stays), a worktree on another machine (agents/merge-deputy.md)
 - The worktree line of a merged task is always removed or rewritten at merge, also when the folder stays
-- human-direct protects only the human's own session pane, not every pane in that worktree; the sweep closes a pane that never got a prompt and is idle over 30 minutes (`unused_pane_min`) (named)
+- human-direct protects only the human's own session pane; the sweep never closes a Claude pane, only a shell pane that never got a prompt and is idle over 30 minutes (`unused_pane_min`)
 - The sweep prunes a LAUNCH record whose pid is dead or whose pane is gone; its table never lists main or the release branch; a worktree with a live LAUNCH record is "live agent"
 - The plain list shows what --apply would remove; --apply is main manager only
 - Never skip cleanup
@@ -425,12 +431,13 @@ S4. Usage cap
 - Setting "Load: Max memory %" = 80
 
 S5. Heavy tests
-- One at a time across all agents
-- Others queue
-- Every test run caps its own parallelism, e.g. `jest --maxWorkers=2`, `flutter test -j 2`
+- A test run is light or heavy by measured weight, never by its name: `agent_repo.conf` keeps seconds and peak MB per test command or module group (`weight.<key>`); init measures, each real run through `agent-test-run.sh` updates them
+- Light (under 120 s and under 1 GB): no slot, on the agent's own machine, several at once, under the normal RAM guard (S4)
+- Heavy: the heavy-test slot on the heavy-test machine. Unknown weight counts as heavy the first time
 - Start one; once it runs and has settled, start another only if RAM is still more than 50% free; never two at the same moment. The Heavy test slot/time setting is the ceiling, RAM decides below it
+- Every test run caps its own parallelism, e.g. `jest --maxWorkers=2`, `flutter test -j 2`
 - Every test run that can run in the background runs in the background by default (Bash `run_in_background`)
-- Setting "Load: Heavy test slot/time" = 1
+- Setting "Load: Heavy test slot/time" = 2
 
 S6. Agent cap
 - Per device
@@ -533,6 +540,8 @@ Main manager   (Opus 5.5, xhigh · the main chat · free for the human)
 
 Scripts, not agents (cost no tokens):
   bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
+  bin/agent-nightly.sh  the nightly run of all tests: gates nothing, records selection misses, --release-ok
+  bin/agent-test-run.sh  every test run: light or heavy by measured weight, the heavy-test slot
   bin/agent-level.sh   the blocks a diff triggers (R8): agent-level.sh check --base <ref>
   bin/agent_blocks.py  the one table of blocks and triggers (R8)
   bin/agent-owner-order.sh  relayed owner orders between repo managers: `line` prints the OWNER ORDER header (sender), `verify` checks the words are a typed owner prompt in the sender's transcript (receiver)
@@ -588,6 +597,7 @@ bin/agent-file.sh backtest          # estimator, blend and rubric on the finishe
 bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
 bin/agent-file.sh next              # the queued tasks that can start now, then the board warnings
 bin/agent-file.sh checks gate <task> --dir <path>  # the merge gate
+bin/agent-nightly.sh --status | --misses | --release-ok   # the nightly run of all tests: its state, the selection misses, the release check
 bin/agent-file.sh board             # the todo board: open tasks, waits on the owner, owner to-dos, parked questions
 bin/agent-file.sh questions         # the question list: every question pending on the owner (--self, --json, --page <file>, --url <url>, answer <id> "<answer>")
 bin/agent-city.sh install-shim      # one time: puts the agent-city command in ~/.local/bin; nothing installs it by itself, the init skill offers it
