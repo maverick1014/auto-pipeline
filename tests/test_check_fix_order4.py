@@ -63,8 +63,9 @@ class TestA1AnotherCheckout(tcr.TestGate):
         r = self.gate_wt()
         self.assertEqual(r.returncode, 1, r.stdout)
         base = self.git("rev-parse", "HEAD").strip()
-        self.assertIn("PR REVIEW: pass at %s, not at the head %s, not accepted" % (base[:12], self.head[:12]),
-                      r.stdout.splitlines())
+        # section 50 G9: the main checkout's commit is not one of this branch's commits; both commits named (A1)
+        self.assertIn("PR REVIEW: pass at %s, not a commit of this branch (head %s), not accepted"
+                      % (base[:12], self.head[:12]), r.stdout.splitlines())
 
     def test_with_commit_it_passes(self):
         self.lines_from_the_main_checkout("--commit", self.head)

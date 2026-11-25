@@ -457,7 +457,7 @@ Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: P
 
 Q39. Production is broken and the owner wants it fixed now. You:
   A. Fix it on the working branch and wait for the next promote
-  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, get the owner's yes, merge to production (the release build runs by itself), then merge production back into the working branch
+  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with his verified words from dispatch (no second yes; the release build runs by itself), then merge production back into the working branch
   C. Push a fix straight to production with no check
   D. Wait for the nightly run
 QUIZ
@@ -906,34 +906,16 @@ ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
 if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-nightly.sh" ]; then
   if ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_watchfile as w; sys.exit(0 if w.live(w.read_status(sys.argv[2])) else 1)' "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null; then
     if ( cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --due ) >/dev/null 2>&1 </dev/null; then
-      # C18 (section 46): a connected machine (orca environment list) runs it; nothing starts here
-      nl_conn=$(python3 -c '
-import json, subprocess, sys
-try:
-    out = subprocess.run(["orca", "environment", "list", "--json"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                         stdin=subprocess.DEVNULL, timeout=10).stdout.decode(errors="replace")
-    data = json.loads(out)
-except Exception:
-    sys.exit(1)
-def items(o):
-    if isinstance(o, list):
-        return o
-    if isinstance(o, dict):
-        for k in ("environments", "result", "items", "machines"):
-            if k in o:
-                return items(o[k])
-    return []
-bad = ("disconnected", "offline", "down", "unreachable", "error", "false")
-for e in items(data):
-    if not isinstance(e, dict) or not (e.get("name") or e.get("id")):
-        continue
-    state = str(e.get("status", e.get("state", e.get("connected", "")))).lower()
-    if state not in bad:
-        print("yes"); break
-' 2>/dev/null </dev/null) || nl_conn=""
+      # C23 (section 48): the shared function lists the reachable paired machines (one per line) and a
+      # "NIGHTLY: ... did not answer" line for a paired one that did not answer
+      nl_out=$(cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --machines 2>/dev/null </dev/null) || nl_out=""
+      nl_conn=""
+      nl_note=$(printf '%s\n' "$nl_out" | grep '^NIGHTLY:' | head -n 1) || nl_note=""
+      [ -n "$(printf '%s\n' "$nl_out" | grep -v '^NIGHTLY:' | grep -v '^[[:space:]]*$')" ] && nl_conn=yes
       if [ "$nl_conn" = yes ]; then
         NIGHTLY_LINE="NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start there"
       else
+      [ -z "$nl_note" ] || NIGHTLY_LINE="$nl_note"
       # C3 (section 43): only with room for the nightly's weight; else one line and nothing starts
       nl_mb=$(cd "$PROJECT_ROOT" 2>/dev/null && python3 -c '
 import os, sys
@@ -946,7 +928,8 @@ print(w[1] if w else 0)' "$PLUGIN_ROOT/bin" 2>/dev/null </dev/null) || nl_mb=0
         ( cd "$PROJECT_ROOT" && nohup "$PLUGIN_ROOT/bin/agent-nightly.sh" --start >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
       else
         nl_host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
-        NIGHTLY_LINE="NIGHTLY: due, no room on $nl_host: start it where there is room (W7): agent-nightly.sh --start"
+        NIGHTLY_LINE="${NIGHTLY_LINE:+$NIGHTLY_LINE
+}NIGHTLY: due, no room on $nl_host: start it where there is room (W7): agent-nightly.sh --start"
       fi
       fi
     fi
@@ -956,7 +939,8 @@ fi
 # check-blocks section 25 (C29): the main manager measures its own pane once, detached, never waited for. The weights
 # key "pane" is what a new pane costs in the memory gate (550 MB until measured).
 # C17: every session with a pane handle measures its pane (a task manager's too; its reservation is dropped then).
-if { [ -n "${ORCA_TERMINAL_HANDLE:-}" ] || { [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; }; } && [ -x "$PLUGIN_ROOT/bin/agent-room.sh" ]; then
+# C26: once, at its first start (SessionStart source "startup"), never at resume or compact.
+if [ "$SRC" = startup ] && { [ -n "${ORCA_TERMINAL_HANDLE:-}" ] || { [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; }; } && [ -x "$PLUGIN_ROOT/bin/agent-room.sh" ]; then
   ( cd "$PROJECT_ROOT" 2>/dev/null && nohup "$PLUGIN_ROOT/bin/agent-room.sh" measure-pane "${CLAUDE_PID:-$PPID}" >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
 fi
 

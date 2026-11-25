@@ -194,9 +194,16 @@ else
         if [ "$DRY_RUN" -eq 1 ]; then
           relaunched="would"
         else
-          launch_out=$(runtime_launch "$path" "TM $module" "$cmd" </dev/null) || launch_out=""
-          # C7: the new pane is reserved until it measures itself (agent-room.sh measure-pane drops it)
-          pane_handle=$(printf '%s' "$launch_out" | python3 -c '
+          # C24, C25: the room check and the reservation happen before the create, in one step; resume launches
+          # on this machine only (no --environment), so the pane is reserved in this machine's list.
+          pane_key="resume-$$-$relaunch_count"
+          if ! (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane --pending "$pane_key" "$room_pane") >/dev/null 2>&1 </dev/null; then
+            relaunched="no, no room"
+            cap_lines="${cap_lines}no room (another agent took it first), not relaunching $path
+"
+          # (runtime_launch is the orca terminal create)
+          elif launch_out=$(runtime_launch "$path" "TM $module" "$cmd" </dev/null); then
+            pane_handle=$(printf '%s' "$launch_out" | python3 -c '
 import json, sys
 def find(o):
     if isinstance(o, dict):
@@ -216,22 +223,15 @@ try:
     print(find(json.load(sys.stdin)))
 except Exception:
     print("")' 2>/dev/null) || pane_handle=""
-          # no handle in the answer: a name of our own, so the pane still counts until the reservation expires
-          real_handle=$pane_handle
-          [ -n "$pane_handle" ] || pane_handle="resume-$$-$relaunch_count"
-          if (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane "$pane_handle" "$room_pane") >/dev/null 2>&1 </dev/null; then
+            # the reservation takes the new handle (no check); no handle in the answer: it stays under its key
+            if [ -n "$pane_handle" ]; then
+              (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane --name "$pane_key" "$pane_handle") >/dev/null 2>&1 </dev/null || true
+            fi
             relaunched="yes"
           else
-            rc_room=$?
-            if [ "$rc_room" -eq 1 ]; then
-              # another agent took the room first: close the new pane, say so (skills/dispatch: no room, close it)
-              [ -z "$real_handle" ] || runtime_close "$real_handle" >/dev/null 2>&1 </dev/null || true
-              relaunched="no, no room"
-              cap_lines="${cap_lines}no room (another agent took it first), closed the new pane, not relaunching $path
-"
-            else
-              relaunched="yes"
-            fi
+            # a failed create gives the reservation back
+            (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" release-pane "$pane_key") >/dev/null 2>&1 </dev/null || true
+            relaunched="yes"
           fi
         fi
         if [ "$relaunched" = yes ] || [ "$relaunched" = would ]; then
