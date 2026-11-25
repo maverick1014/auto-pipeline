@@ -44,6 +44,7 @@ import hashlib
 import hmac
 import http.client
 import json
+import math
 import os
 import queue
 import re
@@ -1520,13 +1521,48 @@ FLOOR_DECOR = ("robot", "conveyor", "gears", "chart", "plants", "safe", "cabinet
                "clock", "cashier", "goods", "menu", "scanner", "lightbox")
 DESIGN_LIGHT_LABEL = {"carpet": "地毯", "manager_floor": "区经理室地板", "pantry_floor": "茶水间地板"}
 DESIGN_KEYS = ("v", "name", "why", "colors", "decor")
+DESIGN_KEYS_V2 = ("v", "name", "why", "colors", "materials", "layout")
+DESIGN_MATERIAL_KEYS = ("carpet", "manager_floor", "pantry_floor")
+FLOOR_MATERIALS = ("plain", "wood", "herringbone", "tile", "bigtile", "marble", "concrete", "checker")
+DECOR_ZH = {"robot": "机械臂", "conveyor": "传送带", "gears": "齿轮墙", "chart": "业绩柱状图", "plants": "植物角",
+            "safe": "保险箱", "cabinets": "文件柜", "printer": "打印机", "bookshelf": "书柜", "clock": "老座钟",
+            "cashier": "收银台", "goods": "货架", "menu": "菜单板", "scanner": "扫描仪", "lightbox": "看单灯箱"}
+# The free layout (v 2), local rectangles (x1, x2, z1, z2) with the front toward +z. The page has the same numbers.
+LAYOUT_KINDS = {
+    "tm":     {"zh": "经理桌", "walk": (-0.75, 0.75, -0.4, 0.4), "foot": (-0.75, 0.75, -0.4, 1.1),
+               "seat": (0, 0.78), "min": 1, "max": 9},
+    "helper": {"zh": "助理桌", "walk": (-0.6, 0.6, -0.38, 0.38), "foot": (-0.6, 0.6, -0.38, 1.05),
+               "seat": (0, 0.74), "min": 1, "max": 3},
+    "meet":   {"zh": "会议桌", "walk": (-0.95, 0.95, -0.95, 0.95), "foot": (-1.6, 1.6, -1.6, 1.6),
+               "seat": None, "min": 1, "max": 1},
+    "decor":  {"zh": "摆设", "walk": (-0.8, 0.8, -0.45, 0.45), "foot": (-0.8, 0.8, -0.45, 0.45),
+               "seat": None, "min": 0, "max": 8},
+    "plant":  {"zh": "植物", "walk": (-0.3, 0.3, -0.3, 0.3), "foot": (-0.32, 0.32, -0.32, 0.32),
+               "seat": None, "min": 0, "max": 8},
+}
+FIXED_ZONES = (("电梯", (-2.85, 0.75, -7, -5.0)), ("区经理室", (1.5, 7, -7, -2.85)),
+               ("区经理室的门口", (1.9, 3.3, -2.95, -2.15)), ("茶水间", (-7, -3.3, -7, -3.3)),
+               ("白板", (6.6, 7, 2.3, 5.7)))
+FIXED_BLOCKS = ((-2.75, -7, 0.65, -6.3, 0.1), (-6.9, -7, -3.5, -6.35, 0.1), (-6.95, -5.6, -6.25, -4.8, 0.12),
+                (-5.02, -5.02, -4.18, -4.18, 0.1), (1.54, -7, 1.66, -2.95, 0.12), (1.54, -3.06, 2.0, -2.94, 0.12),
+                (3.2, -3.06, 7, -2.94, 0.12), (3.7, -5.85, 5.5, -4.95, 0.18), (6.55, -6.2, 6.95, -4.2, 0.1),
+                (6.8, 2.4, 7, 5.6, 0.1), (6.25, -3.75, 6.75, -3.25, 0.15), (1.75, -6.85, 2.25, -6.35, 0.15))
+LAYOUT_MAX_ITEMS = 40
+_LAYOUT_SLOTS = ((-5.2, 6.35, 180), (-1.6, 6.35, 180), (6.45, 0.75, 270))   # the 3 decor places of a v 1 design
+_LIFT_OUT = (-1.85, -5.7)
+_MGR_VISIT = (4.6, -4.2)
+_PANTRY_VISIT = (-5.6, -5.8)
+_WALK_CELL, _WALK_N, _WALK_ORG = 0.4, 35, -7
 DESIGN_HISTORY_KEEP = 5
 _HEX_COLOR = re.compile(r"#[0-9A-Fa-f]{6}")
 
 FLOOR_RULES = """\
 FLOOR DESIGN RULES (the Agent City office, one design per repo floor)
 
-A design is one JSON object. These keys are the only ones allowed:
+A design is one JSON object. There are two versions: v 1 (colours and 3 decor places) and v 2 (v 1 plus
+free furniture, free decor, and floor materials). Use v 2 when the owner wants things moved.
+
+v 1 keys (the only ones allowed):
   v       the number 1.
   name    text, 1 to 20 characters, not only spaces. The name of the style.
   why     text, 0 to 60 characters. Optional. One short line: why this look fits the repo.
@@ -1551,7 +1587,54 @@ A design is one JSON object. These keys are the only ones allowed:
             3  the east wall
           Put the decor that fits the repo in the place you want. "none" leaves a place empty.
 
-Example:
+v 2 keys (the only ones allowed): v is the number 2; name, why and colors as in v 1; and
+  materials  optional. An object with exactly carpet, manager_floor and pantry_floor. Each one is one of:
+               plain wood herringbone tile bigtile marble concrete checker
+             The colours still tint them. Leave "materials" out for the plain look.
+  layout     an object with exactly one key, "items": a list of at most 40 items, one per piece of
+             furniture, plant or decor. There is no "decor" key in v 2: decor are items.
+  An item is {"k": kind, "x": number, "z": number, "yaw": 0}. Keys: k, x, z, yaw, and
+    "id" (decor only: one of the decor ids above), "s" (plant only, optional, 0.6 to 1.2, default 1).
+  The kinds and how many of each (the whole floor):
+    tm     a manager desk, with its chair    1 to 9
+    helper an assistant desk, with its chair 1 to 3
+    meet   the meeting table, with its chairs  exactly 1
+    decor  one decor piece (needs "id")      0 to 8
+    plant  a plant                           0 to 8
+  x and z: tiles from the floor's middle, x to the east, z to the south (the front of a piece turns
+    toward +z at yaw 0). At most 2 decimals. Every piece must stay inside -6.95 to 6.95.
+    Use steps of 0.2 (the editor does), e.g. -3.2, 1.6.
+  yaw: how far the piece is turned: only 0, 90, 180 or 270 (degrees). A desk's chair is in front of it.
+  Fixed areas, nothing may touch them (x1 to x2, z1 to z2):
+    the lift                         x -2.85 to 0.75, z -7 to -5
+    the area manager's room          x 1.5 to 7, z -7 to -2.85
+    the area manager's room door     x 1.9 to 3.3, z -2.95 to -2.15
+    the pantry                       x -7 to -3.3, z -7 to -3.3
+    the whiteboard                   x 6.6 to 7, z 2.3 to 5.7
+  The space a piece takes (width x depth, chair included; a plant scales with "s"):
+    tm 1.5 x 1.5; helper 1.2 x 1.43; meet 3.2 x 3.2; decor 1.6 x 0.9; plant 0.64 x 0.64.
+    The desks reach 1.1 (tm) and 1.05 (helper) to the front for the chair; their back is 0.4 deep.
+  The checks (a layout that fails any of them is refused, and the line names the piece):
+    1  a piece must not leave the floor;
+    2  a piece must not touch a fixed area;
+    3  two pieces must not overlap (the space in front of a desk counts);
+    4  every seat must have a free way from the lift. So must the meeting table (one of its chairs), the
+       way to the area manager's room, and the way to the pantry. Leave a gap of about 0.5 tiles
+       between pieces, or the way is blocked.
+  "Every seat" means every manager desk and every assistant desk: the person must be able to walk there.
+
+Example of a v 2 design (shortened: a real one has the 9 colours and every piece):
+{"v": 2, "name": "Open plan", "why": "A calm floor.",
+ "colors": {...9 colours...},
+ "materials": {"carpet": "wood", "manager_floor": "herringbone", "pantry_floor": "checker"},
+ "layout": {"items": [
+   {"k": "tm", "x": -5.7, "z": -1.3, "yaw": 0},
+   {"k": "helper", "x": 2.9, "z": -1.6, "yaw": 0},
+   {"k": "meet", "x": 4.6, "z": 4.0, "yaw": 0},
+   {"k": "plant", "x": -3.2, "z": 5.0, "yaw": 0, "s": 1},
+   {"k": "decor", "id": "robot", "x": -5.2, "z": 6.35, "yaw": 180}]}}
+
+Example of a v 1 design:
 {"v": 1, "name": "Cashier style", "why": "A POS repo.",
  "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0",
             "desk": "#EFDAB5", "desk_leg": "#BBA27C", "chair": "#3E4560", "meeting_rug": "#A9BCE0",
@@ -1559,8 +1642,9 @@ Example:
  "decor": ["cashier", "none", "goods"]}
 
 NEVER settable (not by any design): the floor size, the lift, the area manager's room (its place and
-size), the desks (how many, where), the pantry, the meeting corner, and the people. A wish about
-these cannot be done: change what you may, and say in one line what you left alone.
+size), the pantry, the whiteboard, and the people. A v 1 design cannot move the desks and the meeting
+corner either. A wish about these cannot be done: change what you may, and say in one line what you
+left alone.
 
 Where the design lives: <floors folder>/<repo id>.json (the last 5 designs it replaced are kept next to it).
 Commands:
@@ -1597,12 +1681,13 @@ def _check_design(obj):
     if not isinstance(obj, dict):
         return [_design_problem("design", "设计必须是一个 JSON 对象", "the design must be one JSON object")]
     probs = []
-    for key in obj:
-        if key not in DESIGN_KEYS:
-            probs.append(_design_problem(str(key), "不能有 %s 这个字段" % key, "the key %s is not allowed" % key))
     v = obj.get("v")
-    if "v" not in obj or type(v) is not int or v != 1:
-        probs.append(_design_problem("v", "v 必须是数字 1", "v must be the number 1"))
+    v2 = type(v) is int and v == 2
+    for key in obj:
+        if key not in (DESIGN_KEYS_V2 if v2 else DESIGN_KEYS):
+            probs.append(_design_problem(str(key), "不能有 %s 这个字段" % key, "the key %s is not allowed" % key))
+    if "v" not in obj or type(v) is not int or v not in (1, 2):
+        probs.append(_design_problem("v", "v 必须是数字 1 或 2", "v must be the number 1 or 2"))
     name = obj.get("name")
     if not isinstance(name, str) or not 1 <= len(name) <= 20 or name.strip() == "":
         probs.append(_design_problem("name", "name 要 1 到 20 个字，不能只有空格",
@@ -1637,6 +1722,10 @@ def _check_design(obj):
                         "colors.%s" % key,
                         "%s的亮度是 %d%%，要在 55%%–95%% 之间" % (DESIGN_LIGHT_LABEL[key], pct),
                         "%s has lightness %d%%; it must be between 55%% and 95%%" % (key, pct)))
+    if v2:
+        probs.extend(_check_materials(obj))
+        probs.extend(_check_layout(obj.get("layout")))
+        return probs
     decor = obj.get("decor")
     if not isinstance(decor, list) or len(decor) != 3:
         probs.append(_design_problem("decor", "decor 要正好 3 项", "decor must be a list of exactly 3 entries"))
@@ -1646,6 +1735,265 @@ def _check_design(obj):
                 probs.append(_design_problem("decor.%d" % i, "第 %d 个摆设不在清单里" % i,
                                              "decor entry %d is not a catalogue id or \"none\"" % i))
     return probs
+
+
+def _is_number(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def _check_materials(obj):
+    if "materials" not in obj:
+        return []
+    mats = obj["materials"]
+    if not isinstance(mats, dict):
+        return [_design_problem("materials", "materials 必须是一个对象", "materials must be an object")]
+    probs = []
+    for key in mats:
+        if key not in DESIGN_MATERIAL_KEYS:
+            probs.append(_design_problem("materials.%s" % key, "没有 %s 这个材质位" % key,
+                                         "%s is not a materials key" % key))
+    for key in DESIGN_MATERIAL_KEYS:
+        if key not in mats:
+            probs.append(_design_problem("materials.%s" % key, "缺少材质 %s" % key,
+                                         "the material %s is missing" % key))
+        elif not isinstance(mats[key], str) or mats[key] not in FLOOR_MATERIALS:
+            probs.append(_design_problem("materials.%s" % key, "%s 的材质不在清单里" % key,
+                                         "%s must be one of: %s" % (key, " ".join(FLOOR_MATERIALS))))
+    return probs
+
+
+def default_layout(n_tm, n_helper, decor3):
+    """The layout of the old fixed floor: N_TM manager desks, N_HELPER assistant desks, the meeting table,
+    the plants and the decor of DECOR3 (3 ids or "none") at their 3 places. {"items": [...]}."""
+    items = []
+    cols, rows = (-5.7, -3.2, -0.7), (-1.3, 1.6, 4.5)
+    for k in range(n_tm):
+        items.append({"k": "tm", "x": cols[k % 3], "z": rows[k // 3], "yaw": 0})
+    for k in range(n_helper):
+        items.append({"k": "helper", "x": round(2.9 + 1.5 * k, 2), "z": -1.6, "yaw": 0})
+    items.append({"k": "meet", "x": 4.6, "z": 4.0, "yaw": 0})
+    if n_tm < 7:
+        items.append({"k": "plant", "x": -3.2, "z": 5.0, "yaw": 0, "s": 1})
+    items.append({"k": "plant", "x": 1.3, "z": 6.5, "yaw": 0, "s": 0.7})
+    for i, ident in enumerate(decor3 or ()):
+        if i < 3 and ident and ident != "none":
+            x, z, yaw = _LAYOUT_SLOTS[i]
+            items.append({"k": "decor", "id": ident, "x": x, "z": z, "yaw": yaw})
+    return {"items": items}
+
+
+def _item_problems(items):
+    """The problems of the form of every item of ITEMS (a list), field layout.items.<n>."""
+    probs = []
+    for n, it in enumerate(items, 1):
+        field = "layout.items.%d" % n
+
+        def bad(zh, en):
+            probs.append(_design_problem(field, "第 %d 件：%s" % (n, zh), "item %d: %s" % (n, en)))
+        if not isinstance(it, dict):
+            bad("要是一个对象", "must be an object")
+            continue
+        kind = it.get("k")
+        if not isinstance(kind, str) or kind not in LAYOUT_KINDS:
+            bad("k 要是 tm、helper、meet、decor、plant 之一", "k must be tm, helper, meet, decor or plant")
+            continue
+        allowed = {"k", "x", "z", "yaw"} | ({"id"} if kind == "decor" else set()) | ({"s"} if kind == "plant" else set())
+        extra = [str(k) for k in it if k not in allowed]
+        if extra:
+            bad("不能有 %s 这个字段" % extra[0], "the key %s is not allowed" % extra[0])
+            continue
+        missing = [k for k in ("x", "z", "yaw") + (("id",) if kind == "decor" else ()) if k not in it]
+        if missing:
+            bad("缺少 %s" % missing[0], "%s is missing" % missing[0])
+            continue
+        for axis in ("x", "z"):
+            val = it[axis]
+            if not _is_number(val):
+                bad("%s 要是数字" % axis, "%s must be a number" % axis)
+            elif abs(val * 100 - round(val * 100)) > 1e-6:
+                bad("%s 最多 2 位小数" % axis, "%s must have at most 2 decimals" % axis)
+        yaw = it["yaw"]
+        if not _is_number(yaw) or yaw not in (0, 90, 180, 270):
+            bad("yaw 只能是 0、90、180、270", "yaw must be 0, 90, 180 or 270")
+        if kind == "decor" and (not isinstance(it["id"], str) or it["id"] not in FLOOR_DECOR):
+            bad("id 不在摆设清单里", "id is not a decor id")
+        if "s" in it and (not _is_number(it["s"]) or not 0.6 <= it["s"] <= 1.2):
+            bad("s 要在 0.6 到 1.2 之间", "s must be a number from 0.6 to 1.2")
+    return probs
+
+
+def _check_layout(layout):
+    """check_design's layout part: shape, items, counts, then the placing (first problem only)."""
+    if not isinstance(layout, dict) or set(layout) != {"items"}:
+        return [_design_problem("layout", "layout 要是只有 items 一项的对象", "layout must be an object with exactly one key, items")]
+    items = layout["items"]
+    if not isinstance(items, list) or len(items) > LAYOUT_MAX_ITEMS:
+        return [_design_problem("layout.items", "items 要是一个列表，最多 %d 件" % LAYOUT_MAX_ITEMS,
+                                "items must be a list of at most %d items" % LAYOUT_MAX_ITEMS)]
+    probs = _item_problems(items)
+    if probs:
+        return probs
+    for kind, info in LAYOUT_KINDS.items():
+        n = sum(1 for it in items if it["k"] == kind)
+        if n < info["min"]:
+            probs.append(_design_problem("layout", "至少要有 %d 个%s" % (info["min"], info["zh"]),
+                                         "at least %d of %s are needed" % (info["min"], kind)))
+        elif n > info["max"]:
+            probs.append(_design_problem("layout", "%s最多 %d 个" % (info["zh"], info["max"]),
+                                         "at most %d of %s are allowed" % (info["max"], kind)))
+    if probs:
+        return probs
+    found = _placing_problem(items)
+    return [found] if found else []
+
+
+def _rot_pt(it, lx, lz):
+    """Local point (LX, LZ) of ITEM, turned by its yaw (degrees, 0/90/180/270) -> (x, z)."""
+    c, s = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}[int(it["yaw"])]
+    return it["x"] + lx * c + lz * s, it["z"] - lx * s + lz * c
+
+
+def _rect_of(it, r):
+    sc = (it.get("s", 1) if it["k"] == "plant" else 1)
+    pts = [_rot_pt(it, a * sc, b * sc) for a, b in ((r[0], r[2]), (r[1], r[2]), (r[0], r[3]), (r[1], r[3]))]
+    xs, zs = [p[0] for p in pts], [p[1] for p in pts]
+    return (min(xs), max(xs), min(zs), max(zs))
+
+
+def _rects_meet(a, b):
+    return a[0] < b[1] - 0.02 and b[0] < a[1] - 0.02 and a[2] < b[3] - 0.02 and b[2] < a[3] - 0.02
+
+
+def _item_name(items, i):
+    it = items[i]
+    if it["k"] == "decor":
+        return DECOR_ZH.get(it["id"], "摆设")
+    n = sum(1 for o in items[:i + 1] if o["k"] == it["k"])
+    info = LAYOUT_KINDS[it["k"]]
+    return info["zh"] + (" %d" % n if info["max"] > 1 and it["k"] != "plant" else "")
+
+
+def _walk_grid():
+    N, CELL, ORG = _WALK_N, _WALK_CELL, _WALK_ORG
+    blocked = [[False] * N for _ in range(N)]        # blocked[j][i]
+    for i in range(N):
+        for j in range(N):
+            if abs(ORG + (i + .5) * CELL) > 6.55 or abs(ORG + (j + .5) * CELL) > 6.55:
+                blocked[j][i] = True
+    return blocked
+
+
+def _block_rect(blocked, x1, z1, x2, z2, pad=0.18):
+    N, CELL, ORG = _WALK_N, _WALK_CELL, _WALK_ORG
+    for i in range(N):
+        cx = ORG + (i + .5) * CELL
+        for j in range(N):
+            cz = ORG + (j + .5) * CELL
+            if x1 - pad <= cx <= x2 + pad and z1 - pad <= cz <= z2 + pad:
+                blocked[j][i] = True
+
+
+def _cell_of(x, z):
+    N = _WALK_N
+    return (max(0, min(N - 1, math.floor((x - _WALK_ORG) / _WALK_CELL))),
+            max(0, min(N - 1, math.floor((z - _WALK_ORG) / _WALK_CELL))))
+
+
+def _is_blocked(blocked, i, j):
+    return i < 0 or j < 0 or i >= _WALK_N or j >= _WALK_N or blocked[j][i]
+
+
+def _nearest_free(blocked, i, j):
+    if not _is_blocked(blocked, i, j):
+        return (i, j)
+    for r in range(1, 12):
+        best, bd = None, 1e9
+        for di in range(-r, r + 1):
+            for dj in range(-r, r + 1):
+                if max(abs(di), abs(dj)) != r:
+                    continue
+                if not _is_blocked(blocked, i + di, j + dj):
+                    d = di * di + dj * dj
+                    if d < bd:
+                        bd, best = d, (i + di, j + dj)
+        if best:
+            return best
+    return (i, j)
+
+
+def _placing_problem(items):
+    """The first placing problem of the well-formed ITEMS (see E3 of tests/test_agent_city_office_layout.py)
+    or None. The same walk-grid test as the page's checkPlan."""
+    foots = [_rect_of(it, LAYOUT_KINDS[it["k"]]["foot"]) for it in items]
+    for i, f in enumerate(foots):
+        field = "layout.items.%d" % (i + 1)
+        name = _item_name(items, i)
+        if f[0] < -6.95 or f[1] > 6.95 or f[2] < -6.95 or f[3] > 6.95:
+            return _design_problem(field, "「%s」出了楼层" % name, "%s is outside the floor" % name)
+        for zone, r in FIXED_ZONES:
+            if _rects_meet(f, r):
+                return _design_problem(field, "「%s」压到%s了，那里是固定的" % (name, zone),
+                                       "%s is on a fixed area (%s)" % (name, zone))
+        for j in range(i):
+            if _rects_meet(f, foots[j]):
+                other = _item_name(items, j)
+                return _design_problem(field, "「%s」跟「%s」叠在一起了" % (name, other),
+                                       "%s and %s overlap" % (name, other))
+    N = _WALK_N
+    blocked = _walk_grid()
+    for b in FIXED_BLOCKS:
+        _block_rect(blocked, *b)
+    for it in items:
+        r = _rect_of(it, LAYOUT_KINDS[it["k"]]["walk"])
+        _block_rect(blocked, r[0], r[2], r[1], r[3], 0.1 if it["k"] == "meet" else 0.12)
+    start = _nearest_free(blocked, *_cell_of(*_LIFT_OUT))
+    seen = [[False] * N for _ in range(N)]
+    seen[start[1]][start[0]] = True
+    todo, head = [start], 0
+    while head < len(todo):
+        i, j = todo[head]
+        head += 1
+        for di in (-1, 0, 1):
+            for dj in (-1, 0, 1):
+                if not di and not dj:
+                    continue
+                ni, nj = i + di, j + dj
+                if _is_blocked(blocked, ni, nj) or seen[nj][ni]:
+                    continue
+                if di and dj and (_is_blocked(blocked, i + di, j) or _is_blocked(blocked, i, j + dj)):
+                    continue
+                seen[nj][ni] = True
+                todo.append((ni, nj))
+
+    def reach(x, z):
+        i, j = _cell_of(x, z)
+        if not _is_blocked(blocked, i, j):
+            return seen[j][i]
+        a, b = _nearest_free(blocked, i, j)
+        return math.hypot(a - i, b - j) <= 1.5 and seen[b][a]
+    for i, it in enumerate(items):
+        seat = LAYOUT_KINDS[it["k"]]["seat"]
+        if seat:
+            sx, sz = _rot_pt(it, seat[0], seat[1])
+            if not reach(sx, sz):
+                name = _item_name(items, i)
+                return _design_problem("layout.items.%d" % (i + 1), "「%s」的座位被挡住了，从电梯走不过去" % name,
+                                       "the seat of %s cannot be reached from the lift" % name)
+    for i, it in enumerate(items):
+        if it["k"] == "meet":
+            spots = []
+            for k in range(4):
+                a = k / 4 * math.pi * 2 + math.pi / 4
+                spots.append((it["x"] + math.sin(a) * 1.35, it["z"] + math.cos(a) * 1.35))
+            if not any(reach(x, z) for x, z in spots):
+                return _design_problem("layout.items.%d" % (i + 1), "会议桌被围住了，从电梯走不过去",
+                                       "the meeting table is boxed in; it cannot be reached from the lift")
+            break
+    if not reach(*_MGR_VISIT):
+        return _design_problem("layout", "去区经理室的路被挡住了", "the way to the area manager's room is blocked")
+    if not reach(*_PANTRY_VISIT):
+        return _design_problem("layout", "去茶水间的路被挡住了", "the way to the pantry is blocked")
+    return None
 
 
 def _atomic_text(path, text):
@@ -5655,7 +6003,7 @@ def asset_version(folder):
 
 def demo_world():
     """The demo building as an office view (the shape of CityState._view): 4 repos, 3 floors (the fourth
-    repo is not ticked), 2 designs, one floor with the base look. Deterministic: the page pastes this
+    repo is not ticked), 2 designs (the second is v 2: free layout and materials), one floor with the base look. Deterministic: the page pastes this
     exact JSON as DEMO_WORLD."""
     idents = [("/demo/auto-pipeline/.git", "auto-pipeline"), ("/demo/v4-plus/.git", "v4-plus"),
               ("/demo/v4-office/.git", "v4-office"), ("/demo/v3/.git", "v3")]
@@ -5665,11 +6013,22 @@ def demo_world():
                           "pantry_floor": "#EEEAE0", "desk": "#EFDAB5", "desk_leg": "#BBA27C",
                           "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"},
                "decor": ["cashier", "none", "goods"]}
-    fresh = {"v": 1, "name": "清爽蓝白", "why": "后台办公，干净明亮",
+    fresh = {"v": 2, "name": "清爽蓝白", "why": "后台办公，干净明亮",
              "colors": {"accent": "#3B82C4", "carpet": "#E6EEF7", "manager_floor": "#CFDDEE",
                         "pantry_floor": "#EAF0F6", "desk": "#F4F7FB", "desk_leg": "#9FB3C8",
                         "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"},
-               "decor": ["bookshelf", "plants", "clock"]}
+             "materials": {"carpet": "wood", "manager_floor": "herringbone", "pantry_floor": "checker"},
+             "layout": {"items": [
+                 {"k": "tm", "x": -5.4, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -3.0, "z": -1.2, "yaw": 0},
+                 {"k": "tm", "x": -5.4, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -3.0, "z": 2.0, "yaw": 0},
+                 {"k": "tm", "x": -0.6, "z": 0.2, "yaw": 90},
+                 {"k": "helper", "x": 3.4, "z": -1.2, "yaw": 0}, {"k": "helper", "x": 5.4, "z": -1.2, "yaw": 0},
+                 {"k": "meet", "x": 3.8, "z": 3.6, "yaw": 0},
+                 {"k": "plant", "x": -1.2, "z": -3.8, "yaw": 0, "s": 1},
+                 {"k": "plant", "x": -0.8, "z": 5.4, "yaw": 0, "s": 0.8},
+                 {"k": "decor", "id": "bookshelf", "x": -5.2, "z": 6.35, "yaw": 180},
+                 {"k": "decor", "id": "plants", "x": -1.6, "z": 6.35, "yaw": 180},
+                 {"k": "decor", "id": "clock", "x": 6.45, "z": 0.8, "yaw": 270}]}}
     return {"v": 2,
             "repos": [{"id": tid, "name": name, "here": True, "n": n}
                       for n, (tid, (_i, name)) in enumerate(zip(ids, idents))],
