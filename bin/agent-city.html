@@ -3926,6 +3926,79 @@ function placeCones(G){
   });
 }
 
+/* ---------- floor materials (owner, 2026-11-25: "the floor affects a lot on the looking"): each of the three floor areas
+   has a material, a pattern drawn in code, and a colour that tints it ---------- */
+const MAT_TILE = { plain:4, wood:3, herringbone:2, tile:2.6, bigtile:3.4, marble:4.5, concrete:4, checker:2.4 };   // tiles per texture
+const TEXC = {};
+function tone(hex, dl){ const c = new THREE.Color(hex); c.offsetHSL(0, 0, dl); return '#' + c.getHexString(); }
+/* matCanvas(kind, col) -> a 256 x 256 canvas of the material `kind` in colour `col` */
+function matCanvas(kind, col){
+  const cv2 = document.createElement('canvas'); cv2.width = cv2.height = 256; const g = cv2.getContext('2d');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  g.fillStyle = col; g.fillRect(0, 0, 256, 256);
+  const line = (c, w) => { g.strokeStyle = c; g.lineWidth = w; };
+  if (kind === 'plain') { for (let i = 0; i < 900; i++) { g.fillStyle = 'rgba(0,0,0,' + (.03 + rnd() * .04) + ')'; g.fillRect(rnd() * 256, rnd() * 256, 1.5, 1.5); } }
+  else if (kind === 'wood') {
+    for (let r = 0; r < 8; r++) {
+      const off = (r % 2) * 64 + (r % 3) * 21;
+      for (let x = -128; x < 256; x += 128) {
+        g.fillStyle = tone(col, (rnd() - .5) * .07); g.fillRect(x + off, r * 32, 128, 32);
+        line(tone(col, -.16), 2); g.strokeRect(x + off + 1, r * 32 + 1, 126, 30);
+        g.strokeStyle = 'rgba(0,0,0,0.06)'; g.lineWidth = 1;
+        for (let k = 0; k < 3; k++) { g.beginPath(); const yy = r * 32 + 6 + rnd() * 20; g.moveTo(x + off + 4, yy); g.bezierCurveTo(x + off + 40, yy + 3, x + off + 80, yy - 3, x + off + 124, yy + 1); g.stroke(); }
+      }
+    }
+  }
+  else if (kind === 'herringbone') {
+    for (let r = -1; r < 9; r++) for (let c = -1; c < 9; c++) {
+      const x = c * 32, y = r * 32, left = (c % 2 === 0);
+      g.fillStyle = tone(col, (rnd() - .5) * .08); g.beginPath();
+      if (left) { g.moveTo(x, y); g.lineTo(x + 32, y + 32); g.lineTo(x + 32, y + 48); g.lineTo(x, y + 16); }
+      else { g.moveTo(x, y + 32); g.lineTo(x + 32, y); g.lineTo(x + 32, y + 16); g.lineTo(x, y + 48); }
+      g.closePath(); g.fill(); line(tone(col, -.15), 1.5); g.stroke();
+    }
+  }
+  else if (kind === 'tile' || kind === 'bigtile' || kind === 'checker') {
+    const n = kind === 'bigtile' ? 2 : 4, sz = 256 / n;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { g.fillStyle = kind === 'checker' ? ((i + j) % 2 ? tone(col, -.12) : col) : tone(col, (rnd() - .5) * .03); g.fillRect(i * sz, j * sz, sz, sz); }
+    line(kind === 'checker' ? tone(col, -.2) : tone(col, .06), kind === 'bigtile' ? 3 : 2.5);
+    for (let k = 0; k <= n; k++) { g.beginPath(); g.moveTo(k * sz, 0); g.lineTo(k * sz, 256); g.stroke(); g.beginPath(); g.moveTo(0, k * sz); g.lineTo(256, k * sz); g.stroke(); }
+  }
+  else if (kind === 'marble') {
+    for (let v = 0; v < 7; v++) {
+      g.strokeStyle = 'rgba(110,110,120,' + (.15 + rnd() * .25) + ')'; g.lineWidth = .8 + rnd() * 1.6; g.beginPath();
+      let x = rnd() * 256, y = 0; g.moveTo(x, y);
+      while (y < 256) { const nx = x + (rnd() - .5) * 60, ny = y + 20 + rnd() * 30; g.quadraticCurveTo(x + (rnd() - .5) * 40, y + 10, nx, ny); x = nx; y = ny; }
+      g.stroke();
+    }
+  }
+  else if (kind === 'concrete') {
+    for (let i = 0; i < 3500; i++) { const d = rnd(); g.fillStyle = d < .5 ? 'rgba(0,0,0,' + (.05 + rnd() * .09) + ')' : 'rgba(255,255,255,' + (.06 + rnd() * .12) + ')'; g.fillRect(rnd() * 256, rnd() * 256, 1 + rnd() * 2.5, 1 + rnd() * 2.5); }
+    for (let i = 0; i < 14; i++) { g.fillStyle = 'rgba(0,0,0,' + (.03 + rnd() * .04) + ')'; g.beginPath(); g.arc(rnd() * 256, rnd() * 256, 8 + rnd() * 26, 0, Math.PI * 2); g.fill(); }
+    line('rgba(0,0,0,0.08)', 2); g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 256); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke();
+  }
+  return cv2;
+}
+function matTex(kind, col){
+  const key = kind + col;
+  if (!TEXC[key]) { const tx = new THREE.CanvasTexture(matCanvas(kind, col)); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.anisotropy = 4; TEXC[key] = tx; }
+  return TEXC[key];
+}
+const MAT_THUMB = {};
+/* matThumb(kind, col) -> a small data URL of the material (the editor's swatches) */
+function matThumb(kind, col){
+  const k = kind + col;
+  if (!MAT_THUMB[k]) { const c = matCanvas(kind, col), tc = document.createElement('canvas'); tc.width = tc.height = 56; tc.getContext('2d').drawImage(c, 0, 0, 128, 128, 0, 0, 56, 56); MAT_THUMB[k] = tc.toDataURL(); }
+  return MAT_THUMB[k];
+}
+/* one floor area: a thin slab with the material's texture, w x d tiles of the floor, its middle at (x, y, z) */
+function floorMesh(kind, col, w, d, x, y, z, G){
+  const tex = matTex(kind || 'plain', col).clone(); tex.needsUpdate = true;
+  const ts = MAT_TILE[kind] || 4; tex.repeat.set(w / ts, d / ts);
+  const o = new THREE.Mesh(BOXG, new THREE.MeshLambertMaterial({ map:tex }));
+  o.scale.set(w, .02, d); o.position.set(x, y, z); o.userData.own = true; G.add(o); return o;
+}
+
 /* ---------- one floor ---------- */
 let floorG = null, walls = [], doors = [], floorSigNow = '';
 function chair(x, z, yaw, p, c){
@@ -4009,10 +4082,10 @@ function buildFloor(){
 
   /* slab + zones (14 x 14) */
   box(14.4, .4, 14.4, C.slab, 0, -.2, 0, G);
-  box(14, .02, 14, C.carpet, 0, .01, 0, G);
-  box(5.4, .02, 4, C.wood, 4.3, .022, -5, G);
-  box(3.8, .02, 3.8, C.tile, -5.1, .022, -5.1, G);
-  for (let i = 0; i <= 4; i++) { box(.02, .021, 3.8, '#DCD6C8', -7 + i * .95, .024, -5.1, G); box(3.8, .021, .02, '#DCD6C8', -5.1, .024, -7 + i * .95, G); }
+  const mt = th.materials;
+  floorMesh(mt.carpet, C.carpet, 14, 14, 0, .01, 0, G);
+  floorMesh(mt.manager_floor, C.wood, 5.4, 4, 4.3, .022, -5, G);
+  floorMesh(mt.pantry_floor, C.tile, 3.8, 3.8, -5.1, .022, -5.1, G);
   box(2.6, .02, 1.8, C.rugMgr, 4.6, .035, -5.3, G);
 
   /* the floors below: the building */
