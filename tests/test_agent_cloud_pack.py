@@ -1,76 +1,6 @@
-"""UPDATE settings-configure (2026-11-25): the pack writes no agent.conf and takes no
---language (exit 2): a cloud session has no plugin and runs the Configure defaults.
-Lines below about agent.conf and --language are history.
+"""Tests of bin/agent-cloud-pack.sh: what the pack lays into a repo, settings merge, update, output.
 
-Failing tests for bin/agent-cloud-pack.sh. Written by the task manager first.
-
-WHY. A cloud session (claude.ai/code) never installs a plugin. It only reads
-what is committed in the clone: CLAUDE.md, .claude/settings.json (hooks and
-permission rules), .claude/skills/, .claude/agents/ and plain scripts. So the
-pipeline is laid into the repo as plain files.
-
-CONTRACT.
-
-    bin/agent-cloud-pack.sh <repo-path> [--language xx] [--update]
-    bin/agent-cloud-pack.sh -h          usage, exit 0, writes nothing
-    no <repo-path>, a missing dir,
-    an unknown flag                     exit 2, writes nothing
-    a bad --language value              exit non-zero, message, writes nothing
-    a .claude/settings.json that is
-    not valid JSON                      exit non-zero, message names the file,
-                                        writes nothing
-    any later step that fails (agent-init.sh,
-    the settings merge, ...)            exit non-zero, message names the step,
-                                        no success footer
-
-<repo-path> may be any folder inside the repo; the pack goes to its git
-toplevel. The source is the folder above the script's own bin/ (the plugin, or
-a plain clone of this repo). The source is never written.
-
-What lands in the repo (PACK = .claude/auto-pipeline):
-
-    PACK/bin/<every file of the source bin/>   same bytes, same mode, no __pycache__
-    PACK/PRINCIPLES.md                          same bytes
-    PACK/VERSION                                the source plugin.json version + "\\n"
-    .claude/skills/<name>/SKILL.md              every source skill except init
-                                                (clashes with the built-in /init,
-                                                and the pack already did its work)
-                                                and cloud-pack (cannot run from a
-                                                packed copy)
-    .claude/agents/<name>.md                    every source agent
-    .claude/settings.json                       merged, see below
-    CLAUDE.md                                   POINTER appended once, never overwritten
-    agent.conf, agent_*.txt, .secrets/,
-    AGENTS.md, .gitignore lines                 agent-init.sh run on the repo;
-                                                AGENTS.md names PACK by relative path
-    .gitignore                                  also PYCACHE_LINE, once
-
-Skills and agents are packed with two text swaps, nothing else:
-    ${CLAUDE_PLUGIN_ROOT}  ->  .claude/auto-pipeline
-    /auto-pipeline:        ->  /
-
-settings.json merge: every existing key is kept, the user's own hooks too.
-hooks.SessionStart gets one entry running HOOK_CMD, unless a SessionStart hook
-already runs .claude/auto-pipeline/bin/agent-start.sh. permissions.allow gets
-the rules of the block agent-init.sh prints, after the user's own, no rule
-twice. A missing settings.json is created.
-
---language xx sets language in agent.conf (validated), new or existing conf.
-
-A second run without --update changes not one byte. A pack whose VERSION is
-not the source version is left alone without --update, and the output says to
-run --update. --update makes PACK/bin a mirror of the source bin/ and refreshes
-PACK/PRINCIPLES.md, PACK/VERSION, the packed skills and agents. It never
-touches agent.conf, agent_*.txt, CLAUDE.md, AGENTS.md, .gitignore, the user's
-settings keys, or the user's own skills and agents.
-
-The output ends with the one sentence a human pastes into a fresh cloud
-session (ONE_SENTENCE, with the language in use), a reminder that the Claude
-GitHub App must be installed on the repo, and a reminder to commit and push.
-
-The one-sentence install itself: from a plain git clone of this repo,
-`git clone <this repo> <dir>/ap && <dir>/ap/bin/agent-cloud-pack.sh . --language zh`
-run inside a repo sets that repo up completely.
+requirements/plugin-slim.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import json
@@ -84,6 +14,7 @@ import sys
 import tempfile
 import time
 import unittest
+from scripthelp import ROOT, ScriptCase  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -209,6 +140,9 @@ def session_start_commands(settings):
     return out
 
 
+from sharedrepo import shared_fixture  # noqa: E402
+
+
 class PackCase(unittest.TestCase):
     """A throwaway copy of this plugin as the source, and a throwaway repo
     that already has settings of its own and a CLAUDE.md."""
@@ -311,6 +245,7 @@ class PackCase(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+@shared_fixture(guard="base")   # one pack for the class; the tests only read it
 class TestEveryFileLands(PackCase):
     def setUp(self):
         super().setUp()
@@ -612,15 +547,8 @@ class TestClaudeMd(PackCase):
         self.assertEqual(read_text(self.t("CLAUDE.md")), text)
 
 
-
 class TestIdempotent(PackCase):
     def test_a_second_run_changes_not_one_byte(self):
-        self.assertOk(self.pack())
-        before = snapshot(self.target)
-        self.assertOk(self.pack())
-        self.assertEqual(snapshot(self.target), before)
-
-    def test_a_second_run_without_the_flag_changes_nothing_either(self):
         self.assertOk(self.pack())
         before = snapshot(self.target)
         self.assertOk(self.pack())
@@ -637,6 +565,7 @@ class TestIdempotent(PackCase):
         self.assertIn("--update", out)
 
 
+@shared_fixture(guard="base")   # one pack, edits and --update for the class
 class TestUpdate(PackCase):
     def setUp(self):
         super().setUp()
@@ -772,11 +701,8 @@ class TestRunsFromThePack(PackCase):
         self.assertNotIn("__pycache__", status)
 
 
+@shared_fixture(guard="base", remember=("pack",))   # one pack run per argument list
 class TestTheOutput(PackCase):
-    def test_it_prints_the_one_sentence_cloud_install(self):
-        out = self.assertOk(self.pack())
-        self.assertIn(ONE_SENTENCE, out)
-
     def test_the_sentence_has_no_settings(self):
         out = self.assertOk(self.pack())
         self.assertIn(ONE_SENTENCE, out)
@@ -921,6 +847,19 @@ class TestOneSentenceInstall(PackCase):
         self.assertIn("PLUGIN: %s" % os.path.join(self.target, PACK), out)
         self.assertIn("QUIZ:", out)
 
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+class TestCloudPackSettings(ScriptCase):
+    script = "agent-cloud-pack.sh"
+
+    def test_the_pack_holds_no_settings_file(self):
+        text = read("bin", "agent-cloud-pack.sh")
+        self.assertNotIn("agent.conf", text)
+        self.assertNotIn("CLAUDE_PLUGIN_OPTION_", text)
 
 
 if __name__ == "__main__":

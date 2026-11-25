@@ -1,38 +1,6 @@
-"""Tests for bin/agent-resources.sh: the readers (already covered indirectly
-by test_agent_start.py) plus the `relief` verb (S4).
+"""Tests of bin/agent-resources.sh: the RAM/CPU check and relief (what it may stop, what it never touches).
 
-relief only runs when the file is executed directly with the one argument
-`relief` (guarded by `[ "${BASH_SOURCE[0]}" = "$0" ]`). Sourcing it must keep
-defining functions and running nothing, exactly as before.
-
-relief stops only two kinds of process:
-  a. every "auto_pipeline_*/plugin/bin/agent-watch.sh" process -- a watch
-     a test run left behind
-  b. any other "agent-watch.sh --all" process whose repo has no live main
-     manager (agent_main.lock missing, or its pid is dead)
-
-Everything else just gets listed, never killed, in one table for the human.
-
-Every kill path ends the loop's children too. The real loop is
-`trap ... TERM; while true; do sleep N & wait $!; ...; done`: a TERM to the
-loop pid alone leaves its `sleep 300` running for minutes. So:
-  - the test-monitor pass kills the loop and its children
-  - the no-live-lock pass: the loop and its children are killed
-  - the folder-gone pass already does this (3d3b0ee)
-
-AGENT_RELIEF_ONLY_UNDER=<folder>: relief stops only processes whose command
-line or working folder lies under that folder. Unset -> everything, as
-before. Every test here sets it to its own temp tree, so a test run never
-stops another session's monitors or another test run's loops.
-
-The human table's WHAT/SUGGEST (relief_what_suggest "<comm>" "<args>" ->
-"WHAT|SUGGEST"): Orca itself (the app and its helpers, anything under
-Orca.app/) is "Orca|human decides". A process that only has "orca" in a
-path (node vite in ~/orca/workspaces/...) is not Orca.
-
-Fake loops are started with stdin/stdout/stderr on /dev/null and in their
-own process group; cleanup kills the whole group. A fake loop that inherits
-the test's stdout keeps a piped run ('... | tail') open until its sleep ends.
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import os

@@ -1,15 +1,6 @@
-"""Failing tests for owner-relay: bin/agent-owner-order.sh + bin/agent_owner_order.py.
+"""Tests of bin/agent-owner-order.sh and agent_owner_order.py: relayed owner orders, line and verify.
 
-Written by the task manager before any code. Rules: requirements/owner-relay.md
-(owner: rules yes 2026-11-24, every default). Row ids (A1, D5, H14, L4 ...) are
-the rows of that file.
-
-Every transcript here is made up. No real transcript text.
-A fake $HOME holds the config homes: ~/.claude, an Orca profile home, and
-$CLAUDE_CONFIG_DIR when a test sets it. TZ is Asia/Kuala_Lumpur (+08:00, no DST),
-AGENT_FAKE_HOST is "test-host" unless a test says otherwise.
-
-Run: python3 -m unittest tests.test_agent_owner_order
+requirements/owner-relay.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import datetime
@@ -27,6 +18,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scripthelp import ScriptCase  # noqa: E402
+import agent_conf  # noqa: E402
 
 SCRIPT = "agent-owner-order.sh"
 TZ = "Asia/Kuala_Lumpur"
@@ -551,7 +543,21 @@ class TestTimeAndMany(OwnerOrderCase):
 
 # ================================================================== C. length, usage
 
-class TestShortAndUsage(OwnerOrderCase):
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
+class _TestShortAndUsageFixture:
+    def fixture(self):
+        pass
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
+class TestShortAndUsage(_TestShortAndUsageFixture, OwnerOrderCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_h21_too_short_before_any_search(self):
         self.assertRefused(self.verify("rules yes"),
@@ -560,12 +566,6 @@ class TestShortAndUsage(OwnerOrderCase):
     def test_c3_wide_characters_count_two(self):
         self.assertRefused(self.verify("这个功能很重要"),
                            "OWNER ORDER not verified: quote too short (14 < 20)")
-
-    def test_c3_wide_quote_long_enough(self):
-        dt = ago(30)
-        words = "这个功能需要保留很重要"
-        path = self.write([owner("老板说: " + words + "。", dt)])
-        self.assertVerified(self.verify(words), path, dt)
 
     def test_c3_width_counts_after_normalise(self):
         self.assertRefused(self.verify("  rules     yes   "),
@@ -589,6 +589,20 @@ class TestShortAndUsage(OwnerOrderCase):
         for args in cases:
             with self.subTest(args=args):
                 self.assertUsage(self.run_tool(*args))
+
+
+class TestShortAndUsageWrites(_TestShortAndUsageFixture, OwnerOrderCase):
+    """The tests of TestShortAndUsage that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
+    def test_c3_wide_quote_long_enough(self):
+        dt = ago(30)
+        words = "这个功能需要保留很重要"
+        path = self.write([owner("老板说: " + words + "。", dt)])
+        self.assertVerified(self.verify(words), path, dt)
 
 
 # ================================================================== D1. machine
@@ -946,6 +960,31 @@ class TestReviewBounce1(OwnerOrderCase):
     def test_c1_a_quote_over_two_owner_lines_is_not_found(self):
         self.write([owner("keep it, this features", ago(31)), owner("is needed ya", ago(30))])
         self.assertRefused(self.verify(), NOT_FOUND)
+
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+BIN = os.path.join(ROOT, "bin")
+
+
+class TestBinPair(unittest.TestCase):
+
+    def test_the_shell_entry_is_executable(self):
+        path = os.path.join(BIN, "agent-owner-order.sh")
+        self.assertTrue(os.path.isfile(path))
+        self.assertTrue(os.access(path, os.X_OK))
+
+    def test_the_logic_file_is_there(self):
+        self.assertTrue(os.path.isfile(os.path.join(BIN, "agent_owner_order.py")))
+
+
+class TestConfKeys(unittest.TestCase):
+    """settings-configure: owner_order_hours and owner_order_min_chars are fixed constants."""
+
+    def test_g4_the_constants(self):
+        self.assertEqual(agent_conf.CONSTANTS["owner_order_hours"], 24)
+        self.assertEqual(agent_conf.CONSTANTS["owner_order_min_chars"], 20)
 
 
 if __name__ == "__main__":

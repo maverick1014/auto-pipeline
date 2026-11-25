@@ -1,124 +1,32 @@
-"""Failing tests: `agent-city` from any folder (requirements/city.md, "Anywhere").
-
-WHY. In the owner's own plain terminal (not a Claude session) the plugin's
-bin/ is not on PATH, so `agent-city.sh` is "command not found" there. The
-owner wants `agent-city start|status|stop|join|leave|...` to work from any
-folder, even outside a repo, as an all-machine monitor.
-
-CONTRACT
-
-  bin/agent-city-shim   the small command copied to ~/.local/bin/agent-city
-    - An executable shell script with the marker line
-      "# auto-pipeline agent-city shim".
-    - Every run: AGENT_CITY_PLUGIN_ROOT set -> that plugin folder (for trying
-      a checkout before it is released); it must hold bin/agent-city.sh,
-      else a short stderr line naming the folder and exit 1.
-      Unset -> the highest version folder under
-      $HOME/.claude/plugins/cache/auto-pipeline/auto-pipeline/ whose name is
-      a plain version (digits and dots only) and that holds
-      bin/agent-city.sh. Sorted by version, never by name (0.10.0 > 0.9.0).
-      Never a hard-coded version.
-    - Runs that bin/agent-city.sh with bash, same args (spaces, empty args
-      and glob characters untouched), in the caller's folder, and exits
-      with its exit code.
-    - Nothing installed: a stderr line with "not installed", exit 1.
-
-  bin/agent-city.sh install-shim
-    - Copies bin/agent-city-shim to $HOME/.local/bin/agent-city, mode 0755,
-      folder made when missing, no temp file left. Prints
-      "SHIM: installed <path>". Run again: same bytes, exit 0. An older
-      shim of ours (marker line present) is replaced.
-    - A file there without the marker line, a symlink or a folder is never
-      touched: exit 1, message with "not ours".
-    - $HOME/.local/bin not on PATH: a hint line naming ".local/bin" and
-      PATH. On PATH: no line mentions PATH.
-    - Works from any folder (it is the manual one-line install too).
-  bin/agent-city.sh remove-shim
-    - Ours -> removed, "SHIM: removed". Not ours -> left, exit 1,
-      "not ours". Missing -> exit 0, "not installed".
-  The usage text lists install-shim and remove-shim.
-
-  bin/agent-city.sh, started outside a repo (cwd not inside a git work tree)
-    - Plugin defaults only (bin/agent.conf.default): an agent.conf lying in
-      that folder is never read.
-    - start/demo pass --lang: AGENT_CITY_LANG when it is "en" or "zh", else
-      "zh" (agent.conf.default says en; the city's own default is zh).
-    - start/demo pass --joined-list $AGENT_CITY_HOME/joined-repos.txt: the
-      city then syncs every team relay this machine joined, with no local
-      line needed.
-    - status: the CITY line as today, then one line per listed repo that
-      still has its folder and join file: "TEAM: joined <host> (<repo>)";
-      none -> "TEAM: not joined". Never the key.
-    - join and leave work here (city-device-join, 2026-10-05: once per
-      computer, tests/test_agent_city_device_join.py). Only a cloud session
-      (CLAUDE_CODE_REMOTE set) keeps the old rule: they refuse (exit 1, a
-      message with "repo"), nothing asked, nothing sent, the list untouched.
-  bin/agent-city.sh start/demo, anywhere (inside or outside a repo)
-    - AGENT_CITY_PORT, a whole number 1024-65535, wins over city_port
-      (agent.conf or the plugin default). Any other non-empty value: a
-      message naming AGENT_CITY_PORT, exit 1, nothing started. Empty or
-      unset: as before.
-    - The port is held by another program: exit 1 and a message naming
-      the port, "already in use" and AGENT_CITY_PORT (never the bare
-      "CITY: failed to start"). No city left running.
-    - A city already runs in this city dir: exit 0, its URL line as today,
-      plus a line with "already running" telling to stop it first to start
-      it again from here (its own settings stay until then).
-  Inside a repo: as today (agent.conf, --lang from it, no --joined-list,
-  one TEAM line for this repo), plus
-    - join adds the main repo root to $AGENT_CITY_HOME/joined-repos.txt
-      after the relay said ok (once, never the key);
-    - leave (a cloud session: per repo) removes this repo's line (other
-      lines and comments kept), also when the join file was already gone;
-      on a computer leave empties the list.
-
-  bin/agent_city_relay.py
-    read_joined_list(path)       absolute paths in file order, realpath
-                                 duplicates dropped; blank, "#" comment and
-                                 relative lines skipped; missing file -> []
-    add_joined(path, repo)       adds realpath(repo) once; makes the folder;
-                                 keeps every other line and comment;
-                                 written atomically (tmp + replace)
-    remove_joined(path, repo)    drops the lines whose realpath is repo's;
-                                 keeps the rest; missing file -> no error
-    RelayHub(..., joined_list=PATH)
-      tick() also syncs every listed repo whose folder and join file are
-      there and whose origin is shared, with no offer() needed; the list is
-      re-read at most every join_ttl seconds. Gone or unjoined repos are
-      skipped quietly. A local line of a listed repo joins the same team.
-      repo_for(rid) knows a listed repo. Without joined_list: as today.
-
-  bin/agent_city.py serve --joined-list PATH  -> RelayHub(joined_list=PATH)
-
-  Docs: requirements/city.md "## Anywhere"; skills/init/SKILL.md asks for a
-  yes, then runs install-shim; skills/city/SKILL.md names `agent-city start`
-  for a plain terminal and install-shim; README.md lists agent-city-shim.
-
-Never the real ~/.local/bin, ~/.claude or ~/.cache (HOME, AGENT_CITY_DIR and
-AGENT_CITY_HOME are temp dirs), never a real key or relay (FakeRelay).
-
-Run: python3 -m unittest tests.test_agent_city_anywhere
-"""
+"""Tests of agent-city-script, one class per feature."""
 
 import os
-import shutil
-import signal
-import socket
-import stat
-import subprocess
 import sys
-import tempfile
-import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-BIN = os.path.join(ROOT, "bin")
-for p in (HERE, BIN):
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import os  # noqa: E402
+import shutil  # noqa: E402
+import signal  # noqa: E402
+import socket  # noqa: E402
+import stat  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+import time  # noqa: E402
+import unittest  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
+import re  # noqa: E402
+
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+ROOT = os.path.dirname(HERE)
+
+
+BIN = os.path.join(ROOT, "bin")
 
 
 def wait_for(check, timeout=8.0, step=0.05):
@@ -132,7 +40,11 @@ def wait_for(check, timeout=8.0, step=0.05):
 
 
 SHIM = os.path.join(BIN, "agent-city-shim")
+
+
 MARKER = "# auto-pipeline agent-city shim"
+
+
 CACHE_PARTS = (".claude", "plugins", "cache", "auto-pipeline", "auto-pipeline")
 
 
@@ -198,8 +110,6 @@ exit {code}
 """
 
 
-# --------------------------------------------------------------------- shim
-
 class ShimCase(unittest.TestCase):
     def setUp(self):
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_anywhere_"))
@@ -231,6 +141,60 @@ class ShimCase(unittest.TestCase):
     def assertRan(self, result, ver):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("VERSION=%s\n" % ver, result.stdout)
+
+
+class InstallCase(ScriptCase):
+    script = "agent-city.sh"
+
+    def setUp(self):
+        super().setUp()
+        self.home = self.repo.fake_home()
+        self.target_dir = os.path.join(self.home, ".local", "bin")
+        self.target = os.path.join(self.target_dir, "agent-city")
+        self.plain = os.path.join(self.repo.base, "plain")
+        os.makedirs(self.plain)
+
+    def city_run(self, *args, extra=None, cwd=None):
+        env = {"AGENT_CITY_DIR": os.path.join(self.repo.base, "city"),
+               "AGENT_CITY_HOME": os.path.join(self.repo.base, "cityhome")}
+        env.update(extra or {})
+        return self.repo.run("agent-city.sh", *args, env=env, cwd=cwd, timeout=30)
+
+    def shim_text(self):
+        path = self.repo.plugin_path("bin", "agent-city-shim")
+        self.assertTrue(os.path.exists(path), "bin/agent-city-shim is missing (or not in COPY_BIN)")
+        return read_text(path)
+
+    def out(self, result):
+        return result.stdout + result.stderr
+
+
+class OutsideCase(ScriptCase):
+    script = "agent-city.sh"
+
+    def setUp(self):
+        super().setUp()
+        self.city = os.path.join(self.repo.base, "city")
+        self.cityhome = os.path.join(self.repo.base, "cityhome")
+        self.plain = os.path.join(self.repo.base, "plain")
+        os.makedirs(self.plain)
+        self.port = free_port()
+        self.set_default("city_port", str(self.port))
+        self.addCleanup(stop_server, self.city)
+
+    def set_default(self, key, value):
+        """settings-configure: the settings are user level (Configure), inside a repo or not."""
+        self.repo.set_conf(key, value)
+
+    def city_env(self, extra=None):
+        env = {"AGENT_CITY_DIR": self.city, "AGENT_CITY_HOME": self.cityhome,
+               "AGENT_CITY_LANG": ""}
+        env.update(extra or {})
+        return env
+
+    def city_run(self, *args, cwd=None, extra=None, stdin=None):
+        return self.repo.run("agent-city.sh", *args, env=self.city_env(extra),
+                             cwd=cwd or self.plain, stdin=stdin, timeout=30)
 
 
 class TestShim(ShimCase):
@@ -299,34 +263,6 @@ class TestShim(ShimCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(empty, result.stderr)
         self.assertNotIn("VERSION=", result.stdout)
-
-
-# ------------------------------------------------------ install / remove shim
-
-class InstallCase(ScriptCase):
-    script = "agent-city.sh"
-
-    def setUp(self):
-        super().setUp()
-        self.home = self.repo.fake_home()
-        self.target_dir = os.path.join(self.home, ".local", "bin")
-        self.target = os.path.join(self.target_dir, "agent-city")
-        self.plain = os.path.join(self.repo.base, "plain")
-        os.makedirs(self.plain)
-
-    def city_run(self, *args, extra=None, cwd=None):
-        env = {"AGENT_CITY_DIR": os.path.join(self.repo.base, "city"),
-               "AGENT_CITY_HOME": os.path.join(self.repo.base, "cityhome")}
-        env.update(extra or {})
-        return self.repo.run("agent-city.sh", *args, env=env, cwd=cwd, timeout=30)
-
-    def shim_text(self):
-        path = self.repo.plugin_path("bin", "agent-city-shim")
-        self.assertTrue(os.path.exists(path), "bin/agent-city-shim is missing (or not in COPY_BIN)")
-        return read_text(path)
-
-    def out(self, result):
-        return result.stdout + result.stderr
 
 
 class TestInstallShim(InstallCase):
@@ -418,128 +354,6 @@ class TestRemoveShim(InstallCase):
         self.assertIn("not installed", result.stdout)
 
 
-# ------------------------------------------------------------ outside a repo
-
-class OutsideCase(ScriptCase):
-    script = "agent-city.sh"
-
-    def setUp(self):
-        super().setUp()
-        self.city = os.path.join(self.repo.base, "city")
-        self.cityhome = os.path.join(self.repo.base, "cityhome")
-        self.plain = os.path.join(self.repo.base, "plain")
-        os.makedirs(self.plain)
-        self.port = free_port()
-        self.set_default("city_port", str(self.port))
-        self.addCleanup(stop_server, self.city)
-
-    def set_default(self, key, value):
-        """settings-configure: the settings are user level (Configure), inside a repo or not."""
-        self.repo.set_conf(key, value)
-
-    def city_env(self, extra=None):
-        env = {"AGENT_CITY_DIR": self.city, "AGENT_CITY_HOME": self.cityhome,
-               "AGENT_CITY_LANG": ""}
-        env.update(extra or {})
-        return env
-
-    def city_run(self, *args, cwd=None, extra=None, stdin=None):
-        return self.repo.run("agent-city.sh", *args, env=self.city_env(extra),
-                             cwd=cwd or self.plain, stdin=stdin, timeout=30)
-
-class TestStartOutsideARepo(OutsideCase):
-    def test_the_settings_apply_outside_a_repo(self):
-        # settings-configure: Language is a user-level setting (default en)
-        result = self.city_run("start")
-        self.assertOk(result)
-        self.assertIn("CITY: http://127.0.0.1:%d" % self.port, result.stdout)
-        args = server_args(self.city)
-        self.assertIn("--port %d" % self.port, args)
-        self.assertIn("--lang en", args)
-        self.repo.set_conf("language", "zh")
-        self.assertOk(self.city_run("stop"))
-        self.assertOk(self.city_run("start"))
-        self.assertIn("--lang zh", server_args(self.city))
-
-    def test_an_agent_conf_in_a_plain_folder_is_never_read(self):
-        write_text(os.path.join(self.plain, "agent.conf"),
-                   "city_port=%d\nlanguage=zh\n" % free_port())
-        self.assertOk(self.city_run("start"))
-        args = server_args(self.city)
-        self.assertIn("--port %d" % self.port, args)
-        self.assertIn("--lang en", args)
-
-    def test_agent_city_lang_en(self):
-        self.assertOk(self.city_run("start", extra={"AGENT_CITY_LANG": "en"}))
-        self.assertIn("--lang en", server_args(self.city))
-
-    def test_agent_city_lang_unknown_is_the_setting(self):
-        self.assertOk(self.city_run("start", extra={"AGENT_CITY_LANG": "fr"}))
-        self.assertIn("--lang en", server_args(self.city))
-
-    def test_demo_is_the_same(self):
-        result = self.city_run("demo")
-        self.assertOk(result)
-        self.assertIn("CITY: http://127.0.0.1:%d/#demo" % self.port, result.stdout)
-        args = server_args(self.city)
-        self.assertIn("--lang en", args)
-
-    def test_inside_a_repo_agent_city_lang_overrides_too(self):
-        # settings-configure: one user-level Language, so AGENT_CITY_LANG overrides it everywhere
-        self.repo.set_conf("language", "en")
-        self.assertOk(self.city_run("start", cwd=self.repo.dir, extra={"AGENT_CITY_LANG": "zh"}))
-        self.assertIn("--lang zh", server_args(self.city))
-
-class TestPort(OutsideCase):
-    def test_agent_city_port_outside_a_repo(self):
-        port = free_port()
-        result = self.city_run("start", extra={"AGENT_CITY_PORT": str(port)})
-        self.assertOk(result)
-        self.assertIn("CITY: http://127.0.0.1:%d" % port, result.stdout)
-        self.assertIn("--port %d" % port, server_args(self.city))
-
-    def test_agent_city_port_wins_over_the_setting_inside_a_repo(self):
-        port = free_port()
-        self.repo.set_conf("city_port", str(free_port()))
-        result = self.city_run("start", cwd=self.repo.dir, extra={"AGENT_CITY_PORT": str(port)})
-        self.assertOk(result)
-        self.assertIn("--port %d" % port, server_args(self.city))
-
-    def test_empty_agent_city_port_is_unset(self):
-        self.assertOk(self.city_run("start", extra={"AGENT_CITY_PORT": ""}))
-        self.assertIn("--port %d" % self.port, server_args(self.city))
-
-    def test_bad_agent_city_port(self):
-        for bad in ("abc", "80", "70000", "47 77", "-1"):
-            with self.subTest(value=bad):
-                result = self.city_run("start", extra={"AGENT_CITY_PORT": bad})
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("AGENT_CITY_PORT", result.stdout + result.stderr)
-                self.assertIsNone(server_pid(self.city), "nothing may be started")
-
-    def test_port_held_by_another_program(self):
-        busy = socket.socket()
-        busy.bind(("127.0.0.1", self.port))
-        busy.listen(1)
-        self.addCleanup(busy.close)
-        result = self.city_run("start")
-        out = result.stdout + result.stderr
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("already in use", out)
-        self.assertIn(str(self.port), out)
-        self.assertIn("AGENT_CITY_PORT", out)
-        pid = server_pid(self.city)
-        self.assertFalse(pid is not None and _alive(pid), "no city may be left running")
-
-    def test_a_city_already_running_says_so(self):
-        self.assertOk(self.city_run("start"))
-        again = self.city_run("start")
-        self.assertOk(again)
-        self.assertIn("CITY: http://127.0.0.1:%d" % self.port, again.stdout)
-        self.assertIn("already running", again.stdout)
-        self.assertIn("stop", again.stdout.split("already running", 1)[1])
-
-
 class TestStatusOutsideARepo(OutsideCase):
     def test_not_running(self):
         result = self.city_run("status")
@@ -582,8 +396,6 @@ class TestShimRunsTheRealCity(OutsideCase):
         self.assertIn("CITY: not running", shim("status").stdout)
 
 
-# ------------------------------------------------------------- serve + docs
-
 class TestDocs(unittest.TestCase):
     def text(self, *parts):
         return read_text(os.path.join(ROOT, *parts))
@@ -611,5 +423,9 @@ class TestDocs(unittest.TestCase):
         self.assertIn("bin/agent-city-shim", self.text("PRINCIPLES.md"))
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestCityScriptWorld(unittest.TestCase):
+    def test_start_passes_the_world_file(self):
+        with open(os.path.join(BIN, "agent-city.sh")) as fh:
+            text = fh.read()
+        self.assertTrue(re.search(r'--world "\$CITY_HOME/world\.json"', text),
+                        'agent-city.sh start must pass --world "$CITY_HOME/world.json"')

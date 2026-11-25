@@ -36,6 +36,7 @@ says yes, so:
     install_native_host(...)  put one there on purpose
 """
 
+import atexit
 import json
 import os
 import shutil
@@ -108,9 +109,12 @@ PROJECT_TXT = [
     "agent_worktree.txt",
 ]
 
+# The log sits at <base>/claude_calls.log, found from the stub's own place
+# (<base>/project/stubbin/claude), so a copied project needs no rewrite.
 CLAUDE_STUB = r"""#!%(py)s
 import json, os, sys
-with open(%(log)r, "a") as fh:
+base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+with open(os.path.join(base, "claude_calls.log"), "a") as fh:
     fh.write(json.dumps({"args": sys.argv[1:], "cwd": os.getcwd()}) + "\n")
 """
 
@@ -211,10 +215,36 @@ def args_of(pid):
                           capture_output=True, text=True).stdout.strip()
 
 
+# test-slim: a seeded project costs five git starts (~0.1 s a test). Each test
+# process builds one seeded template and every ScriptRepo() copies it (~0.03 s):
+# same files, same stubs, its own folder. The template is rebuilt when older
+# than TEMPLATE_MAX_AGE seconds, so a project's seed commit is never more than
+# a minute old. AGENT_TEST_NO_TEMPLATE=1 builds every repo the slow way.
+TEMPLATE_MAX_AGE = 60
+_TEMPLATE = {"repo": None, "made": 0.0}
+
+
+def _seeded_template():
+    if _TEMPLATE["repo"] is None or time.time() - _TEMPLATE["made"] > TEMPLATE_MAX_AGE:
+        if _TEMPLATE["repo"] is not None:
+            _TEMPLATE["repo"].cleanup()
+        _TEMPLATE["repo"] = ScriptRepo(template=False)
+        _TEMPLATE["made"] = time.time()
+    return _TEMPLATE["repo"]
+
+
+def _drop_template():
+    if _TEMPLATE["repo"] is not None:
+        _TEMPLATE["repo"].cleanup()
+
+
+atexit.register(_drop_template)
+
+
 class ScriptRepo:
     """A throwaway plugin copy plus a throwaway project git repo."""
 
-    def __init__(self, init_project=True):
+    def __init__(self, init_project=True, template=True):
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="auto_pipeline_"))
         self.plugin = os.path.join(self.base, "plugin")
         self.plugin_bin = os.path.join(self.plugin, "bin")
@@ -225,13 +255,19 @@ class ScriptRepo:
         self.orca_log = os.path.join(self.base, "orca_calls.log")
         self.orca_ps = os.path.join(self.base, "orca_ps.json")
         self.orca_dir = os.path.join(self.base, "orca_stub")
-        os.makedirs(self.orca_dir)
         self.hidden = []
         self.home = None
         # the user-wide file a run sees (AUTO_PIPELINE_USER_CONF); absent
         # until a test writes it
         self.user_conf = os.path.join(self.base, "user", "auto-pipeline.conf")
+        self.claude_log = os.path.join(self.base, "claude_calls.log")
 
+        if init_project and template and not os.environ.get("AGENT_TEST_NO_TEMPLATE"):
+            shutil.copytree(_seeded_template().base, self.base, symlinks=True,
+                            dirs_exist_ok=True)
+            return
+
+        os.makedirs(self.orca_dir)
         os.makedirs(self.plugin_bin)
         os.makedirs(self.dir)
         os.mkdir(self.bin)
@@ -240,14 +276,7 @@ class ScriptRepo:
         with open(stub, "w") as fh:
             fh.write(ORCA_STUB)
         os.chmod(stub, 0o755)
-        # settings-configure: the migration and the plugin-scope sync call
-        # `claude plugin configure|update`; a test never runs the real one.
-        # Every call is logged to claude_calls.log (one JSON line: args, cwd).
-        self.claude_log = os.path.join(self.base, "claude_calls.log")
-        stub = os.path.join(self.bin, "claude")
-        with open(stub, "w") as fh:
-            fh.write(CLAUDE_STUB % {"py": sys.executable, "log": self.claude_log})
-        os.chmod(stub, 0o755)
+        self._write_claude_stub()
 
         for name in COPY_BIN:
             src = os.path.join(BIN, name)
@@ -260,6 +289,15 @@ class ScriptRepo:
 
         if init_project:
             self.seed_project()
+
+    def _write_claude_stub(self):
+        # settings-configure: the migration and the plugin-scope sync call
+        # `claude plugin configure|update`; a test never runs the real one.
+        # Every call is logged to claude_calls.log (one JSON line: args, cwd).
+        stub = os.path.join(self.bin, "claude")
+        with open(stub, "w") as fh:
+            fh.write(CLAUDE_STUB % {"py": sys.executable})
+        os.chmod(stub, 0o755)
 
     # ---- fixture building ----
 
@@ -666,6 +704,43 @@ class ScriptRepo:
             input=stdin if stdin is not None else "",
             timeout=kwargs.pop("timeout", 90),
         )
+
+    def run_py(self, module, *args, **kwargs):
+        """test-slim: run bin/<module>.py's main(argv) in this process (no bash,
+        no new python), with the environment and working folder a script start
+        gets. For the Python logic only: the .sh wrapper (roots, role, runtime
+        kind) keeps its own real starts in the tests. Returns a CompletedProcess."""
+        import contextlib
+        import importlib.util
+        import io
+        from unittest import mock
+        path = os.path.join(self.plugin_bin, module + ".py")
+        mods = self.__dict__.setdefault("_py_modules", {})
+        mod = mods.get(path)
+        if mod is None:
+            spec = importlib.util.spec_from_file_location("%s__inproc_%x" % (module, id(self)), path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mods[path] = mod
+        env = self._env(kwargs.pop("env", None))
+        stdin = kwargs.pop("stdin", None)
+        cwd = kwargs.pop("cwd", None) or self.cwd
+        if kwargs:
+            raise TypeError("run_py: unknown arguments %s" % sorted(kwargs))
+        out, err = io.StringIO(), io.StringIO()
+        here = os.getcwd()
+        code = 0
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(sys, "stdin", io.StringIO(stdin or "")), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            os.chdir(cwd)
+            try:
+                code = mod.main(list(args)) or 0
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+            finally:
+                os.chdir(here)
+        return subprocess.CompletedProcess([path] + list(args), code, out.getvalue(), err.getvalue())
 
     def popen(self, script, *args, **kwargs):
         env = self._env(kwargs.pop("env", None))

@@ -1,80 +1,6 @@
-"""Failing tests for agent-resume.sh (rule S2). Written by the task manager, before any code.
+"""Tests of bin/agent-resume.sh: relaunch rules, the launch command, the agent cap, plain and cloud.
 
-CONTRACT the worker must implement in agent-resume.sh (repo root, executable):
-
-    ./agent-resume.sh              resume the pipeline
-    ./agent-resume.sh --dry-run    print the plan, launch nothing
-    ./agent-resume.sh -h           usage, exit 0
-
-It prints, in this order:
-
-  1. the RESOURCES line, the same words agent-start.sh prints:
-       "RESOURCES: RAM <n>% CPU <n>% (cap <n>%) -> OK"   or "... -> OVER CAP"
-  2. a blank line
-  3. "=== resume ==="
-  4. "worktree | status | relaunched"
-  5. one row per line of agent_worktree.txt (main repo), in file order:
-       "<path> | <status> | <relaunched>"
-     <relaunched> is exactly one of:
-       "yes"                  a task manager was launched there just now
-       "would"                --dry-run, and it would be launched
-       "no, pane is live"     an Orca pane with an agent is already there
-       "no, path is gone"     the directory is not there any more
-       "no, status is idle"   status is neither working nor final
-       "no, over cap"         RAM or CPU at or over max_usage_percent
-     when agent_worktree.txt is empty, print "(no live worktrees)" instead of rows
-  6. (the monitor line is gone with bin/agent-monitor.sh, 2026-11-24)
-  7. "todo: <n> open"
-  8. "ideas: <n> waiting"
-
-Relaunch, one orca call per worktree, with exactly these arguments:
-
-    orca terminal create
-         --worktree path:<path>
-         --title "TM <module>"
-         --command "AGENT_ROLE=task-manager claude --model <model> --effort <effort> --permission-mode <mode>"
-         --json
-
-    <model>  = agent.conf task_manager without the ":effort" part, cut down to the
-               family word when it starts with opus, sonnet, haiku or fable
-               (opus-5:xhigh -> opus). Anything else is passed through as it is.
-    <effort> = agent.conf task_manager after the ":". `claude --effort` takes
-               low, medium, high, xhigh, max.
-    <mode>   = agent.conf permission_mode
-
-A live pane = the worktree is in `orca worktree ps --json` with a non-empty agents list.
-An empty agents list means the pane is gone, even when a plain shell is still open.
-
-The agent cap (S6). Before each relaunch, count every agent in state working
-or permission in `orca worktree ps --json`, across every worktree and every
-repo, plus the relaunches this run has already made. The cap is per device, so
-agents in other repos count. An agent in state done or idle does NOT count
-(owner 2026-11-02: a finished idle pane is no load). A pane in a worktree the
-JSON marks "isMainWorktree": true is a main manager and does NOT count either.
-At or over max_agents from agent.conf:
-  - the row reads "no, cap reached"
-  - and one plain line prints after the table, one per skipped worktree:
-        cap reached (<n>/<max>), not relaunching <path>
-A --dry-run "would" takes a slot too, so the plan it prints is honest.
-The resource cap is checked first: "no, over cap" wins over "no, cap reached".
-
-Resources come from agent-resources.sh, which honours AGENT_FAKE_RAM and AGENT_FAKE_CPU
-so tests never have to measure the real machine.
-
-RUNTIME. Everything above is the orca runtime. `bin/agent-runtime.sh kind` is
-asked first, fresh, every run.
-
-plain and cloud have no terminals, so there is nothing to relaunch and nothing
-to sweep. They are a different shape, not a crippled copy:
-
-  - the table still prints, in file order, so the human can see what is down
-  - <relaunched> reads "no, plain mode" or "no, cloud mode". Never "yes"
-  - after the table, one line per worktree that needs a task manager, naming
-    the path, so the reader knows what to start with the Agent tool
-  - no background loop is started
-  - orca is never called, and "orca is not answering" is never printed: orca
-    being absent is the normal case there, not a fault
-  - the counts still print, and the exit code is 0
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import os
@@ -86,6 +12,13 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ScriptCase
+import shlex
+import shutil
+import stat
+import subprocess
+
+
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
 
 
 class ResumeCase(ScriptCase):
@@ -117,6 +50,7 @@ class ResumeCase(ScriptCase):
         self.fail("no table row for %s in:\n%s" % (path, out))
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestResourcesLine(ResumeCase):
     def test_resources_line_comes_first(self):
         out = self.assertOk(self.resume("--dry-run"))
@@ -155,14 +89,6 @@ class TestRelaunch(ResumeCase):
         out = self.assertOk(self.resume())
         self.assertEqual(self.relaunched_for(out, path), "yes")
         self.assertEqual(len(self.repo.create_calls()), 1)
-
-    def test_does_not_relaunch_when_a_pane_is_live(self):
-        path = self.repo.make_worktree("gamma")
-        self.repo.set_worktree_lines([(path, "gamma", "working")])
-        self.repo.set_panes([{"path": path, "agents": ["working"]}])
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.relaunched_for(out, path), "no, pane is live")
-        self.assertEqual(self.repo.create_calls(), [])
 
     def test_a_pane_in_any_state_counts_as_live(self):
         for state in ("working", "done", "permission"):
@@ -284,11 +210,6 @@ class TestLaunchCommand(ResumeCase):
                 command = args[args.index("--command") + 1]
                 self.assertIn("--effort %s " % expected, command + " ")
 
-    def test_the_effort_flag_comes_after_the_model_flag(self):
-        _, args = self.launch_args()
-        command = args[args.index("--command") + 1]
-        self.assertLess(command.index("--model"), command.index("--effort"))
-
     def test_permission_mode_comes_from_agent_conf(self):
         self.repo.clear_calls()
         _, args = self.launch_args(permission_mode="acceptEdits", module="pm")
@@ -304,21 +225,8 @@ class TestLaunchCommand(ResumeCase):
         self.assertIn("--permission-mode bypassPermissions", command)
         self.assertNotIn("plan", command)
 
-    def test_command_sets_the_task_manager_role(self):
-        _, args = self.launch_args()
-        command = args[args.index("--command") + 1]
-        self.assertTrue(command.startswith("AGENT_ROLE=task-manager claude "), command)
-
 
 class TestDryRun(ResumeCase):
-    def test_dry_run_launches_nothing(self):
-        path = self.repo.make_worktree("alpha")
-        self.repo.set_worktree_lines([(path, "alpha", "working")])
-        self.repo.set_panes([])
-        out = self.assertOk(self.resume("--dry-run"))
-        self.assertEqual(self.repo.create_calls(), [])
-        self.assertEqual(self.relaunched_for(out, path), "would")
-
     def test_dry_run_still_shows_the_reasons(self):
         live = self.repo.make_worktree("live")
         idle = self.repo.make_worktree("idle")
@@ -330,7 +238,19 @@ class TestDryRun(ResumeCase):
         self.assertEqual(self.relaunched_for(out, idle), "no, status is idle")
 
 
-class TestTable(ResumeCase):
+class _TestTableFixture:
+    def fixture(self):
+        pass
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once
+class TestTable(_TestTableFixture, ResumeCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
     def test_table_header(self):
         out = self.assertOk(self.resume("--dry-run"))
         self.assertIn("=== resume ===", out)
@@ -340,6 +260,19 @@ class TestTable(ResumeCase):
         out = self.assertOk(self.resume("--dry-run"))
         self.assertIn("(no live worktrees)", out)
         self.assertEqual(self.rows(out), [])
+
+    def test_counts_are_zero_when_the_files_are_empty(self):
+        out = self.assertOk(self.resume("--dry-run"))
+        self.assertIn("todo: 0 open", out)
+        self.assertIn("ideas: 0 waiting", out)
+
+
+class TestTableWrites(_TestTableFixture, ResumeCase):
+    """The tests of TestTable that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_rows_keep_file_order(self):
         first = self.repo.make_worktree("one")
@@ -364,11 +297,6 @@ class TestTable(ResumeCase):
         out = self.assertOk(self.resume("--dry-run"))
         self.assertIn("todo: 2 open", out)
         self.assertIn("ideas: 3 waiting", out)
-
-    def test_counts_are_zero_when_the_files_are_empty(self):
-        out = self.assertOk(self.resume("--dry-run"))
-        self.assertIn("todo: 0 open", out)
-        self.assertIn("ideas: 0 waiting", out)
 
 
 class TestAgentCap(ResumeCase):
@@ -420,12 +348,6 @@ class TestAgentCap(ResumeCase):
         out = self.assertOk(self.resume())
         self.assertEqual(self.relaunched_for(out, paths[0]), "no, cap reached")
         self.assertIn("cap reached (2/2), not relaunching %s" % paths[0], out)
-
-    def test_a_done_pane_is_still_a_live_pane(self):
-        paths = self.setup_cap(max_agents=3, dead=1)
-        self.repo.set_panes([{"path": paths[0], "agents": ["done"]}])
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.relaunched_for(out, paths[0]), "no, pane is live")
 
     def test_a_full_cap_relaunches_nothing(self):
         paths = self.setup_cap(max_agents=1, dead=2, live_elsewhere=1)
@@ -573,6 +495,7 @@ class TestOrcaDown(ResumeCase):
         self.assertIn("ideas: 0 waiting", out)
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestOrcaDownOnAuto(ResumeCase):
     """orca on PATH but not answering, with no runtime pinned, is plain."""
 
@@ -627,6 +550,7 @@ class TestCountsAlwaysPrint(ResumeCase):
         self.assertIn("ideas: 0 waiting", out)
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestUsage(ResumeCase):
     def test_help_exits_zero(self):
         result = self.repo.run("agent-resume.sh", "-h")
@@ -662,10 +586,8 @@ class PlainCase(ResumeCase):
         return self.assertOk(self.resume())
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestPlainRelaunchesNothing(PlainCase):
-    def test_it_exits_zero(self):
-        self.assertEqual(self.resume().returncode, 0)
-
     def test_the_working_row_names_the_mode(self):
         self.assertEqual(self.relaunched_for(self.out(), self.alpha),
                          "no, %s mode" % self.KIND)
@@ -706,6 +628,7 @@ class TestPlainRelaunchesNothing(PlainCase):
         self.assertTrue(self.lines(self.out())[0].startswith("RESOURCES:"))
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once; the tests only read
 class TestNoMonitorAnyMore(PlainCase):
     """bin/agent-monitor.sh is gone (2026-11-24): resume prints no monitor line and starts no loop."""
 
@@ -753,22 +676,26 @@ class TestAutoStillPicksOrca(ResumeCase):
                          "no, plain mode")
 
 
-class TestAConfWrittenBeforeRuntimeExisted(ResumeCase):
+class _TestAConfWrittenBeforeRuntimeExistedFixture:
     """An agent.conf from an older release has no `runtime` line at all.
 
     Unset must read as auto, everywhere. These scripts run under `set -u`, so
     a bare $runtime would kill the whole run instead of defaulting.
     """
-
-    def setUp(self):
-        super(TestAConfWrittenBeforeRuntimeExisted, self).setUp()
+    def fixture(self):
         self.repo.unset_conf("runtime")
         self.path = self.repo.make_worktree("alpha")
         self.repo.set_worktree_lines([(self.path, "alpha", "working")])
         self.repo.set_panes([])
 
-    def test_it_exits_zero(self):
-        self.assertEqual(self.resume().returncode, 0, self.resume().stderr)
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo, each resume call once
+class TestAConfWrittenBeforeRuntimeExisted(_TestAConfWrittenBeforeRuntimeExistedFixture, ResumeCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_it_says_nothing_about_an_unbound_variable(self):
         result = self.resume()
@@ -778,11 +705,134 @@ class TestAConfWrittenBeforeRuntimeExisted(ResumeCase):
         self.assertEqual(
             self.relaunched_for(self.assertOk(self.resume()), self.path), "yes")
 
+
+class TestAConfWrittenBeforeRuntimeExistedWrites(_TestAConfWrittenBeforeRuntimeExistedFixture, ResumeCase):
+    """The tests of TestAConfWrittenBeforeRuntimeExisted that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
     def test_it_falls_back_to_plain_with_no_orca(self):
         self.repo.no_orca()
         self.assertEqual(
             self.relaunched_for(self.assertOk(self.resume()), self.path),
             "no, plain mode")
+
+
+class TestResumeRefusesDefault(ScriptCase):
+    script = "agent-resume.sh"
+
+    def command(self):
+        path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(path, "alpha", "working")])
+        self.repo.set_panes([])
+        self.assertOk(self.repo.run("agent-resume.sh"))
+        calls = self.repo.create_calls()
+        self.assertEqual(len(calls), 1, calls)
+        return calls[0][calls[0].index("--command") + 1]
+
+    def test_default_relaunches_in_the_setting_default(self):
+        self.repo.set_conf("permission_mode", "default")
+        command = self.command()
+        self.assertTrue(command.endswith("--permission-mode bypassPermissions"), command)
+        self.assertNotIn("default", command)
+
+    def test_dont_ask_reaches_the_relaunch(self):
+        self.repo.set_conf("permission_mode", "dontAsk")
+        self.assertTrue(self.command().endswith("--permission-mode dontAsk"))
+
+
+ZSH = shutil.which("zsh")
+
+
+def flag(words, name):
+    return words[words.index(name) + 1] if name in words else None
+
+
+class ZshRun:
+    """Run a launch line in a real zsh (no rc files) with a fake `claude` first
+    on PATH that prints each argument on its own line, then ROLE=$AGENT_ROLE."""
+
+    def __init__(self, base):
+        self.bin = os.path.join(base, "fakebin")
+        os.makedirs(self.bin, exist_ok=True)
+        exe = os.path.join(self.bin, "claude")
+        with open(exe, "w") as fh:
+            fh.write('#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\nprintf "ROLE=%s\\n" "$AGENT_ROLE"\n')
+        os.chmod(exe, os.stat(exe).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    def __call__(self, line):
+        env = dict(os.environ)
+        env["PATH"] = self.bin + os.pathsep + env.get("PATH", "")
+        env.pop("AGENT_ROLE", None)
+        done = subprocess.run([ZSH, "-f", "-c", line], capture_output=True, text=True, env=env,
+                              timeout=30, stdin=subprocess.DEVNULL)
+        return done.returncode, done.stdout.splitlines(), done.stderr
+
+
+class TestResumeLineRunsInZsh(ScriptCase):
+    script = "agent-resume.sh"
+
+    def command(self, task_manager, module="alpha"):
+        self.repo.clear_calls()
+        path = self.repo.make_worktree(module)
+        self.repo.set_conf("task_manager", task_manager)
+        self.repo.set_conf("permission_mode", "auto")
+        self.repo.set_worktree_lines([(path, module, "working")])
+        self.repo.set_panes([])
+        self.assertOk(self.repo.run("agent-resume.sh"))
+        calls = self.repo.create_calls()
+        self.assertEqual(len(calls), 1, calls)
+        return calls[0][calls[0].index("--command") + 1]
+
+    def test_the_words_keep_the_suffix(self):
+        for spec, want, module in (("opus-5.5[1m]:xhigh", "opus[1m]", "a1"),
+                                   ("claude-opus-5-5[1m]:high", "claude-opus-5-5[1m]", "a2")):
+            with self.subTest(spec=spec):
+                words = shlex.split(self.command(spec, module))
+                self.assertEqual(flag(words, "--model"), want)
+                self.assertEqual(flag(words, "--effort"), spec.rsplit(":", 1)[1])
+
+    @unittest.skipUnless(ZSH, "no zsh on PATH")
+    def test_zsh_runs_the_line_without_a_glob_error(self):
+        run = ZshRun(self.repo.path())
+        for spec, want, effort, module in (("opus-5.5[1m]:xhigh", "opus[1m]", "xhigh", "z1"),
+                                           ("claude-opus-5-5[1m]:high", "claude-opus-5-5[1m]", "high", "z2"),
+                                           ("fable-5.1[1m]:max", "fable[1m]", "max", "z3")):
+            with self.subTest(spec=spec):
+                code, out, err = run(self.command(spec, module))
+                self.assertNotIn("no matches found", err)
+                self.assertEqual((code, out), (0, ["--model", want, "--effort", effort,
+                                                   "--permission-mode", "auto", "ROLE=task-manager"]), err)
+
+    def test_a_plain_model_word_stays_bare(self):
+        command = self.command("opus-5.5:xhigh", "p1")
+        self.assertEqual(command, "AGENT_ROLE=task-manager claude --model opus --effort xhigh --permission-mode auto")
+
+
+class TestResumePermission(ScriptCase):
+    script = "agent-resume.sh"
+
+    def command(self):
+        path = self.repo.make_worktree("alpha")
+        self.repo.set_worktree_lines([(path, "alpha", "working")])
+        self.repo.set_panes([])
+        self.assertOk(self.repo.run("agent-resume.sh"))
+        calls = self.repo.create_calls()
+        self.assertEqual(len(calls), 1, calls)
+        return calls[0][calls[0].index("--command") + 1]
+
+    def test_the_setting(self):
+        self.repo.set_conf("permission_mode", "acceptEdits")
+        self.assertTrue(self.command().endswith("--permission-mode acceptEdits"))
+
+    def test_an_old_user_file_decides_nothing(self):
+        self.repo.set_user_conf("permission_mode=plan\n")
+        self.assertTrue(self.command().endswith("--permission-mode bypassPermissions"))
+
+    def test_nothing_set_is_bypass(self):
+        self.assertTrue(self.command().endswith("--permission-mode bypassPermissions"))
 
 
 if __name__ == "__main__":

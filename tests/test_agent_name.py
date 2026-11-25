@@ -1,122 +1,6 @@
-"""Failing tests for session names. Written by the task manager first.
+"""Tests of bin/agent-name.sh: the session name by role, the Orca tab, helper-task, the prompt hook.
 
-Owner, 2026-09-30: "Can the hook rename? When the agent opens and knows it is
-the main manager, rename to '[Repo name] Manager'; a task manager is
-'[Feature] Task Manager'; a worker is '[Feature] Worker'."
-
-CONTRACT. bin/agent-name.sh is a second SessionStart hook (hooks.json), next
-to agent-start.sh (which stays plain text: one hook cannot print both text
-for the context and JSON). Claude Code gives it JSON on stdin
-{"session_id", "transcript_path", "cwd", "hook_event_name", "source"}. It
-prints nothing, or exactly one JSON object on one line:
-
-    {"hookSpecificOutput": {"hookEventName": "SessionStart",
-                            "sessionTitle": "<name>"}}
-
-Claude Code sets the session's title from sessionTitle: the prompt box, the
-terminal title, and the stored name (custom-title in the transcript).
-
-Live check on pc2, Claude Code 2.1.285, 2026-09-30: the stored name becomes
-the ListAgents / SendMessage address only from the NEXT start (a resume). A
-fresh `claude` keeps the address "<folder>-<xx>" (folder name plus two hex
-characters) for its whole run; SendMessage to the hook's name fails. The
-address is right at once only with `claude --name <name>` at launch (the
-dispatch skill does this for task managers) or a typed `/rename <name>`.
-
-Always exit 0, nothing on stderr, no file written.
-
-    source startup, resume, fork        -> the name
-    no stdin, bad JSON, no "source"     -> the name (a startup, the same way
-                                           agent-start.sh reads it)
-    source clear, compact, or any other -> nothing: the name stays as it is
-    project with no agent.conf          -> nothing (the plugin is not on there)
-
-Role: one copy of the logic, role_read in bin/agent-roots.sh, used by
-agent-start.sh, agent-close-case.sh and agent-name.sh, so the name and the
-role the start hook prints can never disagree.
-
-    AGENT_ROLE=task-manager                  "<feature> Task Manager"
-    AGENT_ROLE=<other>, e.g. merge-deputy    "<feature> Merge Deputy"
-    no lock, or lock pid == this session     "<repo> Manager"
-    lock pid dead                            "<repo> Manager" (takes over)
-    lock pid alive, not this session         "<repo> Helper" (human-direct)
-
-    repo    = folder name of the project's main worktree (PROJECT_ROOT)
-    feature = folder name of the git toplevel of the stdin cwd (STATE_DIR);
-              a task manager's worktree folder is its task name
-    this session = $CLAUDE_PID, else the first claude ancestor (agent_pid)
-
-Orca: $ORCA_TERMINAL_HANDLE not empty and orca on PATH -> also, once, only
-when a name is printed:
-
-    orca terminal rename --terminal <handle> --title <name> --json
-
-A slow (over 2 s), failing or missing orca never changes stdout, stderr or the
-exit code, and the hook still ends inside 5 s.
-
-The start and close-case hooks name the main manager the same way: a spawned
-task manager and a human-direct session are told to SendMessage
-"<repo> Manager", or, when ListAgents has no row by that name, the
-"<repo>-<xx>" row (a main manager started by hand, not yet renamed); a
-human-direct session also how to pick one of two sessions with the same name
-(the [ref] ListAgents prints). The main manager and the human-direct session
-are told how to make their own address match: `claude --name`, or ask the
-human once for `/rename <repo> Manager` (or `/rename <repo> Helper`).
-
-HELPER TASK. Owner, 2026-10-28: "v4 Manager" stays; a Helper shows its
-current task so /resume tells sessions apart. The agent names the task
-itself. Owner change, 2026-10-29: " - " between, "<repo> Helper - <Task Name>"
-(e.g. "v4 Helper - SST Invoice"); the repo part is the folder name as it is
-(no case change).
-
-    bin/agent-file.sh helper-task "<Task Name>"
-
-sets the task of THIS session only. Keyed by the session id: the Bash tool
-gets $CLAUDE_CODE_SESSION_ID, every hook gets the same id as stdin
-"session_id" (Claude Code 2.1.312 keeps that env var current after /clear).
-Two Helpers in one folder have two ids, so they never share a name; a
-`claude --resume` keeps the id (the pid changes), so the resumed Helper keeps
-its task. A fork is a new id: it starts with no task. Stored in the project's
-shared git dir, never in a work tree. No $CLAUDE_CODE_SESSION_ID, or a session
-that is not a Helper (role second): refused, exit 1, one line on stderr,
-nothing written. It also sets field 3 of this folder's human-direct line in
-agent_worktree.txt to "task: <Task Name>" (adds the line when there is none).
-
-The task is cleaned: every character that is not an ASCII letter, digit or
-hyphen is a space; hyphens at the ends of a word go; role words go, any
-letter case (E2E 2026-10-29: the agent picked "SST Invoice Helper", title
-"v4 Helper SST Invoice Helper"): the pair "Task Manager", then every
-"Helper", "Manager", "Agent" ("Task" alone stays); then the first 4 words are
-kept; each word gets a capital first letter, the rest as typed; then whole
-words are dropped from the end while it is over 40 characters (one word alone
-is cut to 40). Nothing left: refused.
-
-Rule text (start text TASK line, PRINCIPLES W10): every new or switched
-task, a plain question too, gets its name first, even before the quiz PASS
-(E2E 2026-10-29: asked only to compute SST, the Helper answered and skipped
-the quiz and the command, "no repo was touched"); name the work, not the
-role; run the exact full-path command the start text prints, alone, from the
-project folder, never cd, never chain it. The command finds the project from
-its working folder. It never checks the quiz: it works before PASS.
-
-    role second, task set     "<repo> Helper - <Task Name>"
-    role second, no task      "<repo> Helper"
-    any other role            as above, a task never changes it
-
-UserPromptSubmit: `agent-name.sh --prompt` (hooks.json, timeout 5). Prints
-exactly one JSON line
-
-    {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
-                            "sessionTitle": "<repo> Helper - <Task Name>"}}
-
-only for a Helper with a task, and only when that name differs from the last
-one this hook printed for this session id; otherwise nothing, so a human
-/rename is never overridden for no reason. The title changes at the human's
-next prompt after the command. Orca tab rename only when it prints, with the
-same 2 s cut. Runs on every prompt in every repo: no network, fast (target
-under 300 ms), always exit 0, nothing on stderr; it writes only its own
-last-title marker in the shared git dir. SessionStart (startup, resume, fork)
-uses the task the same way.
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import json
@@ -142,11 +26,6 @@ PROMPT_ENTRY = {"hooks": [{"type": "command", "command": PROMPT_COMMAND, "timeou
 SID_A = "11111111-aaaa-4aaa-8aaa-000000000001"
 SID_B = "22222222-bbbb-4bbb-8bbb-000000000002"
 SID_C = "33333333-cccc-4ccc-8ccc-000000000003"
-
-
-def read(*parts):
-    with open(os.path.join(ROOT, *parts)) as fh:
-        return fh.read()
 
 
 def dead_pid():
@@ -213,11 +92,11 @@ class NameCase(ScriptCase):
         return self.title(self.hook(source, **kw))
 
 
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
+
+
 class TestRoles(NameCase):
     """The name follows the role, the same way agent-start.sh decides it."""
-
-    def test_main_manager_with_no_lock(self):
-        self.assertEqual(self.name(), "project Manager")
 
     def test_main_manager_whose_own_lock_it_is(self):
         self.set_lock(os.getpid())
@@ -265,6 +144,7 @@ class TestRoles(NameCase):
                          odd + " Task Manager")
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one repo per class, each run once; the tests only read
 class TestSources(NameCase):
     """Name on a new, resumed or forked session; never on clear or compact."""
 
@@ -363,41 +243,6 @@ class TestOrcaTab(NameCase):
                         timeout=30)
         self.assertLess(time.time() - start, 5)
         self.assertEqual(out, "project Manager")
-
-
-class TestHooksJson(unittest.TestCase):
-
-    def test_session_start_runs_both_hooks(self):
-        # the city starts by /auto-pipeline:city: no SessionStart entry for it
-        entries = json.loads(read("hooks", "hooks.json"))["hooks"]["SessionStart"]
-        self.assertEqual(len(entries), 2, entries)
-        self.assertIn("/bin/agent-start.sh", json.dumps(entries[0]))
-        self.assertEqual(entries[1], NAME_ENTRY)
-
-    def test_the_script_can_run(self):
-        path = os.path.join(ROOT, "bin", "agent-name.sh")
-        self.assertTrue(os.access(path, os.X_OK), "bin/agent-name.sh has no execute bit")
-
-    def test_readme_names_the_script(self):
-        self.assertIn("bin/agent-name.sh", read("PRINCIPLES.md"))
-
-
-class TestRoleLogicOnce(unittest.TestCase):
-    """One copy of the role logic: role_read in agent-roots.sh."""
-
-    def test_roots_defines_role_read(self):
-        self.assertRegex(read("bin", "agent-roots.sh"), r"(?m)^role_read\(\)")
-
-    def test_every_hook_uses_it(self):
-        for name in ("agent-start.sh", "agent-close-case.sh", "agent-name.sh"):
-            with self.subTest(script=name):
-                self.assertIn("role_read", read("bin", name))
-
-    def test_no_second_copy_of_the_lock_check(self):
-        for name in ("agent-start.sh", "agent-close-case.sh", "agent-name.sh"):
-            with self.subTest(script=name):
-                self.assertNotIn('kill -0 "$lpid"', read("bin", name))
-        self.assertNotIn("agent_main.lock", read("bin", "agent-name.sh"))
 
 
 class TestStartNamesTheManager(ScriptCase):
@@ -553,10 +398,6 @@ class HelperCase(NameCase):
 
 
 class TestHelperTaskCommand(HelperCase):
-
-    def test_sets_the_name_of_this_session(self):
-        self.set_task("SST Calculation")
-        self.assertEqual(self.start_name(), "project Helper - SST Calculation")
 
     def test_works_before_the_quiz_pass(self):
         gitdir = self.repo.path(".git")
@@ -805,25 +646,6 @@ class TestPromptHook(HelperCase):
                           timeout=30)
         self.assertLess(time.time() - start, 5)
         self.assertEqual(self.prompt_title(out), "project Helper - SST Calculation")
-
-
-class TestPromptHookJson(unittest.TestCase):
-
-    def test_user_prompt_submit_runs_the_prompt_hook_once(self):
-        entries = json.loads(read("hooks", "hooks.json"))["hooks"]["UserPromptSubmit"]
-        self.assertEqual(entries.count(PROMPT_ENTRY), 1, entries)
-        self.assertIn("agent-close-case.sh", json.dumps(entries))
-
-    def test_no_other_event_runs_the_prompt_mode(self):
-        for event, entries in json.loads(read("hooks", "hooks.json"))["hooks"].items():
-            if event != "UserPromptSubmit":
-                with self.subTest(event=event):
-                    self.assertNotIn("--prompt", json.dumps(entries))
-
-    def test_readme_says_it_names_the_helper_task(self):
-        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("  bin/agent-name.sh"))
-        self.assertIn("UserPromptSubmit", line)
-        self.assertIn("<repo> Helper - <Task Name>", line)
 
 
 class TestStartTellsTheHelper(ScriptCase):

@@ -1,109 +1,6 @@
-"""UPDATE settings-configure (2026-11-25): auto_update is the Configure setting "Basic: Auto
-update" (boolean, default on); the user file, agent-settings.sh --user, init's
---auto-update and question, and the AUTO UPDATE start line are gone. The start of a
-main manager applies the setting (agent_update.py apply). Items 1, 3, 4 below are history.
+"""Tests of bin/agent_update.py: auto update, plugin versions, the settings backup.
 
-Failing tests for auto-update (owner, 2026-11-04: "config during setup,
-default is auto update, if the user close the auto update also can").
-Written by the task manager, before any code.
-
-FACTS (Claude Code 2.1.318, read in its code): the /plugin "Enable
-auto-update" toggle of a marketplace writes autoUpdate=<bool> on that
-marketplace's entry in <claude dir>/plugins/known_marketplaces.json AND on
-its extraKnownMarketplaces entry in the settings file that declares it (the
-user settings.json after `claude plugin marketplace add`). At startup Claude
-Code copies a declared settings autoUpdate into known_marketplaces.json.
-<claude dir> = $CLAUDE_CONFIG_DIR when set and not empty, else ~/.claude.
-
-CONTRACT
-
-1. auto_update=on|off lives in the user file of personal-mode
-   (agent_conf.USER_KEYS, read_user_conf, effective; never agent.conf:
-   `agent-settings.sh auto_update on` is refused as an unknown key).
-   Not set -> on (`agent-settings.sh get auto_update` -> "on (default)").
-
-2. bin/agent_update.py (new), stdlib only, never raises, never a traceback.
-   MARKETPLACE = "auto-pipeline"
-   claude_dir(env=None) -> ENV (default os.environ) CLAUDE_CONFIG_DIR when
-     not empty, else ~/.claude ($HOME at call time).
-   apply_auto_update(on, cdir) -> list of str (one line per file looked at)
-     For <cdir>/settings.json entry ["extraKnownMarketplaces"]["auto-pipeline"]
-     and <cdir>/plugins/known_marketplaces.json entry ["auto-pipeline"]: when
-     the file is a JSON object and the entry is a dict, and entry autoUpdate
-     is not already ON (a JSON bool): first copy the file byte for byte to
-     "<file>.bak-auto-pipeline", then write it back with only
-     entry["autoUpdate"] = ON changed (key order kept, indent 2). Already ON:
-     nothing written, no backup. No file, broken JSON, no entry: untouched.
-     Never creates a file, never touches any other file (a repo's
-     .claude/settings.json above all).
-   CLI `agent_update.py apply on|off`: claude_dir() of the environment, the
-     lines on stdout, exit 0; any other argument -> exit 2.
-   parse_version(s) -> tuple of ints ("0.29.0" -> (0, 29, 0)), None when not
-     dotted digits. Compare numeric: 0.10.0 > 0.9.0.
-   installed_version(plugin_root) -> "version" of
-     <plugin_root>/.claude-plugin/plugin.json, or None.
-   clone_version(cdir) -> (version, subject) of the marketplace clone
-     <cdir>/plugins/marketplaces/auto-pipeline: "version" of its
-     .claude-plugin/plugin.json (None when missing), and subject = the
-     subject of the last commit there that touched .claude-plugin/plugin.json
-     (the release commit; None when not a git repo).
-   cache_path() -> agent_conf.user_conf_path() + ".latest.json"
-   version_url(cdir, env=None) -> ENV AUTO_PIPELINE_VERSION_URL when not
-     empty; else, when known_marketplaces.json's auto-pipeline source is
-     {"source": "github", "repo": "<o>/<r>"},
-     "https://raw.githubusercontent.com/<o>/<r>/HEAD/.claude-plugin/plugin.json";
-     else None.
-   refresh(url, cache, timeout=4, now=None) -> fetches URL (urllib, file://
-     works too), takes "version" of the JSON; writes CACHE as JSON
-     {"checked": <now, epoch s>, "version": <v or null>}. Any failure (offline,
-     timeout, junk) -> {"checked": now, "version": null}. Silent.
-   stale(cache, now=None) -> True when CACHE is missing, broken or "checked"
-     is 86400 s or more before NOW.
-   notice_line(plugin_root, cdir, cache) -> str or None.
-     newest = the higher of clone_version and the cache's version. Installed
-     unknown, newest unknown, or installed >= newest -> None. Else:
-     "UPDATE: auto-pipeline <new> available (you run <old>): <subject>. Auto
-     update on: installs by itself within 10 min, then /reload-plugins. Off:
-     claude plugin update auto-pipeline@auto-pipeline"
-     <subject> only when the clone holds <new> and has a subject, cut to 80
-     characters (77 + "..."); without it the "(you run <old>)" is followed
-     straight by ". Auto update on: ...".
-   CLI `agent_update.py notice <plugin_root>`: prints the line when there is
-     one. When stale(cache_path()) and version_url() is not None it starts
-     `agent_update.py refresh` detached (new session, stdio to /dev/null) and
-     never waits for it. Exit 0 always, well under a second.
-   CLI `agent_update.py refresh`: refresh(version_url(), cache_path()) when
-     the url is not None. Exit 0 always.
-
-3. bin/agent-settings.sh --user auto_update on|off saves the user file
-   (personal-mode) and then applies it: runs `agent_update.py apply <v>`,
-   its lines on stdout.
-
-4. bin/agent-init.sh [--auto-update on|off]
-   --auto-update on|off -> `agent-settings.sh --user auto_update <v>` (its
-     "saved: auto_update=<v>" line shows), always, set or not. Any other
-     value or none -> exit 2, a message on stderr, nothing created.
-   No flag, auto_update already in the user file -> no question, unchanged.
-   No flag, not set, stdin a terminal -> ONE question on stderr, starting
-     "Auto update:", on first and marked recommended, then off. Answer on /
-     off, any case; Enter, EOF or anything else -> on. Asked after the
-     permission question.
-   No flag, not set, stdin not a terminal -> on, saved, no question.
-   skills/init/SKILL.md: one question auto update, "on (Recommended)" then
-     "off" -> --auto-update on|off.
-
-5. Start text (bin/agent-start.sh), main manager (main, takeover) and
-   human-direct only, never a spawned agent, not on the compact path:
-   auto_update not in the user file -> exactly one line starting
-     "AUTO UPDATE: not set." that says ask the human once, on (recommended)
-     or off, and holds the command
-     "<plugin>/bin/agent-settings.sh --user auto_update on|off".
-   Set -> no such line.
-   `agent_update.py notice <plugin root>` -> its UPDATE line when it prints
-     one. The start never waits on the network.
-
-6. skills/merge/SKILL.md: every release bumps the version in
-   .claude-plugin/plugin.json; users get nothing without it.
+requirements/settings-configure.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import json
@@ -541,13 +438,100 @@ class TestStart(ScriptCase):
         self.assertLess(time.time() - t, 20)
 
 
-class TestReleaseText(unittest.TestCase):
-    def test_merge_skill_says_bump_the_version(self):
-        text = read("skills", "merge", "SKILL.md")
-        line = next((l for l in text.splitlines() if ".claude-plugin/plugin.json" in l), None)
-        self.assertIsNotNone(line)
-        self.assertIn("version", line)
-        self.assertIn("release", line.lower())
+ENV = "AUTO_PIPELINE_USER_CONF"
+
+
+class TmpCase(unittest.TestCase):
+    """A temp folder, and a user file that is never the real ~/.claude one."""
+
+    def setUp(self):
+        self.base = os.path.realpath(tempfile.mkdtemp(prefix="five_fixes_"))
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.user = os.path.join(self.base, "u", "auto-pipeline.conf")
+        self.cfg = os.path.join(self.base, "cfg")
+        patcher = mock.patch.dict(os.environ, {ENV: self.user, "CLAUDE_CONFIG_DIR": self.cfg})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def folder(self, name, conf):
+        """settings-configure: CONF (old key=value text) goes into Configure (user level)."""
+        from cityhelp import configure_text  # noqa: E402
+        path = os.path.join(self.base, name)
+        os.makedirs(path)
+        configure_text(conf)
+        return path
+
+    def write_user(self, text):
+        os.makedirs(os.path.dirname(self.user), exist_ok=True)
+        with open(self.user, "w") as fh:
+            fh.write(text)
+
+
+def text(path):
+    with open(path) as fh:
+        return fh.read()
+
+
+SETTINGS_five = {
+    "model": "opus",
+    "extraKnownMarketplaces": {
+        "auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"}},
+    },
+}
+
+
+KNOWN_five = {"auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"},
+                           "installLocation": "/x/auto-pipeline"}}
+
+
+BAK = ".bak-auto-pipeline"
+
+
+class TestFirstBackupIsKept(TmpCase):
+    def setUp(self):
+        super().setUp()
+        import agent_update
+        self.u = agent_update
+        self.cdir = os.path.join(self.base, "home", ".claude")
+        self.s = self.write(os.path.join(self.cdir, "settings.json"), SETTINGS_five)
+        self.k = self.write(os.path.join(self.cdir, "plugins", "known_marketplaces.json"), KNOWN_five)
+
+    def write(self, path, data):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh:
+            fh.write(json.dumps(data, indent=4) + "\n")   # the user's own style, not ours
+        return path
+
+    def read(self, path):
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    def test_many_flips_keep_the_original(self):
+        originals = {p: self.read(p) for p in (self.s, self.k)}
+        for on in (False, True, False, True, False):
+            self.u.apply_auto_update(on, self.cdir)
+            for path, raw in originals.items():
+                with self.subTest(flip=on, path=path):
+                    self.assertEqual(self.read(path + BAK), raw, "the backup is the file before the first flip")
+        self.assertIs(json.loads(self.read(self.s))["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], False)
+        self.assertIs(json.loads(self.read(self.k))["auto-pipeline"]["autoUpdate"], False)
+
+    def test_an_old_backup_is_never_overwritten(self):
+        for path in (self.s, self.k):
+            with open(path + BAK, "wb") as fh:
+                fh.write(b"older backup\n")
+        lines = self.u.apply_auto_update(False, self.cdir)
+        for path in (self.s, self.k):
+            with self.subTest(path=path):
+                self.assertEqual(self.read(path + BAK), b"older backup\n")
+        self.assertIs(json.loads(self.read(self.s))["extraKnownMarketplaces"]["auto-pipeline"]["autoUpdate"], False)
+        self.assertTrue(any(self.s + BAK in line for line in lines), lines)
+
+    def test_the_first_flip_still_writes_the_backup(self):
+        raw = self.read(self.s)
+        lines = self.u.apply_auto_update(False, self.cdir)
+        self.assertEqual(self.read(self.s + BAK), raw)
+        self.assertTrue(any("autoUpdate set to false" in l and self.s + BAK in l for l in lines), lines)
 
 
 if __name__ == "__main__":

@@ -1,87 +1,6 @@
-"""Failing tests: after a whole-repo close case the main manager cleans its session and stays.
+"""Tests of agent-start.sh --clean: the main manager's clean after a whole-repo close case.
 
-Owner, 2026-10-02: after every whole-repo close case he had to type a long line
-(! <plugin path>/bin/agent-start.sh --release) to free the main manager seat: "very annoying".
-Wanted: when everything is settled the main manager ASKS whether to clean the session, and on
-yes it goes on as the SAME main manager with a clean mind. It must not give up its place, "so
-that other repos' main managers need not find again who the main manager is every time".
-
-CONTRACT (bin/agent-start.sh --clean, bin/agent-close-case.sh, skills/close-case/SKILL.md,
-PRINCIPLES.md W13 and S8). "this session" = $CLAUDE_PID, else the first claude ancestor.
-
-K1 the question. The last step of a whole-repo close case is no longer the release line. After
-   the ONE final table the main manager asks one short question in the owner's language: clean
-   this session for the next round, yes or no? No, or no answer: nothing changes.
-
-K2 agent-start.sh --clean ["<carry line>" ...]   the main manager runs it itself, on the yes.
-   Needs the roots, reads no stdin, prints no start output (same block as --take-over, --release).
-   Only the lock holder: a spawned agent (AGENT_ROLE), a second session, a closed session, or no
-   lock at all -> a line starting "REFUSED", the holder's pid when there is one, exit 1, nothing
-   written. It never writes the lock, the closed list, a tracked file, or calls orca terminal send.
-
-   Gate, checked not guessed, before any file work:
-       (the monitor pid line is gone with bin/agent-monitor.sh, 2026-11-24)
-       every line of agent_worktree.txt
-           LEFT RUNNING: worktree <the line> -> close its pane, remove the worktree, <plugin>/bin/agent-file.sh worktree rm "<path>"
-       then "REFUSED: stop these first, then run --clean again. Nothing changed.", exit 1.
-       Nothing is archived, nothing is written.
-   Crons cannot be seen by a script: the success output always carries one CHECK line that names
-   CronList (it must show none).
-
-   File work (STATE_DIR = git toplevel of the cwd, where the start hook reads agent_state.txt):
-       agent_state.txt moves to agent_state.<YYYY-MM-DD-HHMMSS>.txt next to it, same bytes.
-       No agent_state.txt -> no archive, the fresh state says "archive none".
-       That name is taken (same second) -> wait for the next second; never overwrite an archive.
-       Git-ignored without touching a tracked file: the line "agent_state.*.txt" is added once to
-       <git common dir>/info/exclude (no git -> skipped).
-       Keep the newest 5 archives (by name), delete the older ones.
-       Fresh agent_state.txt, exactly these lines:
-           ROLE: main manager of "<repo>" (lock: pid <pid>). Same seat, clean session.
-           DATE: <YYYY-MM-DD HH:MM>
-           PREVIOUS: case closed <YYYY-MM-DD>, archive <archive file name | none>
-           TODO open (<n>): <name>, <name>        (first field of each agent_todo.txt line; "TODO open (0): none")
-           CARRY: <argument>                      (one line per argument, a newline inside becomes a space; no argument -> "CARRY: none")
-   Output, exit 0: the archive name, the CHECK line, and exactly one line starting "NEXT":
-       orca (agent-runtime.sh kind) and a terminal handle ($ORCA_TERMINAL_HANDLE, else the lock line)
-           NEXT, your last action, nothing after it: orca terminal send --terminal <handle> --text "/clear" --enter
-       plain, cloud, or no handle known
-           NEXT: ask the human to type /clear (one word) ...
-       Both say what to do when the session is not cleared: the human types /clear.
-
-K3 after the /clear (the SessionStart hook, source "clear") nothing changes in the hook: the same
-   pid holds the lock (new session id, same terminal), the text says "ROLE: main manager (lock:
-   pid <pid>)" and "CLEARED.", never "is dead", never "human-direct", no quiz line, and the state
-   block is the fresh short state. A new session opened later is still the Helper: the seat was
-   never given up. agent-name.sh prints nothing on clear, the name stays (tests/test_agent_name.py).
-
-K4 --release stays, typed by the human, for the rare case this session must stop being the main
-   manager. The whole-repo hook text names it once, after the question, as the other choice:
-       ! <plugin installed now>/bin/agent-start.sh --release
-   <plugin installed now>: the running plugin sits in a folder named like a version (digits and
-   dots, e.g. .../cache/auto-pipeline/auto-pipeline/0.14.0) -> the highest version folder next to
-   it that has bin/agent-start.sh, compared number by number (0.9.0 < 0.14.0 < 0.18.0). Any other
-   folder name -> the running plugin itself. The skill carries no release path: its ONE line
-   points at the line the hook printed.
-
-K5 words, terse, one line per rule. Whole-repo hook text (main manager), at most 1200 bytes:
-       ...the three lines of today up to "Nothing dropped."
-       Then ask the human, in his language, one short question: clean this session for the next round, yes or no? No, or no answer: nothing changes.
-       Yes: run agent-start.sh --clean (skill step 7), then /clear. You stay the main manager.
-       Other choice, rare (this session stops being main manager): the human types this line; never run it yourself:
-       ! <plugin installed now>/bin/agent-start.sh --release
-   skills/close-case/SKILL.md part B, steps 6 to 8 replace the old step 6:
-       6. the question, under the table; no or no answer -> nothing changes
-       7. yes -> `${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --clean "<open decision for the owner>" ...`;
-          LEFT RUNNING -> stop it, run it again; then do its NEXT line as the last action (orca: /clear
-          into your own pane; plain, cloud: the human types /clear). Same lock, same name.
-       8. ONE line: the other choice, --release, the line from the close-case hook text, typed by
-          the human, never run it yourself.
-   PRINCIPLES.md W13: the "Last line of the final table" bullet goes; three bullets say the
-   question, yes -> `agent-start.sh --clean` then `/clear` (same main manager), and the rare
-   `! agent-start.sh --release` (the agent never runs it). S8: one more line, the main manager
-   clears its own pane the same way.
-
-Run: python3 -m unittest tests.test_agent_session_clean </dev/null
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import glob
@@ -503,45 +422,6 @@ class TestAfterTheClear(CleanCase):
 
 # -- K1, K4, K5: the whole-repo hook text ------------------------------------------------------
 
-class TestTheHookText(CleanCase):
-    """The whole-repo rule is the skill now (close-case part B); the hook is silent."""
-
-    def part_b(self):
-        return read("skills", "close-case", "SKILL.md").split("## B.", 1)[1]
-
-    def test_it_asks_after_the_final_table(self):
-        out = self.part_b()
-        for phrase in ("whole repo", "/auto-pipeline:close-case", "agent_worktree.txt",
-                       "final table", "yes or no", "language",
-                       "nothing changes", "--clean", "/clear", "stay the main manager"):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase.lower(), out.lower())
-        self.assertLess(out.index("final table"), out.index("yes or no"))
-
-    def test_release_is_the_other_choice_not_the_last_step(self):
-        out = self.part_b()
-        self.assertLess(out.index("yes or no"), out.index("--release"))
-        self.assertLess(out.index("--clean"), out.index("--release"))
-        self.assertIn("never run it yourself", out)
-
-    def test_a_report_text_does_not_ask(self):
-        self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
-        out = self.prompt("CLOSE CASE alpha: unfinished\nDone: x.", pid=os.getpid())
-        self.assertEqual(out, "")
-        self.assertNotIn("--clean", out)
-        self.assertNotIn("--release", out)
-
-    def test_a_task_manager_is_never_asked(self):
-        self.set_lock("%d 2026-10-01 09:00 sid-me -\n" % os.getpid())
-        stdin = json.dumps({"session_id": "s", "transcript_path": "/tmp/x.jsonl",
-                            "cwd": self.repo.cwd, "permission_mode": "auto",
-                            "hook_event_name": "UserPromptSubmit", "prompt": "close case"})
-        result = self.repo.run("agent-close-case.sh", stdin=stdin,
-                               env={"AGENT_ROLE": "task-manager", "CLAUDE_PID": NOBODY})
-        self.assertOk(result)
-        self.assertNotIn("--clean", result.stdout)
-        self.assertNotIn("--release", result.stdout)
-
 
 class TestTheReleasePathIsThePluginInstalledNow(CleanCase):
     """K4: a session started on 0.14.0 printed a 0.14.0 path while 0.18.0 was installed."""
@@ -594,70 +474,6 @@ class TestTheReleasePathIsThePluginInstalledNow(CleanCase):
 
 # -- K5: the words the agents read --------------------------------------------------------------
 
-class TestTheSkill(unittest.TestCase):
-    def part_b(self):
-        text = read("skills", "close-case", "SKILL.md")
-        return text[text.index("## B."):]
-
-    def test_the_question_then_the_clean_then_the_clear(self):
-        part = self.part_b()
-        for phrase in ("yes or no", "nothing changes",
-                       "${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --clean", "LEFT RUNNING",
-                       "NEXT", "/clear", "own pane", "last action"):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, part)
-        self.assertLess(part.index("final table"), part.index("yes or no"))
-        self.assertLess(part.index("yes or no"), part.index("--clean"))
-
-    def test_release_is_one_line_the_other_choice(self):
-        part = self.part_b()
-        rows = [line for line in part.splitlines() if "--release" in line]
-        self.assertEqual(len(rows), 1, rows)
-        self.assertIn("never run it yourself", rows[0])
-        self.assertIn("hook", rows[0])
-        self.assertLess(part.index("--clean"), part.index("--release"))
-        self.assertEqual(rows[0], part.rstrip("\n").splitlines()[-1], "nothing comes after it")
-
-    def test_the_skill_carries_no_release_path(self):
-        text = read("skills", "close-case", "SKILL.md")
-        self.assertNotIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release", text)
-        self.assertNotIn("Last step: the final table ends with this line", text)
-
-
-class TestThePrinciples(unittest.TestCase):
-    def w13(self):
-        text = read("PRINCIPLES.md")
-        return text[text.index("W13."):text.index("W14.")]
-
-    def s8(self):
-        text = read("PRINCIPLES.md")
-        return text[text.index("S8."):text.index("S9.")]
-
-    def test_w13_asks_cleans_and_keeps_the_seat(self):
-        rule = self.w13()
-        for phrase in ("yes or no", "`agent-start.sh --clean`", "`/clear`",
-                       "`! agent-start.sh --release`", "never runs it"):
-            with self.subTest(phrase=phrase):
-                self.assertIn(phrase, rule)
-        self.assertNotIn("Last line of the final table", rule)
-        self.assertLess(rule.index("--clean"), rule.index("--release"))
-
-    def test_w13_stays_one_short_line_per_rule(self):
-        bullets = [l for l in self.w13().splitlines() if l.startswith("- ")]
-        self.assertLessEqual(len(bullets), 14)
-        for line in bullets:
-            with self.subTest(line=line[:40]):
-                self.assertLessEqual(len(line), 200)
-        self.assertEqual(len([l for l in bullets if "--release" in l]), 1)
-        self.assertEqual(len([l for l in bullets if "--clean" in l]), 1)
-
-    def test_s8_says_the_main_manager_clears_its_own_pane(self):
-        # state-trim (2026-11-20): the auto clear line names the own pane too; this is the close case line
-        rows = [l for l in self.s8().splitlines() if "own pane" in l and "close case" in l]
-        self.assertEqual(len(rows), 1, rows)
-        self.assertIn("main manager", rows[0])
-        self.assertLessEqual(len(rows[0]), 200)
-
 
 class TestTheScriptHeader(unittest.TestCase):
     def header(self):
@@ -668,6 +484,28 @@ class TestTheScriptHeader(unittest.TestCase):
 
     def test_release_is_no_longer_called_the_last_step(self):
         self.assertNotIn("last step", self.header())
+
+
+class TestTheHookText(unittest.TestCase):
+    """The whole-repo rule is the skill now (close-case part B); the hook is silent."""
+
+    def part_b(self):
+        return read("skills", "close-case", "SKILL.md").split("## B.", 1)[1]
+
+    def test_it_asks_after_the_final_table(self):
+        out = self.part_b()
+        for phrase in ("whole repo", "/auto-pipeline:close-case", "agent_worktree.txt",
+                       "final table", "yes or no", "language",
+                       "nothing changes", "--clean", "/clear", "stay the main manager"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase.lower(), out.lower())
+        self.assertLess(out.index("final table"), out.index("yes or no"))
+
+    def test_release_is_the_other_choice_not_the_last_step(self):
+        out = self.part_b()
+        self.assertLess(out.index("yes or no"), out.index("--release"))
+        self.assertLess(out.index("--clean"), out.index("--release"))
+        self.assertIn("never run it yourself", out)
 
 
 if __name__ == "__main__":

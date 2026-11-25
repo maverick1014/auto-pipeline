@@ -1,32 +1,6 @@
-"""UPDATE settings-configure (2026-11-25): no settings file in either root; settings are
-user level (Configure), agent_todo.txt marks a set-up project. agent.conf lines below
-are history.
+"""Tests of The two-root rule for every script: plugin root vs project root, worktrees, plain folders.
 
-Failing tests for the two roots. Written by the task manager, before any code.
-
-CONTRACT. Every script in bin/ is started by its absolute path, from any
-directory, and must tell two roots apart:
-
-  PLUGIN root   = the folder above the script, $(dirname "$0")/..
-                  PRINCIPLES.md, the quiz, agent_conf.py, bin/agent.conf.default.
-                  Read only. A script never writes here.
-
-  PROJECT       = the repo being worked on. Found in this order:
-                    1. "cwd" from the hook's stdin JSON (SessionStart)
-                    2. $CLAUDE_PROJECT_DIR
-                    3. the current directory
-                  PROJECT ROOT is the main worktree of `git worktree list` run
-                  from there, so a script started inside a git worktree still
-                  writes the shared files into the project's main repo.
-
-  Per-project files, in the PROJECT ROOT:
-      agent.conf, agent_todo.txt, agent_completed.txt, agent_ideas.txt,
-      agent_worktree.txt, .secrets/
-  In the project's shared git dir: the main-manager lock, the watch status.
-  agent_state.txt is per working directory: the git toplevel of the directory
-  the agent is in, so a worktree keeps its own state file.
-
-The same plugin serves any number of projects and never mixes them up.
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import json
@@ -39,8 +13,12 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ScriptCase
+from scripthelp import ROOT
 
 PRINCIPLES_MARK = "PLUGIN-PRINCIPLES-MARKER"
+
+
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
 
 
 class RootsCase(ScriptCase):
@@ -69,7 +47,19 @@ class RootsCase(ScriptCase):
         return self.repo.run("agent-start.sh", *args, **kwargs)
 
 
-class TestPluginRoot(RootsCase):
+class _TestPluginRootFixture:
+    def fixture(self):
+        pass
+
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one start for the readers
+class TestPluginRoot(_TestPluginRootFixture, RootsCase):
+    """One fixture for the class: these tests only read (tests/sharedrepo.py)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
+
     def test_the_rules_line_points_into_the_plugin(self):
         out = self.assertOk(self.start())
         self.assertIn("RULES: read %s/PRINCIPLES.md now (S8)." % self.repo.plugin,
@@ -84,6 +74,14 @@ class TestPluginRoot(RootsCase):
         self.assertFalse(os.path.exists(self.repo.path("PRINCIPLES.md")))
         out = self.assertOk(self.start())
         self.assertIn("QUIZ:", out)
+
+
+class TestPluginRootWrites(_TestPluginRootFixture, RootsCase):
+    """The tests of TestPluginRoot that write: one repo each."""
+
+    def setUp(self):
+        super().setUp()
+        self.fixture()
 
     def test_the_plugin_is_never_written_to(self):
         before = sorted(os.listdir(self.repo.plugin))
@@ -414,6 +412,56 @@ class TestResumeFromAnywhere(RootsCase):
         self.repo.set_worktree_lines([(path, "alpha", "working")])
         out = self.assertOk(self.repo.run("agent-resume.sh", "--dry-run"))
         self.assertIn(path, out)
+
+
+def read(*parts):
+    with open(os.path.join(ROOT, *parts)) as fh:
+        return fh.read()
+
+
+class TestClosedHint(unittest.TestCase):
+
+    def test_the_rename_hint_gives_the_task_form(self):
+        line = next(l for l in read("bin", "agent-roots.sh").splitlines()
+                    if "ask the human once to type /rename" in l)
+        self.assertIn("Helper - <Task Name>", line)
+
+
+class TestRoleLogicOnce(unittest.TestCase):
+    """One copy of the role logic: role_read in agent-roots.sh."""
+
+    def test_roots_defines_role_read(self):
+        self.assertRegex(read("bin", "agent-roots.sh"), r"(?m)^role_read\(\)")
+
+    def test_every_hook_uses_it(self):
+        for name in ("agent-start.sh", "agent-close-case.sh", "agent-name.sh"):
+            with self.subTest(script=name):
+                self.assertIn("role_read", read("bin", name))
+
+    def test_no_second_copy_of_the_lock_check(self):
+        for name in ("agent-start.sh", "agent-close-case.sh", "agent-name.sh"):
+            with self.subTest(script=name):
+                self.assertNotIn('kill -0 "$lpid"', read("bin", name))
+        self.assertNotIn("agent_main.lock", read("bin", "agent-name.sh"))
+
+
+class TestOnePidHelper(unittest.TestCase):
+    """agent-start.sh and the hook find "this session" the same way."""
+
+    def test_agent_pid_lives_in_the_roots_helper(self):
+        self.assertRegex(read("bin", "agent-roots.sh"), r"(?m)^agent_pid\(\)")
+
+    def test_agent_start_no_longer_has_its_own_copy(self):
+        self.assertNotRegex(read("bin", "agent-start.sh"), r"(?m)^agent_pid\(\)")
+
+    def test_the_hook_uses_it(self):
+        # through role_read (agent-roots.sh), which calls agent_pid: one copy
+        # of the role logic, tests/test_agent_name.py
+        text = read("bin", "agent-close-case.sh")
+        self.assertIn("agent-roots.sh", text)
+        self.assertIn("role_read", text)
+        self.assertRegex(read("bin", "agent-roots.sh"),
+                         r"(?ms)^role_read\(\).*?\$\(agent_pid\)")
 
 
 if __name__ == "__main__":

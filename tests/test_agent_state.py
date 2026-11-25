@@ -1,38 +1,6 @@
-"""state-trim: `agent-file.sh state add` and `agent-file.sh state trim` (level 4).
+"""Tests of bin/agent_state.py through agent-file.sh: state add, state trim, the day archive.
 
-The rules are requirements/state-trim.md, sections 0, A1, A2, A3, A7 (owner "rules yes" 2026-11-20).
-The work is done by bin/agent_state.py (python3), called by bin/agent-file.sh, the way
-agent_questions.py is called for `questions`. The tests only use the command line.
-
-CONTRACT (short; the doc wins where this is shorter):
-  state file   = agent_state.txt in the git toplevel of the cwd (main repo or own worktree)
-  state add "<line>"   -> appends "<line> | <YYYY-MM-DD HH:MM>", prints "state add: <first 60 chars>"
-                          refused (stderr, exit 1, nothing written): empty or blank text, a line break,
-                          more than one argument
-  state trim [--dry-run]
-      keep: K1 header (to the first blank line incl., or before the first "=== " line, max
-            state_header_lines=40), K2 RULE/CARRY:/PARKED:/QUESTIONS PAGE:/STAGE/WORKER/TODO LINE:/GOAL:
-            at the line start, OWNER TODO: anywhere (not after a quote), K3 open QUESTION:, K3b the
-            first QUESTION:/=== line after an open question (with its answer), K4 HOUSEKEEP block or
-            clean line, K5 a === REPORT === block that names an open task, K6 names an open task
-            (not for HEARTBEAT lines), K7 young (< state_keep_hours=24 h), K8 standing OWNER line
-            (names no open and no closed task), H the last old HEARTBEAT of an open heartbeat task,
-            P an answered question and its answer move or stay together
-      moved lines are appended to agent_state.trim-<YYYY-MM-DD>.txt (the day of the run), same folder
-      prints "state trim: kept <k>, moved <m> of <n> -> agent_state.trim-<date>.txt (checked)"
-           or "state trim: nothing to move (<n> lines)"; n = lines of the file
-      --dry-run: "state trim (dry run): keep <k>, move <m> of <n>", then
-                 "by rule: K1 <n>, K2 <n>, K3 <n>, K3b <n>, K4 <n>, K5 <n>, K6 <n>, K7 <n>, K8 <n>, H <n>, P <n>"
-                 (a line counts once, under the first rule of that order that keeps it), then
-                 "first kept:" and "first moved:", each followed by up to 5 lines "  <line cut to 100>"
-      tests only: AGENT_FAKE_TRIM_RACE=<n> appends "RACE <i>" to the state file just before each of
-                  the first n re-reads; AGENT_FAKE_TRIM_BAD_READBACK=1 makes the read-back check fail
-  callers: todo done (after the line moved) and agent-housekeep.sh --apply (before the block is
-           written; one "note: state trim moved <m> of <n> lines -> <day file>" body line when lines
-           moved). They print the trim line only when lines moved; a refused trim is one warning
-           line on stderr, their exit stays 0. state_trim_auto=off: they do not trim.
-  --clean: one blank line after the fresh header; keeps the 5 newest of each kind (copies
-           agent_state.<YYYY-MM-DD-HHMMSS>.txt and day files agent_state.trim-<date>.txt)
+requirements/state-trim.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import glob

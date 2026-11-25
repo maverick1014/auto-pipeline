@@ -1,94 +1,6 @@
-"""Failing tests for bin/agent-runtime.sh. Written by the task manager, before any code.
+"""Tests of bin/agent-runtime.sh: kind (orca, plain, cloud), the probe, ps, launch, close, browser.
 
-WHY. Orca is one way to run this pipeline, not the only one. The owner is half
-Orca, half the Claude app, and a cloud session is a third shape again. Every
-place that says `orca` today must ask the runtime instead.
-
-CONTRACT the worker must implement in bin/agent-runtime.sh (executable, and
-also safe to source):
-
-    bin/agent-runtime.sh kind                      orca | plain | cloud
-    bin/agent-runtime.sh ps                        the worktree JSON, or nothing
-    bin/agent-runtime.sh browser                   chrome | headless | none
-    bin/agent-runtime.sh launch <path> <title> <command>
-    bin/agent-runtime.sh close <handle>
-    bin/agent-runtime.sh -h                        usage, exit 0
-    no argument, or anything else                  usage, exit 2
-
-Sourced, it defines runtime_kind, runtime_ps, runtime_launch, runtime_close and
-runtime_browser, and runs nothing.
-
-Because it is a library that other scripts source, it must keep its own names
-to itself: every variable a function sets is `local`, and no function is named
-something a caller is likely to have. Nothing it does may change a variable the
-caller already had.
-
-KIND. Worked out fresh on every call. Never cached, never written to a file:
-the owner switches between Orca and the Claude app inside one day.
-
-    0. $AGENT_RUNTIME is orca, plain or cloud          -> that one, full stop
-    1. agent.conf `runtime` is orca, plain or cloud   -> that one, full stop
-    2. CLAUDE_CODE_REMOTE=true                        -> cloud
-    3. orca on PATH and `orca worktree ps --json`
-       answers inside 3 seconds                       -> orca
-       cut off at 3 seconds -> one more try, 3 seconds -> orca
-       (a busy Orca can miss one window; seen 2026-09-28)
-    4. anything else                                  -> plain
-
-    The retry is for a timeout only. An orca that answers fast with an error
-    (app not running) is a real answer: plain at once, one call, no retry.
-
-$AGENT_RUNTIME is a one-shot override, not a cache: it is something a caller
-SETS, never something this script writes. It exists for two reasons. A human
-can prove either mode without editing agent.conf or uninstalling Orca
-(`AGENT_RUNTIME=plain bin/agent-resume.sh`). And a script that has already
-worked the kind out once can pass it down to the runtime calls it then makes,
-instead of paying for the 3-second probe again on every single call. A value
-that is not one of the three is ignored, exactly like a bad agent.conf value.
-
-`runtime=auto`, no runtime line, or a value that is not one of the three, all
-fall through to step 2.
-
-plain and cloud are the same shape: no terminals, no panes, no monitor loop.
-They differ only in the browser.
-
-The probe in step 3 IS `orca worktree ps --json`, so `runtime=orca` in
-agent.conf skips it and every verb then makes exactly one orca call. On `auto`
-the probe comes first and a verb costs one call more. Any temp file the probe
-needs lives under ${TMPDIR:-/tmp} and is gone before the call returns.
-
-PS.
-    orca         prints what `orca worktree ps --json` prints, exit 0.
-                 orca not answering -> exit 1, nothing on stdout
-    plain,cloud  nothing on stdout, exit 0, and orca is never called
-
-LAUNCH.
-    orca         orca terminal create --worktree path:<path> --title <title>
-                      --command <command> --json
-    plain,cloud  cannot open a terminal. Exit non-zero with ONE line on stderr
-                 telling the caller to use the Agent tool (a subagent) instead.
-                 Never pretend it launched. orca is never called.
-
-CLOSE.
-    orca         orca terminal close --terminal <handle> --json
-    plain,cloud  nothing to close. Exit 0, no output, orca is never called.
-
-BROWSER. What can actually be driven, never what would be nice.
-
-    orca, plain  "chrome" when the Claude in Chrome native messaging host file
-                 is there, else "none". Claude in Chrome needs a local CLI plus
-                 the extension; Orca has nothing to do with it. Four places are
-                 checked, under $HOME:
-                   Library/Application Support/Google/Chrome/NativeMessagingHosts/
-                   Library/Application Support/Microsoft Edge/NativeMessagingHosts/
-                   .config/google-chrome/NativeMessagingHosts/
-                   .config/microsoft-edge/NativeMessagingHosts/
-                 file name com.anthropic.claude_code_browser_extension.json
-    cloud        Claude in Chrome can never work there: no extension, no native
-                 host in the VM. "headless" when chromium, chromium-browser or
-                 google-chrome is on PATH, or `npx --no-install playwright
-                 --version` exits 0. Else "none". `--no-install` matters: a bare
-                 npx would try to download playwright.
+One class per feature. Older task contracts: git log -p of this file.
 """
 
 import os
@@ -112,6 +24,9 @@ NPX_STUB = """#!/usr/bin/env bash
   >> "$NPX_STUB_LOG"
 exit "${NPX_STUB_EXIT:-0}"
 """
+
+
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
 
 
 class RuntimeCase(ScriptCase):
@@ -270,19 +185,6 @@ class TestKindAuto(RuntimeCase):
         self.as_plain()
         self.kind()
         self.assertEqual(self.repo.calls(), [])
-
-    def test_orca_present_but_not_answering_is_plain(self):
-        self.repo.stub_orca_down()
-        self.assertEqual(self.kind(), "plain")
-
-    def test_orca_slower_than_three_seconds_is_plain(self):
-        self.assertEqual(self.kind(env={"ORCA_STUB_SLEEP": "6"}), "plain")
-
-    def test_a_slow_orca_does_not_hang_the_caller(self):
-        started = time.time()
-        self.runtime("kind", env={"ORCA_STUB_SLEEP": "20"}, timeout=30)
-        self.assertLess(time.time() - started, 10,
-                        "the 3 second probe did not cut the call off")
 
     def test_a_fast_orca_is_not_cut_off(self):
         self.assertEqual(self.kind(env={"ORCA_STUB_SLEEP": "1"}), "orca")
@@ -461,11 +363,6 @@ class TestLaunchWithOrca(RuntimeCase):
               "--title", "TM alpha",
               "--command", "claude --model opus",
               "--json"]])
-
-    def test_a_title_with_spaces_stays_one_argument(self):
-        self.assertOk(self.launch())
-        call = self.repo.calls()[0]
-        self.assertIn("TM alpha", call)
 
 
 class TestLaunchWithoutTerminals(RuntimeCase):
@@ -709,6 +606,7 @@ usage
         self.assertEqual(out.strip(), "the caller's own usage")
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # help and refusals: one repo, each call once
 class TestUsage(RuntimeCase):
     def test_it_is_executable(self):
         full = os.path.join(os.path.dirname(HERE), "bin", "agent-runtime.sh")

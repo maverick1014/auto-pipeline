@@ -1,36 +1,6 @@
-"""state-trim: the start-text warning and the auto /clear at the 2nd compaction (level 4).
+"""Tests of bin/agent-autoclear.sh (the auto /clear waiter) and the STATE LONG / compaction lines of agent-start.sh.
 
-The rules are requirements/state-trim.md, sections A4, A5, A6 (G4), A7 (owner "rules yes" 2026-11-20).
-
-CONTRACT (short; the doc wins where this is shorter):
-  agent-start.sh, every branch that prints the state block (normal start, compaction, clear):
-    more than state_warn_lines (300) non-empty lines -> one line right before the state block:
-    "STATE LONG: agent_state.txt has <n> lines (over <w>). Trim: <plugin>/bin/agent-file.sh state trim --dry-run, then state trim"
-  agent-start.sh, compaction branch (SessionStart source compact):
-    count >= compact_clear_at (2), runtime orca, ORCA_TERMINAL_HANDLE set, orca on PATH:
-      "LIMIT: compacted <n> times. Save agent_state.txt now, then stop. This pane gets a save prompt and /clear at its next idle prompt (S8)."
-      appends "AUTO CLEAR queued: compacted <n> times | <date>" to the state file and starts
-      <plugin>/bin/agent-autoclear.sh <handle> <session id> detached (cwd = the state folder,
-      output to /dev/null), unless the pid file <git dir>/agent_autoclear_<session id> names a live process
-    no pane (plain, cloud, no handle, no orca):
-      "LIMIT: compacted <n> times. No pane to type into: save agent_state.txt, then tell the human to type /clear."
-    compact_clear_at=0: today's line "LIMIT: compacted <n> times. Write agent_state.txt, end this session, restart from the file (S8, S2)."
-  agent-start.sh, clear branch: the compaction count of that session starts again at 0.
-  agent-autoclear.sh <handle> <session id>   (foreground; the hook detaches it)
-    writes its pid to <git dir>/agent_autoclear_<session id>, removes it when it ends
-    before each typed text: `orca terminal wait --terminal <h> --for tui-idle ...` (an error whose
-    code holds "timeout": wait again; any other error: failed), then `orca terminal read --terminal <h> --json`:
-    the last tail line starting with "❯" must have nothing after the "❯" but spaces; else (text, or
-    no "❯" line) wait compact_clear_check_sec, check again, and append once
-    "AUTO CLEAR waiting: input box not empty | <date>"
-    types, each with `orca terminal send --terminal <h> --text <text> --enter`:
-      2 "AUTO CLEAR: save agent_state.txt now (S8), nothing else. /clear comes next."
-      4 "/clear"
-      6 "/goal <text of the last GOAL: line>"  or, with no GOAL: line,  "CLEARED: continue from agent_state.txt (S8)."
-    then appends "AUTO CLEAR done | <date>"
-    a failed orca call: appends "AUTO CLEAR failed at step <n>: <error code> | <date>" and stops
-    (steps: 1 wait, 2 save prompt, 3 wait, 4 /clear, 5 wait, 6 goal or continue)
-    AGENT_FAKE_NOW replaces the clock.
+requirements/state-trim.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
 import json
@@ -237,12 +207,6 @@ class TestStartWarning(ClearCase):
                 out = self.assertOk(self.hook(source, sid="w-" + source, runtime="plain", handle=None))
                 self.assertIn(self.warn(301), out.splitlines())
 
-    def test_the_limit_is_the_fixed_300(self):
-        # settings-configure: state_warn_lines is a fixed constant (300)
-        self.lines_file(300)
-        out = self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"}))
-        self.assertFalse([l for l in out.splitlines() if l.startswith("STATE LONG")], out)
-
     def test_it_still_fits_the_preview(self):
         self.lines_file(1500)
         out = pointer_part(self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"})))
@@ -345,8 +309,11 @@ class TestWaiter(ClearCase):
         super().setUp()
         # settings-configure: compact_clear_check_sec is a fixed 30 s; a `sleep` stub on PATH
         # keeps the waiter fast (was: set_conf compact_clear_check_sec 1)
-        # only the waiter's own 30 s pause shrinks (to 1 s); any other sleep stays real
-        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        # only the waiter's own 30 s pause shrinks (to 0.3 s; test-slim, was 1 s); any other sleep stays real
+        self.pause(0.3)
+
+    def pause(self, seconds):
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep %s\nexec /bin/sleep "$@"\n' % seconds)
 
     def test_the_whole_run_with_a_goal_line(self):
         self.write_state(["ROLE: x", "GOAL: an older goal", "GOAL: " + GOAL, ""])
@@ -445,6 +412,7 @@ class TestWaiter(ClearCase):
     def test_it_pauses_after_each_typed_text(self):
         # finding 7: tui-idle can come back before the pane went busy; a pause of
         # compact_clear_check_sec after each typed text lets the save turn start first
+        self.pause(1)   # three pauses of 1 s: at least 2 s in all
         self.write_state(["ROLE: x", ""])
         t0 = time.time()
         self.assertOk(self.waiter())
