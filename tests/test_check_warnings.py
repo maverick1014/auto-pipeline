@@ -11,7 +11,7 @@ Written by the task manager before any code (TELL 315ae904, owner 2026-11-25).
         lines; PostToolUse: {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": ..}}.
         First line "Board warning for the main manager, act in this turn:". Exit 0, stderr empty, no orca.
     (3) rule text: tests/test_check_rules.py (W15).
-    (2b) the watch wakes the main manager when a slot is free and a task is queued: WATCH SLOT <name>
+    (2b) the watch wakes the main manager when there is room and a task is queued: WATCH ROOM <name>
     (4) the watch: a target task with no task manager pane is watched through the live pane of the
         human-direct Helper whose task names it (field 3 "task: <Task Name>", the name in lower case with
         runs of other characters as "-"); the pane is found in the Helper's folder by its title
@@ -217,7 +217,7 @@ class TestWatchSlot(AllCase):
         self.task("alpha")
         self.queued("q")
         text = self.text(self.run_all(max_sweeps="3"))
-        self.assertEqual(self.one_watch(text), "WATCH SLOT q: can start (run agent-file.sh next)")
+        self.assertEqual(self.one_watch(text), "WATCH ROOM q: can start (run agent-file.sh next)")
         self.assertEqual(self.status()["slots"], ["q"])
 
     def test_said_once(self):

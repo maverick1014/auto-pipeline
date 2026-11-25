@@ -161,7 +161,7 @@ class TestPrinciplesR8(unittest.TestCase):
                  "DONE PASS", "DONE FAIL", "CLOSE CASE", "NEEDS HUMAN", "MOCK READY", "STALE PLUGIN",
                  "STATE LONG", "OWNER TODO", "QUESTIONS PAGE", "OWNER ORDER", "REPO TASK",   # report words
                  "GATE PASS", "GATE REFUSED", "CHECK PASS", "CHECK FAIL", "MERGE PASS", "MERGE FAIL",
-                 "WATCH SIGNAL", "WATCH STALL", "WATCH LOST", "WATCH SLOT", "AUTO CLEAR",
+                 "WATCH SIGNAL", "WATCH STALL", "WATCH LOST", "WATCH ROOM", "AUTO CLEAR",
                  "MODE MISMATCH"}                                               # mode-match, W16
         unknown = sorted(n for n in found if n not in NAMES and n not in extra)
         self.assertEqual(unknown, [], "names in PRINCIPLES.md that are no block: %s" % unknown)
@@ -233,7 +233,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
     def test_w15_restart_the_watch_first(self):
         w15 = self.rule("W15. ", "W16. ")
         self.assertIn("the first action is to start the watch again, then handle the signal", w15)
-        self.assertIn("when there is room for a queued task (WATCH SLOT)", w15)   # section 37 F5: room, not slots
+        self.assertIn("when there is room for a queued task (WATCH ROOM)", w15)   # section 42 S7   # section 37 F5: room, not slots
         self.assertNotIn("slot is free", w15)
         self.assertIn("board warning", w15)
 

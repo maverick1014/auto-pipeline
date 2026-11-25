@@ -743,3 +743,29 @@ and "17 settings" where PRINCIPLES.md counts them.
 - G9 PRINCIPLES.md R8: "init switches the main checkout of a new repo to the working branch; in a repo that already uses the plugin the main manager switches it at a quiet point after the start's WORKING BRANCH line".
 - G10 skills/dispatch: the brief's list of waits says "suite run", not "suite slot" (section 39 a).
 - G11 (CORE REVIEW third pass, low): the sweep always protects the default prefix "ap-main-" too, whatever this clone's setting (a fixed team name must not expose other people's default-named branches).
+
+## 42. FIX ORDER 1 from the main manager (TELL 6bf8830d, an independent review of the rule text at 1167369): where | seen | expected
+
+Blockers:
+- B1 skills/dispatch step 4: no "max 2 at once"; workers run "as many at once as the memory rule admits (S3)".
+- B2 No test run at the merge: skills/merge drops the `suite command:` field; agents/merge-deputy.md drops `<suite command>` and step 3 says "No test run at the merge (W4: never re-run what passed; R8: no task runs the full suite)".
+- B3 skills/merge step 1 bounces only "a block the builder owns with no pass line"; PR REVIEW, CORE REVIEW, FLOW CHECK and UI CHECK are checked by the gate after the reviewer and the check deputy ran.
+- B4 agents/fast-lane-deputy.md: its report ends with the TIME line and the FACTS line (the same two lines as the dispatch brief's REPORT).
+- B5 `todo done` once, by the merge deputy, with the task's real lane: skills/dispatch step 2 no longer runs `todo done` after the merge; skills/merge's todo done arguments say `--lane <full|fast>` (the task's lane), never a fixed `--lane full`.
+Should fix:
+- S1 skills/merge, target production: after `agent-promote.sh --task` a merge deputy does the cleanup and `todo done` with `merged: <merge hash>` in its brief; agents/merge-deputy.md: with `merged: <merge hash>` it skips steps 1-4 and does the rest (branch, cleanup, worktree line, todo done --merge <merge hash>).
+- S2 agents/check-deputy.md RELEASE SMOKE: the main manager does the one subagent launch and gives the check deputy its result; the check deputy starts no agents.
+- S3 agents/check-deputy.md tools add `mcp__claude-in-chrome__resize_window` (UI CHECK at desktop and phone width).
+- S4 skills/merge headless: the check deputy runs the same click path with Playwright, not the main manager.
+- S5 skills/dispatch: at the start of a batch `agent-promote.sh --sync` before its first task is dispatched (R8).
+- S6 R8: "A repo whose working branch exists but whose main checkout is not switched yet: merges go into the production branch as before (section 33)".
+- S7 No slot, no level: R5's data block names "level (old tasks only, - for new ones)"; the watch signal WATCH SLOT becomes WATCH ROOM (bin/agent_watch.py, W15); skills/dispatch "Waiting for room or another task -> on queue --after <task>; room found -> off"; bin/agent-file.sh comments: `next` -> "NEXT: <n> can start (room <mb> MB under the <p>% limit)", waits "suite run".
+- S8 W6 and the F tree: the fast-lane deputy, merge deputy, check deputy and worker run on the "Helper model" setting (no "Sonnet 5, medium"); the setting's description names the check deputy too (bin/agent_conf.py, plugin.json).
+- S9 R8: agent_repo.conf is "written by init and kept by agents; a human may edit it, never has to" (the same words as skills/init and the file's header).
+- S10 skills/dispatch step 7: "set status final (R7)", never "status done".
+- S11 S1: "New terminals use the "Permissions: Permission mode" setting, default bypassPermissions".
+Decided by the main manager (listed for the owner):
+- D1 R1 step 2: "2. Mock for a new page or a whole-page re-layout (W2)"; the dispatch brief follows.
+- D2 W8: "Delete the branch and close the todo line only after the merge is verified"; "the pane and the worktree may go while waiting for the owner's yes; the pushed branch stays".
+- D3 E1: "Lead with the result"; "A command, path or snippet the human must use comes right after the result"; "End with one concrete next action" stays; no "Lead with the next action".
+- D4 W1: "Never wait for the human, except: the kick-off round, a mock yes, an OWNER SIGN, NEEDS HUMAN E2E".
