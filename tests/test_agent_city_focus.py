@@ -172,7 +172,7 @@ box.openLog(); out.log = snap();
 box.selectFrom('gov:t1'); out.gov = snap();
 box.closeWin(); out.closed = snap();
 box.openLog(); box.closeWin(); out.logClosed = snap();
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 

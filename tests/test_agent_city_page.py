@@ -824,7 +824,7 @@ const clampFn = (v, a, b) => Math.max(a, Math.min(b, v));
   const busy = setup => { Object.assign(box, { drag: null, pinch: null, camTween: null, lastTouch: -Infinity, RM: false }, setup || {}); return !!box.busy(); };
   out.busy = { rotating: busy(), touched: busy({ lastTouch: 95000 }), reduced: busy({ RM: true }) };
 }
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 
@@ -1309,7 +1309,7 @@ ASK_LINE_JS = r"""
 const fs = require('fs');
 const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 eval(data.fn);
-process.stdout.write(JSON.stringify(data.cases.map(([ev, name]) => askLine(ev, name))));
+require("fs").writeSync(1, JSON.stringify(data.cases.map(([ev, name]) => askLine(ev, name))));
 """
 
 
@@ -1449,7 +1449,7 @@ class TestInteraction(unittest.TestCase):
         js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
               + constants_prelude() + "\n"  # idea-city C1: TEXT and i18n
               + state.group(0) + "\n" + st + "\n" + cs + "\n"
-              + "process.stdout.write(JSON.stringify({st: data.st.map(e => stuckText(e)), "
+              + "require("fs").writeSync(1, JSON.stringify({st: data.st.map(e => stuckText(e)), "
               + "cs: data.cs.map(c => citizenStatus(c))}));")
         out = run_node(js, {
             "st": [{"type": "stuck", "tool": "Bash", "question": ""},
@@ -1539,7 +1539,7 @@ applyAsk(cleared, null);
 out.push({ cleared: citizenStatus(cleared, 1) });
 const noGov = { state: 'asking', stuck: true, question: '需要你看一下', askKind: '', askPhase: '' };
 out.push({ noGov: citizenStatus(noGov, 0) });
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
         asks = [
             {"id": "a1", "agent": "s:x", "kind": "permission", "phase": "owner", "why": "permission",
@@ -1640,7 +1640,7 @@ process.stdout.write(JSON.stringify(out));
         ]
         js = ("const fs = require('fs'); const data = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));\n"
               + constants_prelude() + "\n" + esc + "\n" + fn + "\n"
-              + "process.stdout.write(JSON.stringify(data.map(x => askClosedLine(x).replace(/<[^>]+>/g, ''))));")
+              + "require("fs").writeSync(1, JSON.stringify(data.map(x => askClosedLine(x).replace(/<[^>]+>/g, ''))));")
         out = run_node(js, cases)
         for i in (0, 1, 2):
             for word in ("批准", "拒绝", "回答"):
@@ -1696,7 +1696,7 @@ out.path = p;
 out.pathUsesBridge = !!(p && p.some(([x, z]) => Math.floor(x) === -1 && Math.floor(z) === 0)); // a point on the bridge tile (city-people: finer walk grid)
 box.map = Object.assign({}, view, { rows: view.rows.map(r => r.replace('B', 'w')) });
 out.noBridge = box.findPath(-1.5, -1.5, 0.5, -1.5);
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 
@@ -1793,7 +1793,7 @@ def js_value(literal):
     node = shutil.which("node")
     if not node:
         raise unittest.SkipTest("node is not installed")
-    result = subprocess.run([node, "-e", "process.stdout.write(JSON.stringify(%s))" % literal],
+    result = subprocess.run([node, "-e", "require("fs").writeSync(1, JSON.stringify(%s))" % literal],
                             capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
     if result.returncode != 0:
         raise AssertionError(result.stderr[-2000:])
@@ -1819,7 +1819,7 @@ const box = Object.assign({ Math, JSON, console, occupied: new Map(), blocked: n
 vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const slots = box.restSlotsFor(view.territories[0]);
-process.stdout.write(JSON.stringify({ spots: slots.map(r => [r.x, r.y, box.tileAt(Math.floor(r.x), Math.floor(r.y)), !!box.walkable(Math.floor(r.x), Math.floor(r.y))]) }));
+require("fs").writeSync(1, JSON.stringify({ spots: slots.map(r => [r.x, r.y, box.tileAt(Math.floor(r.x), Math.floor(r.y)), !!box.walkable(Math.floor(r.x), Math.floor(r.y))]) }));
 """
 
 
@@ -1843,7 +1843,7 @@ vm.runInContext(prelude + '\n' + fns, box);
 const ch = (x, z) => { const r = Math.floor(z) - view.z0, c = Math.floor(x) - view.x0; return r >= 0 && r < view.h && c >= 0 && c < view.w ? rows[r][c] : ' '; };
 const t0 = { id: 't', cx: 0, cz: 0, open: 0, size: 0 }, t1 = { id: 't', cx: 0, cz: 0, open: 6, size: .4 };
 const t2 = { id: 't', cx: 0, cz: 0, open: 6, size: .4, era: 'town' };
-process.stdout.write(JSON.stringify({
+require("fs").writeSync(1, JSON.stringify({
   day0: box.hallDecor(t0, view),
   grown: box.hallDecor(t1, view).map(d => [d.key, d.x, d.z, ch(d.x, d.z)]),
   town: box.hallDecor(t2, view).map(d => [d.key, d.x, d.z, ch(d.x, d.z)]),
@@ -1899,7 +1899,7 @@ const box = { Math, JSON, console, map: { territories: [t] }, mid: { x: 13, z: -
   terrOf: id => (id === 't' ? t : null), hallStand: () => ({ x: 26, y: -24 }) };
 vm.createContext(box);
 vm.runInContext(fns + '\nupdateHome();', box);
-process.stdout.write(JSON.stringify({ home: box.home }));
+require("fs").writeSync(1, JSON.stringify({ home: box.home }));
 """
         out = run_node(js, {"fns": src})
         home = out["home"]
@@ -2127,7 +2127,7 @@ const { prelude, fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const box = { Math, JSON, console, shows: new Map(), performance: { now: () => 0 } };
 vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
-process.stdout.write(JSON.stringify(['village', 'town', 'city', undefined].map(era => box.roadColor({ id: 'x', terrain: 'coast', era }))));
+require("fs").writeSync(1, JSON.stringify(['village', 'town', 'city', undefined].map(era => box.roadColor({ id: 'x', terrain: 'coast', era }))));
 """
         prelude = constants_prelude() + "\n" + consts("TERRAIN_LOOK", "ERA_LOOK")
         out = run_node(js, {"prelude": prelude, "fns": page_fns("roadColor", optional=("eraShown", "showOf", "eraLook"))})
@@ -2172,7 +2172,7 @@ for (const [name, t] of Object.entries(cases)) {
   const hall = box.hallDecor(t, view).map(d => Math.floor(d.x) + ',' + Math.floor(d.z));
   out[name] = items.map(d => ({ key: d.key, kind: d.kind, ch: ch(d.x, d.z), tile: Math.floor(d.x) + ',' + Math.floor(d.z), onHall: hall.includes(Math.floor(d.x) + ',' + Math.floor(d.z)) }));
 }
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 
@@ -2249,7 +2249,7 @@ const box = { Math, JSON, console };
 vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const t = st => ({ id: 't', balance: { infra: { state: st } } });
-process.stdout.write(JSON.stringify([box.trackColor(t('healthy')), box.trackColor(t('low')), box.trackColor({ id: 'x', balance: {} }), box.TRACK_COLOR]));
+require("fs").writeSync(1, JSON.stringify([box.trackColor(t('healthy')), box.trackColor(t('low')), box.trackColor({ id: 'x', balance: {} }), box.TRACK_COLOR]));
 """
         out = run_node(js, {"prelude": constants_prelude(), "fns": page_fns("trackColor")})
         self.assertNotEqual(out[0].lower(), out[3].lower())
@@ -2277,7 +2277,7 @@ const p = box.showPlan(t, view, 'town');
 out.plan = { builders: p.builders, targets: p.targets.map(g => [g.what, g.x, g.z]) };
 const pv = box.showPlan(Object.assign({}, t, { buildings: [] }), view, 'village');
 out.village = pv.targets.filter(g => g.what === 'lamp').length;
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 
@@ -2395,7 +2395,7 @@ p.at(52.5); p.box.landOverlays(p.box.map); p.frame(); out.flipped = p.state();  
 p.at(55); p.world(view1); p.frame();
 p.at(61); p.box.shows.delete('t'); p.frame(); out.after = p.state();             // the show ends
 const f = page(); f.world(view1); f.frame(); out.fresh = f.state();
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 

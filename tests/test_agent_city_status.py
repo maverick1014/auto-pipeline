@@ -660,7 +660,7 @@ for (const terr of ['a', 'b', 'c', 'd', 'e', 'gone']) {
 }
 out.row = box.railRowHtml({ id: 'gov:a', depth: 0, rest: false }, { selId: null, color: '#fff' });
 out.rowWaiting = box.railRowHtml({ id: 'gov:b', depth: 0, rest: false }, { selId: null, color: '#fff' });
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 CITIZEN_JS = r"""
@@ -671,7 +671,7 @@ vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const base = { state: 'working', askKind: '', askPhase: '', relay: '' };
 const s = extra => box.citizenStatus(Object.assign({}, base, extra));
-process.stdout.write(JSON.stringify({
+require("fs").writeSync(1, JSON.stringify({
   waiting: s({ waiting: true }), bgrun: s({ bgrun: true }), idle: s({ idle: true }), plain: s({}),
   idleAsk: s({ idle: true, askKind: 'permission' }),
   bgrunAsk: s({ bgrun: true, askKind: 'question', askPhase: 'owner' }),

@@ -165,7 +165,7 @@ for (const lang of ['en', 'zh', 'fr', '__CITY_LANG__']) {
   box.TEXT.zh.__t = 'a {x} b {x}'; box.TEXT.en.__t = 'A {x} B';
   out[lang] = { t: box.i18n('__t', { x: 1 }), unknown: box.i18n('no.such.key') };
 }
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
         lit = tp.const_object("TEXT")
         self.assertIsNotNone(lit)
@@ -259,7 +259,7 @@ box.heightAt = (x, z) => (x >= 1 && x < 3 && z >= 1 && z < 3 ? 3.2 : 0) || (Math
 const blockersAt = dist => { Object.assign(box.cam, { az: Math.PI / 4, el: box.EL_DEFAULT, tx: 0, tz: 0, dist }); box.camLiftNow = 0;
   return [...box.viewBlockers(box.EL_DEFAULT)].length; };
 out.fade = { near: blockersAt(9), past: blockersAt((box.FADE_DIST || 12) + .5), limit: blockersAt(box.distMax()), FADE_DIST: box.FADE_DIST };
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 _CACHE = {}
@@ -422,7 +422,7 @@ const [lx, lz] = [lone[0] + .5, lone[1] + .5];
 let near = 0;
 for (let i = 0; i < P.length; i += 3) if (Math.hypot(P[i] - lx, P[i + 2] - lz) < .6) near++;
 let total = P.length / 3;
-process.stdout.write(JSON.stringify({ near, total }));
+require("fs").writeSync(1, JSON.stringify({ near, total }));
 """
 
 
@@ -480,7 +480,7 @@ out.noTerrState = vm.runInContext('govState', box);
 box.govSay('c', 'hello', 5);
 out.phantom = box.govsByTerr.has('c');
 out.saysAnyway = box.govTalk('c');  // the demo has no presence entries at all: its governor still talks
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 
@@ -538,7 +538,7 @@ const out = {
   toHall: b({ state: 'to_hall', bubble: { text: 'hi', until: 10 } }), none: b({}),
 };
 box.simT = 11; out.over = b({ bubble: { text: 'hi', until: 10 } });
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 
@@ -561,7 +561,7 @@ const box = { Math, JSON, console, governorAt: () => ({ x: 0, y: 0 }) };
 vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const base = { state: 'working', askKind: '', askPhase: '', relay: '' };
-process.stdout.write(JSON.stringify({
+require("fs").writeSync(1, JSON.stringify({
   waiting: box.citizenStatus(Object.assign({}, base, { waiting: true })),
   waitingAsk: box.citizenStatus(Object.assign({}, base, { waiting: true, askKind: 'permission' })),
   plain: box.citizenStatus(base),
@@ -616,7 +616,7 @@ box.cam.dist = box.DIST_DEFAULT; box.pinLandOverlays(); out.dflt = look();
 box.cam.dist = 16.2; box.pinLandOverlays(); out.far = look();
 box.landOverlays(view, signs); out.again = els('dlbl').length;
 box.landOverlays(view); out.none = els('dlbl').length;
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 SIGNS_JS = r"""
@@ -645,7 +645,7 @@ for (const [name, t] of Object.entries(cases)) {
   view.territories = [t];
   out[name] = box.systemsDecor(t, view).filter(i => i.kind === 'knowledge' && i.key === 'roads/road-sign-street');
 }
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 

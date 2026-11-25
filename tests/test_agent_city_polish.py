@@ -101,7 +101,7 @@ const { fns } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const box = { Math, JSON, console, askName: v => 'repoA 总督' };
 vm.createContext(box);
 vm.runInContext(fns, box);
-process.stdout.write(JSON.stringify({
+require("fs").writeSync(1, JSON.stringify({
   gov: box.askWhyLine({ kind: 'question', why: 'no-governor', agent: 'gov', terr: 't' }),
   other: box.askWhyLine({ kind: 'question', why: 'no-governor', agent: 'w1', terr: 't' }) }));
 """

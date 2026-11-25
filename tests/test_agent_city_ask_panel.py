@@ -140,7 +140,7 @@ const { fns, driver, payload } = JSON.parse(fs.readFileSync(process.argv[2], 'ut
 const box = { __payload: payload, __out: null, console };
 vm.createContext(box);
 vm.runInContext(fns + '\n;\n' + driver, box);
-process.stdout.write(JSON.stringify(box.__out));
+require("fs").writeSync(1, JSON.stringify(box.__out));
 """
 
 

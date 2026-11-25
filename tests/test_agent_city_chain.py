@@ -698,7 +698,7 @@ vm.createContext(box);
 vm.runInContext(prelude + '\n' + fns, box);
 const out = {};
 for (const [name, t] of Object.entries(cases)) out[name] = { rest: box.restDecor(t), office: box.officeDecor(t) };
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
     fns = tp.page_fns("restDecor", "officeDecor",
                       optional=("eraShown", "showOf", "eraLook", "sr", "terrOf", "tileAt", "walkable", "frontOf"))

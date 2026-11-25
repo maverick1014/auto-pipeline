@@ -402,7 +402,7 @@ for (const RM of [false, true]) {
   acting.add('p');
   out.busyActing = b.busy();
 }
-process.stdout.write(JSON.stringify(out));
+require("fs").writeSync(1, JSON.stringify(out));
 """
 
 

@@ -135,14 +135,14 @@ for (let tries = 0; tries < 150; tries++) {
   vm.createContext(box);
   try {
     vm.runInContext(script + '\n;\n' + driver, box, { timeout: 60000 });
-    process.stdout.write(JSON.stringify(box.__out)); process.exit(0);
+    require("fs").writeSync(1, JSON.stringify(box.__out)); process.exit(0);
   } catch (e) {
     const m = /^(\S+) is not defined$/.exec((e && e.message) || '');
     if (e && e.name === 'ReferenceError' && m && !required.includes(m[1]) && !stubs.has(m[1])) { stubs.add(m[1]); continue; }
-    process.stdout.write(JSON.stringify({ fatal: String(e && e.stack || e).slice(0, 2500) })); process.exit(0);
+    require("fs").writeSync(1, JSON.stringify({ fatal: String(e && e.stack || e).slice(0, 2500) })); process.exit(0);
   }
 }
-process.stdout.write(JSON.stringify({ fatal: 'too many unknown names: ' + [...stubs].join(' ') }));
+require("fs").writeSync(1, JSON.stringify({ fatal: 'too many unknown names: ' + [...stubs].join(' ') }));
 """
 
 

@@ -1017,7 +1017,7 @@ class TestGovernorBubbleAtHisHeadB2(unittest.TestCase):
 const fs = require('fs'), vm = require('vm');
 const { fns, cases } = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const box = {}; vm.createContext(box); vm.runInContext(fns, box);
-process.stdout.write(JSON.stringify(cases.map(c => box.govHeadRows(c[0], c[1], c[2]))));
+require("fs").writeSync(1, JSON.stringify(cases.map(c => box.govHeadRows(c[0], c[1], c[2]))));
 """
         return run_node(js, {"fns": page_fns("govHeadRows"), "cases": cases})
 
