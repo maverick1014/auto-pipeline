@@ -364,3 +364,20 @@ Contract (task manager):
 - C10 `agent-nightly.sh`: --start tests the tip of the working branch (local branch `<working_branch>`, else HEAD), in its scratch tree; --release-ok compares with that tip, or its parent when the tip only bumps .claude-plugin/plugin.json; a nightly run started after the bump (on the tip) counts too.
 - C11 NET rows: NIGHTLY RUN, RELEASE RUN, RELEASE SMOKE. RELEASE RUN runs: "the full suite once on the working branch before a release (a green nightly on that commit counts); failures go to a new fixer agent, never back to the builder; the release waits until it is green".
 - C12 Rule text: R1 step 9 "Merge into the working branch + cleanup"; R8 the working branch and the release run lines; W8 the deputy merges into the working branch; merge skill, merge deputy (brief field `working branch: <name>`, `git merge` there, `git push origin <working branch>`), dispatch brief; quiz Q25 option C ("merge into the working branch + cleanup") and Q35 (rule R8, answer B: a failure of the release run goes to a new fixer agent).
+
+## 18. Rule text for section 17 (task manager draft; the rules worker puts it in as written)
+
+R1 step 9: `  9. Merge into the working branch + cleanup`.
+R8, after "- No task runs the full suite ...":
+```
+- A task merges into the working branch (`working_branch` in agent_repo.conf): the branch that does not reach users; main where users install a release branch, else dev, which merges into main only at release
+- RELEASE RUN: before a release the full suite runs once on the working branch (a green nightly on that commit counts)
+- The release waits until the release run is green
+- A failure of the release run or the nightly goes to a new fixer agent (fast-lane deputy or task manager, by size), never back to the builder
+```
+and the line "- A release needs the last nightly on that main to be green, ..." becomes "- A release needs a green full run on the working branch: the last nightly on that commit, or one background run (`agent-nightly.sh --release-ok`); no other pre-release run".
+W8: "- Deputy merges into the integration branch" becomes "- Deputy merges into the working branch (R8)".
+skills/merge: the deputy brief gets `working branch: <working_branch of agent_repo.conf>`; step 8: before a release, `agent-nightly.sh --release-ok` (else `--start` in the background): the full suite once on the working branch; a failure goes to a new fixer agent (fast-lane deputy or task manager by size), never back to the builder; the release waits until it is green; a repo with a dev working branch releases by merging dev into main.
+agents/merge-deputy.md: `<working branch>` in "Your brief gives"; the gate with `--base origin/<working branch>`; `git checkout <working branch>` then `git merge --no-ff origin/<branch>`; `git push origin <working branch>` (never a fixed `main`).
+skills/dispatch: `orca worktree create ... --base-branch <working branch>`; the brief's WHERE names the working branch; the REPORT line: the task's CHECK lines, indented by two spaces (state add refuses a line that starts with CHECK).
+Quiz: Q25 and Q35 as tests/test_check_rules.py QUIZ_Q25 and QUIZ_Q35 (Q35: answer B, RULE R8).

@@ -124,7 +124,7 @@ class TestPrinciplesR8(unittest.TestCase):
                        "check_budget_s", "60 s", "the net", "NIGHTLY RUN", "RELEASE SMOKE",
                        # owner 1A 2026-11-25 (section 15)
                        "No task runs the full suite", "MODULE TESTS", "gates nothing", "selection miss",
-                       "agent-nightly.sh", "the last nightly on that main", "agent-nightly.sh --release-ok",
+                       "agent-nightly.sh", "the last nightly on that commit", "agent-nightly.sh --release-ok",
                        "agent_repo.conf", "edge add", "which example would have shown it",
                        "Refactor", "Urgent fix", "Rollback", "Research only",
                        "skipped with one printed line", "second agent's opinion only for CORE REVIEW",
