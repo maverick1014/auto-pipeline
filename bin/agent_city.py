@@ -311,10 +311,10 @@ class Reducer:
             self.sessions[sid] = {"citizen": None}
             return None, []
         if role != "":
-            norm_role = self._normalize_role(role)
+            norm_role = "designer" if role == "interior-designer" else self._normalize_role(role)
             label = role
         else:
-            norm_role = "task-manager"
+            norm_role = "helper"      # office: no hook role = a Helper (助理)
             label = "session"
         task = proj if proj else label
         label = _trim(label, 30)
@@ -1129,19 +1129,23 @@ def pass_city_dir(directory):
     return os.path.abspath(directory)
 
 
-def agent_command(name, folder, city_dir=None):
+def agent_command(name, folder, city_dir=None, model_key="main_manager", prompt=FIRST_PROMPT, role=None):
     """The one fixed line a new terminal runs: `claude --name <name>`, then
     `--model <m> --effort <e>` and `--permission-mode <p>` from FOLDER's
-    agent.conf (main_manager, permission_mode: a second session opens with
-    the main manager's values; <m> goes through agent_conf.cli_model(), the
-    name the claude CLI takes, not the agent.conf one), then FIRST_PROMPT as
-    the last word. A
-    missing file or value, or one agent_conf refuses, leaves that part out.
-    CITY_DIR given: the line starts with `AGENT_CITY_DIR=<city_dir> `, so the
-    session reports to this city; None: it starts with `claude `. Never the
-    folder, never AGENT_ROLE. Never raises."""
+    agent.conf (MODEL_KEY, default main_manager, then permission_mode: a
+    second session opens with the main manager's values; <m> goes through
+    agent_conf.cli_model(), the name the claude CLI takes, not the agent.conf
+    one), then PROMPT (default FIRST_PROMPT) as the last word. The model of
+    "interior_designer" comes from bin/agent.conf.default when FOLDER's file
+    has no such line. A missing file or value, or one agent_conf refuses,
+    leaves that part out. CITY_DIR given: the line starts with
+    `AGENT_CITY_DIR=<city_dir> `, so the session reports to this city; ROLE
+    given: `AGENT_ROLE=<role> ` follows it, right before `claude`. Neither:
+    it starts with `claude `. Never the folder. Never raises."""
     import shlex
     words = ["claude", "--name", shlex.quote(name)]
+    if role:
+        words.insert(0, "AGENT_ROLE=" + shlex.quote(role))
     if city_dir:
         words.insert(0, "AGENT_CITY_DIR=" + shlex.quote(city_dir))
     try:
@@ -1150,7 +1154,12 @@ def agent_command(name, folder, city_dir=None):
             conf = conf_mod.load(os.path.join(folder, "agent.conf"))
         except Exception:
             conf = {}
-        model = _conf_value(conf_mod, conf, "main_manager")
+        model = _conf_value(conf_mod, conf, model_key)
+        if model is None and model_key == "interior_designer":
+            try:
+                model = _conf_value(conf_mod, conf_mod.load(_bin_path("agent.conf.default")), model_key)
+            except Exception:
+                model = None
         if model is not None:
             model_name, effort = model.rsplit(":", 1)
             words += ["--model", shlex.quote(conf_mod.cli_model(model_name)), "--effort", shlex.quote(effort)]
@@ -1159,8 +1168,16 @@ def agent_command(name, folder, city_dir=None):
             words += ["--permission-mode", shlex.quote(mode)]
     except Exception:
         pass
-    words.append(shlex.quote(FIRST_PROMPT))
+    words.append(shlex.quote(prompt))
     return " ".join(words)
+
+
+def designer_prompt(repo):
+    """The one line the interior designer's session starts with (one line, no newline)."""
+    plugin = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return ("You were opened from the Agent City page as the interior designer of the %s floor. "
+            "Read %s now and follow it. Do not run agent-start.sh: you are not a pipeline agent."
+            % (repo, os.path.join(plugin, "agents", "interior-designer.md")))
 
 
 def _last_line(text):
@@ -1174,8 +1191,9 @@ def open_session(folder, title, command, runtime=None):
     launch FOLDER TITLE COMMAND` (bin/agent-runtime.sh when RUNTIME is None),
     an argument list, never a shell line. It runs as FOLDER's own project, so
     the kind it launches for is the kind kind_fn answered for FOLDER. ->
-    (True, "") on exit 0, else (False, a short reason: the script's last
-    stderr line when it has one). Never raises."""
+    (True, <the terminal handle of the JSON it printed, "" when none>) on exit
+    0, else (False, a short reason: the script's last stderr line when it has
+    one). Never raises."""
     if runtime is None:
         runtime = _bin_path("agent-runtime.sh")
     env = dict(os.environ)
@@ -1190,8 +1208,25 @@ def open_session(folder, title, command, runtime=None):
     except Exception as exc:
         return False, (str(exc) or exc.__class__.__name__)[:200]
     if done.returncode == 0:
-        return True, ""
+        text = done.stdout.decode("utf-8", "replace")
+        found = re.findall(r'"handle"\s*:\s*"([^"]+)"', text) or re.findall(r"term_[\w-]+", text)
+        return True, found[0] if found else ""
     return False, _last_line(done.stderr.decode("utf-8", "replace")) or "exit %d" % done.returncode
+
+
+def close_session(handle, runtime=None):
+    """`bash <runtime> close HANDLE` (bin/agent-runtime.sh when RUNTIME is None): the terminal of HANDLE
+    closes. An argument list, never a shell line. -> True on exit 0. Never raises."""
+    if runtime is None:
+        runtime = _bin_path("agent-runtime.sh")
+    if not isinstance(handle, str) or re.fullmatch(r"[\w.-]+", handle) is None:
+        return False
+    try:
+        done = subprocess.run(["bash", runtime, "close", handle], stdin=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=ADD_OPEN_SEC)
+    except Exception:
+        return False
+    return done.returncode == 0
 
 
 def runtime_kind(folder, runtime=None):
@@ -1485,18 +1520,212 @@ def _session_page_id(reducer, sid, terr):
 
 
 def _spawn_up(reducer, terr, obj):
-    """city-rail-tree: the "up" of a spawn event made by line OBJ (the page
-    id of the new person's parent, "" = the repo itself): a subagent -> the
-    session that started it (the same page id as "from"); a session whose
-    hook role is "task-manager" -> "gov:<terr>" ALWAYS (unlike "from", also
-    while the repo has no governor); any other session -> ""."""
+    """city-rail-tree, office: the "up" of a spawn event made by line OBJ (the
+    page id of the new person's parent): a subagent -> the session that
+    started it (the same page id as "from"); every session that is not the
+    governor (a helper, a task manager, the designer) -> "gov:<terr>" ALWAYS
+    (also while the repo has no governor): the tree is 区经理 > 设计师, 助理,
+    经理."""
     sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
     aid = obj.get("aid") if isinstance(obj.get("aid"), str) else ""
     if aid:
         return _session_page_id(reducer, sid, terr)
-    if obj.get("role") == "task-manager":
-        return "gov:" + terr
-    return ""
+    return "gov:" + terr
+
+
+# -- office: floor designs (requirements/city.md, "Office"; tests/test_agent_city_office.py, O3) ----------
+
+DESIGN_COLORS = ("accent", "carpet", "manager_floor", "pantry_floor", "desk", "desk_leg", "chair",
+                 "meeting_rug", "manager_rug")
+DESIGN_LIGHT = ("carpet", "manager_floor", "pantry_floor")
+FLOOR_DECOR = ("robot", "conveyor", "gears", "chart", "plants", "safe", "cabinets", "printer", "bookshelf",
+               "clock", "cashier", "goods", "menu", "scanner", "lightbox")
+DESIGN_LIGHT_LABEL = {"carpet": "地毯", "manager_floor": "区经理室地板", "pantry_floor": "茶水间地板"}
+DESIGN_KEYS = ("v", "name", "why", "colors", "decor")
+DESIGN_HISTORY_KEEP = 5
+_HEX_COLOR = re.compile(r"#[0-9A-Fa-f]{6}")
+
+FLOOR_RULES = """\
+FLOOR DESIGN RULES (the Agent City office, one design per repo floor)
+
+A design is one JSON object. These keys are the only ones allowed:
+  v       the number 1.
+  name    text, 1 to 20 characters, not only spaces. The name of the style.
+  why     text, 0 to 60 characters. Optional. One short line: why this look fits the repo.
+  colors  an object with exactly these 9 keys, each a "#RRGGBB" colour:
+            accent         the colour of the floor sign and its small accents
+            carpet         the floor of the open office
+            manager_floor  the floor of the area manager's room
+            pantry_floor   the floor of the pantry
+            desk           the desk top
+            desk_leg       the desk legs
+            chair          the chairs
+            meeting_rug    the rug of the meeting corner
+            manager_rug    the rug in the area manager's room
+          carpet, manager_floor and pantry_floor must be light: lightness (HSL, (max + min) / 2)
+          from 55 to 95 percent. Darker or whiter is refused.
+  decor   a list of exactly 3 entries. Each entry is one of these ids, or "none":
+            robot conveyor gears chart plants safe cabinets printer bookshelf clock cashier goods menu
+            scanner lightbox
+
+Example:
+{"v": 1, "name": "Cashier style", "why": "A POS repo.",
+ "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0",
+            "desk": "#EFDAB5", "desk_leg": "#BBA27C", "chair": "#3E4560", "meeting_rug": "#A9BCE0",
+            "manager_rug": "#C97B66"},
+ "decor": ["cashier", "none", "goods"]}
+
+NEVER settable (not by any design): the floor size, the lift, the area manager's room (its place and
+size), the desks (how many, where), the pantry, the meeting corner, and the people. A wish about
+these cannot be done: change what you may, and say in one line what you left alone.
+
+Where the design lives: <floors folder>/<repo id>.json (the last 5 designs it replaced are kept next to it).
+Commands:
+  agent-city.sh floor rules             print these rules
+  agent-city.sh floor show <repo>       print the design of a repo (or say there is none)
+  agent-city.sh floor set <repo> <file> check a design and save it; "-" reads it from stdin; <repo> may be "."
+  agent-city.sh floor bye <repo>        tell the city that the designer is done and may leave
+A design that breaks a rule is refused with one line per problem: nothing is written.
+"""
+
+
+def floors_home():
+    """$AGENT_CITY_HOME/floors, default ~/.claude/agent-city/floors: the folder of the floor designs."""
+    home = os.environ.get("AGENT_CITY_HOME")
+    if home:
+        return os.path.join(home, "floors")
+    return os.path.expanduser("~/.claude/agent-city/floors")
+
+
+def _design_problem(field, zh, en):
+    return {"field": field, "zh": zh, "en": en}
+
+
+def check_design(obj):
+    """[] when OBJ is a good floor design, else every problem as {"field", "zh", "en"} (see
+    FLOOR_RULES). Never raises, whatever OBJ is."""
+    try:
+        return _check_design(obj)
+    except Exception:
+        return [_design_problem("design", "设计文件读不懂", "the design cannot be read")]
+
+
+def _check_design(obj):
+    if not isinstance(obj, dict):
+        return [_design_problem("design", "设计必须是一个 JSON 对象", "the design must be one JSON object")]
+    probs = []
+    for key in obj:
+        if key not in DESIGN_KEYS:
+            probs.append(_design_problem(str(key), "不能有 %s 这个字段" % key, "the key %s is not allowed" % key))
+    v = obj.get("v")
+    if "v" not in obj or type(v) is not int or v != 1:
+        probs.append(_design_problem("v", "v 必须是数字 1", "v must be the number 1"))
+    name = obj.get("name")
+    if not isinstance(name, str) or not 1 <= len(name) <= 20 or name.strip() == "":
+        probs.append(_design_problem("name", "name 要 1 到 20 个字，不能只有空格",
+                                     "name must be 1 to 20 characters, not only spaces"))
+    if "why" in obj:
+        why = obj["why"]
+        if not isinstance(why, str) or len(why) > 60:
+            probs.append(_design_problem("why", "why 最多 60 个字", "why must be text of at most 60 characters"))
+    colors = obj.get("colors")
+    if not isinstance(colors, dict):
+        probs.append(_design_problem("colors", "colors 必须是一个对象", "colors must be an object"))
+    else:
+        for key in colors:
+            if key not in DESIGN_COLORS:
+                probs.append(_design_problem("colors.%s" % key, "没有 %s 这个颜色位" % key,
+                                             "%s is not a colour key" % key))
+        for key in DESIGN_COLORS:
+            if key not in colors:
+                probs.append(_design_problem("colors.%s" % key, "缺少颜色 %s" % key, "the colour %s is missing" % key))
+                continue
+            value = colors[key]
+            if not isinstance(value, str) or _HEX_COLOR.fullmatch(value) is None:
+                probs.append(_design_problem("colors.%s" % key, "%s 要写成 #RRGGBB" % key,
+                                             "%s must be a colour like #RRGGBB" % key))
+                continue
+            if key in DESIGN_LIGHT:
+                rgb = [int(value[i:i + 2], 16) for i in (1, 3, 5)]
+                twice = max(rgb) + min(rgb)             # lightness = twice / 510
+                if not 55 * 510 <= twice * 100 <= 95 * 510:
+                    pct = int(twice * 100 / 510 + 0.5)
+                    probs.append(_design_problem(
+                        "colors.%s" % key,
+                        "%s的亮度是 %d%%，要在 55%%–95%% 之间" % (DESIGN_LIGHT_LABEL[key], pct),
+                        "%s has lightness %d%%; it must be between 55%% and 95%%" % (key, pct)))
+    decor = obj.get("decor")
+    if not isinstance(decor, list) or len(decor) != 3:
+        probs.append(_design_problem("decor", "decor 要正好 3 项", "decor must be a list of exactly 3 entries"))
+    else:
+        for i, item in enumerate(decor, 1):
+            if not isinstance(item, str) or (item != "none" and item not in FLOOR_DECOR):
+                probs.append(_design_problem("decor.%d" % i, "第 %d 个摆设不在清单里" % i,
+                                             "decor entry %d is not a catalogue id or \"none\"" % i))
+    return probs
+
+
+def _atomic_text(path, text):
+    """Write TEXT to PATH: a temp file in the same folder, then one os.replace. Raises OSError."""
+    folder = os.path.dirname(path) or "."
+    os.makedirs(folder, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=".floor-", suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp_path, path)
+    except OSError:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def design_read(path):
+    """The design object of file PATH: (obj, problems). A missing file is (None, None); text that is not
+    JSON is (None, [problem]); else the object and check_design's problems for it."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = fh.read()
+    except FileNotFoundError:
+        return None, None
+    except (OSError, UnicodeDecodeError):
+        return None, [_design_problem("design", "读不了这个文件", "the file cannot be read")]
+    try:
+        obj = json.loads(raw)
+    except (ValueError, RecursionError):
+        return None, [_design_problem("design", "文件不是 JSON", "the file is not JSON")]
+    return obj, check_design(obj)
+
+
+def history_read(floors_dir, tid):
+    """The history of TID's floor: a list, oldest first; an entry is a design or None (no design)."""
+    rows = []
+    try:
+        with open(os.path.join(floors_dir, tid + ".history.jsonl"), encoding="utf-8") as fh:
+            for text in fh:
+                if text.strip():
+                    try:
+                        rows.append(json.loads(text))
+                    except ValueError:
+                        pass
+    except OSError:
+        pass
+    return rows[-DESIGN_HISTORY_KEEP:]
+
+
+def history_write(floors_dir, tid, rows):
+    path = os.path.join(floors_dir, tid + ".history.jsonl")
+    _atomic_text(path, "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows[-DESIGN_HISTORY_KEEP:]))
+
+
+def design_write(floors_dir, tid, obj, previous, keep_previous=True):
+    """Save OBJ as TID's design (atomic) and push PREVIOUS (the design it replaces, or None) on the history
+    (the last DESIGN_HISTORY_KEEP kept). Raises OSError."""
+    if keep_previous:
+        history_write(floors_dir, tid, history_read(floors_dir, tid) + [previous])
+    _atomic_text(os.path.join(floors_dir, tid + ".json"), json.dumps(obj, ensure_ascii=False, indent=1) + "\n")
 
 
 class CityState:
@@ -1507,7 +1736,7 @@ class CityState:
                  balance_fn=None, start_repo=None, chat_path=None, lang="zh", titles=None,
                  main_fn=None, listen_grace_sec=15.0, roster_path=None,
                  open_fn=None, kind_fn=None, resources_fn=None, city_dir=None,
-                 history_path=None):
+                 history_path=None, floors_dir=None, close_fn=None):
         self.lock = threading.Lock()
         self.titles = titles if titles is not None else TitleReader()  # a session's real name
         self.lang = norm_lang(lang)
@@ -1546,7 +1775,14 @@ class CityState:
         self.kind_fn = kind_fn if kind_fn is not None else runtime_kind            # folder -> "orca" | "plain" | "cloud"
         self.resources_fn = resources_fn if resources_fn is not None else machine_resources   # folder -> {"ram", "cpu", "max", "ok"}
         self.city_dir = city_dir  # None: the default city dir; else this city's own dir, passed on to the session it opens (agent_command)
-        self._adding = {}         # identity -> {"terr", "name", "role", "at" (monotonic), "pending", "seen", "before"}: an open under way
+        self._adding = {}         # identity (a designer: "designer:" + identity) -> {"terr", "name", "role", "at" (monotonic), "pending", "seen", "before"}: an open under way
+        self.close_fn = close_fn if close_fn is not None else close_session   # terminal handle -> closed? (the designer leaves)
+        self._designer_handle = {}  # identity -> terminal handle of the designer this city opened there
+        self._floors_dir = floors_dir   # None: designs live in memory only
+        self._designs = {}        # territory id -> good design
+        self._design_hist = {}    # territory id -> history (oldest first), memory-only mode
+        self._design_stat = {}    # territory id -> (size, mtime) of its file as last seen/written
+        self._design_bad_seen = {}  # territory id -> the (size, mtime) a broken file was told at
         self._added_names = {}    # sid -> (identity, name) of a session this city opened that showed up: it holds that name while it lives, bounded (SID_REPO_KEEP)
 
         # -- world: territories, growth, town plans, persistence ----------
@@ -1614,13 +1850,36 @@ class CityState:
         # governor's home until a real one shows up.
         self.start_repo = start_repo if start_repo else None
         self.start_terr = territory_id(self.start_repo) if self.start_repo else ""
+        was_known_start = True
         if self.start_repo:
             was_known = self.start_repo in self.world["territories"]
+            was_known_start = was_known
             add_territory(self.world, self.plans, self.start_repo, repo_name(self.start_repo))
             if not was_known:
                 dirty = True
             self.last_activity[self.start_repo] = 0.0
             self.gov_terr = self.start_terr
+
+        # office: the floors. A world with none (an island one, or a fresh one) takes every
+        # territory of its order that is not hidden; names that are no territory are dropped.
+        terrs = self.world["territories"]
+        saved_floors = self.world.get("floors")
+        if isinstance(saved_floors, list):
+            floors, seen = [], set()
+            for i in saved_floors:
+                if isinstance(i, str) and i in terrs and i not in seen:
+                    seen.add(i)
+                    floors.append(i)
+        else:
+            floors = [i for i in self.world["order"] if i in terrs and not terrs[i].get("hidden")]
+        if floors != saved_floors:
+            dirty = True
+        self.world["floors"] = floors
+        if (self.start_repo and not was_known_start and self.start_repo in terrs
+                and self.start_repo not in self.world["floors"]):
+            self.world["floors"].append(self.start_repo)
+            dirty = True
+        self._load_designs_locked()
 
         if dirty:
             self._save_world_locked()
@@ -1725,15 +1984,16 @@ class CityState:
     def _hidden_terrs_locked(self):
         """Caller holds self.lock. The territory ids of the hidden territories
         (a set; empty when none). Cheap: only a hidden one is hashed."""
-        return {territory_id(i) for i, t in self.world["territories"].items() if t.get("hidden")}
+        floors = set(self.world.get("floors", ()))
+        return {territory_id(i) for i in self.world["territories"] if i not in floors}
 
     def _shown_home_locked(self):
         """Caller holds self.lock. The camera home ("gov" of the snapshot)
         when the usual one is hidden: the first shown territory (world order)
         that has a governor, with its governor's state; else the first shown
         one, "idle" (it has no governor)."""
-        shown = [i for i in self.world["order"]
-                 if i in self.world["territories"] and not self.world["territories"][i].get("hidden")]
+        floors = set(self.world.get("floors", ()))
+        shown = [i for i in self.world["order"] if i in self.world["territories"] and i in floors]
         for identity in shown:
             reducer = self.reducers.get(identity)
             if reducer is not None and reducer.gov_sid is not None:
@@ -1749,9 +2009,10 @@ class CityState:
         governor's state is "waiting" or the governor has an open ask in
         phase "owner"."""
         out = []
+        floors = set(self.world.get("floors", ()))
         for identity in self.world["order"]:
             t = self.world["territories"].get(identity)
-            if t is None or not t.get("hidden"):
+            if t is None or identity in floors:
                 continue
             terr = territory_id(identity)
             people = 0
@@ -1779,7 +2040,7 @@ class CityState:
         """Caller holds self.lock. Tell every client the "hidden" list when it
         changed since it was last told (a person came or left, waits or
         stopped waiting). Cheap when nothing is hidden: no work at all."""
-        if not self._hidden_last and not any(t.get("hidden") for t in self.world["territories"].values()):
+        if not self._hidden_last and len(self.world.get("floors", ())) >= len(self.world["territories"]):
             return
         now = self._hidden_view_locked()
         if now != self._hidden_last:
@@ -1917,6 +2178,207 @@ class CityState:
             return 200, {"lands": [{"id": territory_id(i), "slot": list(self.world["territories"][i]["slot"]),
                                     "hidden": bool(self.world["territories"][i].get("hidden"))}
                                    for i in self.world["order"] if i in self.world["territories"]]}
+
+    # -- office: floors and designs (requirements/city.md, "Office") ----------------
+
+    def _floors_locked(self):
+        """Caller holds self.lock. The territory ids of the floors, bottom first."""
+        return [territory_id(i) for i in self.world.get("floors", ()) if i in self.world["territories"]]
+
+    def floors(self):
+        """The territory ids of the floors of the building, bottom first (index 0 = 1F)."""
+        with self.lock:
+            return self._floors_locked()
+
+    def designs(self):
+        """{territory id: design} for every territory with a good design."""
+        with self.lock:
+            known = {territory_id(i) for i in self.world["territories"]}
+            return {tid: d for tid, d in self._designs.items() if tid in known}
+
+    def set_floors(self, ids):
+        """The owner's ticks: IDS, a list of 1..64 territory ids (no repeat), are the floors, bottom first
+        -> (code, body). 400 {"error": "bad"}, 404 {"error": "unknown"} (an id that is no territory), else 200
+        {"floors": [ids]}: world.json is saved before this returns and every page is told (a "world" event,
+        then a fresh snapshot, for the people of the floors that came or went). Nothing changes on a refusal."""
+        if (not isinstance(ids, list) or not 1 <= len(ids) <= 64
+                or any(not isinstance(x, str) or re.fullmatch(r"[0-9a-f]{8}", x) is None for x in ids)
+                or len(set(ids)) != len(ids)):
+            return 400, {"error": "bad"}
+        with self.lock:
+            idents = {territory_id(i): i for i in self.world["territories"]}
+            if any(x not in idents for x in ids):
+                return 404, {"error": "unknown"}
+            self.world["floors"] = [idents[x] for x in ids]
+            self._emit_world_locked({"kind": "floors"})
+            self._broadcast(self._snapshot_locked())
+            self._hidden_last = self._hidden_view_locked()
+            return 200, {"floors": list(ids)}
+
+    def _load_designs_locked(self):
+        """The designs on disk, at start (nothing is told: no page is here yet)."""
+        if self._floors_dir is None:
+            return
+        for identity in self.world["territories"]:
+            tid = territory_id(identity)
+            path = os.path.join(self._floors_dir, tid + ".json")
+            key = self._stat_key(path)
+            self._design_stat[tid] = key
+            obj, probs = design_read(path)
+            if probs is None:
+                continue
+            if probs:
+                self._design_bad_seen[tid] = key
+            else:
+                self._designs[tid] = obj
+
+    def _territory_by_id_locked(self, tid):
+        if not isinstance(tid, str):
+            return None, None
+        for identity, t in self.world["territories"].items():
+            if territory_id(identity) == tid:
+                return identity, t
+        return None, None
+
+    def _history_locked(self, tid):
+        if self._floors_dir is None:
+            return list(self._design_hist.get(tid, []))
+        return history_read(self._floors_dir, tid)
+
+    def _put_history_locked(self, tid, rows):
+        rows = rows[-DESIGN_HISTORY_KEEP:]
+        if self._floors_dir is None:
+            self._design_hist[tid] = rows
+        else:
+            history_write(self._floors_dir, tid, rows)
+
+    def _write_design_locked(self, tid, obj):
+        """The design file of TID (None: removed); the server's own write is noted so scan_floors never
+        reports it back. Raises OSError."""
+        if self._floors_dir is None:
+            return
+        path = os.path.join(self._floors_dir, tid + ".json")
+        if obj is None:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+        else:
+            _atomic_text(path, json.dumps(obj, ensure_ascii=False, indent=1) + "\n")
+        self._design_stat[tid] = self._stat_key(path)
+        self._design_bad_seen.pop(tid, None)
+
+    def set_design(self, tid, obj, by):
+        """Save OBJ as the design of floor TID; BY is "owner" (the DIY form) or "designer" -> (code, body).
+        404 {"error": "unknown"}; 422 {"error": "bad", "problems": [...]} (nothing written, nothing sent);
+        else 200 {"design": obj}: the design it replaced (or None) goes to the history (the last 5 kept),
+        the territory counts as asked, and every page gets a "world" event with the change."""
+        with self.lock:
+            identity, t = self._territory_by_id_locked(tid)
+            if identity is None:
+                return 404, {"error": "unknown"}
+            problems = check_design(obj)
+            if problems:
+                return 422, {"error": "bad", "problems": problems}
+            design = json.loads(json.dumps(obj))
+            try:
+                self._put_history_locked(tid, self._history_locked(tid) + [self._designs.get(tid)])
+                self._write_design_locked(tid, design)
+            except OSError as exc:
+                print("agent_city: could not write the design of %s: %s" % (tid, exc), file=sys.stderr)
+                return 500, {"error": "write"}
+            self._designs[tid] = design
+            t["reno_asked"] = True
+            self._emit_world_locked({"kind": "design", "terr": tid, "by": by})
+            return 200, {"design": design}
+
+    def undo_design(self, tid):
+        """The last design the floor had comes back -> (code, body). 404 unknown; 409 {"error": "empty"} with
+        no history; else 200 {"design": the design or None}: None removes the file (the base look)."""
+        with self.lock:
+            identity, t = self._territory_by_id_locked(tid)
+            if identity is None:
+                return 404, {"error": "unknown"}
+            rows = self._history_locked(tid)
+            while rows and rows[-1] is not None and check_design(rows[-1]):
+                rows.pop()                      # a hand-edited entry that is no design: skipped
+            if not rows:
+                return 409, {"error": "empty"}
+            entry = rows.pop()
+            try:
+                self._put_history_locked(tid, rows)
+                self._write_design_locked(tid, entry)
+            except OSError as exc:
+                print("agent_city: could not undo the design of %s: %s" % (tid, exc), file=sys.stderr)
+                return 500, {"error": "write"}
+            if entry is None:
+                self._designs.pop(tid, None)
+            else:
+                self._designs[tid] = entry
+            self._emit_world_locked({"kind": "undo", "terr": tid})
+            return 200, {"design": entry}
+
+    def skip_design(self, tid):
+        """先不装修: floor TID counts as asked, with no design -> (200, {}); 404 unknown."""
+        with self.lock:
+            identity, t = self._territory_by_id_locked(tid)
+            if identity is None:
+                return 404, {"error": "unknown"}
+            t["reno_asked"] = True
+            self._emit_world_locked({"kind": "skip", "terr": tid})
+            return 200, {}
+
+    def scan_floors(self):
+        """What someone else wrote (another session, an editor, `floor set`): every floor file of a known
+        territory whose (size, mtime) changed since the last look. A good design is taken ("world" event,
+        by "file"); a broken one leaves the last good design and every page gets a "design_bad" once per
+        change of the file; a removed file means no design. A `<tid>.bye` file sends that floor's designer
+        away and is removed. The server's own writes are never reported back. Takes self.lock itself;
+        recount_loop calls it about every 2 s."""
+        if self._floors_dir is None:
+            return
+        to_close = []
+        with self.lock:
+            for identity, t in list(self.world["territories"].items()):
+                tid = territory_id(identity)
+                path = os.path.join(self._floors_dir, tid + ".json")
+                key = self._stat_key(path)
+                if key != self._design_stat.get(tid):
+                    self._design_stat[tid] = key
+                    self._scan_design_locked(tid, t, path, key)
+                bye = os.path.join(self._floors_dir, tid + ".bye")
+                if os.path.exists(bye):
+                    try:
+                        os.remove(bye)
+                    except OSError:
+                        pass
+                    to_close.append(self._leave_designer_locked(identity)[1])
+        for handle in to_close:
+            self._close_handle(handle)
+
+    def _scan_design_locked(self, tid, t, path, key):
+        if key is None:
+            self._design_bad_seen.pop(tid, None)
+            if self._designs.pop(tid, None) is not None:
+                self._emit_world_locked({"kind": "design", "terr": tid, "by": "file"})
+            return
+        obj, problems = design_read(path)
+        if problems is None:
+            return
+        if problems:
+            if self._design_bad_seen.get(tid) != key:
+                self._design_bad_seen[tid] = key
+                self._broadcast({"type": "design_bad", "terr": tid, "problems": problems})
+            return
+        self._design_bad_seen.pop(tid, None)
+        try:
+            if tid not in self._designs and not self._history_locked(tid):
+                self._put_history_locked(tid, [None])    # the file replaced "no design": undo can go back to it
+        except OSError:
+            pass
+        self._designs[tid] = obj
+        t["reno_asked"] = True
+        self._emit_world_locked({"kind": "design", "terr": tid, "by": "file"})
 
     def _start_waiting_shows_locked(self):
         """Caller holds self.lock. Any show still waiting (start None) for a
@@ -2166,6 +2628,122 @@ class CityState:
                 with self.lock:
                     self._adding.pop(identity, None)
 
+    def add_designer(self, terr, now, force=False):
+        """Open ONE new claude session as the interior designer of the floor of territory TERR
+        (requirements/city.md, "Office") -> (code, body). The same order and answers as add_agent (400, 404,
+        409 gone, 409 busy, kind: 200 "plain" with the line, the cap: 200 "cap", the opener: 502, 200
+        "opening"), plus 409 "designer-here" while a live designer session is on that floor. Name "<repo>
+        Designer", role "designer". Its hold is its own (key "designer:" + identity): it never blocks an add
+        agent of the same repo, nor the other way round. The "adding" events say "kind": "designer". The
+        terminal handle the opener answers is kept (leave_designer closes it)."""
+        if not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None or not isinstance(force, bool):
+            return 400, {"error": "bad"}
+        with self.lock:
+            identity = next((i for i in self.world["territories"] if territory_id(i) == terr), None)
+        if identity is None:
+            return 404, {"error": "unknown"}
+        folder = repo_folder(identity)
+        if not os.path.isdir(folder):
+            return 409, {"error": "gone", "folder": folder}
+        key = "designer:" + identity
+        role = "designer"
+        with self.lock:
+            self._expire_adding_locked(now)
+            if key in self._adding:
+                return 409, {"error": "busy"}
+            if self._live_designer_locked(identity) is not None:
+                return 409, {"error": "designer-here"}
+            base = os.path.basename(folder.rstrip("/")) or repo_name(identity)
+            name = base + " Designer"
+            self._adding[key] = {"terr": terr, "name": name, "role": role, "at": now, "kind": "designer",
+                                 "pending": True, "seen": False, "before": self._sids_in_locked(identity)}
+        held = False
+        try:
+            import shlex
+            command = agent_command(name, folder, self.city_dir, "interior_designer", designer_prompt(base),
+                                    "interior-designer")
+            try:
+                kind = self.kind_fn(folder)
+            except Exception:
+                kind = "plain"
+            if kind != "orca":
+                return 200, {"state": "plain", "name": name, "role": role,
+                             "command": "cd " + shlex.quote(folder) + " && " + command}
+            if not force:
+                try:
+                    res = self.resources_fn(folder)
+                    over = isinstance(res, dict) and not res.get("ok", True)
+                except Exception:
+                    res, over = None, False
+                if over:
+                    return 200, {"state": "cap", "ram": res.get("ram"), "cpu": res.get("cpu"),
+                                 "max": res.get("max")}
+            try:
+                ok, detail = self.open_fn(folder, name, command)
+            except Exception as exc:
+                ok, detail = False, str(exc) or exc.__class__.__name__
+            if not ok:
+                return 502, {"error": "failed", "detail": str(detail)[:200]}
+            with self.lock:
+                self._designer_handle[identity] = detail if isinstance(detail, str) else ""
+                entry = self._adding.get(key)
+                if entry is not None:
+                    entry["pending"] = False
+                    self._broadcast(self._adding_event(entry, "opening", name=name, role=role))
+                    if entry["seen"]:
+                        del self._adding[key]
+                        self._broadcast(self._adding_event(entry, "done"))
+                held = True
+            return 200, {"state": "opening", "name": name, "role": role}
+        finally:
+            if not held:
+                with self.lock:
+                    self._adding.pop(key, None)
+
+    def _live_designer_locked(self, identity):
+        """Caller holds self.lock. The page id ("s:<sid>") of the live designer session of IDENTITY's
+        floor, or None."""
+        reducer = self.reducers.get(identity)
+        if reducer is None:
+            return None
+        for cid, a in reducer.agents.items():
+            if a["kind"] == "session" and a["role"] == "designer" and not a["done"]:
+                return cid
+        return None
+
+    def _leave_designer_locked(self, identity):
+        """Caller holds self.lock. The designer of IDENTITY's floor leaves the page at once (its session
+        ends like a SessionEnd). -> (was one live, the terminal handle to close or "")."""
+        cid = self._live_designer_locked(identity)
+        handle = self._designer_handle.pop(identity, "")
+        if cid is not None:
+            self._feed_line_locked({"ev": "SessionEnd", "sid": cid[2:], "repo": identity}, time.monotonic())
+        return cid is not None, handle
+
+    def _close_handle(self, handle):
+        """Close a designer's terminal (never under self.lock); a failure is nobody's problem."""
+        if not handle:
+            return
+        try:
+            self.close_fn(handle)
+        except Exception as exc:
+            print("agent_city: could not close %s: %s" % (handle, exc), file=sys.stderr)
+
+    def leave_designer(self, terr):
+        """The owner sends the designer of floor TERR away -> (code, body). 404 {"error": "none"} with no
+        live designer there; else its terminal is closed (close_fn), it leaves the page at once, 200 {}."""
+        if not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None:
+            return 400, {"error": "bad"}
+        with self.lock:
+            identity = next((i for i in self.world["territories"] if territory_id(i) == terr), None)
+            if identity is None:
+                return 404, {"error": "none"}
+            if self._live_designer_locked(identity) is None:
+                return 404, {"error": "none"}
+            _live, handle = self._leave_designer_locked(identity)
+        self._close_handle(handle)
+        return 200, {}
+
     def _helper_name_locked(self, identity, base):
         """Caller holds self.lock. The first free name of "<BASE> Helper",
         "<BASE> Helper 2", "<BASE> Helper 3", ... in IDENTITY's territory. Taken:
@@ -2198,7 +2776,7 @@ class CityState:
         for identity, entry in list(self._adding.items()):
             if not entry["pending"] and now - entry["at"] >= ADD_WAIT_SEC:
                 del self._adding[identity]
-                self._broadcast({"type": "adding", "terr": entry["terr"], "state": "late"})
+                self._broadcast(self._adding_event(entry, "late"))
 
     def _sids_in_locked(self, identity):
         """Caller holds self.lock. Every session that has had a line in
@@ -2209,29 +2787,44 @@ class CityState:
             sids.update(reducer.sessions)
         return frozenset(sids)
 
+    @staticmethod
+    def _adding_event(entry, state, **more):
+        """The "adding" event of ENTRY; a designer's open says "kind": "designer"."""
+        ev = {"type": "adding", "terr": entry["terr"], "state": state}
+        ev.update(more)
+        if entry.get("kind") == "designer":
+            ev["kind"] = "designer"
+        return ev
+
     def _adding_line_locked(self, obj, identity):
         """Caller holds self.lock. A session line (sid set, aid "", not a
         SessionEnd) of IDENTITY from a session with no line in it before the
         open began is the new session: the repo is free and the pages are told
         ("done"). While the opener still runs it is only noted: add_agent
         tells "opening", then "done", when the opener answers. The new session's
-        sid is remembered with the name it was opened under (_added_names)."""
-        entry = self._adding.get(identity)
-        if entry is None:
-            return
-        sid, aid, ev = obj.get("sid"), obj.get("aid"), obj.get("ev")
-        if (not isinstance(sid, str) or sid == "" or (isinstance(aid, str) and aid != "")
-                or not isinstance(ev, str) or ev in ("", "SessionEnd") or sid in entry["before"]):
-            return
-        self._added_names.pop(sid, None)
-        self._added_names[sid] = (identity, entry["name"])      # the new session holds the name it was opened under
-        while len(self._added_names) > SID_REPO_KEEP:
-            del self._added_names[next(iter(self._added_names))]
-        if entry["pending"]:
-            entry["seen"] = True
-            return
-        del self._adding[identity]
-        self._broadcast({"type": "adding", "terr": entry["terr"], "state": "done"})
+        sid is remembered with the name it was opened under (_added_names).
+        The designer's open is its own (key "designer:" + IDENTITY): only a line
+        with role "interior-designer" ends it, and such a line never ends the
+        other."""
+        line_designer = obj.get("role") == "interior-designer"
+        for key in (identity, "designer:" + identity):
+            entry = self._adding.get(key)
+            if entry is None or (entry.get("kind") == "designer") != line_designer:
+                continue
+            sid, aid, ev = obj.get("sid"), obj.get("aid"), obj.get("ev")
+            if (not isinstance(sid, str) or sid == "" or (isinstance(aid, str) and aid != "")
+                    or not isinstance(ev, str) or ev in ("", "SessionEnd") or sid in entry["before"]):
+                continue
+            if not line_designer:
+                self._added_names.pop(sid, None)
+                self._added_names[sid] = (identity, entry["name"])      # the new session holds the name it was opened under
+                while len(self._added_names) > SID_REPO_KEEP:
+                    del self._added_names[next(iter(self._added_names))]
+            if entry["pending"]:
+                entry["seen"] = True
+                continue
+            del self._adding[key]
+            self._broadcast(self._adding_event(entry, "done"))
 
     def _adding_view_locked(self):
         """Caller holds self.lock. The snapshot's "adding": every repo whose
@@ -2267,6 +2860,7 @@ class CityState:
         if identity is not None:
             if identity not in self.world["territories"]:
                 add_territory(self.world, self.plans, identity, repo_name(identity))
+                self.world.setdefault("floors", []).append(identity)   # a new company moves in on top
                 self._emit_world_locked()
             self.last_activity[identity] = now
             self._adding_line_locked(obj, identity)
@@ -2940,18 +3534,24 @@ class CityState:
         return self.start_repo
 
     def _view(self):
-        """Caller holds self.lock. The layout view the page draws, cached
-        until the world changes. Every territory says whether its folder is
-        on this machine ("here": the page offers add-agent only there); that
-        is asked again each time, a folder can come and go, and layout()
-        itself stays pure."""
-        if self._view_cache is None:
-            self._view_cache = layout(self.world, self.plans)
-        idents = {territory_id(i): i for i in self.world["territories"]}
-        for t in self._view_cache["territories"]:
-            ident = idents.get(t["id"])
-            t["here"] = ident is not None and os.path.isdir(repo_folder(ident))
-        return self._view_cache
+        """Caller holds self.lock. The office view the page draws: {"v": 2, "repos", "floors", "designs",
+        "asked"}. "repos" is every territory this machine knows, in world order (n = its place in the order;
+        here = its folder is on this machine, asked again each time: a folder can come and go); "floors" the
+        territory ids of the floors, bottom first; "designs" the good design of each; "asked" the territories
+        whose renovation question was answered."""
+        terrs = self.world["territories"]
+        repos, asked, known = [], [], set()
+        for n, identity in enumerate(self.world["order"]):
+            t = terrs.get(identity)
+            if t is None:
+                continue
+            tid = territory_id(identity)
+            known.add(tid)
+            repos.append({"id": tid, "name": t["name"], "here": os.path.isdir(repo_folder(identity)), "n": n})
+            if t.get("reno_asked"):
+                asked.append(tid)
+        return {"v": 2, "repos": repos, "floors": self._floors_locked(),
+                "designs": {tid: d for tid, d in self._designs.items() if tid in known}, "asked": asked}
 
     def _invalidate_view(self):
         self._view_cache = None
@@ -3024,11 +3624,14 @@ class CityState:
             return True
         return False
 
-    def _emit_world_locked(self):
+    def _emit_world_locked(self, change=None):
         """Caller holds self.lock. The world changed: recompute the view,
-        broadcast it, save at once."""
+        broadcast it (with CHANGE, what changed, when given), save at once."""
         self._invalidate_view()
-        self._broadcast({"type": "world", "world": self._view()})
+        ev = {"type": "world", "world": self._view()}
+        if change is not None:
+            ev["change"] = change
+        self._broadcast(ev)
         self._save_world_locked()
 
     def _build_by(self, reducer, owner, at, role, is_gov):
@@ -4422,10 +5025,12 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._json(403, {})
         path = urlsplit(self.path).path
         if path not in ("/api/ask", "/api/decide", "/api/closed",
-                         "/api/gov/answer", "/api/gov/pass", "/api/chat/send", "/api/agent/add", "/api/layout"):
+                         "/api/gov/answer", "/api/gov/pass", "/api/chat/send", "/api/agent/add", "/api/layout",
+                         "/api/floors", "/api/design", "/api/designer", "/api/designer/leave"):
             self.close_connection = True
             return self.send_error(404)
-        if path in ("/api/decide", "/api/chat/send", "/api/agent/add", "/api/layout") and self.headers.get("Origin") is None:
+        if path in ("/api/decide", "/api/chat/send", "/api/agent/add", "/api/layout", "/api/floors", "/api/design",
+                    "/api/designer", "/api/designer/leave") and self.headers.get("Origin") is None:
             self.close_connection = True
             return self._json(403, {})
         if not self._check_token():
@@ -4445,6 +5050,14 @@ class CityHandler(BaseHTTPRequestHandler):
             return self._api_agent_add()
         if path == "/api/layout":
             return self._api_layout()
+        if path == "/api/floors":
+            return self._api_floors()
+        if path == "/api/design":
+            return self._api_design()
+        if path == "/api/designer":
+            return self._api_designer()
+        if path == "/api/designer/leave":
+            return self._api_designer_leave()
         return self._api_chat_send()
 
     def do_OPTIONS(self):
@@ -4532,6 +5145,52 @@ class CityHandler(BaseHTTPRequestHandler):
         if any(key != "lands" for key in obj):
             return self._json(400, {})   # the lands, nothing else: never a path, a name or a command
         code, body = self.server.city.set_layout(obj.get("lands"))
+        return self._json(code, body)
+
+    def _api_floors(self):
+        obj, err = self._read_body()
+        if err:
+            return self._json(err, {})
+        if set(obj) != {"floors"}:
+            return self._json(400, {"error": "bad"})   # the floors, nothing else
+        code, body = self.server.city.set_floors(obj["floors"])
+        return self._json(code, body)
+
+    def _api_design(self):
+        obj, err = self._read_body()
+        if err:
+            return self._json(err, {})
+        city = self.server.city
+        terr = obj.get("terr")
+        if not isinstance(terr, str):
+            return self._json(400, {"error": "bad"})
+        keys = set(obj) - {"terr"}
+        if keys == {"design"}:
+            code, body = city.set_design(terr, obj["design"], "owner")
+        elif keys == {"undo"} and obj["undo"] is True:
+            code, body = city.undo_design(terr)
+        elif keys == {"skip"} and obj["skip"] is True:
+            code, body = city.skip_design(terr)
+        else:
+            return self._json(400, {"error": "bad"})   # one thing at a time, never a path or a command
+        return self._json(code, body)
+
+    def _api_designer(self):
+        obj, err = self._read_body()
+        if err:
+            return self._json(err, {})
+        if set(obj) - {"terr", "force"} or not isinstance(obj.get("terr"), str):
+            return self._json(400, {"error": "bad"})
+        code, body = self.server.city.add_designer(obj["terr"], time.monotonic(), obj.get("force", False))
+        return self._json(code, body)
+
+    def _api_designer_leave(self):
+        obj, err = self._read_body()
+        if err:
+            return self._json(err, {})
+        if set(obj) != {"terr"} or not isinstance(obj["terr"], str):
+            return self._json(400, {"error": "bad"})
+        code, body = self.server.city.leave_designer(obj["terr"])
         return self._json(code, body)
 
     # -- plain routes -------------------------------------------------------
@@ -4861,6 +5520,10 @@ def recount_loop(city, stop_event):
         except Exception as exc:
             print("agent_city: scan_sites failed: %s" % exc, file=sys.stderr)
         try:
+            city.scan_floors()
+        except Exception as exc:
+            print("agent_city: scan_floors failed: %s" % exc, file=sys.stderr)
+        try:
             city.check_seats(time.monotonic())
         except Exception as exc:
             print("agent_city: check_seats failed: %s" % exc, file=sys.stderr)
@@ -4999,7 +5662,8 @@ def cmd_serve(args):
                       world_path=world_path_arg, start_repo=start_repo, chat_path=chat_path, lang=lang,
                       roster_path=os.path.join(directory, "roster.json"),
                       city_dir=pass_city_dir(directory),
-                      history_path=os.path.join(directory, "history.jsonl"))  # city-data
+                      history_path=os.path.join(directory, "history.jsonl"),  # city-data
+                      floors_dir=args.floors_dir if args.floors_dir is not None else floors_home())  # office
     server = ThreadingHTTPServer(("127.0.0.1", args.port), CityHandler)
     server.daemon_threads = True
     server.city = city
@@ -7446,6 +8110,14 @@ def _build_parser():
     serve.add_argument("--world", default=None)
     serve.add_argument("--start-dir", default=None)
     serve.add_argument("--lang", default="zh")
+    serve.add_argument("--floors-dir", default=None)
+
+    floor_p = sub.add_parser("floor")
+    floor_p.add_argument("action", choices=["rules", "show", "set", "bye"])
+    floor_p.add_argument("repo", nargs="?", default=None)
+    floor_p.add_argument("file", nargs="?", default=None)
+    floor_p.add_argument("--world", default=None)
+    floor_p.add_argument("--floors-dir", default=None)
 
     sub.add_parser("say")
 
@@ -7475,6 +8147,101 @@ def _build_parser():
     return parser
 
 
+def _floor_repo(arg, world_file):
+    """The territory id the CLI word ARG names: a territory id, a repo name of world.json, or "." (the repo
+    of the current folder). -> (tid, "") or (None, the reason, with the known names)."""
+    try:
+        with open(world_file, encoding="utf-8") as fh:
+            world = json.load(fh)
+        terrs = world["territories"]
+        order = [i for i in world.get("order", []) if i in terrs] or list(terrs)
+        known = [(territory_id(i), terrs[i].get("name", ""), i) for i in order]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None, "no world.json at %s: the city knows no repo yet" % world_file
+    names = ", ".join("%s (%s)" % (n, t) for t, n, _i in known) or "none"
+    if arg == ".":
+        here = os.path.realpath(os.getcwd())
+        git_id = _repo_id(here)
+        for tid, _name, identity in known:
+            folder = os.path.realpath(repo_folder(identity))
+            if identity == git_id or here == folder or here.startswith(folder + os.sep):
+                return tid, ""
+        return None, "this folder is no repo the city knows. Known repos: %s" % names
+    if not arg:
+        return None, "which repo? Known repos: %s" % names
+    for tid, _name, _identity in known:
+        if arg == tid:
+            return tid, ""
+    for tid, name, _identity in known:
+        if arg == name:
+            return tid, ""
+    return None, "unknown repo %s. Known repos: %s" % (arg, names)
+
+
+def cmd_floor(args):
+    """agent_city.py floor rules | show REPO | set REPO FILE|- | bye REPO (requirements/city.md, "Office")."""
+    if args.action == "rules":
+        sys.stdout.write(FLOOR_RULES)
+        return 0
+    world_file = args.world if args.world is not None else world_path()
+    floors_dir = args.floors_dir if args.floors_dir is not None else floors_home()
+    tid, why = _floor_repo(args.repo, world_file)
+    if tid is None:
+        print(why, file=sys.stderr)
+        return 1
+    path = os.path.join(floors_dir, tid + ".json")
+    if args.action == "show":
+        obj, problems = design_read(path)
+        if obj is None and problems is None:
+            print("no design yet (base look)")
+        elif obj is None:
+            print("the design file is broken: %s" % problems[0]["en"], file=sys.stderr)
+            return 1
+        else:
+            print(json.dumps(obj, ensure_ascii=False, indent=2))
+        return 0
+    if args.action == "bye":
+        try:
+            _atomic_text(os.path.join(floors_dir, tid + ".bye"), "")
+        except OSError as exc:
+            print("cannot write the bye file: %s" % exc, file=sys.stderr)
+            return 1
+        print("bye")
+        return 0
+    # set
+    if args.file is None:
+        print("floor set needs a file, or - for stdin", file=sys.stderr)
+        return 2
+    try:
+        if args.file == "-":
+            raw = sys.stdin.read()
+        else:
+            with open(args.file, encoding="utf-8") as fh:
+                raw = fh.read()
+        obj = json.loads(raw)
+    except (OSError, UnicodeDecodeError) as exc:
+        print("cannot read the design: %s" % exc, file=sys.stderr)
+        return 1
+    except (ValueError, RecursionError) as exc:
+        print("design: not JSON (%s)" % exc, file=sys.stderr)
+        return 1
+    problems = check_design(obj)
+    if problems:
+        for p in problems:
+            print("%s: %s" % (p["field"], p["en"]), file=sys.stderr)
+        return 1
+    previous, prev_problems = design_read(path)
+    try:
+        # a design replaces a design: it goes to the history. The first design replaces "no design": the
+        # server (scan_floors) notes that one, so a bare file never gets a null line from here.
+        design_write(floors_dir, tid, obj, previous, keep_previous=previous is not None and not prev_problems)
+    except OSError as exc:
+        print("cannot write the design: %s" % exc, file=sys.stderr)
+        return 1
+    print("saved")
+    return 0
+
+
 def cmd_demo_world(args):
     print(json.dumps(demo_world()))
     return 0
@@ -7500,6 +8267,8 @@ def main(argv=None):
         return cmd_gov_pending(args)
     if args.command == "demo-world":
         return cmd_demo_world(args)
+    if args.command == "floor":
+        return cmd_floor(args)
     return 1
 
 
