@@ -319,7 +319,7 @@ class TestAgents(unittest.TestCase):
         self.assertNotIn("Edit", tools)
         self.assertNotIn("Write", tools)
         body = text.split("---", 2)[2]
-        for phrase in ("PR REVIEW", "FLOW CHECK", "UI CHECK", "RELEASE SMOKE", "one at a time", "15-minute",
+        for phrase in ("FLOW CHECK", "UI CHECK", "RELEASE SMOKE", "one at a time", "15-minute",
                        "agent-file.sh idea add",
                        "agent-file.sh check", "CHECK PASS", "CHECK FAIL", "never edit", "floor"):
             with self.subTest(phrase=phrase):
@@ -516,7 +516,7 @@ class TestMemoryGate(unittest.TestCase):
             conf = json.load(fh)["userConfig"]
         self.assertNotIn("heavy_test_slots", conf)
         self.assertNotIn("max_agents", conf)
-        self.assertEqual(len(conf), 14)
+        self.assertEqual(len(conf), 15)   # + Reviewer model (owner 2A)
 
 class TestKeepTheResultLines(unittest.TestCase):
     """Core review re-check defect A (b, c): a verified task's worktree is removed before the owner's yes
@@ -630,9 +630,9 @@ class TestReviewIsTheMainCheck(unittest.TestCase):
                 self.assertIn(phrase, text)
 
     def test_check_deputy(self):
+        # owner 2A: the PR REVIEW is the reviewer's (agents/reviewer.md); the check deputy runs FLOW and UI CHECK
         text = read("agents", "check-deputy.md")
-        for phrase in ("PR REVIEW", "approved requirement", "15-minute", "only the approved items",
-                       "agent-file.sh idea add"):
+        for phrase in ("FLOW CHECK", "UI CHECK", "15-minute", "only the approved items", "agent-file.sh idea add"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
@@ -643,3 +643,47 @@ class TestReviewIsTheMainCheck(unittest.TestCase):
                 text = read(*path)
                 self.assertNotIn("DIFF READ", text)
                 self.assertNotIn("OUTCOME CHECK", text)
+
+
+class TestReviewer(unittest.TestCase):
+    """Owner 2A 2026-11-25 (TELL 173d8a8b): "Models: Reviewer model" (default opus-5.5:high) runs the PR REVIEW
+    of every task and the CORE REVIEW; R1 states the fixed sequence."""
+
+    def test_the_setting(self):
+        sys.path.insert(0, BIN)
+        import agent_conf
+        by = {x["key"]: x for x in agent_conf.SETTINGS}
+        self.assertEqual((by["reviewer_model"]["title"], by["reviewer_model"]["default"]),
+                         ("Models: Reviewer model", "opus-5.5:high"))
+        self.assertTrue(agent_conf.validate_value("reviewer_model", "sonnet-5:high"), "a reviewer decides: floor")
+        self.assertIsNone(agent_conf.validate_value("reviewer_model", "opus-5.5:high"))
+
+    def test_the_reviewer_agent(self):
+        text = read("agents", "reviewer.md")
+        head = text.split("---")[1]
+        self.assertIn("name: reviewer", head)
+        self.assertIn("model: opus", head)
+        tools = [l for l in head.splitlines() if l.startswith("tools:")][0]
+        for tool in ("Read", "Grep", "Glob", "Bash"):
+            self.assertIn(tool, tools)
+        for tool in ("Edit", "Write"):
+            self.assertNotIn(tool, tools)
+        body = text.split("---", 2)[2]
+        for phrase in ("Reviewer model", "PR REVIEW", "CORE REVIEW", "approved requirement", "nothing else",
+                       "edge list", "no check deleted", "no secret", "agent-file.sh check", "fix order", "floor"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, body)
+
+    def test_r1_fixed_sequence(self):
+        r1 = section(read("PRINCIPLES.md"), "R1. ", "R2. ")
+        for phrase in ("builder reports done", "reviewer reads the diff against the approved requirement",
+                       "check deputy only when what the user sees or does changed (15 min box)", "merge deputy",
+                       "A fail at review or check goes back to the builder as a fix order", "Reviewer model"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, r1)
+
+    def test_merge_skill_sends_the_reviewer(self):
+        text = read("skills", "merge", "SKILL.md")
+        self.assertIn("subagent_type: reviewer", text)
+        self.assertIn("reviewer_model", text)
+        self.assertLess(text.index("subagent_type: reviewer"), text.index("subagent_type: check-deputy"))

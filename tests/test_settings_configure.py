@@ -105,8 +105,9 @@ ORDER = [
     ("auto_update", "Basic: Auto update", "boolean", True),
     ("main_manager", "Models: Main manager model", "string", "opus-5.5:high"),
     ("task_manager", "Models: Task manager model", "string", "opus-5.5:high"),
+    ("reviewer_model", "Models: Reviewer model", "string", "opus-5.5:high"),   # owner 2A 2026-11-25: new
     ("helper_model", "Models: Helper model", "string", "sonnet-5:medium"),
-    # max_usage_percent: gone (owner 2026-11-25, TELL bd4e87ee): no count caps, the memory rule admits a pane
+    # max_agents: gone (owner 2026-11-25, TELL bd4e87ee): no count caps, the memory rule admits a pane
     ("max_usage_percent", "Load: Max memory %", "number", 80),
     # heavy_test_slots: gone (owner 2026-11-25, TELL 076c1faf): no slots, a memory gate (tests/test_check_net.py)
     ("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions"),   # owner order 2026-11-25

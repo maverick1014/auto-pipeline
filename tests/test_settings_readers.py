@@ -282,7 +282,7 @@ class TestTexts(unittest.TestCase):
         self.assertRegex(text, r"(?i)settings live only in")
         # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
         self.assertIn("agent_repo.conf", text)
-        self.assertRegex(text, r"(?i)14 settings|fourteen settings")   # owner 2026-11-25: slots and Max agents are gone
+        self.assertRegex(text, r"(?i)15 settings|fifteen settings")   # owner 2026-11-25: slots and Max agents gone, Reviewer model new
 
     # test_r8_is_main_s_text (R8 frozen as on main 85b99de) is gone: the owner approved check-blocks on
     # 2026-11-25, R8 is "Check blocks" now (tests/test_check_rules.py pins it)

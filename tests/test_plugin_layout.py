@@ -575,7 +575,7 @@ class TestUserConfig(unittest.TestCase):
     # settings-configure (owner 1A 2026-11-25): the settings, the only settings source; check-blocks
     # (owner 2026-11-25): Max agents and Heavy test slot/time are gone, 14 settings
     KEYS = {"language": "string", "runtime": "string", "auto_update": "boolean",
-            "main_manager": "string", "task_manager": "string", "helper_model": "string",
+            "main_manager": "string", "task_manager": "string", "reviewer_model": "string", "helper_model": "string",
             "max_usage_percent": "number",
             "permission_mode": "string", "auto_resume": "boolean", "todo_before_agent": "boolean",
             "watch_quiet_min": "number", "housekeep_interval_min": "number",
