@@ -140,6 +140,65 @@ def need_line(todo, name):
     return f
 
 
+# ---------------------------------------------------------------- per-clone records (git common dir)
+
+def common_dir(root):
+    try:
+        r = subprocess.run(["git", "-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30)
+        out = r.stdout.decode(errors="replace").strip()
+        return out if r.returncode == 0 and out else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def load_json(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (IOError, ValueError):
+        return {}
+
+
+def save_json(path, data):
+    tmp = "%s.tmp.%d" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+    os.replace(tmp, path)
+
+
+def block_record(root):
+    gd = common_dir(root)
+    return (os.path.join(gd, "agent_task_blocks.json") if gd else None)
+
+
+def record_blocks(root, task, added=(), removed=()):
+    """F11: blocks are only added. agent_task_blocks.json keeps per task the blocks ever planned and the
+    verified removals; a block added again is no longer removed. -> (blocks, removed) now."""
+    path = block_record(root)
+    data = load_json(path) if path else {}
+    rec = data.get(task) if isinstance(data.get(task), dict) else {}
+    blocks = [b for b in rec.get("blocks", []) if isinstance(b, str)]
+    gone = [b for b in rec.get("removed", []) if isinstance(b, str)]
+    for b in added:
+        if b not in blocks:
+            blocks.append(b)
+        if b in gone:
+            gone.remove(b)
+    for b in removed:
+        if b not in gone:
+            gone.append(b)
+    blocks = sorted(blocks, key=order_key)
+    if path and (added or removed):
+        data[task] = {"blocks": blocks, "removed": gone}
+        try:
+            save_json(path, data)
+        except OSError:
+            pass
+    return blocks, gone
+
+
 # ---------------------------------------------------------------- commands
 
 def cmd_norm(a):
@@ -163,6 +222,31 @@ def verify_owner(ctx, quote, when, prefix):
     if code != 0:
         why = " ".join(out.split()) or "exit %d" % code
         raise Refuse("%s%s" % (prefix, why[:300]))
+
+
+def cmd_owner_words(ctx, a):
+    """owner-words <task> <quote> [<time>]: verify the owner's words at once; stored only when verified (F1)."""
+    if len(a) < 2 or not a[0].strip() or not a[1].strip():
+        raise Refuse("todo add: --target production needs --owner-quote \"<the owner's words>\" [--time <t>]")
+    task, quote, when = a[0], a[1].strip(), (a[2] if len(a) > 2 else "")
+    if "\n" in quote or "\r" in quote:
+        raise Refuse("todo add: --owner-quote must not hold a line break")
+    verify_owner(ctx, quote, when or None, "todo add: owner words not verified, nothing written: ")
+    gd = common_dir(ctx["root"])
+    if gd:
+        path = os.path.join(gd, "agent_owner_words.json")
+        data = load_json(path)
+        data[task] = {"quote": quote, "time": when or ctx["now"], "verified": True}
+        save_json(path, data)
+
+
+def cmd_plan_add(ctx, a):
+    """plan-add <task> <checks>: the checks of a new todo line: the given ones plus the brief blocks this task
+    name ever had, minus its verified removals (F11). Prints the list."""
+    task = a[0]
+    given = parse_list(a[1], True) if len(a) > 1 and a[1].strip() else []
+    blocks, gone = record_blocks(ctx["root"], task, added=given)
+    print(", ".join(b for b in blocks if b not in gone))
 
 
 def cmd_todo_checks(ctx, a):
@@ -190,20 +274,22 @@ def cmd_todo_checks(ctx, a):
         quote = opts.get("--owner-quote", "")
         if not quote.strip():
             raise Refuse("todo checks: --remove needs --owner-quote with the owner's words")
-        if block not in old:
-            raise Refuse("todo checks: %s is not in the checks of %s" % (block, name))
         verify_owner(ctx, quote, opts.get("--time"), "todo checks: owner order not verified, nothing changed: ")
         new = [b for b in old if b != block]
         at = field_index(f, "checks")
         removed = "removed %s %s" % (block, ctx["now"])
         if at >= 0:
             f[at:at + 1] = (["checks " + ", ".join(new)] if new else []) + [removed]
+        else:       # a tool block (the diff plans it): only the removal is recorded
+            f.insert(anchor(f) + 1, removed)
+        record_blocks(ctx["root"], name, removed=[block])
         print("todo checks: %s %s -> %s (removed %s)" % (name, ", ".join(old) or "-", ", ".join(new) or "-", block))
         todo.set(name, f)
         return
     if len(rest) != 1:
         raise Refuse("todo checks: usage: todo checks \"<name>\" <BLOCK>[,<BLOCK>] | --remove <BLOCK> --owner-quote \"<words>\"")
     add = parse_list(rest[0], True)
+    record_blocks(ctx["root"], name, added=add)
     new = sorted(set(old) | set(add), key=order_key)
     field = "checks " + ", ".join(new)
     at = field_index(f, "checks")
@@ -280,6 +366,19 @@ def cmd_todo_est(ctx, a):
     print("todo est: %s %s -> %sm" % (name, old or "-", mins))
 
 
+def commit_of(folder, given=None):
+    """F3: the commit a check saw, 12 hex digits: --commit <sha>, else HEAD of the folder the check runs in."""
+    out = git_line(folder, "rev-parse", "--verify", "-q", "%s^{commit}" % (given or "HEAD"))
+    if not out:
+        if given:
+            if not re.match(r"^[0-9a-f]{7,40}$", given):
+                raise Refuse("check: --commit is not a commit: %s" % given)
+            out = given
+        else:
+            return ""
+    return out[:12]
+
+
 def cmd_check(ctx, a):
     if len(a) < 3:
         raise Refuse("check: usage: check \"<task>\" \"<BLOCK>\" pass|fail --by <who> --evidence \"<text>\"")
@@ -292,7 +391,7 @@ def cmd_check(ctx, a):
         raise Refuse("check: the result is pass or fail (got: %s)" % verdict)
     opts, i = {}, 0
     while i < len(rest):
-        if rest[i] in ("--by", "--evidence", "--owner-quote", "--time") and i + 1 < len(rest):
+        if rest[i] in ("--by", "--evidence", "--owner-quote", "--time", "--commit") and i + 1 < len(rest):
             opts[rest[i]] = rest[i + 1]
             i += 2
         else:
@@ -320,7 +419,9 @@ def cmd_check(ctx, a):
     if sign_pass:
         verify_owner(ctx, opts["--owner-quote"].strip(), opts.get("--time"), "check: owner order not verified, nothing written: ")
     import agent_state
-    text = "CHECK %s %s: %s | by %s | %s" % (task, block, verdict, opts["--by"].strip(), opts["--evidence"].strip())
+    sha = commit_of(ctx["state"], opts.get("--commit"))
+    at = " | at %s" % sha if sha else ""
+    text = "CHECK %s %s: %s | by %s%s | %s" % (task, block, verdict, opts["--by"].strip(), at, opts["--evidence"].strip())
     saved = sys.stdout
     sys.stdout = open(os.devnull, "w")
     try:
@@ -335,16 +436,17 @@ def cmd_check(ctx, a):
 
 # -- gate
 
-def read_results(paths, task):
-    """block -> (verdict, who, evidence): the newest CHECK line of the task wins (the date at the end of the
-    line; same date: the later file in paths, then the later line)."""
+def read_results(paths, task, since=""):
+    """block -> (verdict, who, evidence, at, date): the newest CHECK line of the task wins (the date at the end
+    of the line; same minute: a fail wins; then the later file in paths, then the later line). A line dated
+    before the day `since` (the todo line's opened date) is ignored."""
     best = {}
     for n, path in enumerate(paths):
-        read_results_file(path, task, best, n)
-    return dict((b, v[3:]) for b, v in best.items())
+        read_results_file(path, task, best, n, since)
+    return dict((b, v[4:]) for b, v in best.items())
 
 
-def read_results_file(path, task, best, n=0):
+def read_results_file(path, task, best, n=0, since=""):
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             lines = fh.read().split("\n")
@@ -361,14 +463,20 @@ def read_results_file(path, task, best, n=0):
         if m and m.group(1) in names:
             parts = m.group(3).split(" | ")
             who = parts[0].strip()
+            at = ""
+            if len(parts) >= 3 and re.match(r"at [0-9a-f]{7,40}$", parts[1].strip()):
+                at = parts[1].strip()[3:]
+                parts = [parts[0]] + parts[2:]
             if len(parts) >= 3:
                 ev, date = " | ".join(parts[1:-1]), parts[-1].strip()
             else:
                 ev, date = " | ".join(parts[1:]), ""
-            key = (date, n, i)
+            if since and date and date[:10] < since[:10]:
+                continue
+            key = (date, m.group(2) == "fail", n, i)
             old = best.get(m.group(1))
-            if old is None or key >= old[:3]:
-                best[m.group(1)] = key + (m.group(2), who, ev.strip())
+            if old is None or key >= old[:4]:
+                best[m.group(1)] = key + (m.group(2), who, ev.strip(), at, date)
     return best
 
 
@@ -520,19 +628,9 @@ def git_line(d, *args):
 
 
 def production_branch(root):
-    """production_branch in agent_repo.conf, else origin/HEAD's target, else main."""
-    try:
-        with open(os.path.join(root, "agent_repo.conf"), encoding="utf-8", errors="replace") as fh:
-            for l in fh.read().split("\n"):
-                m = re.match(r"^\s*production_branch\s*=\s*(\S+)\s*$", l)
-                if m:
-                    return m.group(1)
-    except IOError:
-        pass
-    head = git_line(root, "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD")
-    if head.startswith("origin/"):
-        return head[len("origin/"):]
-    return "main"
+    """One function for everyone: agent_conf.production_branch (F13)."""
+    import agent_conf
+    return agent_conf.production_branch(root)
 
 
 def default_base(root, d, f):
@@ -554,13 +652,74 @@ def default_base(root, d, f):
     return prod
 
 
+LAUNCH_KIND = {"PR REVIEW": ("reviewer", "reviewer"), "FLOW CHECK": ("check-deputy", "check deputy"),
+               "UI CHECK": ("check-deputy", "check deputy")}
+
+
+def read_launches(gd, task):
+    """The guard's records of this task: [(type, by, at)] from <git common dir>/agent_launches.jsonl."""
+    out = []
+    if not gd:
+        return out
+    try:
+        with open(os.path.join(gd, "agent_launches.jsonl"), encoding="utf-8", errors="replace") as fh:
+            for l in fh:
+                try:
+                    o = json.loads(l)
+                except ValueError:
+                    continue
+                if isinstance(o, dict) and o.get("task") == task:
+                    out.append((str(o.get("type", "")), str(o.get("by", "")), str(o.get("at", ""))))
+    except IOError:
+        pass
+    return out
+
+
+def launched(launches, kind, date):
+    """A record of this kind by the main manager exists and the pass is dated at or after the newest."""
+    ats = [at for (t, by, at) in launches if t == kind and by == "main"]
+    return bool(ats) and bool(date) and date >= max(ats)
+
+
+def at_head(d, at, head, base):
+    """F3: the commit a pass saw is the head being merged, or every commit after it is a merge whose other
+    parents are in the base."""
+    full = git_line(d, "rev-parse", "--verify", "-q", "%s^{commit}" % at)
+    if not full or not head:
+        return False
+    if full == head:
+        return True
+    try:
+        if subprocess.run(["git", "-C", d, "merge-base", "--is-ancestor", full, head],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30).returncode != 0:
+            return False
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if not git_line(d, "rev-parse", "--verify", "-q", "%s^{commit}" % base):
+        return False
+    rows = git_line(d, "rev-list", "--parents", "%s..%s" % (full, head), "--not", base).splitlines()
+    for row in rows:
+        shas = row.split()
+        if len(shas) < 3:
+            return False
+        for p in shas[2:]:
+            try:
+                if subprocess.run(["git", "-C", d, "merge-base", "--is-ancestor", p, base],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                  timeout=30).returncode != 0:
+                    return False
+            except (OSError, subprocess.SubprocessError):
+                return False
+    return True
+
+
 def cmd_gate(ctx, a):
     if not a:
-        raise Refuse("checks gate: usage: checks gate \"<task>\" --dir <path> [--base <ref>] [--results <file>] [--checks \"<list>\"]", 2)
+        raise Refuse("checks gate: usage: checks gate \"<task>\" --dir <path> [--base <ref>] [--branch <b>] [--results <file>] [--checks \"<list>\"]", 2)
     task, rest = a[0], a[1:]
     opts, i = {}, 0
     while i < len(rest):
-        if rest[i] in ("--dir", "--base", "--results", "--checks") and i + 1 < len(rest):
+        if rest[i] in ("--dir", "--base", "--results", "--checks", "--branch") and i + 1 < len(rest):
             opts[rest[i]] = rest[i + 1]
             i += 2
         else:
@@ -570,6 +729,11 @@ def cmd_gate(ctx, a):
     d = opts["--dir"]
     if not os.path.isdir(d):
         raise Refuse("checks gate: no such folder: %s" % d, 2)
+    if opts.get("--branch"):
+        want = git_line(d, "rev-parse", "--verify", "-q", "refs/remotes/origin/%s^{commit}" % opts["--branch"])
+        if not want or want != git_line(d, "rev-parse", "HEAD"):
+            print("GATE REFUSED %s: --dir is not on origin/%s" % (task, opts["--branch"]))
+            sys.exit(1)
     f = Todo(ctx["root"]).fields(task)
     base = opts.get("--base") or default_base(ctx["root"], d, f)
     planned = set()
@@ -583,8 +747,6 @@ def cmd_gate(ctx, a):
             builders += [x.strip() for x in b.split(",") if x.strip()]
     elif "--checks" not in opts:
         raise Refuse("checks gate: no todo line named %s here and no --checks" % task, 2)
-    if "--checks" in opts:
-        planned |= set(parse_list(opts["--checks"], True))
     why = tree_refusal(d)
     if why:
         print("GATE REFUSED %s: %s" % (task, why))
@@ -599,11 +761,21 @@ def cmd_gate(ctx, a):
     planned |= set(t for t in tools if t != SIGN)
     if sign or SIGN in tools:
         planned.add(SIGN)
+    # F11: the brief blocks this task ever had come back; the verified removals are subtracted
+    rec_blocks, gone = record_blocks(ctx["root"], task)
+    planned |= set(rec_blocks)
+    planned -= set(gone)
+    if "--checks" in opts:
+        planned |= set(parse_list(opts["--checks"], True))
     plan = sorted(planned, key=order_key)
     paths = [os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")]
     if opts.get("--results"):
         paths.append(opts["--results"])
-    res = read_results(paths, task)
+    opened = (field_of(f, "opened") or "") if f is not None else ""
+    res = read_results(paths, task, opened)
+    gd = common_dir(d) or common_dir(ctx["root"])
+    launches = read_launches(gd, task)
+    head = git_line(d, "rev-parse", "HEAD")
     for p in (os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")):
         builders += launch_builders(p, task)
     lowb = set(b.lower() for b in builders)
@@ -628,6 +800,12 @@ def cmd_gate(ctx, a):
         elif b in BUILDER_BLOCKS and is_builder(r[1]):
             lines.append("%s: pass by the builder (%s), not accepted" % (b, r[1]))
             refused.append("%s by the builder" % b)
+        elif b in LAUNCH_KIND and not launched(launches, LAUNCH_KIND[b][0], r[4]):
+            lines.append("%s: no %s launched by the main manager for %s, not accepted" % (b, LAUNCH_KIND[b][1], task))
+            refused.append("%s not launched by the main manager" % b)
+        elif b in LAUNCH_KIND and r[3] and not at_head(d, r[3], head, base):
+            lines.append("%s: pass at %s, not at the head %s, not accepted" % (b, r[3], head[:12]))
+            refused.append("%s not at the head" % b)
         else:
             lines.append("%s: pass (by %s)" % (b, r[1]))
             if b in BUILDER_BLOCKS and not lowb:
@@ -799,6 +977,10 @@ def main(argv):
             cmd_norm(a)
         elif cmd == "todo-checks":
             cmd_todo_checks(ctx, a)
+        elif cmd == "owner-words":
+            cmd_owner_words(ctx, a)
+        elif cmd == "plan-add":
+            cmd_plan_add(ctx, a)
         elif cmd == "todo-builder":
             cmd_todo_builder(ctx, a)
         elif cmd == "todo-est":

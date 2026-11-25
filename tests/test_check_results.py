@@ -115,7 +115,9 @@ class TestTargetAndBatch(Case):
     """Owner 2026-11-25 (section 30): the request decides the target; a batch gets one full run at its end."""
 
     def test_target_and_batch_fields(self):
-        self.ok("todo", "add", "x1", "big", "x one", "60", "--target", "production", "--batch", "b1")
+        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
+        self.ok("todo", "add", "x1", "big", "x one", "60", "--target", "production", "--batch", "b1",
+                "--owner-quote", "publish x one")                     # section 44 F1
         f = self.fields("x1")
         self.assertIn("target production", f)
         self.assertIn("batch b1", f)
@@ -235,7 +237,8 @@ class TestCheckLine(Case):
         r = self.ok("check", "toast", "PR REVIEW", "pass", "--by", "check deputy", "--evidence", "diff read, 3 files")
         self.assertIn("toast", r.stdout)
         last = self.state().strip().splitlines()[-1]
-        self.assertRegex(last, r"^CHECK toast PR REVIEW: pass \| by check deputy \| diff read, 3 files \| "
+        self.assertRegex(last, r"^CHECK toast PR REVIEW: pass \| by check deputy \| at [0-9a-f]{12} \| "   # F3
+                               r"diff read, 3 files \| "
                                r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
         self.assertNotIn("CHECK", self.todo())
 
@@ -244,9 +247,9 @@ class TestCheckLine(Case):
         self.ok("check", "t", "BUILD", "fail", "--by", "tm", "--evidence", "tsc: 2 errors")
         self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it")
         lines = self.state().strip().splitlines()
-        self.assertTrue(lines[-2].startswith("CHECK t BUILD: fail | by tm | tsc: 2 errors | "))
-        self.assertTrue(lines[-1].startswith("CHECK t OWNER SIGN: pass | by owner | owner order verified: "
-                                             "yes merge it | "), lines[-1])
+        self.assertRegex(lines[-2], r"^CHECK t BUILD: fail \| by tm \| at [0-9a-f]{12} \| tsc: 2 errors \| ")   # F3
+        self.assertRegex(lines[-1], r"^CHECK t OWNER SIGN: pass \| by owner \| at [0-9a-f]{12} \| owner order verified: "
+                                    r"yes merge it \| ")
 
     def test_owner_sign_needs_a_verified_owner_quote(self):
         # core review defect 7: any agent could write an OWNER SIGN pass line
@@ -552,7 +555,10 @@ class TestGate(Case):
 
     def test_the_base_follows_a_production_target(self):
         self.git("push", "-q", "origin", "base:refs/heads/main")
-        self.ok("todo", "add", "p", "small", "publish it", "10", "--target", "production")
+        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
+        self.ok("todo", "add", "p", "small", "publish it", "10", "--target", "production",
+                "--owner-quote", "publish it")                        # section 44 F1
+        main_launched(self.repo.dir, "p")
         for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
             self.ok("check", "p", b, "pass", "--by", "tm", "--evidence", "ok")
         r = self.af("checks", "gate", "p", "--dir", self.repo.dir)
@@ -561,6 +567,7 @@ class TestGate(Case):
     def test_no_todo_line_needs_checks(self):
         r = self.af("checks", "gate", "ghost", "--dir", self.repo.dir, "--base", "base")
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        main_launched(self.repo.dir, "ghost")                       # section 44 F2
         for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
             self.ok("check", "ghost", b, "pass", "--by", "tm", "--evidence", "ok")
         r = self.af("checks", "gate", "ghost", "--dir", self.repo.dir, "--base", "base", "--checks", "PR REVIEW")

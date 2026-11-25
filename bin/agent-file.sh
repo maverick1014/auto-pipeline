@@ -15,9 +15,9 @@
 #   agent-file.sh todo builder "<name>" <who>                 -> field " | builder <who>" (replaced in place; a comma list is fine)
 #   agent-file.sh todo est "<name>" <minutes> [--guess <m>]   -> est (and guess) replaced in place; prints "todo est: <name> <old>m -> <new>m"
 #   agent-file.sh check "<task>" "<BLOCK>" pass|fail --by <who> --evidence "<text>"
-#                                                             -> agent_state.txt of this folder: "CHECK <task> <BLOCK>: pass | by <who> | <evidence> | <date time>" (OWNER SIGN allowed)
+#                                                             -> agent_state.txt of this folder: "CHECK <task> <BLOCK>: pass | by <who> | at <sha12> | <evidence> | <date time>" (OWNER SIGN allowed; [--commit <sha>], default HEAD of this folder)
 #   agent-file.sh checks gather "<task>" --dir <path>         -> appends the task's CHECK lines of <path>/agent_state.txt to the main repo's agent_state.txt (lines already there skipped); prints "checks gather: <task> <n> lines"
-#   agent-file.sh checks gate "<task>" --dir <path> [--base <ref>] [--results <file>] [--checks "<list>"]
+#   agent-file.sh checks gate "<task>" --dir <path> [--base <ref>] [--branch <b>] [--results <file>] [--checks "<list>"]
 #                                                             -> the merge guard: per planned block "<BLOCK>: pass (by <who>)|fail (by <who>)|missing", then "GATE PASS <task>" (exit 0) or "GATE REFUSED <task>: <BLOCK> missing, ..." (exit 1); no todo line and no --checks: exit 2
 #   agent-file.sh next                                        -> "NEXT: <n> can start (room <mb> MB under the <p>% limit)", then START / WAIT lines for the queued tasks
 #   agent-file.sh edge add "<text>"                           -> one "edge=<text>" line in agent_repo.conf of this folder's git toplevel; "edge add: already listed" when present
@@ -61,7 +61,7 @@
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
 #   agent-file.sh heartbeat "<task>" <step 0-7> <work min> "<what runs now>"  -> agent_state.txt: "HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date time>" (bad step, minutes or empty text: refused)
 #   agent-file.sh helper-join "<task>"                        -> a human-direct Helper becomes a normal agent: its worktree line becomes "<path> | <task> | working | since .. | pane .. | session .."
-#   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working and --batch <name>
+#   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working (production needs --owner-quote "<words>" [--time <t>], verified at once) and --batch <name>
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
 #
 # todo done also closes the queue wait of every open line whose " | after <name>" field is that task, drops the after field, and prints "released: <line name>" per line.
@@ -222,7 +222,7 @@ OPT_CMD="todo done"   # the prefix of a refusal from done_opts; backfill sets it
 roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
-NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; WHO=${AGENT_ROLE:-main}
+if [ "${AGENT_TESTING:-}" = 1 ]; then NOW=${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}; else NOW=$(date '+%Y-%m-%d %H:%M'); fi; WHO=${AGENT_ROLE:-main}
 case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
@@ -1139,7 +1139,7 @@ case "${1:-}:${2:-}" in
     [ $# -ge 2 ] || usage
     helper_join "$2";;
   todo:add)
-    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""
+    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
       if [ "$1" = "--guess" ]; then
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
@@ -1159,6 +1159,10 @@ case "${1:-}:${2:-}" in
       elif [ "$1" = "--target" ]; then
         case "${2:-}" in production|working) target=$2;; *) refuse "todo add: --target wants production or working (got: ${2:-nothing})";; esac
         shift 2
+      elif [ "$1" = "--owner-quote" ] || [ "$1" = "--time" ]; then
+        [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: $1 needs a value"
+        if [ "$1" = "--owner-quote" ]; then oquote=$2; else otime=$2; fi
+        shift 2
       elif [ "$1" = "--batch" ]; then
         [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: --batch needs a name"
         if bad_text "$2"; then refuse "todo add: the --batch value must not hold \" | \" or a line break"; fi
@@ -1166,7 +1170,13 @@ case "${1:-}:${2:-}" in
       else rest+=("$1"); shift; fi
     done
     set -- todo add ${rest[@]+"${rest[@]}"}
-    need 5 "$@"; drop "$TODO" "$3"
+    need 5 "$@"
+    if [ "$target" = production ]; then   # the direct path is bound to the owner's words, verified at once (F1)
+      checks_py owner-words "$3" "$oquote" "$otime" || exit 1
+    elif [ -n "$oquote$otime" ]; then refuse "todo add: --owner-quote and --time belong to --target production"
+    fi
+    checks=$(checks_py plan-add "$3" "$checks") || exit 1   # the blocks this name ever had are planned again (F11)
+    drop "$TODO" "$3"
     what="$5"
     [ -n "${6:-}" ] && what="$5 | est ${6}m"
     [ -z "$guess" ] || what="$what | guess ${guess}m"

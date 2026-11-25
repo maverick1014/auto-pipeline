@@ -870,8 +870,17 @@ def cli_model(spec):
 # ------------------------------------------------------------------ working branch
 
 
-def _production_branch(repo, cfg):
-    """production_branch in agent_repo.conf, else the target of origin/HEAD, else main."""
+def production_branch(repo):
+    """The production branch of a repo (one function for everyone): production_branch in agent_repo.conf, else
+    the target of origin/HEAD, else main when refs/heads/main or origin/main exists, else master when it
+    exists, else the current branch (else main)."""
+    def git(*a):
+        try:
+            r = subprocess.run(["git", "-C", repo] + list(a), stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, timeout=30)
+            return r.stdout.decode(errors="replace").strip() if r.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
     try:
         with open(os.path.join(repo, REPO_FILE), encoding="utf-8", errors="replace") as fh:
             for line in fh.read().splitlines():
@@ -880,10 +889,14 @@ def _production_branch(repo, cfg):
                     return m.group(1)
     except OSError:
         pass
-    head = cfg("symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD")
+    head = git("symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD")
     if head.startswith("origin/"):
         return head[len("origin/"):]
-    return "main"
+    for name in ("main", "master"):
+        if git("rev-parse", "--verify", "-q", "refs/heads/" + name) or \
+                git("rev-parse", "--verify", "-q", "refs/remotes/origin/" + name):
+            return name
+    return git("symbolic-ref", "--short", "-q", "HEAD") or "main"
 
 
 def working_branch(repo, derive=False):
@@ -912,7 +925,7 @@ def working_branch(repo, derive=False):
         return form.replace("<name>", who)
     stored = cfg("config", "--local", "--get", "auto-pipeline.workingbranch")
     if stored:
-        if stored != _production_branch(repo, cfg):
+        if stored != production_branch(repo):
             return stored
         sys.stderr.write('working branch: "%s" is the production branch; using %s\n'
                          % (stored, named(WORKING_BRANCH_DEFAULT)))
@@ -926,7 +939,7 @@ def working_branch(repo, derive=False):
     except Exception:
         value = WORKING_BRANCH_DEFAULT
     value = named(value)
-    if value == _production_branch(repo, cfg):
+    if value == production_branch(repo):
         default = named(WORKING_BRANCH_DEFAULT)
         sys.stderr.write('working branch: "%s" is the production branch; using %s\n' % (value, default))
         value = default

@@ -225,6 +225,14 @@ class TestF3Commits(tcr.TestGate):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("GATE REFUSED t: --dir is not on origin/feat", r.stdout)
 
+    def test_a_line_without_a_commit_is_not_accepted(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:     # appended by hand, no `at`
+            fh.write("CHECK t PR REVIEW: pass | by t Reviewer | read it | %s\n" % minute(60))
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: pass with no commit, not accepted", r.stdout.splitlines())
+
     def test_lines_before_the_task_opened_are_ignored(self):
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
