@@ -140,4 +140,33 @@ Files that could call the Python module in-process (not rewritten in this task u
 
 ## Before and after
 
-To fill: files, tests, lines, seconds for all tests (pc2, same run), 10 slowest files.
+Same machine (pc2, 8 cores, 8 GB), same runner, back to back on 2026-11-25: before = main 2e10fb7, after = this branch.
+
+| | Before | After | Change |
+|---|---|---|---|
+| Test files | 104 | 58 | -46 |
+| Tests (unittest ids) | 4191 | 4168 | -45 removed with twins, +22 new tests of the two bin tools |
+| Lines in tests/*.py | 59,116 | 53,145 | -5,971 (-10%) |
+| Seconds, all files added up (each file alone, 6 at a time) | 3201 | 2612 | -18% |
+| Wall, each file alone, 6 at a time | 580 | 531 | |
+| Wall, normal run (run2.py, 6 processes, split by tests/timings.txt) | 571 | 548 | -4%: the machine is CPU-bound at 6 processes, so the wall follows the total work |
+| Wall, the old way (one process, unittest discover) | 2833 (laptop, main 08eb27e, the main manager's table) | not run | the new runner alone takes the old suite from about 47 min to under 10 min |
+
+Audit: `bin/agent_test_audit.py --before <main ids> --after <branch ids> --table requirements/test-slim.md`: before 4191, kept 2441, moved 1705, removed with twin 45, AUDIT PASS.
+
+Slowest 10, each file alone, 6 at a time (seconds):
+
+| Before | s | After | s |
+|---|---|---|---|
+| test_comment_shape | 252 | test_agent_watch (5 files) | 279 |
+| test_agent_cleanup | 205 | test_agent_cleanup | 197 |
+| test_agent_start | 190 | test_agent_city_server (about 12 files) | 179 |
+| test_agent_housekeep | 159 | test_comment_shape | 170 |
+| test_watch_all | 154 | test_agent_start | 167 |
+| test_agent_cloud_pack | 129 | test_agent_housekeep | 130 |
+| test_agent_resume | 128 | test_agent_resume | 111 |
+| test_risk_levels | 96 | test_agent_cleanfiles | 87 |
+| test_two_roots | 95 | test_agent_estimate (2 files) | 81 |
+| test_agent_city_interact | 90 | test_agent_file (4 files) | 80 |
+
+Left for the follow-up task (check-blocks still changes them): test_agent_board, test_agent_cleanup, test_agent_init, test_agent_release, test_agent_start, test_board_trust, test_board_waiting, test_bypass_mode, test_comment_shape, test_decider_floor, test_output_rules, test_plugin_layout, test_risk_levels, test_settings_configure (in this branch, untouched), plus test_check_blocks, test_check_cleanup, test_check_init, test_check_net, test_check_results, test_check_rules, test_check_warnings (only on the check-blocks branch). Waiting on their module files: test_five_fixes, test_guard_var_path, test_output_hook, test_owner_relay_text, test_permission_setting, test_settings_readers, test_statusline_refresh, test_statusline_vertical, test_statusline_wide, test_watch_board, test_watch_report, test_agent_progress, test_agent_city_add_agent. The plan for them: the "Speed levers" table above (comment_shape batching: 211.6 s -> 94.3 s on a copy) and the target layout.
