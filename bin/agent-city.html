@@ -370,7 +370,8 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .tagl.tag .wk{font:600 10.5px/1 var(--mono);background:var(--ink);color:var(--paper);padding:3px 6px;border-radius:6px}
 .tagl.tag.sel{background:var(--ink);color:var(--paper)}
 .tagl.tag.sel .wk{background:var(--paper);color:var(--ink)}
-.rrow .who.badge{border:1.5px solid currentColor;border-radius:5px;padding:2px 4px;opacity:.75;color:inherit;font:600 10px/1 var(--mono);margin-top:1px;align-self:flex-start}
+.rrow b{min-width:5em}
+.rrow .who.badge{white-space:normal;max-width:40%;line-height:1.2;border:1.5px solid currentColor;border-radius:5px;padding:2px 4px;opacity:.75;color:inherit;font:600 10px/1 var(--mono);margin-top:1px;align-self:flex-start}
 
 /* floor sign */
 .floorsign{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:3;display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:5px 14px 5px 6px;box-shadow:0 3px 0 rgba(42,43,69,.18);white-space:nowrap;pointer-events:auto;max-width:calc(100% - 24px)}
@@ -383,7 +384,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .follow{top:58px}
 
 /* lift buttons */
-.lift{position:absolute;right:12px;top:12px;z-index:4;width:var(--lift-w);display:flex;flex-direction:column;background:var(--ink);color:var(--paper);border-radius:16px;padding:8px;gap:6px;box-shadow:0 4px 0 rgba(42,43,69,.25);transition:right .2s;max-height:calc(100% - 96px);overflow-y:auto;box-sizing:border-box}
+.lift{position:absolute;right:12px;top:96px;z-index:4;width:var(--lift-w);display:flex;flex-direction:column;background:var(--ink);color:var(--paper);border-radius:16px;padding:8px;gap:6px;box-shadow:0 4px 0 rgba(42,43,69,.25);transition:right .2s;max-height:calc(100% - 160px);overflow-y:auto;box-sizing:border-box}
 .lift-h{display:flex;align-items:center;justify-content:space-between;font:700 12px/1 var(--round);padding:2px 4px 4px;opacity:.85}
 .lift-h .arw{font:700 11px/1 var(--mono);opacity:.7}
 .lb{all:unset;cursor:pointer;box-sizing:border-box;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.14)}
@@ -472,6 +473,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 
 @media (max-width:720px){
   .stage{--lift-w:64px}
+  .lift{top:12px;max-height:calc(100% - 96px)}
   .floorsign,.dpop,.follow{left:42px!important;transform:none;max-width:calc(100% - 118px)}
   .lift .ln,.lift-h span:first-child{display:none}
   .lb{grid-template-columns:1fr;justify-items:center;gap:3px;padding:6px 4px}
@@ -663,30 +665,14 @@ const MAX_CITIZENS = 40;
 const MAX_LOG = 40;
 const LIVE_REST_SEC = 180;
 /* city-quality, city-levelups: how long the move/demolish show plays before the record itself changes. */
-const WALK_SPEED = 1.9 / 3;
-const SPRINT_SPEED = 2.3 / 3;
-const WALK_ANIM_SCALE = 1 / 3;
+const WALK_SPEED = 1.55;      // the prototype's pace (mock animPerson: 1.55 per second)
+const SPRINT_SPEED = 1.55 * 2.3 / 1.9;
 const FOV = 40;
-const EL_MIN = 15 * Math.PI / 180;
-const EL_MAX = 60 * Math.PI / 180;
-const EL_DEFAULT = 30 * Math.PI / 180;
-const DIST_MIN = 2.5;
-const LIFT_MAX = 10 * Math.PI / 180;
-const FADE_OPACITY = .3;
-const DIST_DEFAULT = 9;
-const TARGET_Y = .4;
-/* city-idea C2: the distance where camTarget starts drawing the view to the land middle; past it,
-   nothing fades (viewBlockers returns empty) -- zoomed out, the whole land is meant to be seen. */
-const FADE_DIST = 12;
-const CAM_CLEAR = .35;
-const AUTO_ROT_SEC = 300;
 const DEMO = location.hash === '#demo' || location.protocol === 'file:';
 const TOKEN = (() => { const m = $('meta[name="city-token"]'); return m ? m.content : ''; })();
 
 function h2r(h){ h = h.replace('#',''); return [0,2,4].map(i => parseInt(h.slice(i,i+2),16)); }
 function r2h(c){ return '#' + c.map(v => Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join(''); }
-/* Growth ground/water: a hex colour as 0..1 rgb, for BufferGeometry vertex colours */
-function rgbOf(hex){ const c = h2r(hex); return [c[0] / 255, c[1] / 255, c[2] / 255]; }
 /* topCounts() -> [[label, n], ...]: the top bar's own numbers (requirements/city.md, Office: "what the building
    shows"): 干活, 找区经理, 休息 -- sessions and area managers only, never a subagent; no 建成, no stalled sites.
    A governor is a session, so 干活 also counts every present governor whose state is 'busy' (waiting, idle,
@@ -703,7 +689,6 @@ function topCounts(){
 }
 function mix(a, b, t){ const A = h2r(a), B = h2r(b); return r2h(A.map((x,i) => x + (B[i]-x)*t)); }
 function sr(seed, i){ const x = Math.sin(seed*12.9898 + i*78.233) * 43758.5453; return x - Math.floor(x); }
-function isDark(){ const t = document.documentElement.getAttribute('data-theme'); if (t === 'dark') return true; if (t === 'light') return false; return matchMedia('(prefers-color-scheme: dark)').matches; }
 
 /* askLine(ev, name): the log line for one ask / ask_phase / ask_closed event, in the language now
    showing (TEXT/i18n). Live mode never invents text; it only ever shows what the event itself
@@ -749,10 +734,6 @@ function askLine(ev, name) {
   return '';
 }
 
-/* tagVisible(hover, selected, followed) -> a floating name tag is off by default; it
-   shows only while the pointer is over that person, the person is selected, or (V1) it is the followed
-   person -- the same as a selected one (owner decision 2026-09-25; V1 adds follow). */
-function tagVisible(hover, selected, followed) { return !!(hover || selected || followed); }
 
 /* =========================================================
    Simulation: the same event contract the real city reads
@@ -1457,11 +1438,21 @@ function seatPlan(c){
   if (rests(c)) return spot(PANTRY[list.filter(rests).indexOf(c) % PANTRY.length]);
   const kind = (o) => list.filter(q => q.role === o.role).indexOf(o);
   const desk = (d, off) => { const s = toSim(t, d); return { x: s.x, y: s.y, sx: s.x, sy: s.y + off, yaw: Math.PI }; };
+  if (c.role === 'designer' && designerTours(c)) {   // at work: it walks the three decor slots, a few seconds at each
+    const d = DECOR_SPOTS[Math.floor(simT / DESIGNER_STOP_SEC) % DECOR_SPOTS.length], f = { x: Math.sin(d.yaw), z: Math.cos(d.yaw) };
+    const sp = spot({ x: d.x + f.x * 1.1, z: d.z + f.z * 1.1, yaw: d.yaw + Math.PI });
+    return sp;
+  }
   if (c.role === 'helper' && kind(c) < ASSIST_DESKS.length) return desk(ASSIST_DESKS[kind(c)], SEAT_CHAIR.helper);
   if (c.role === 'task-manager' && kind(c) < TM_DESKS.length) return desk(TM_DESKS[kind(c)], SEAT_CHAIR['task-manager']);
-  const over = list.filter(o => !rests(o) && (o.role === 'designer' || (o.role === 'helper' && kind(o) >= ASSIST_DESKS.length) ||
+  const over = list.filter(o => !rests(o) && ((o.role === 'designer' && !designerTours(o)) || (o.role === 'helper' && kind(o) >= ASSIST_DESKS.length) ||
     (o.role === 'task-manager' && kind(o) >= TM_DESKS.length)));
   return spot(MEET[Math.max(0, over.indexOf(c)) % MEET.length]);
+}
+/* a designer is at work while it has had a tool event lately and is not waiting on the owner or at rest */
+const DESIGNER_STOP_SEC = 6, DESIGNER_WORK_SEC = 20;
+function designerTours(c){
+  return (c.state === 'working' || c.state === 'building') && c.toolAt > 0 && simT - c.toolAt < DESIGNER_WORK_SEC && !c.waiting && !c.stuck;
 }
 function seatOf(c){ const p = seatPlan(c); return { x: p.x, y: p.y }; }
 function seatSpot(c){ const p = seatPlan(c); return { x: p.sx, y: p.sy, yaw: p.yaw }; }
@@ -1553,14 +1544,11 @@ let simT = 0;
 const citizens = [], buildings = [], logEntries = []; // buildings: always empty (an office has none); the 3D part still reads it
 let cid = 0;
 let selected = null;
-/* the {t, id} under the pointer right now (pointermove, no button down), or null --
-   drives tagVisible() so a floating name tag shows on hover, same as on select. */
+/* the {t, id} under a head tag the pointer is over, or null */
 let hovered = null;
 /* V1 (sim): follow -- the rail row id (a citizen id, or 'gov:<terr>') the camera is locked onto, or
-   null. FOLLOW_DIST: how close a follow flies in -- startFollow() never zooms further OUT than the
-   owner's own current cam.dist to follow. */
+   null. select() sets it, stopFollow() clears it. */
 let follow = null;
-const FOLLOW_DIST = 5.5;
 const gov = { x:0, y:1.4, bubble:null, answered:0, dispatched:0 };
 const SKIN = ['#FFE0C7','#F7C9A4','#E6AC84','#BF8560','#8E5E40'];
 
@@ -2623,7 +2611,7 @@ function govAnim(terr, t){
    governor per territory -- B1 only ever drew the home territory's). DEMO never sends govs/gov events
    (governorAt always answers there instead), so this falls back to the one home-territory figure then. */
 function governorFigures(){
-  if (DEMO) { const p = governorAt(govTerr); return p ? [{ terr: govTerr, x: p.x, y: p.y, yaw: p.yaw || 0, at: p.at, inLift: null }] : []; }
+  if (DEMO) return (map.territories || []).map(t => ({ t, p: governorAt(t.id) })).filter(o => o.p).map(o => ({ terr: o.t.id, x: o.p.x, y: o.p.y, yaw: o.p.yaw || 0, at: o.p.at, inLift: null }));   // the demo: one on every floor
   const out = [];
   for (const terr of govsByTerr.keys()) {
     const p = governorAt(terr);
@@ -3389,17 +3377,30 @@ function feed(c){
   else if (s.t === 'stuck') { c.pendingAnswer = s.a; emit({ type:'stuck', id:c.id, question:s.q }); f.next = simT + .6; }
   else if (s.t === 'done') emit({ type:'done', id:c.id });
 }
-function spawnDemo(role, task, terr){
+/* #demo names, like the real sessions' ("monitor-merge Task Manager", "v4-plus Helper - City Office", "v4-plus Designer") */
+const DEMO_TASKS = ['monitor-merge', 'tm-flow', 'dashboard-tooltip-guide', 'bank-recon-match', 'stock-lock-settings', 'office-login', 'receipt-print'];
+const DEMO_HELPS = ['City Office', 'Sync Check', 'Reports', 'Price Check', 'Docs'];
+let demoNames = 0;
+function demoName(role, repo){
+  const n = demoNames++;
+  if (role === 'task-manager') return DEMO_TASKS[n % DEMO_TASKS.length] + ' Task Manager';
+  if (role === 'helper') return repo + ' Helper - ' + DEMO_HELPS[n % DEMO_HELPS.length];
+  return repo + ' Designer';
+}
+function spawnDemo(role, task, terr, up){
   if (!terr) { const ts = map.territories || []; if (!ts.length) return null; terr = pick(ts).id; }
-  if (!task) {
+  const sess = SESSION_ROLES.includes(role), t = terrOf(terr);
+  let label = role;
+  if (sess) label = task = demoName(role, t ? t.name : '');   // a session: a real-looking name, an 's:' id (it has a reply box)
+  else if (!task) {
     const busy = new Set(citizens.map(c => c.task));
-    const opts = TASKS[role].filter(t => !busy.has(t));
+    const opts = TASKS[role].filter(x => !busy.has(x));
     task = pick(opts.length ? opts : TASKS[role]);
   }
   // city-talk T1, #demo: the demo governor hands a new one its task face to face -- only where the demo draws
-  // him (one figure, in govTerr); a new one in another territory appears at its hall as before.
-  // city-rail-tree P1: up = the same sender, so the demo rail draws a governor's tree too
-  const c = emit({ type:'spawn', id:'d' + (++cid), role, label:role, task, terr, from: terr === govTerr ? 'gov:' + terr : '', up: terr === govTerr ? 'gov:' + terr : '' });
+  // him (govTerr); a new one in another territory appears at its hall as before.
+  // city-rail-tree P1: up = the floor's area manager (or the session that runs it), so the demo rail draws every floor's tree
+  const c = emit({ type:'spawn', id:(sess ? 's:d' : 'd') + (++cid), role, label, task, terr, from: terr === govTerr ? 'gov:' + terr : '', up: up || 'gov:' + terr });
   if (c) c.feed = makeFeed(role, undefined, terr);
   return c;
 }
@@ -3531,136 +3532,11 @@ function askAutoClose(nowMs){
   }
 }
 
-/* Camera state: cam = {az, el, dist, tx, tz} in scene coordinates (owner 2026-09-25 bug fix). Nothing
-   but the reset-to-home call (the first world, the fit button, page start) and the user's own controls
-   (drag, pan, pinch, wheel, the quarter-turn button) ever touches it: no live event of any kind. */
-const cam = { az: Math.PI / 4, el: EL_DEFAULT, dist: DIST_DEFAULT, tx: 0, tz: 0 };
-let camTween = null;
-/* autoRotDir: which way the never-stop rotation turns, used by autoRotate(). Owner 2026-09-25 bug: it
-   always turned the same way (-1), so a drag against it got turned straight back over the dragged
-   angle. dragBy() points it the way the owner's last orbit drag went; before any drag, -1 (today's way). */
-let autoRotDir = -1;
-/* dragBy(dx, dy, limit): what an orbit drag does (the pointermove handler calls it, passing distMax()
-   as limit; pan and pinch are separate). limit is the zoom-out cap for the tilt this drag lands on:
-   already fully zoomed out, a tilt stays fully out at the (possibly new) limit for that tilt. */
-function dragBy(dx, dy, limit){
-  stopFly();
-  const out = limit != null && cam.dist >= limit - .01;
-  cam.az -= dx * .008;
-  cam.el = clamp(cam.el + dy * .005, EL_MIN, EL_MAX);
-  if (out) cam.dist = limit;
-  if (dx) autoRotDir = dx > 0 ? -1 : 1;
-}
-// owner 2026-09-25: the camera never stops turning — clicks, drags, pinch/wheel zoom and any
-// panel (cards, the "?" panel) leave it running; only reduced motion, or a camera tween (reset/
-// fit) that needs to finish without a fight, pause it.
-function autoRotating(){ return !RM && !camTween; }
-/* autoRotate(now, dt): the never-stop rotation, turning cam.az by autoRotDir's way, one turn per
-   AUTO_ROT_SEC (now is unused; kept for the caller's convenience). */
-function autoRotate(now, dt){
-  if (autoRotating()) cam.az += autoRotDir * dt * Math.PI * 2 / AUTO_ROT_SEC;
-}
-/* cameraStep(dt): the per-frame camera advance -- the never-stop rotation (through autoRotate(), the
-   one rotation path) plus the quarter-turn tween, plus V1's follow (below). frame() calls this every
-   frame. */
-function cameraStep(dt){
-  autoRotate(0, dt);
-  if (camTween) {
-    camTween.t = Math.min(1, camTween.t + dt * 2.2);
-    const e = camTween.t < .5 ? 2 * camTween.t * camTween.t : 1 - Math.pow(-2 * camTween.t + 2, 2) / 2;
-    cam.az = camTween.from + (camTween.to - camTween.from) * e;
-    if (camTween.t >= 1) camTween = null;
-  }
-  if (camFly) {
-    // V1: a fly started by startFollow() keeps its own end point tracking the followed person while it
-    // flies (camFly.follow), refreshed here before the ease so the fly always arcs toward where the
-    // person actually is right now -- never a jump once it lands.
-    if (camFly.follow) {
-      const p = followPos(camFly.follow);
-      if (!p) stopFollow(); else { camFly.x = p[0]; camFly.z = p[1]; }
-    }
-    if (camFly) {
-      camFly.t = Math.min(1, camFly.t + dt / FLY_SEC);
-      const e = camFly.t < .5 ? 2 * camFly.t * camFly.t : 1 - Math.pow(-2 * camFly.t + 2, 2) / 2;
-      cam.tx = camFly.fromTx + (camFly.x - camFly.fromTx) * e;
-      cam.tz = camFly.fromTz + (camFly.z - camFly.fromTz) * e;
-      cam.dist = camFly.fromDist + (camFly.dist - camFly.fromDist) * e;
-      if (camFly.t >= 1) camFly = null;
-    }
-  } else if (follow) {
-    // V1: once the fly-in is over, cam.tx/tz keep easing toward the followed person (a sprint stays
-    // within .15 tiles of the middle); cam.el and cam.dist are never touched here.
-    const p = followPos(follow);
-    if (!p) stopFollow();
-    else {
-      const k = 1 - Math.exp(-8 * dt);
-      cam.tx += (p[0] - cam.tx) * k;
-      cam.tz += (p[1] - cam.tz) * k;
-    }
-  }
-}
-/* U1 (sim): the fly -- flyTo(x, z, dist) tweens cam.tx/tz/dist from where they are now to (x, z, dist),
-   cameraStep() advancing it with the same ease-in-out the quarter-turn tween uses (never cam.el, never
-   cam.az beyond the never-stop rotation). stopFly() cancels it (dragBy and every other user camera
-   control call this first). */
-let camFly = null;
-const FLY_SEC = .9;
-function flyTo(x, z, dist){
-  camFly = { fromTx: cam.tx, fromTz: cam.tz, fromDist: cam.dist, x, z, dist, t: 0 };
-}
-function stopFly(){ camFly = null; }
-/* V1 (sim): followPos(id) -> [x, z] in the local coordinates of the floor that person is on now (c.x - cx of c.at, c.y:
-   what the 3D part draws at) of the rail row `id` names right now -- 'gov:<terr>': that territory's governorFigures()
-   entry; else the citizen (byId), not gone, not a subagent -- or null (nobody to follow: unknown id, gone, riding the
-   lift, or a territory with no governor figure). */
-function followPos(id){
-  if (!id) return null;
-  const local = p => { const t = terrOf(p.at); return t ? [p.x - t.cx, p.y - t.cz] : null; };
-  if (id.slice(0, 4) === 'gov:') {
-    const terr = id.slice(4), g = governorFigures().find(f => f.terr === terr);
-    return g && !g.inLift ? local(g) : null;
-  }
-  const c = byId(id);
-  return c && !c.gone && !isSub(c) && !c.inLift ? local(c) : null;
-}
-/* V1 (sim): startFollow(id) does nothing when followPos(id) is null; else follow = id and a fly to the
-   person, never further out than the owner's own current zoom (Math.min(cam.dist, FOLLOW_DIST)) --
-   cameraStep() keeps that fly's end point tracking the person (camFly.follow) while it runs, then keeps
-   following after. stopFollow(): follow = null, and a fly started by startFollow() is cancelled (a
-   zoom/pan/etc fly is left alone -- stopFly() is the one that only ever ends a fly, never a follow).
-   toggleFollow(id): the same id stops it, any other (or none) starts it. */
-function startFollow(id){
-  const p = followPos(id);
-  if (!p) return;
-  follow = id;
-  flyTo(p[0], p[1], Math.min(cam.dist, FOLLOW_DIST));
-  camFly.follow = id;
-}
+/* Camera state: cam = {az, el, dist, tx, ty, tz, wantDist}: the 3D part's view of the floor (or the street). Only the
+   user's own controls, a pick and a change of floor touch it: no live event of any kind. */
+const cam = { az: -.62, el: .86, dist: 21, tx: 0, ty: 0, tz: .3, wantDist: null };
 function stopFollow(){
-  if (camFly && camFly.follow) camFly = null;
   follow = null;
-}
-function toggleFollow(id){ if (follow === id) stopFollow(); else startFollow(id); }
-/* U1 (sim): spanDist(span, w, h) -> the camera distance at which `span` tiles fill the stage's
-   shorter side. */
-function spanDist(span, w, h){
-  return span / (2 * Math.tan(FOV * Math.PI / 360) * Math.min(1, w / h));
-}
-/* U1 (sim): capZoom(want, cur, limit, max) -> the new cam.dist for a zoom that wants `want` from `cur`:
-   zooming in (want <= cur) is only ever clamped to [DIST_MIN, max]; zooming out never goes past
-   max(limit, cur) (a view already past the limit never jumps back in) nor past max. */
-function capZoom(want, cur, limit, max){
-  if (want <= cur) return clamp(want, DIST_MIN, max);
-  return clamp(Math.min(want, Math.max(limit, cur)), DIST_MIN, max);
-}
-/* U1 (sim): pullShare(dist, limit, dm) -> 0..1, how far camTarget() draws the look point to the land
-   middle (smoothstep from `start`): a small land (limit >= dm) keeps today's pull (start = FADE_DIST);
-   a big land waits until past the zoom-out limit (start = max(FADE_DIST, limit)) so zooming out never
-   slides the view off the repo the owner is looking at. */
-function pullShare(dist, limit, dm){
-  const start = limit >= dm ? FADE_DIST : Math.max(FADE_DIST, limit);
-  const k = clamp((dist - start) / Math.max(1, dm - start), 0, 1);
-  return k * k * (3 - 2 * k);
 }
 /* U2 (sim): TAP_PX -- a pointer that has not moved this far yet is still a plain click/tap, never a
    drag. isDrag(x0, y0, x1, y1) -> true once it is. */
@@ -3719,48 +3595,6 @@ function nearestPick(px, py, cands, maxPx){
     if (d <= maxPx && d < bestD) { bestD = d; best = c.pick; }
   }
   return best;
-}
-/* city-data (sim): a bubble never covers a name label (a land's name, a site's sign). The boxes are { l, r, t, b }
-   in screen px. Two boxes TOUCH when they are closer than LABEL_GAP in both directions. labelDodge(box, bubbles,
-   others, top) -> how far (px, up is negative, 0 = stays) the name label BOX moves: nothing touches it -> it stays
-   (another label alone never moves it); else up, just clear of every bubble and every one of OTHERS it would touch
-   (a few rounds at most); no room up there (above TOP) -> down, the same way. dodgeTargets(boxes, bubbles, top) ->
-   that for every label of BOXES in order, each one clear of where the labels before it END and of the labels after it
-   where they are now (so two labels at one bubble end apart). easeDodge(cur, to, dt) -> the next offset: it glides
-   to TO, never jumps, never passes it. The view part (pin / dodgeNameLabels, below) draws the result. */
-const LABEL_GAP = 6;
-function labelDodge(box, bubbles, others, top){
-  const touches = (a, b) => a.l < b.r + LABEL_GAP && a.r > b.l - LABEL_GAP && a.t < b.b + LABEL_GAP && a.b > b.t - LABEL_GAP;
-  if (!bubbles.some(b => touches(box, b))) return 0;
-  const all = bubbles.concat(others);
-  const move = up => {
-    let dy = 0;
-    for (let i = 0; i < 8; i++) {
-      const at = { l: box.l, r: box.r, t: box.t + dy, b: box.b + dy };
-      const hit = all.filter(b => touches(at, b));
-      if (!hit.length) break;
-      dy = up ? Math.min(...hit.map(b => b.t)) - LABEL_GAP - box.b : Math.max(...hit.map(b => b.b)) + LABEL_GAP - box.t;
-    }
-    return dy;
-  };
-  const dy = move(true);
-  return box.t + dy < top ? move(false) : dy;
-}
-function dodgeTargets(boxes, bubbles, top){
-  const to = [];
-  if (!bubbles.length) { for (let i = 0; i < boxes.length; i++) to.push(0); return to; }
-  const ends = [];
-  for (let i = 0; i < boxes.length; i++) {
-    const b = boxes[i];
-    const dy = labelDodge(b, bubbles, ends.concat(boxes.slice(i + 1)), top);
-    to.push(dy);
-    ends.push(dy ? { l: b.l, r: b.r, t: b.t + dy, b: b.b + dy } : b);
-  }
-  return to;
-}
-function easeDodge(cur, to, dt){
-  const next = cur + (to - cur) * Math.min(1, dt * 10);
-  return Math.abs(to - next) < .4 ? to : next;
 }
 
 /* =========================================================
@@ -4200,7 +4034,7 @@ function poseFig(f, st, dt){
   const spd = RM ? .5 : 1, L = f.legs, A = f.arms;
   let hip = 0, knee = 0, by = 0, a0 = 0, a1 = 0, az = 0;
   if (st.walk) {
-    const s = Math.sin(T * 4.5 * spd + f.ph);
+    const s = Math.sin(T * 8.5 * spd + f.ph);
     L[0].hip.rotation.x = s * .55; L[1].hip.rotation.x = -s * .55;
     L[0].knee.rotation.x = Math.max(0, s) * .6; L[1].knee.rotation.x = Math.max(0, -s) * .6;
     a0 = -s * .45; a1 = s * .45; by = Math.abs(s) * .035;
@@ -4275,7 +4109,6 @@ function pinOv(f, st){
 /* syncFigs(dt): the figures of the floor in view = the sim's people on it (never a subagent, never one riding the lift)
    and its area manager, each at (c.x - cx, c.y - cz) of that floor */
 function govFigsHere(){
-  if (DEMO) { const p = governorAt(cur); return p ? [{ terr:cur, x:p.x, y:p.y, yaw:p.yaw || 0, at:cur, inLift:null }] : []; }
   return governorFigures().filter(g => g.at === cur && !g.inLift);
 }
 function syncFigs(dt){
@@ -4320,7 +4153,6 @@ const DEMO_WORLD = {"v": 2, "repos": [{"id": "4d5d7e95", "name": "auto-pipeline"
 
 /* ---------- the camera: the sim's cam {az, el, dist, tx, tz} (az turns round, el tilts, (tx, ty, tz) is the look point)
    plus ty and wantDist, the zoom it eases to. No auto-rotate. ---------- */
-Object.assign(cam, { az:-.62, el:.86, dist:21, tx:0, ty:0, tz:.3, wantDist:null });
 let camMove = null;     // the 1 s flight in through the door
 const panLimit = () => view === 'outside' ? 25 : 7;
 const distLimitNow = () => view === 'outside' ? 120 : 40;
@@ -4347,7 +4179,7 @@ function rowPos(id){
   if (id.slice(0, 4) === 'gov:') {
     const terr = id.slice(4), t = terrOf(terr);
     if (!t) return null;
-    const p = DEMO ? governorAt(terr) : governorFigures().find(g => g.terr === terr);
+    const p = governorFigures().find(g => g.terr === terr);
     if (!p) return null;
     const at = terrOf(p.at || terr) || t;
     return { at:at.id, inLift:p.inLift || null, x:p.x - at.cx, z:p.y - at.cz };
@@ -4380,15 +4212,15 @@ function updateCamera(dt){
   camera.aspect = W / H;
   // the view offset eases toward the middle of the map that is free between the rail and the message panel
   refreshPanelBoxes(performance.now());
-  const centre = freeCentre(W, H, railBoxNow, winBoxNow);
-  viewShiftX += (centre[0] - W / 2 - viewShiftX) * .2;
-  viewShiftY += (centre[1] - H / 2 - viewShiftY) * .2;
+  const centre = freeCentre(W, H, railBoxNow, winBoxNow), look = liftBoxNow ? freeCentre(W, H, railBoxNow, liftBoxNow) : centre;
+  viewShiftX += (look[0] - W / 2 - viewShiftX) * .2;
+  viewShiftY += (look[1] - H / 2 - viewShiftY) * .2;
   if (Math.abs(viewShiftX) < .5 && Math.abs(viewShiftY) < .5) camera.clearViewOffset();
   else camera.setViewOffset(W, H, -viewShiftX, -viewShiftY, W, H);
   camera.updateProjectionMatrix();
   return centre;
 }
-let panelBoxesAt = -Infinity, railBoxNow = null, winBoxNow = null;
+let panelBoxesAt = -Infinity, railBoxNow = null, winBoxNow = null, liftBoxNow = null;
 function refreshPanelBoxes(now){
   if (now - panelBoxesAt < 200) return;
   panelBoxesAt = now;
@@ -4408,11 +4240,12 @@ function refreshPanelBoxes(now){
     const r = wEl.getBoundingClientRect();
     winBoxNow = { left: r.left - sr.left, top: r.top - sr.top, right: r.right - sr.left, bottom: r.bottom - sr.top };
   }
-  // the lift panel is the right edge of the free map too (it sits left of an open panel)
+  // the lift panel (under the floor sign row) is the right edge of the map the camera centres on
   const liftEl = $('#lift');
+  liftBoxNow = null;
   if (!phone && liftEl) {
     const lr = liftEl.getBoundingClientRect(), left = lr.left - sr.left;
-    if (!winBoxNow || left < winBoxNow.left) winBoxNow = { left, top:0, right:sr.width, bottom:sr.height };
+    if (!winBoxNow || left < winBoxNow.left) liftBoxNow = { left, top:0, right:sr.width, bottom:sr.height };
   }
 }
 function resize(){
@@ -4898,9 +4731,8 @@ function demoPost(path, body){
     const terr = body.terr, t = terrOf(terr);
     if (!t) return done(404, { error:'unknown' });
     if (citizens.some(c => !c.gone && c.role === 'designer' && c.terr === terr)) return done(409, { error:'designer-here' });
-    const c = emit({ type:'spawn', id:'s:d' + (++cid), role:'designer', label:'designer', task:t.name + ' Designer', terr, from:'', up:'' });
-    if (c) c.feed = makeFeed('designer', .1, terr);
-    return done(200, { state:'opening', name:t.name + ' Designer', role:'designer' });
+    const c = spawnDemo('designer', undefined, terr);
+    return done(200, { state:'opening', name:c ? c.label : t.name + ' Designer', role:'designer' });
   }
   if (path === '/api/designer/leave') {
     const c = citizens.find(x => !x.gone && x.role === 'designer' && x.terr === body.terr);
@@ -4914,7 +4746,6 @@ function demoPost(path, body){
 const dirty = { log:true };
 const clock = t => new Date(BASE + t * 1000).toTimeString().slice(0, 8);
 const pct = c => c.bld ? Math.round((c.bld.done ? 1 : c.bld.shown) * 100) : 0;
-const ORDER = { ask:0, build:1, walk:2, rest:3 };
 function renderStats(){
   const waiting = openAskCount();
   // Worktrees: topCounts()'s own colours -- 干活/找总督/休息/建成 as before, plus 卡住的工地's, only ever
@@ -4930,12 +4761,6 @@ function renderStats(){
   if ($('#stats').innerHTML !== html) $('#stats').innerHTML = html;
 }
 let lastRoster = '';
-function govPillText(){
-  if (!DEMO && governorCount === 0) return i18n('gov.away');
-  if (!DEMO && govState === 'waiting') return i18n('status.waiting_reply');
-  const busy = (!DEMO && govState === 'busy') || !!govTalk(govTerr);
-  return busy ? i18n('gov.busy') : i18n('gov.home');
-}
 let lastDetailKey = '';
 /* U8: the chat target the #chat DOM currently reflects -- so a rebuild (the person's state, not the
    chat, changed) can tell whether it is still the same chat (keep the scroll place and the newmsg
@@ -5989,13 +5814,7 @@ function seedDemo(){
   officeState(DEMO_WORLD);
   govTerr = map.territories.length ? map.territories[0].id : null;
   for (const t of map.territories) govsByTerr.set(t.id, { state:'idle' });
-  const mk = (role, terr, up) => {
-    const opts = TASKS[role].filter(t => !citizens.some(c => c.task === t));
-    const home = terr === govTerr ? 'gov:' + terr : '';
-    const sess = SESSION_ROLES.includes(role), c = emit({ type:'spawn', id:(sess ? 's:d' : 'd') + (++cid), role, label:role, task:pick(opts.length ? opts : TASKS[role]), terr, from:home, up:up || home });
-    if (c) c.feed = makeFeed(role, undefined, terr);
-    return c;
-  };
+  const mk = (role, terr, up) => spawnDemo(role, undefined, terr, up);
   const floors = map.territories.slice().reverse();   // bottom first: 1F has no design
   floors.forEach((t, i) => {
     const tms = [mk('task-manager', t.id), mk('task-manager', t.id)].slice(0, i === 2 ? 1 : 2);
