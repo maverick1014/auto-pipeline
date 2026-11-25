@@ -309,6 +309,22 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class TestWorkingBranchStays(SweepCase):
+    """Section 28 (2): the sweep never removes, and never lists, the working branch (setting Flow: Working
+    branch), local or on origin, even when it holds no commit of its own."""
+
+    def test_the_working_branch_is_never_a_row_and_never_removed(self):
+        sys.path.insert(0, BIN)
+        import agent_conf
+        wb = agent_conf.WORKING_BRANCH_DEFAULT
+        tc.git(self.repo.dir, "branch", wb)
+        tc.git(self.repo.dir, "push", "-q", "origin", wb)
+        out = self.ok("--apply")
+        self.assertFalse([row for row in self.rows(out) if wb in row[0]], out)
+        self.assertTrue(self.has_local(wb))
+        self.assertTrue(self.has_origin(wb))
+
+
 class TestRemoteListsToo(unittest.TestCase):
     """Re-check defect I: a paired machine's terminal list is checked for truncation like the local one."""
 

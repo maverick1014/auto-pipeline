@@ -113,7 +113,8 @@ ORDER = [
     ("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions"),   # owner order 2026-11-25
     ("auto_resume", "Permissions: Auto resume", "boolean", True),
     ("todo_before_agent", "Rules: Todo before agent", "boolean", True),
-    ("working_branch", "Flow: Working branch", "string", "ap-worktree"),   # owner 2026-11-25 (TELL 76bfcc8f): new
+    # owner 2026-11-25 (TELL 76bfcc8f): new; the name is not final: one constant (TELL 84fbcf51)
+    ("working_branch", "Flow: Working branch", "string", agent_conf.WORKING_BRANCH_DEFAULT),
     ("watch_quiet_min", "Stuck: Consider stuck after (min)", "number", 15),
     ("housekeep_interval_min", "Stuck: Tidy every (min)", "number", 120),
     ("city_port", "City: City port", "number", 4777),

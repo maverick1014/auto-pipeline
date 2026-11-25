@@ -332,37 +332,42 @@ class TestReviewInit(InitCase):
 
 
 class TestWorkingBranch(InitCase):
-    """Owner 2026-11-25 (section 28): every repo keeps the working branch (setting "Flow: Working branch",
-    default ap-worktree) with its own git worktree, made by init from the production branch."""
+    """Owner 2026-11-25 (sections 28, 29): every repo keeps the working branch (setting "Flow: Working
+    branch"); init creates it from the production branch and switches the main checkout to it. No worktree."""
 
-    def wt_path(self, branch="ap-worktree"):
-        return os.path.join(os.path.dirname(self.p), os.path.basename(self.p) + "-" + branch)
+    def branch(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_conf
+        return agent_conf.WORKING_BRANCH_DEFAULT
 
-    def test_init_creates_the_branch_and_its_worktree(self):
-        prod = self.git("rev-parse", "--abbrev-ref", "HEAD").strip()
+    def head(self):
+        return self.git("rev-parse", "--abbrev-ref", "HEAD").strip()
+
+    def test_init_creates_the_branch_and_switches_the_checkout(self):
+        prod = self.head()
+        b = self.branch()
         r = self.init("--no-measure")
         lines = r.stdout.splitlines()
-        self.assertIn("working branch: created ap-worktree from %s" % prod, lines)
-        self.assertIn("working worktree: created %s" % self.wt_path(), lines)
-        self.assertEqual(self.git("rev-parse", "ap-worktree").strip(), self.git("rev-parse", prod).strip())
-        self.assertTrue(os.path.isdir(self.wt_path()))
-        self.assertEqual(subprocess.run(["git", "-C", self.wt_path(), "rev-parse", "--abbrev-ref", "HEAD"],
-                                        capture_output=True, text=True).stdout.strip(), "ap-worktree")
-        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD").strip(), prod, "the main checkout stays")
-        self.addCleanup(subprocess.run, ["git", "-C", self.p, "worktree", "remove", "--force", self.wt_path()],
-                        capture_output=True)
+        self.assertIn("working branch: created %s from %s" % (b, prod), lines)
+        self.assertIn("checkout: switched to %s" % b, lines)
+        self.assertEqual(self.head(), b)
+        self.assertEqual(self.git("rev-parse", b).strip(), self.git("rev-parse", prod).strip())
+        self.assertEqual(self.git("worktree", "list").strip().count("\n"), 0, "no extra worktree")
 
-    def test_a_second_run_keeps_them(self):
+    def test_a_second_run_keeps_it(self):
         self.init("--no-measure")
-        self.addCleanup(subprocess.run, ["git", "-C", self.p, "worktree", "remove", "--force", self.wt_path()],
-                        capture_output=True)
         r = self.init("--no-measure")
-        self.assertIn("working branch: kept ap-worktree", r.stdout.splitlines())
-        self.assertIn("working worktree: kept %s" % self.wt_path(), r.stdout.splitlines())
+        self.assertIn("working branch: kept %s" % self.branch(), r.stdout.splitlines())
+        self.assertIn("checkout: on %s" % self.branch(), r.stdout.splitlines())
+
+    def test_local_changes_are_carried(self):
+        self.put({"notes.txt": "mine\n"})
+        self.init("--no-measure")
+        self.assertEqual(self.head(), self.branch())
+        with open(os.path.join(self.p, "notes.txt")) as fh:
+            self.assertEqual(fh.read(), "mine\n")
 
     def test_the_setting_names_the_branch(self):
         self.repo.set_conf("working_branch", "trunk")
         r = self.init("--no-measure")
-        self.addCleanup(subprocess.run, ["git", "-C", self.p, "worktree", "remove", "--force", self.wt_path("trunk")],
-                        capture_output=True)
-        self.assertTrue(any(l.startswith("working branch: created trunk from ") for l in r.stdout.splitlines()))
+        self.assertIn("checkout: switched to trunk", r.stdout.splitlines())

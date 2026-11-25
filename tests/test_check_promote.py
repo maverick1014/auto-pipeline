@@ -1,4 +1,4 @@
-"""Failing tests for check-blocks section 28 (owner 2026-11-25, TELL 76bfcc8f), C36: production only on the
+"""Failing tests for check-blocks sections 28-29 (owner 2026-11-25, TELLs 76bfcc8f, 84fbcf51), C36': production only on the
 owner's verified words, only from a green commit; the release build runs right after, by itself.
 Written by the task manager before any code.
 
@@ -33,19 +33,25 @@ class PromoteCase(ScriptCase):
 
     def setUp(self):
         super().setUp()
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_conf
+        self.wb = agent_conf.WORKING_BRANCH_DEFAULT
         self.git("branch", "-M", "main")
         self.origin = os.path.join(self.repo.base, "origin.git")
         subprocess.run(["git", "init", "-q", "--bare", self.origin], check=True, capture_output=True)
         self.git("remote", "add", "origin", self.origin)
         self.git("push", "-q", "-u", "origin", "main")
-        self.wt = os.path.join(self.repo.base, "project-ap-worktree")
-        self.git("worktree", "add", "-q", "-b", "ap-worktree", self.wt, "main")
-        self.put("src/a.py", "x = 2\n", cwd=self.wt)
-        self.git("add", "-A", cwd=self.wt)
-        self.git("commit", "-q", "-m", "Merge feat-a (W8)", cwd=self.wt)
-        self.git("push", "-q", "-u", "origin", "ap-worktree", cwd=self.wt)
-        self.tip = self.git("rev-parse", "ap-worktree")
+        self.git("switch", "-q", "-c", self.wb)                 # section 29: the main checkout is on it
+        self.commit_wb({"src/a.py": "x = 2\n"}, "Merge feat-a (W8)")
         self.verified(True)
+
+    def commit_wb(self, files, msg):
+        for rel, body in files.items():
+            self.put(rel, body)
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", msg)
+        self.git("push", "-q", "-u", "origin", self.wb)
+        self.tip = self.git("rev-parse", self.wb)
 
     def verified(self, ok):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho %s\nexit %d\n"
@@ -59,14 +65,9 @@ class PromoteCase(ScriptCase):
 
     def release_stub(self):
         log = os.path.join(self.repo.base, "release.log")
-        self.put("bin/agent-release.sh", "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\n" % log)
+        self.commit_wb({"bin/agent-release.sh": "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\n" % log},
+                       "release build")
         os.chmod(os.path.join(self.repo.dir, "bin", "agent-release.sh"), 0o755)
-        self.git("add", "bin/agent-release.sh")
-        self.git("commit", "-q", "-m", "release build")
-        self.git("push", "-q", "origin", "main")
-        self.git("merge", "-q", "main", cwd=self.wt)                   # production merged back in
-        self.git("push", "-q", "origin", "ap-worktree", cwd=self.wt)
-        self.tip = self.git("rev-parse", "ap-worktree")
         return log
 
     def promote(self, *extra):
@@ -80,8 +81,8 @@ class TestPromote(PromoteCase):
         r = self.promote()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.git("rev-parse", "origin/main"), self.tip)
-        self.assertEqual(self.git("rev-parse", "main"), self.tip, "the clean main checkout follows")
-        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD"), "main")
+        self.assertEqual(self.git("rev-parse", "main"), self.tip, "the local production ref follows")
+        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD"), self.wb, "the checkout stays on it")
         self.assertIn("promote: main -> %s (Merge feat-a (W8))" % self.tip[:7], r.stdout.splitlines())
         self.assertIn("release: no release build in this repo", r.stdout.splitlines())
 
@@ -111,10 +112,12 @@ class TestPromote(PromoteCase):
 
     def test_production_must_be_an_ancestor(self):
         self.green()
+        self.git("switch", "-q", "-c", "hot", "main")
         self.put("hotfix.txt", "x\n")
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "a fix on production not merged back")
-        self.git("push", "-q", "origin", "main")
+        self.git("push", "-q", "origin", "hot:main")
+        self.git("switch", "-q", self.wb)
         r = self.promote()
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("merge production back into the working branch first", r.stdout + r.stderr)

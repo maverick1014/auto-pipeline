@@ -69,9 +69,9 @@ QUIZ_Q38 = """Q38. A diff only changes one locale value. agent-level.sh check pr
   D. Nothing: it is only text"""
 
 QUIZ_Q39 = """Q39. Production is broken and the owner wants it fixed now. You:
-  A. Fix it on the working branch and wait for the release run
-  B. Branch from the latest stable release, make the smallest fix, a PR review by an agent that did not build it, the light related tests, release it alone, then merge it back into the working branch
-  C. Release a fix with no check at all
+  A. Fix it on the working branch and wait for the next promote
+  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, get the owner's yes, merge to production (the release build runs by itself), then merge production back into the working branch
+  C. Push a fix straight to production with no check
   D. Wait for the nightly run"""
 
 
@@ -546,16 +546,19 @@ class TestKeepTheResultLines(unittest.TestCase):
 
 
 class TestWorkingBranchRules(unittest.TestCase):
-    """Owner 1A 2026-11-25 (section 17): rapid-development flow."""
+    """Owner 2026-11-25 (sections 28-29): one working-branch model for every repo."""
 
     def test_r1_merges_into_the_working_branch(self):
         self.assertIn("Merge into the working branch + cleanup", section(read("PRINCIPLES.md"), "R1. ", "R2. "))
 
-    def test_r8_working_branch_and_release_run(self):
+    def test_r8_the_model(self):
         r8 = section(read("PRINCIPLES.md"), "R8. Check blocks", "## B. Work")
-        for phrase in ("working branch", "working_branch", "dev", "RELEASE RUN",
-                       "the full suite runs once on the working branch", "before a release", "new fixer agent",
-                       "never back to the builder", "The release waits until"):
+        for phrase in ("Flow: Working branch", "the main checkout is switched to the working branch",
+                       "never on the production branch by accident",
+                       "the full suite runs in the background on the working branch after merges",
+                       "a docs-only merge starts none", "only on the owner's approval", "only from a green commit",
+                       "agent-promote.sh", "merged to production = published", "new fixer agent",
+                       "never back to the builder"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r8)
 
@@ -568,23 +571,18 @@ class TestWorkingBranchRules(unittest.TestCase):
         self.assertIn("<working branch>", given)
         self.assertIn("git push origin <working branch>", text)
         self.assertNotIn("git push origin main", text)
+        self.assertIn("agent-nightly.sh --after-merge", text)
 
-    def test_merge_skill_release_run(self):
+    def test_merge_skill(self):
         text = read("skills", "merge", "SKILL.md")
-        for phrase in ("working branch", "new fixer agent", "never back to the builder"):
+        for phrase in ("working branch", "new fixer agent", "never back to the builder", "agent-promote.sh"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
-        block = section(text, "name: <name>", "todo done arguments:")
-        self.assertIn("working branch:", block)
+        self.assertIn("working branch:", section(text, "name: <name>", "todo done arguments:"))
 
-    def test_dispatch_names_the_working_branch(self):
-        self.assertIn("working branch", read("skills", "dispatch", "SKILL.md"))
-
-    def test_this_repo_works_on_main(self):
-        conf = dict(l.split("=", 1) for l in read("agent_repo.conf").splitlines()
-                    if l and not l.startswith("#") and "=" in l and not l.startswith("edge="))
-        self.assertEqual(conf.get("working_branch"), "main")
-
+    def test_dispatch_and_init_skills(self):
+        self.assertIn("--base-branch <working branch>", read("skills", "dispatch", "SKILL.md"))
+        self.assertIn("working branch", read("skills", "init", "SKILL.md"))
 
 class TestReviewIsTheMainCheck(unittest.TestCase):
     """Section 21 (owner and main manager, 2026-11-25; corrects section 19), for every repo on the plugin."""
@@ -600,8 +598,8 @@ class TestReviewIsTheMainCheck(unittest.TestCase):
                        "the main check of every task", "its cost follows the diff size",
                        "only when what the user sees or does changed", "15-minute time box", "ideas file",
                        "light related tests", "a bug that a review or check finds gets a small test with its fix",
-                       "The full suite is the safety net only", "URGENT FIX", "latest stable release",
-                       "release it alone", "merge it back into the working branch"):
+                       "The full suite is the safety net only", "URGENT FIX", "branch from the production branch",
+                       "the owner's yes", "merge production back into the working branch"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, head)
         self.assertNotIn("runs the real thing once", r8)
@@ -618,13 +616,13 @@ class TestReviewIsTheMainCheck(unittest.TestCase):
 
     def test_dispatch(self):
         text = read("skills", "dispatch", "SKILL.md")
-        for phrase in ("PR REVIEW", "every task", "URGENT FIX", "latest stable release", "agent-release.sh --source"):
+        for phrase in ("PR REVIEW", "every task", "URGENT FIX", "branch from the production branch"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
     def test_merge_skill(self):
         text = read("skills", "merge", "SKILL.md")
-        for phrase in ("URGENT FIX", "agent-release.sh --urgent", "merge it back into the working branch",
+        for phrase in ("URGENT FIX", "agent-promote.sh", "merge production back into the working branch",
                        "agent-nightly.sh --failures", "test out of date", "real break", "new fixer agent"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
