@@ -130,7 +130,8 @@ R8. Check blocks
 - A release needs a green full run on the working branch: the last nightly on that commit, or one background run; no other pre-release run
 - `agent-nightly.sh --start` runs the full suite in the background; `agent-nightly.sh --release-ok` only checks that a green run covers the commit
 - The working branch (setting "Flow: Working branch", default `ap-main-<name>`) is only a branch
-- Everything merged or pushed lands there first and never on the production branch by accident: the main checkout is switched to the working branch by init
+- Everything merged or pushed lands there first, never on the production branch by accident: the main checkout is switched to the working branch
+- init switches the main checkout of a new repo to the working branch; in a repo that already uses the plugin the main manager switches it at a quiet point after the start's WORKING BRANCH line
 - The working branch is per person (<name> = the git user name in lower case, only letters, digits and "-"): worked out once per clone and stored, pushed to origin
 - A task manager or deputy on another machine never derives it again (git user names differ between machines); every brief names the branch
 - It belongs to that person: the sweep never deletes it, nobody else merges into it

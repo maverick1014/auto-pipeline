@@ -19,6 +19,7 @@ description: Main manager only. After a task manager reports DONE PASS, send the
    name: <name>
    session: <task manager | helper>   (helper only while the human alone drives it; a Helper that ran helper-join is `task manager`, its pane handle from its line)
    working branch: <the working branch (ap-main-<name>), as the main manager's brief names it>
+   production branch: <production_branch of agent_repo.conf, else the target of origin/HEAD, else main>
    machine: <the Orca environment name, empty when the worktree is on this machine>
    branch: <branch>
    worktree path: <path>
