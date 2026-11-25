@@ -2,7 +2,8 @@
 """agent_nightly.py: the nightly run, selection misses, and the light or heavy test run
 (requirements/check-blocks.md section 15, C6 and C7). Called by agent-nightly.sh and agent-test-run.sh.
 
-Files in the git common dir: agent_nightly.json, agent_selection_misses.txt, agent_heavy_slots/<pid>.
+Files in the git common dir: agent_nightly.json, agent_selection_misses.txt, agent_heavy_slots/<pid>,
+agent_test_weights.json (measured weights, per machine), agent_nightly_wt (the nightly's scratch worktree).
 AGENT_FAKE_NOW ("YYYY-MM-DD HH:MM"), AGENT_FAKE_RAM and AGENT_TEST_RUN_WAIT_S are test hooks.
 """
 
@@ -27,6 +28,8 @@ FMT = "%Y-%m-%d %H:%M"
 STATUS = "agent_nightly.json"
 MISSES = "agent_selection_misses.txt"
 SLOTS = "agent_heavy_slots"
+WEIGHTS = "agent_test_weights.json"
+SCRATCH = "agent_nightly_wt"
 
 
 # ------------------------------------------------------------------ small helpers
@@ -153,6 +156,8 @@ def try_take(gitdir, key, heavy):
     """(ok, why). Heavy: take the slot file when a slot is free and, for a second or later run, RAM is
     under 50%. Light: only the RAM cap."""
     ram = ram_used()
+    if ram < 0:
+        return False, "RAM unknown"
     if not heavy:
         cap = number("max_usage_percent", 80)
         if ram > cap:
@@ -206,36 +211,78 @@ def release(gitdir):
 WEIGHT = re.compile(r"^\s*(\d+)\s*s\s+(\d+)\s*MB\s*$")
 
 
-def weight_of(conf, key):
+def parse_weight(text):
+    m = WEIGHT.match(str(text))
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def weights_path(gitdir):
+    return os.path.join(gitdir, WEIGHTS)
+
+
+def read_weights(gitdir):
+    try:
+        with open(weights_path(gitdir), encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def weight_of(gitdir, conf, key):
+    """The measured weight of <key>: the per-machine json wins; weight.<key>= in agent_repo.conf is a seed."""
+    got = parse_weight(read_weights(gitdir).get(key, ""))
+    if got:
+        return got
     try:
         with open(conf, encoding="utf-8") as fh:
             for line in fh.read().splitlines():
                 if line.startswith("weight.%s=" % key):
-                    m = WEIGHT.match(line.split("=", 1)[1])
-                    return (int(m.group(1)), int(m.group(2))) if m else None
+                    return parse_weight(line.split("=", 1)[1])
     except OSError:
         pass
     return None
 
 
-def write_weight(conf, key, secs, mb):
-    if not os.path.isfile(conf):
-        return
-    new = "weight.%s=%d s %d MB" % (key, secs, mb)
-    with open(conf, encoding="utf-8") as fh:
-        lines = fh.read().splitlines()
-    for i, line in enumerate(lines):
-        if line.startswith("weight.%s=" % key):
-            lines[i] = new
-            break
-    else:
-        lines.append(new)
-    atomic_write(conf, "\n".join(lines) + "\n")
+def write_weight(gitdir, key, secs, mb):
+    data = read_weights(gitdir)
+    data[key] = "%d s %d MB" % (secs, mb)
+    atomic_write(weights_path(gitdir), json.dumps(data, sort_keys=True) + "\n")
 
 
 def child_mb():
     peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     return int(math.ceil(peak / (1048576.0 if sys.platform == "darwin" else 1024.0)))
+
+
+def group_kb(pgid):
+    """Summed RSS (KB) of every process in the process group."""
+    try:
+        out = subprocess.run(["ps", "-axo", "pgid=,rss="], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             universal_newlines=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    total = 0
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == str(pgid) and parts[1].isdigit():
+            total += int(parts[1])
+    return total
+
+
+def run_measured(cmd):
+    """(exit code, peak MB of the whole process tree, sampled every ~0.5 s)."""
+    proc = subprocess.Popen(cmd, start_new_session=True)
+    peak = 0
+    while True:
+        peak = max(peak, group_kb(proc.pid))
+        try:
+            proc.wait(timeout=0.5)
+            break
+        except subprocess.TimeoutExpired:
+            pass
+    mb = max(int(math.ceil(peak / 1024.0)), child_mb())
+    return proc.returncode, mb
 
 
 def exit_code(rc):
@@ -255,7 +302,7 @@ def testrun(argv):
     top = git(os.getcwd(), "rev-parse", "--show-toplevel") or os.getcwd()
     conf = os.path.join(top, "agent_repo.conf")
     gitdir = common_dir(os.getcwd())
-    known = weight_of(conf, key)
+    known = weight_of(gitdir, conf, key)
     light_s, light_mb = number("light_test_s", 120), number("light_test_mb", 1024)
     if known is None:
         heavy, why = True, "unknown weight"
@@ -272,13 +319,13 @@ def testrun(argv):
     try:
         start = time.time()
         try:
-            rc = subprocess.call(cmd)
+            rc, mb = run_measured(cmd)
         except OSError as exc:
             sys.stderr.write("agent-test-run.sh: cannot run %s: %s\n" % (cmd[0], exc))
-            rc = 127
+            rc, mb = 127, child_mb()
         secs = int(round(time.time() - start))
         try:
-            write_weight(conf, key, secs, child_mb())
+            write_weight(gitdir, key, secs, mb)
         except OSError:
             pass
     finally:
@@ -435,6 +482,14 @@ def record_misses(root, gitdir, prev, failed, commit, stamp):
             fh.write("\n".join(lines) + "\n")
 
 
+def drop_scratch(root, wt):
+    """Remove the nightly's scratch worktree and its registration, whatever state it is in."""
+    if os.path.lexists(wt):
+        git(root, "worktree", "remove", "--force", wt)
+        shutil.rmtree(wt, ignore_errors=True)
+    git(root, "worktree", "prune")
+
+
 def do_run(cwd):
     """The foreground run: slot, command, status, misses. Exit 0 whatever the result."""
     root, gitdir = main_root(cwd), common_dir(cwd)
@@ -456,13 +511,21 @@ def do_run(cwd):
             os.remove(status_path(gitdir))
         sys.stdout.write("NIGHTLY: not started: %s\n" % why)
         return 0
+    wt = os.path.join(gitdir, SCRATCH)
     try:
-        res = subprocess.run(cmd, shell=True, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                             universal_newlines=True, errors="replace")
-        output, code = res.stdout, res.returncode
+        drop_scratch(root, wt)
+        added = subprocess.run(["git", "-C", root, "worktree", "add", "--detach", wt, commit],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        if added.returncode != 0:
+            output, code = "cannot make the scratch worktree: " + added.stdout, 128
+        else:
+            res = subprocess.run(cmd, shell=True, cwd=wt, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 universal_newlines=True, errors="replace")
+            output, code = res.stdout, res.returncode
     except OSError as exc:
         output, code = str(exc), 127
     finally:
+        drop_scratch(root, wt)
         release(gitdir)
     try:
         with open(os.path.join(gitdir, "agent_nightly.log"), "w", encoding="utf-8") as fh:
@@ -499,28 +562,37 @@ def start(cwd, wait):
     return 0
 
 
+def released_commit(root):
+    """The commit a release is built from: local HEAD, or HEAD^ when HEAD only bumps the plugin version."""
+    head = git(root, "rev-parse", "HEAD")
+    if not head:
+        return ""
+    files = git(root, "diff", "--name-only", "HEAD^", "HEAD").splitlines()
+    if files == [".claude-plugin/plugin.json"]:
+        return git(root, "rev-parse", "HEAD^") or head
+    return head
+
+
 def release_ok(cwd):
     root, gitdir = main_root(cwd), common_dir(cwd)
-    here = HERE
-    fix = "run %s/agent-nightly.sh --start" % here
-    git(root, "fetch", "-q", "origin", "main", timeout=30)
-    origin = git(root, "rev-parse", "origin/main")
+    fix = "run %s/agent-nightly.sh --start" % HERE
+    target = released_commit(root)
     st = read_status(gitdir)
-    if not origin:
-        print("NIGHTLY: release not ok: no origin/main to compare; %s" % fix)
+    if not target:
+        print("NIGHTLY: release not ok: no commit to release; %s" % fix)
         return 1
     if not st or st.get("result") not in ("green", "red"):
         print("NIGHTLY: release not ok: no finished nightly; %s" % fix)
         return 1
-    if st.get("commit") != origin:
-        print("NIGHTLY: release not ok: the last nightly ran on %s, origin/main is %s; %s"
-              % (str(st.get("commit"))[:7], origin[:7], fix))
+    if st.get("commit") != target:
+        print("NIGHTLY: release not ok: the last nightly ran on %s, the commit released is %s; %s"
+              % (str(st.get("commit"))[:7], target[:7], fix))
         return 1
     if st.get("result") != "green":
         print("NIGHTLY: release not ok: the nightly on %s is red (%s); fix it, then %s"
-              % (origin[:7], ", ".join(st.get("failed", [])[:3]), fix))
+              % (target[:7], ", ".join(st.get("failed", [])[:3]), fix))
         return 1
-    print("NIGHTLY: release ok: green on origin/main %s" % origin[:7])
+    print("NIGHTLY: release ok: green on the commit released %s" % target[:7])
     return 0
 
 

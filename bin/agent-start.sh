@@ -896,10 +896,7 @@ print_state_block() {
 
 ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
 
-# ---- compaction: short, no resources, no counts, no quiz. Same byte cap. ----
-if [ "$SRC" = compact ] && [ -n "$SID" ]; then
-  COMPACT_TEXT=$(print_compact_lines; printf 'X'); COMPACT_TEXT=${COMPACT_TEXT%X}
-  # check-blocks section 15: the main manager starts the nightly run in the background when it is due and no watch
+# check-blocks section 15: the main manager starts the nightly run in the background when it is due and no watch
 # is alive (the watch's housekeep pass does it otherwise). Never waits; no full_cmd (plain, cloud): --due says no.
 if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-nightly.sh" ]; then
   if ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_watchfile as w; sys.exit(0 if w.live(w.read_status(sys.argv[2])) else 1)' "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null; then
@@ -908,7 +905,11 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
     fi
   fi
 fi
-RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
+
+# ---- compaction: short, no resources, no counts, no quiz. Same byte cap. ----
+if [ "$SRC" = compact ] && [ -n "$SID" ]; then
+  COMPACT_TEXT=$(print_compact_lines; printf 'X'); COMPACT_TEXT=${COMPACT_TEXT%X}
+  RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
   WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
   fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$COMPACT_TEXT") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") ))
   budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
