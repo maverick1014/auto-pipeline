@@ -357,7 +357,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
    The street and one floor are drawn on the canvas; around them: the floor sign (top middle), the lift panel (top
    right), the tags of the outside view, the floor picker, the renovation boxes. */
 .stage{--lift-w:168px}
-.proto{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none;white-space:nowrap}
+.proto{position:absolute;left:calc(var(--rail-w) + 24px);bottom:12px;max-width:calc(100% - var(--rail-w) - 220px);z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none;white-space:normal}
+.stage.rail-folded .proto{left:42px}
+.stage.rail-none .proto{left:12px}
 .tags{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
 .tags>*{position:absolute;left:0;top:0;will-change:transform}
 .rolechip{font:700 10px/1 var(--round);padding:2px 6px;border-radius:999px}
@@ -474,6 +476,8 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 @media (max-width:720px){
   .stage{--lift-w:64px}
   .lift{top:12px;max-height:calc(100% - 96px)}
+  .proto{left:12px!important;max-width:calc(100% - 196px)}
+  .stage.win-open .proto{display:none}
   .floorsign,.dpop,.follow{left:42px!important;transform:none;max-width:calc(100% - 128px)}
   .lift .ln,.lift-h span:first-child{display:none}
   .lb{grid-template-columns:1fr;justify-items:center;gap:3px;padding:6px 4px}
@@ -538,7 +542,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .acct~#logbtn,#logbtn~.acct{margin-left:0}
   .add-i{width:28px;height:28px;font-size:17px}
   .rail{left:0;top:0;bottom:0;max-height:none;width:min(300px,84%);border-left:0;border-radius:0 16px 16px 0}
-  .stage.drawer-open .win,.stage.drawer-open .ask-panel,.stage.drawer-open .follow,.stage.drawer-open .lift,.stage.drawer-open .floorsign{visibility:hidden}
+  .stage.drawer-open .win,.stage.drawer-open .ask-panel,.stage.drawer-open .follow,.stage.drawer-open .lift,.stage.drawer-open .floorsign,.stage.drawer-open .proto{visibility:hidden}
   .ask-panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
   /* V1 (city-ux2 v2): the message panel is a bottom sheet on a phone; its folded tab sits centred at
      the bottom edge, horizontal (the rail's own tab stays vertical, on the left edge). */
