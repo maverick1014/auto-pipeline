@@ -64,3 +64,5 @@ You can also just type a keyword instead of the command (case does not matter):
 ## Change settings
 
 Settings change only in /plugin -> Installed -> auto-pipeline -> Configure. `/auto-pipeline:settings` shows them and never changes them.
+
+Built by Maverick.
