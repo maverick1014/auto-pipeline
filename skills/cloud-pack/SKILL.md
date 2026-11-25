@@ -4,10 +4,10 @@ description: Lay the pipeline into a repo as committed files, so cloud sessions 
 ---
 # /cloud-pack — pack this pipeline into a repo (PRINCIPLES.md S1)
 
-1. Read `language` from this project's `agent.conf`.
+1. Read the Language setting: `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get language`.
 2. Run:
    ```
-   ${CLAUDE_PLUGIN_ROOT}/bin/agent-cloud-pack.sh "<repo path, default the current project>" --language <language from agent.conf>
+   ${CLAUDE_PLUGIN_ROOT}/bin/agent-cloud-pack.sh "<repo path, default the current project>" --language <the Language setting>
    ```
 3. If the output says to run with `--update`, run it again with `--update` added.
 4. Show the output to the human unchanged.

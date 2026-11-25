@@ -1,8 +1,8 @@
 # PRINCIPLES
 
 - Read first. Binding for every agent in this repo.
-- Output shape: section E. Human language: `language` in agent.conf (H2).
-- All numbers, models and effort levels are config values (`agent.conf`, written by `./agent-settings.sh`, S1). Never hard-code.
+- Output shape: section E. Human language: the Language setting (H2).
+- Settings live only in /plugin -> Installed -> auto-pipeline -> Configure (S1). Other numbers are fixed constants in `bin/agent_conf.py`. Never hard-code.
 
 ## A. Repo
 
@@ -35,7 +35,7 @@ R3. Docs
 - Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `bin/agent-start.sh`)
 - `README.md` allowed: the picture of the tree and the flow, for people new to the repo
 - Config, not docs, allowed: `.claude-plugin/`, `agents/`, `skills/`, `hooks/`, `bin/`
-- Rubbish: `/auto-pipeline:clean-up` (main manager) lists other docs, old state copies, finished mocks and stale agent_* lines; removes only rows the human says yes to. `docs_keep` (agent.conf) keeps a product repo's real docs
+- Rubbish: `/auto-pipeline:clean-up` (main manager) lists other docs, old state copies, finished mocks and stale agent_* lines; removes only rows the human says yes to; a product repo's real docs stay by a no
 
 R4. No changelog
 - Git history is the record
@@ -73,7 +73,7 @@ R8. Risk types
 - RAISE (exit 1) only when a C or D file has a lower declared type. A UI component or style file is B at most, never auto-raised; only logic or danger paths raise
 - On RAISE: raise the todo line, bounce, check that part by the higher type. A type only goes up, never down
 - Built-in D paths: lockfile, package.json deps, pubspec, dependency lists, migrations, schema files
-- Each repo lists its paths in agent.conf: level4_paths always D, level3_paths always C (`agent-settings.sh`), for those files
+- The "Risk: Danger paths (D)" setting: one list for every repo, comma-separated globs; a file on it is always D (default `.claude-plugin/,hooks/,PRINCIPLES.md,skills/,agents/,bin/agent_conf.py`). C comes from the logic check only
 - The script cannot see a responsive effect: an A move prints "manager: check responsive"; unsure → B
 
 ## B. Work
@@ -140,8 +140,8 @@ W7. Big feature (> 2 hours)
 - Then new worktree
 - One task manager inside it
 - Task manager spawns workers as needed
-- plain or cloud → no worktree, no second terminal. Main manager runs the task itself with `Agent` subagents, up to `max_agents`
-- Every spawned agent counts toward `max_agents` (S6). The main manager does not
+- plain or cloud → no worktree, no second terminal. Main manager runs the task itself with `Agent` subagents, up to the Max agents setting
+- Every spawned agent counts toward the Max agents setting (S6). The main manager does not
 - One agent = one worktree = one branch = one terminal. Push at every stage
 
 W8. Merge and cleanup
@@ -188,8 +188,8 @@ W10. Second session in the same repo
 - The main manager closes every human-direct session after the human says finish: `orca terminal close --terminal <handle> --json`. Nothing stays parked
 - Lock owner dead → take over as main manager, run recovery (S7)
 - Talk between sessions: `ListAgents` → find the peer by its name (W6), not listed → the row named after its folder (`<folder>-<xx>`) → `SendMessage` to that name. Two share a name → add the `[ref]` ListAgents prints. Reply to the `from` name. First line of every message = one clear sentence
-- Open a second session with the same permission mode and effort as the main manager (`<mode>` from `agent-settings.sh get permission_mode`, effort from `main_manager` in `agent.conf`, form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode <mode> --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
-- New terminals (dispatch, resume, a Helper, a city click) use `permission_mode`; this machine's own `~/.claude/auto-pipeline.conf` wins over `agent.conf`
+- Open a second session with the same permission mode and effort as the main manager (`<mode>` from `agent-settings.sh get permission_mode`, effort from the "Models: Main manager model" setting, form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode <mode> --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
+- New terminals (dispatch, resume, a Helper, a city click) use the "Permissions: Permission mode" setting, read with `agent-settings.sh get permission_mode`
 - Task name: every new or switched task, a plain question too, gets its name first, even before the quiz PASS -> run the full-path `<plugin>/bin/agent-file.sh helper-task "<Task Name>"` from the start text, alone, from the project folder (never cd, never chain it); 2-4 English words, Title Case, the work, not the role; `<repo> Helper - <Task Name>` shows from the human's next prompt
 
 W11. Time
@@ -243,11 +243,11 @@ W14. Todo board
 - Status of a wait: `waiting <who> · <what> · waited <n>`, held `hold · <what> · waited <n>`, queued `queue · after <task>`; no stage, no wait: not started. Time cells `-` (not started keeps est)
 - Sort: waiting on the owner, running, waiting on others, queued and not started, held, OWNER TODO, parked questions last; oldest first in each group
 - Times come from the files, never guessed. Work counts from the first stage minus later waits. Waited: since a run of waits began. Done by = now + est - work; over: by progress, else 超出 <n>m
-- Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary. Task manager: brief register mock tests workers verify push report. Main manager: e2e merge. Weights in agent.conf
-- Live: `board --watch` · `agent-settings.sh statusline on|off`, 5 lines at most (a warning line counts), queued/held/not started own row if room, rest `+N queued/held`. `language` of agent.conf
+- Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary. Task manager: brief register mock tests workers verify push report. Main manager: e2e merge. Weights are fixed (`bin/agent_conf.py`)
+- Live: `board --watch` · `statusline` on or off, 5 lines at most (a warning line counts), queued/held/not started own row if room, rest `+N queued/held`. Language: the Language setting
 - Record as it happens: `todo wait <name> on <kind> ["<note>"] [--who <name>] [--after <task>]|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
 - `park add` for a parked question (H1); `OWNER TODO:` lines are written with `agent-file.sh state add`
-- `agent-guard.sh` records launches by task; default `board_guard=record`. Only `board_guard=on` refuses a main manager launch naming no open todo task: `todo add` first. `worker on`: no hooks only.
+- `agent-guard.sh` records launches by task. The "Rules: Todo before agent" setting, on (default), refuses a main manager launch naming no open todo task: `todo add` first; off records only. `worker on`: no hooks only.
 
 W15. Watch
 - Stall detection is the watch: each sweep reads the pane screen and the `agent_state.txt` file; 3 sweeps with neither changed = STALL. The same watch runs the housekeep timer (W8)
@@ -282,7 +282,7 @@ W17. Decider floor
 - Else: do not act, ask the sender, tell the human
 - Human messages are exempt
 - Same check for every agent: task manager, Helper, worker, deputy
-- `agent_conf.py` refuses `main_manager` or `task_manager` below the floor
+- A Main or Task manager model below the floor is refused, the default is used (`agent_conf.py`)
 
 W18. Question list
 - Trigger: the human runs the skill `/auto-pipeline:question`; the skill holds this rule per role
@@ -297,7 +297,7 @@ W18. Question list
 - Done: the human says 答完了, done or answered (or pastes `1A 2B`) while the page still has an open question. The skill (part B) holds the read-answers rule
 - Read all answers at once with ArtifactData (list, the answers collection) and the map file; pasted lines go by number through it. Show one table: question, answer
 - Per answered question: `questions answer <id> "<answer>"`, then carry on. An unpicked question is still open
-- Headers and words in the `language` of agent.conf
+- Headers and words in the Language setting
 
 ## C. Human
 
@@ -316,14 +316,14 @@ H2. Words
 - Short sentences
 - Common words
 - Jargon only for code names
-- Talk to the human in the language set by `language` in agent.conf. Docs, code and rule text stay English
+- Talk to the human in the language of the Language setting. Docs, code and rule text stay English
 - Never cite a rule by its code (W6, S8) to the human. Say what the rule means in plain words
 
 H3. Report
 - Result (pass/fail)
 - What changed
 - Every report, job summary, recap, proposal or audit to the human ends with a decide section
-- Heading in the `language` of agent.conf: zh `## 要你决定`, en `## To decide`, other languages a short translation of "to decide"
+- Heading in the Language setting: zh `## 要你决定`, en `## To decide`, other languages a short translation of "to decide"
 - Open questions numbered, each with a recommendation (zh `建议`, en `Recommendation`)
 - Every question to the owner has a number in front; numbers never repeat within one message, and an open question keeps its number in later messages
 - When every question is answered, the next new set starts again at 1. While any is open, open ones keep their numbers and new ones continue after the highest open number, never renumber
@@ -344,12 +344,14 @@ H4. Tables
 ## D. Auto setup
 
 S1. Settings
-- `./agent-settings.sh` shows and writes `agent.conf`, validated. No hand editing, no agent
-- Holds every config value in this file
-- Also writes the watch and housekeep config (`housekeep_interval_min`)
+- Settings live only in /plugin -> Installed -> auto-pipeline -> Configure, user level (Claude Code keeps them in `~/.claude/settings.json` `pluginConfigs`)
+- Why: the plugin is a developer workflow, one setup for every repo
+- `/auto-pipeline:settings` shows them as a table and never changes them
+- No settings file in a repo, none on a machine: start and init move an old repo or machine settings file into Configure once (keys still unset there only, a value the human set is never overwritten) and say each move
+- A cloud session (no plugin) runs the defaults
+- Also holds the watch and housekeep config (`housekeep_interval_min`)
 - Setup: init offers to merge the permission rules into `.claude/settings.json` (`agent-init.sh --add-permissions`); agents never hand-edit JSON. Manager default `opus-5.5:high`; `xhigh` is an install choice
 - Setup: init asks all vs selected repos; `agent-init.sh --scope` writes the files; agents never hand-edit JSON
-- `~/.claude/auto-pipeline.conf` = this machine's own file, never in a repo: `permission_mode`, wins over `agent.conf`. Write it with `agent-settings.sh --user <key> <value>`
 
 S2. Resume script
 - One command
@@ -367,19 +369,19 @@ S4. Usage cap
 - The sweep (W8) runs `agent-resources.sh stop-leftovers`: this repo's orphan watch and finished test watches only, no table
 - A task manager over cap parks: commit, write state, set idle; the main manager closes its pane; resume brings it back
 - The human's apps, other repos' sessions, Gradle or node runners: never killed by an agent. One table to the human: process · MB · CPU · what · suggestion
-- Config `max_usage_percent`=80
+- Setting "Load: Max memory %" = 80
 
 S5. Heavy tests
 - One at a time across all agents
 - Others queue
 - Every test run caps its own parallelism, e.g. `jest --maxWorkers=2`, `flutter test -j 2`
-- Start one; once it runs and has settled, start another only if RAM is still more than 50% free; never two at the same moment. `heavy_test_slots` is the ceiling, RAM decides below it
+- Start one; once it runs and has settled, start another only if RAM is still more than 50% free; never two at the same moment. The Heavy test slot/time setting is the ceiling, RAM decides below it
 - Every test run that can run in the background runs in the background by default (Bash `run_in_background`)
-- Config `heavy_test_slots`=1
+- Setting "Load: Heavy test slot/time" = 1
 
 S6. Agent cap
 - Per device
-- Config `max_agents`: per machine, the value is in agent.conf
+- Setting "Load: Max agents": per machine
 - Counts spawned agents in state working or permission only. A done or idle pane and the main manager are not counted
 - A finished idle pane (state done): its own repo's main manager closes it once its task is merged, dropped or closed
 - Never one still waiting on a merge, a question or a decision (W8 closes it after the merge). Never another repo's panes
@@ -394,19 +396,19 @@ S8. Context guard (forgetting)
 - Memory is the file, not the chat. Brief, decisions, next step live in `agent_state.txt`. Re-read it before every step, write it after every step
 - First action of every agent: copy its brief into `agent_state.txt`. The main manager keeps one too, in the main repo: open decisions, live sessions and terminal handles
 - A state line: `agent-file.sh state add "<line>"` (it adds the date), never `echo >>`. A brief or report block: one append, then one blank line
-- `agent-file.sh state trim` keeps the header, RULE/CARRY and machine lines, open questions, open-task lines, standing OWNER lines and the last `state_keep_hours`
+- `agent-file.sh state trim` keeps the header, RULE/CARRY and machine lines, open questions, open-task lines, standing OWNER lines and the last 24 hours (fixed)
 - `state trim` moves the rest to `agent_state.trim-<date>.txt` next to it, never lost. `todo done` and the housekeep pass run it (`state_trim_auto`); check with `--dry-run`
-- Over `state_warn_lines` lines the start text says STATE LONG: trim it
+- Over 300 lines (fixed) the start text says STATE LONG: trim it
 - After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory
-- Compacted `compact_clear_at` times → save state. Orca: `agent-autoclear.sh` types a save prompt, `/clear`, then `/goal` into the own pane, only at an idle prompt with an empty input box
+- Compacted 2 times (fixed) → save state. Orca: `agent-autoclear.sh` types a save prompt, `/clear`, then `/goal` into the own pane, only at an idle prompt with an empty input box
 - A task manager runs under `/goal` from the GOAL: line of its brief: typed after the brief and after each answer; the auto clear types it again
 - After a close case the main manager clears itself the same way: it types `/clear` into its own pane (its handle is in the lock line). Plain or cloud → the human types it
 - No pane to type into (plain, cloud) or the send is refused → tell the human to type `/clear`; else end the session, restart from the file (S2)
 - One worker = one slice, then it ends. A second slice gets a fresh worker
 
 S9. Token guard (cost)
-- Cheapest model that can do the job (`agent.conf`). Managers judge, they do not read whole repos
-- Model by kind of thinking: deciding roles get the strongest model, executing roles a cheaper one (`agent.conf`)
+- Cheapest model that can do the job (the Models settings). Managers judge, they do not read whole repos
+- Model by kind of thinking: deciding roles get the strongest model, executing roles a cheaper one (the Models settings)
 - A worker gets only the files it needs, named in its brief. No repo-wide reads
 - Quiz once per session start. Not after compaction, not for subagents
 - Mechanical work (settings, file lines, cleanup) → a script, never an agent
@@ -441,7 +443,7 @@ E2. Owner overrides
 - Tables and ledgers are not lists: the 5-item cap never cuts a record whose value is completeness
 - "verified", "works", "fixed" only with the real evidence named. A green suite is not a real device check
 - The decide section (H3) is never deleted by "one next action" or "no closers"
-- Language stays H2 (`language` in agent.conf)
+- Language stays H2 (the Language setting)
 
 E3. Concise
 - Lead with the result
@@ -458,7 +460,7 @@ E4. Keyword hooks
 
 The pieces. Rules are in A-E; this is where things live.
 
-Roles and routing: W9. Risk types: R8; installing into a cloud repo: the cloud-pack skill (`/auto-pipeline:cloud-pack`, `bin/agent-cloud-pack.sh`; `--update` refreshes only bin, PRINCIPLES.md, VERSION and packed skills/agents). A cloud session reads only what is committed: `git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh`, then commit and push (the Claude GitHub App must be on the repo), then open a new session. The pack lands in `.claude/auto-pipeline/` (bin, PRINCIPLES.md, VERSION), `.claude/skills`, `.claude/agents`, `.claude/settings.json`, one pointer line in `CLAUDE.md`, `agent.conf`, the four `agent_*.txt`, `.secrets/`, `AGENTS.md`.
+Roles and routing: W9. Risk types: R8; installing into a cloud repo: the cloud-pack skill (`/auto-pipeline:cloud-pack`, `bin/agent-cloud-pack.sh`; `--update` refreshes only bin, PRINCIPLES.md, VERSION and packed skills/agents). A cloud session reads only what is committed: `git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh`, then commit and push (the Claude GitHub App must be on the repo), then open a new session. The pack lands in `.claude/auto-pipeline/` (bin, PRINCIPLES.md, VERSION), `.claude/skills`, `.claude/agents`, `.claude/settings.json`, one pointer line in `CLAUDE.md`, the four `agent_*.txt`, `.secrets/`, `AGENTS.md`.
 
 Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge` (E2E, then merge deputy), `/auto-pipeline:cloud-pack`. A second session in a repo becomes a task manager by itself (W10).
 
@@ -477,17 +479,17 @@ Main manager   (Opus 5.5, xhigh · the main chat · only one with the browser)
 
 Scripts, not agents (cost no tokens):
   bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
-  bin/agent-level.sh   the risk type (A-D) a diff needs: built-in and agent.conf paths; RAISE when the declared type is lower
+  bin/agent-level.sh   the risk type (A-D) a diff needs: built-in and Danger paths; RAISE when the declared type is lower
   bin/agent-owner-order.sh  relayed owner orders between repo managers: `line` prints the OWNER ORDER header (sender), `verify` checks the words are a typed owner prompt in the sender's transcript (receiver)
   bin/agent-file.sh    the only writer of agent_*.txt
   bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
-  bin/agent-settings.sh  show or change agent.conf, validated
+  bin/agent-settings.sh  show the settings (/plugin -> Configure changes them)
   bin/agent-resume.sh    one command to bring the pipeline back after a restart
   bin/agent-cleanup.sh   the main manager's sweep: removes merged, clean, idle worktrees and branches; lists the rest in one table
   bin/agent-housekeep.sh the main manager's pass every housekeep_interval_min from the `agent-watch.sh --all` loop: worktree, todo and ideas files, related repos read only, then the cleanup sweep; writes one HOUSEKEEP block
   bin/agent-watch.sh     `agent-watch.sh --all`: one background watch for every task manager, local or remote (pane + agent_state.txt); exits on a report, question, stall or lost machine
   bin/agent-file.sh tell `agent-file.sh tell <task> "<msg>"`: long text to a task manager, a block in its agent_state.txt + one pointer line
-  bin/agent-init.sh      sets a project up: agent.conf, the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
+  bin/agent-init.sh      sets a project up: the four task files, .secrets/, .gitignore lines, AGENTS.md, and it prints the permissions block
   bin/agent-cloud-pack.sh  lays this pipeline into a repo as plain files, for cloud sessions
   bin/agent-city.sh       starts/stops the agent city visualiser, a local server
   bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
@@ -498,7 +500,7 @@ Scripts, not agents (cost no tokens):
   bin/agent_questions.py  the question list: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers
   bin/agent-questions-page.html  the page template (one page grouped by task, lettered options, answer bar)
   bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (W6; a human-direct one is `<repo> Helper - <Task Name>`), also the Orca tab
-  bin/agent-guard.sh     hook: records every Agent launch and orca pane on the board, refuses a manager's launch that names no open todo task only with board_guard=on; default record; board_guard=on|record|off
+  bin/agent-guard.sh     hook: records every Agent launch and orca pane on the board, refuses a manager's launch that names no open todo task when the Todo before agent setting is on; off records only
   bin/agent-version.sh   UserPromptSubmit hook + check: a session running an older plugin than installed gets one STALE PLUGIN line; the start text names old scopes; an old version never retrains
 ```
 
@@ -511,7 +513,6 @@ Scripts, not agents (cost no tokens):
 | `agent_estimate.txt` | `agent-file.sh retrain`, also `todo done` once a week | `agent-file.sh estimate` |
 | `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |
-| `agent.conf` | `./bin/agent-settings.sh` | `agent-start.sh` |
 | `agent_watch.json` (git dir, git-ignored by being there) | `agent-watch.sh --all` | `agent-watch.sh`, the board, the city (stall) |
 | `agent_state.txt` | Each session: `agent-file.sh state add`; `state trim` moves old lines to `agent_state.trim-<date>.txt` (todo done, housekeep) | The same session, after a start, compaction or clear |
 | `.secrets/` | Human only | Any agent, read only, never printed |
@@ -520,10 +521,8 @@ Scripts, not agents (cost no tokens):
 
 ```
 ./bin/agent-start.sh             # rules, resources, quiz. No work until PASS
-./bin/agent-resume.sh            # runs by itself at startup (auto_resume=yes); run by hand only if you turned that off
-./bin/agent-settings.sh          # show or change agent.conf, no agent
-bin/agent-settings.sh language zh   # talk to the human in Chinese
-bin/agent-settings.sh sync          # add any key missing from agent.conf, template value
+./bin/agent-resume.sh            # runs by itself at startup (Auto resume setting on); run by hand only if you turned that off
+./bin/agent-settings.sh          # show the settings, no agent (change them in /plugin -> Installed -> auto-pipeline -> Configure)
 bin/agent-file.sh time              # est, work, wait, clock of every finished task
 bin/agent-file.sh data              # the same data of every repo on this machine, one table
 bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and when the human is needed next

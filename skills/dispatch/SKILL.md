@@ -27,7 +27,7 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    ```
    ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo where "<name>" <machine> "<worktree path>"
    ```
-   **orca** — open a worktree. Read `task_manager` in the project's `agent.conf` (form model:effort): `<model>` is what `python3 ${CLAUDE_PLUGIN_ROOT}/bin/agent_conf.py cli-model '<task_manager value>'` prints (the CLI refuses opus-5.5, takes opus), `<effort>` is the part after the colon. Read `<mode>` from `permission_mode`, read with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode` (its first word; this machine's ~/.claude/auto-pipeline.conf wins over agent.conf):
+   **orca** — open a worktree. Read the "Models: Task manager model" setting with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get task_manager` (form model:effort): `<model>` is what `python3 ${CLAUDE_PLUGIN_ROOT}/bin/agent_conf.py cli-model '<task_manager value>'` prints (the CLI refuses opus-5.5, takes opus), `<effort>` is the part after the colon. Read `<mode>` from the "Permissions: Permission mode" setting, read with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode` (its first word):
    ```
    orca worktree create --name <name> --repo path:<main repo> --base-branch main --no-parent --json
    orca terminal create --worktree path:<worktree path> --title "<name> Task Manager" --command "AGENT_ROLE=task-manager claude --name '<name> Task Manager' --model '<model>' --effort <effort> --permission-mode <mode>" --json
@@ -60,7 +60,7 @@ The board (PRINCIPLES.md W14) reads these. Write each as it happens, never later
 - Held -> on hold; released -> off
 - Waiting on someone other than the owner (a peer manager, a reviewer) -> --who <name>; the owner is the default for mock, question, review
 - Waiting for a slot or another task -> on queue --after <task>; slot found -> off
-- Launches record themselves (`bin/agent-guard.sh`, W14). Every Agent description and pane title must start with the task name, else the launch is refused (only with `board_guard=on`; the default `record` never refuses). Read-only agents (Explore, Plan) and Helper panes need no task name. Run the `todo add` line of step 2 or 7 first
+- Launches record themselves (`bin/agent-guard.sh`, W14). Every Agent description and pane title must start with the task name, else the launch is refused (only with the "Rules: Todo before agent" setting on, the default; off never refuses). Read-only agents (Explore, Plan) and Helper panes need no task name. Run the `todo add` line of step 2 or 7 first
 - Parked question for later (H1): `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"`
 
 ## Time question from the human
