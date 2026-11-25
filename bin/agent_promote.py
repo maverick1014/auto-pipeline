@@ -7,6 +7,7 @@ import glob
 import json
 import re
 import shutil
+import socket
 import subprocess
 import sys
 
@@ -298,13 +299,31 @@ def task_worktrees(root, task):
     return paths
 
 
+def this_host():
+    return os.environ.get("AGENT_FAKE_HOST") or socket.gethostname().split(".")[0]
+
+
+def task_machine(root, task):
+    """(machine, path) of the todo line's field ` | on <machine> <path>`, else ('', '')."""
+    for x in todo_fields(root, task) or []:
+        m = re.match(r"on (\S+)(?: (.*))?$", x)
+        if m:
+            return m.group(1), (m.group(2) or "").strip()
+    return "", ""
+
+
 def gather(root, task):
     """W-1: the task's CHECK lines from its worktree(s) into the main repo, before the gate. A path that is gone or
     on another machine is skipped."""
+    machine, there = task_machine(root, task)
+    if machine and machine != this_host():
+        paths = [there] if there else task_worktrees(root, task)
+        for path in paths:
+            out("gather: skipped %s: on another machine" % path)
+        return
     for path in task_worktrees(root, task):
         if not os.path.isdir(path):
-            remote = re.match(r"^[^/\s]+:", path) is not None          # host:/path = another machine
-            out("gather: skipped %s: %s" % (path, "on another machine" if remote else "missing"))
+            out("gather: skipped %s: missing" % path)
             continue
         try:
             subprocess.run([os.path.join(HERE, "agent-file.sh"), "checks", "gather", task, "--dir", path], cwd=root,
