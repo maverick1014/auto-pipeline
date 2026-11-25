@@ -229,8 +229,10 @@ class TestF5ManagerLaws(PrinciplesCase):
     def test_model_by_kind_of_thinking(self):
         self.has("strongest", where=rule(self.text, "S9.", "## E. Output"))
 
-    def test_full_gate_in_ci_order(self):
-        self.has("CI's order", where=rule(self.text, "W4.", "W5."))
+    def test_tests_follow_the_blocks(self):
+        # check-blocks 2026-11-25: the full gate per task is gone (no block backs it); FULL SUITE
+        # runs only when its trigger fires (tests/test_check_rules.py)
+        self.has("FULL SUITE only when its trigger fires", where=rule(self.text, "W4.", "W5."))
 
     def test_e2e_is_the_proof(self):
         block = rule(self.text, "W5.", "W6.")

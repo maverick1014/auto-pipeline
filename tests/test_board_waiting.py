@@ -274,7 +274,7 @@ class TestWork(Case):
         r = self.row(self.rows(now=NOW), task="state-trim")
         self.assertEqual([r[k] for k in tb.HEAD["en"]],
                          ["state-trim", "State file trim + auto clear at compact_clear_at", "进行中",
-                          "██░░░░░░░░  20%", WHERE_ST, "D", "1h 10m", "29m", "38m", "13:12"])
+                          "██░░░░░░░░  20%", WHERE_ST, "level D", "1h 10m", "29m", "38m", "13:12"])
 
     def test_6_2_time_before_the_first_stage_is_no_work(self):
         r = self.one("", base="x | big | w | est 39m | opened 2026-11-20 11:35 | by main | "
@@ -333,7 +333,7 @@ class TestWaitEnds(Case):
         self.assertNotIn("waiting ", line)
         r = self.row(self.rows(now=NOW), task="state-trim")
         self.assertEqual([r[k] for k in tb.HEAD["en"][2:]],
-                         ["进行中", "████████░░  80%", WHERE_ST, "D", "1h 10m", "24m", "43m", "13:17"])
+                         ["进行中", "████████░░  80%", WHERE_ST, "level D", "1h 10m", "24m", "43m", "13:17"])
 
 
 # ---------------------------------------------------------------- rule 8: sort
@@ -400,7 +400,7 @@ class TestSimulation(Case):
         rows = self.rows(now=NOW)
         top = rows[0]
         self.assertEqual([top[k] for k in tb.HEAD["en"][:1] + tb.HEAD["en"][2:]],
-                         ["state-trim", "等待 你 · 合并前签字 · 已等 5分钟", "-", WHERE_ST, "D", "-", "-", "-", "-"])
+                         ["state-trim", "等待 你 · 合并前签字 · 已等 5分钟", "-", WHERE_ST, "level D", "-", "-", "-", "-"])
         self.assertEqual(self.line(), "\n".join([
             name_col("state-trim") + "等待 你 · 合并前签字 · 已等 5分钟",
             name_col("v4plus-followups") + "等待 v4-Manager · 已等 3天20小时",
