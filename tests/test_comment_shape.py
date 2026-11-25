@@ -180,7 +180,7 @@ class TestHashStrings(ShapeCase):
         self.each(CODE, [("app/help.py", 'X = """a\n\nb"""\n', 'X = """a\nb"""\n')])
 
     def test_r13_a_hash_inside_a_one_line_string(self):
-        self.each(("A", "text change"), [
+        self.each(CODE, [   # check-blocks section 44 F10: a string literal in a code file is code
             ("app/a.py", 's = "# a"\n', 's = "# b"\n'),
             ("bin/a.sh", 'echo "# a"\n', 'echo "# b"\n'),
         ])
@@ -217,7 +217,7 @@ class TestHashStrings(ShapeCase):
 
     def test_sh_quotes(self):
         # an escaped " inside "..." does not end it: the # is in the string (today: text change)
-        self.each(("A", "text change"), [("bin/a.sh", 'echo "a \\" # b"\n', 'echo "a \\" # c"\n')])
+        self.each(CODE, [("bin/a.sh", 'echo "a \\" # b"\n', 'echo "a \\" # c"\n')])   # check-blocks section 44 F10: a string literal in a code file is code
         self.fresh()
         self.each(("A", CO), [
             # no escapes in '...': the string is a\ and the comment follows
@@ -519,7 +519,7 @@ class TestSlashStrings(ShapeCase):
         self.each(("A", CO), [("src/a.kt", 'val s = """a\\""" // note\n', 'val s = """a\\""" // note 2\n')])
 
     def test_one_line_strings_hide_comment_markers(self):
-        self.each(("A", "text change"), [("src/a.js", 'const u = "a // b";\n', 'const u = "a // c";\n')])
+        self.each(CODE, [("src/a.js", 'const u = "a // b";\n', 'const u = "a // c";\n')])   # check-blocks section 44 F10: a string literal in a code file is code
         self.fresh()
         self.each(CODE, [
             ("src/a.js", "const u = 'a /* b';\nrun(1);\nconst v = '*/';\n",
@@ -661,8 +661,8 @@ class TestReviewCore(ShapeCase):
             ("bin/a.sh", "echo a\\|# b\nls\n", "echo a\\|# c\nls\n"),
         ])
         self.fresh()
-        # the hidden part is string text: today's level is a text change, never "comment only"
-        self.each(("A", "text change"), [
+        # the hidden part is string text in a code file: code (section 44 F10), never "comment only"
+        self.each(CODE, [
             ("bin/a.sh", "x=1;# don't\necho 'a' # c\necho \"it's # here\"\n",
              "x=1;# don't\necho 'a' # c\necho \"it's # there\"\n"),
         ])

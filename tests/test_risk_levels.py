@@ -311,15 +311,13 @@ class TestLevelZero(LevelCase):
     def test_a_string_literal(self):
         need, lvl, why = self.one({"src/app.js": 'const title = "Hello";\n'},
                                   {"src/app.js": 'const title = "Hello there";\n'}, "src/app.js")
-        self.assertEqual((need, lvl), ("A", "A"))
-        self.assertIn("text change", why)
+        self.assertEqual((need, lvl), ("C", "C"))   # check-blocks section 44 F10: a string literal in a code file is code
 
     def test_a_single_quoted_string_in_python(self):
         need, lvl, why = self.one({"app/views.py": "def f():\n    flash('Saved')\n"},
                                   {"app/views.py": "def f():\n    flash('Stored, thanks')\n"},
                                   "app/views.py")
-        self.assertEqual((need, lvl), ("A", "A"))
-        self.assertIn("text change", why)
+        self.assertEqual((need, lvl), ("C", "C"))   # check-blocks section 44 F10: a string literal in a code file is code
 
     def test_markup_text_between_tags(self):
         need, lvl, why = self.one({"src/Home.jsx": "export const Home = () => (\n  <h1>Welcome</h1>\n);\n"},

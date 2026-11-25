@@ -805,3 +805,4 @@ Decided by the main manager (listed for the owner):
 - B2 (also): W8 drops the undo line of a failed run after the merge (no run there); it keeps: "Never `git reset --hard` in the main checkout: it wipes the uncommitted agent_*.txt".
 - C8 (also): the waiter calls the gate through `bin/agent-owner-order.sh human-quiet` (its documented entry), not the Python file.
 - F3 (also): a PR REVIEW, FLOW CHECK or UI CHECK line without `at` (an old line, or one appended by hand) is not accepted: `<BLOCK>: pass with no commit, not accepted`. "Before the task opened" compares days (the worker's reading, kept).
+- F10 (as applied): code files only (not markup such as .html .jsx .tsx .vue, not config such as .yml .json): a changed quoted string is code, except a docstring and a comment line; markup text and config values keep their rules.

@@ -955,6 +955,19 @@ def other_folders(ctx):
     return out
 
 
+def write_launch_record(ctx, task, stype):
+    """F2: a durable line per reviewer / check-deputy launch in <git common dir>/agent_launches.jsonl."""
+    base = base_type(stype)
+    if base not in ("reviewer", "check-deputy"):
+        return
+    rec = {"task": task, "type": base, "by": ctx["role"], "at": ctx["now"]}
+    try:
+        with open(os.path.join(ctx["common"], "agent_launches.jsonl"), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+    except OSError:
+        pass
+
+
 def finish(ctx, items, quiet):
     """items: [(Decision, (key, extra) or None)]. Block (whole call) or record, then the protocol line."""
     if ctx["mode"] == "on":
@@ -969,6 +982,7 @@ def finish(ctx, items, quiet):
         fields = {"key": key, "kind": d.kind, "task": d.task, "title": clean_title(d.title), "since": ctx["now"],
                   "pid": str(ctx["pid"]), "by": ctx["role"]}
         fields.update(extra)
+        write_launch_record(ctx, d.task, fields.get("type", ""))
         try:
             add_record(ctx, build_launch(fields))
         except Busy:

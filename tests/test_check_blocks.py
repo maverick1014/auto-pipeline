@@ -288,11 +288,10 @@ class TestKinds(BlocksCase):
     def test_code(self):
         self.assertEqual(self.kind({"src/a.py": "x = 1\n"}, {"src/a.py": "x = 2 + y\n"}, "src/a.py")[0], "code")
 
-    def test_text_value_in_code_is_text(self):
+    def test_a_string_value_in_code_is_code(self):   # check-blocks section 44 F10: a string literal in a code file is code
         k, why = self.kind({"src/a.js": 'const t = "Hello";\n'}, {"src/a.js": 'const t = "Hello there";\n'},
                            "src/a.js")
-        self.assertEqual(k, "text")
-        self.assertIn("text change", why)
+        self.assertEqual(k, "code")
 
     def test_comment_only_is_text(self):
         k, why = self.kind({"app/run.py": "# a\nrun()\n"}, {"app/run.py": "# b\nrun()\n"}, "app/run.py")
