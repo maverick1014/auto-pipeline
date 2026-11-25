@@ -592,3 +592,35 @@ Contract (task manager):
 - C41 The gate's `--base` default: `origin/<production branch>` for a todo line with `target production`, else `origin/<working branch>`.
 - C42 `agent-promote.sh --task "<task>" --branch <branch> --owner-quote "<words>" [--time <t>]` (the direct path): verify the words; a short-lived worktree of `origin/<production>` in the git common dir, `git merge --no-ff origin/<branch> -m "Merge <task> (W8)"`, `git push origin HEAD:<production>`, the worktree removed (also on failure); the release build when the repo has `bin/agent-release.sh`; then production is merged back into the working branch in the main checkout (when it is on the working branch and has no change other than agent_*.txt; else one line saying it waits) and `git push origin <working branch>`. Lines: `promote: <task> -> <production> (<short>)`, `release: ...`, `merged back: <production> -> <working branch>` or `merge back waits: <why>`. A merge conflict: `git merge --abort`, the worktree removed, refused, nothing pushed. The batch path (no --task) stays as C36'.
 - C43 Rule text: R1 (step 9 "Merge into the target branch + cleanup"; the target rule), W8 (the deputy merges into ap-main in the main checkout, or straight into production through agent-promote.sh --task; production merged back at once), W9 (target and base, batches, (d)), merge skill and deputy, dispatch (`--target`, `--batch`, the base branch), quiz Q25 (the target question, answer B, RULE R1).
+
+## 31. Rule text for sections 28-30 (task manager draft; replaces section 18's working-branch lines; the rules worker puts it in as written)
+
+R1: step 9 becomes `  9. Merge into the target branch + cleanup`; after the flow list add:
+```
+- The target: the user's request decides. It says publish or merge to main -> the task, once its own checks pass (its blocks; no full suite), goes straight into the production branch, and the deploy follows by itself (here: the release build; a repo like v4: its own sync)
+- No such words, or unclear -> the working branch ap-main (setting "Flow: Working branch"); nothing goes to production by itself
+```
+R8: the working-branch lines become:
+```
+- The working branch ap-main (setting "Flow: Working branch") is only a branch: the main checkout is switched to the working branch by init, so everything merged or pushed lands there first and never on the production branch by accident
+- Batches: several tasks given together all merge into ap-main; when the last one of the batch is merged, ONE full suite runs on ap-main (`agent-nightly.sh --start`); red -> a new fixer agent, never back to the builder
+- Production from ap-main: only on the owner's approval (verified words) and only from a green commit: `agent-promote.sh --owner-quote "<his words>"`; a repo with a release build runs it right after, so merged to production = published
+- RELEASE RUN: the full suite runs once on ap-main before such a publish (the batch run on that commit counts)
+- URGENT FIX: branch from the production branch, the smallest fix, PR REVIEW and the light related tests, the owner's yes; merge to production (`agent-promote.sh --task`; the deploy follows), then merge production back into the working branch
+```
+(the release-run failure lines of section 22 stay: `agent-nightly.sh --failures`, "test out of date" / "real break", no check deleted without a twin, the fixer's table).
+W8, add:
+```
+- The merge deputy merges into ap-main in the main checkout; a task with target production goes straight in through `agent-promote.sh --task` (a short-lived worktree of the production branch, removed right after; the main checkout never switches)
+- After any direct merge into production, production is merged back into ap-main at once, so they never drift
+```
+W9, add:
+```
+- Target and base (R1): a task that goes straight to production branches from the production branch; a task for ap-main branches from ap-main (it sees the batch's earlier merges): `todo add ... --target production|working --batch <name>`
+- A new request may also wait until ap-main is tested and published; the main manager picks what is faster and says which
+```
+skills/dispatch: decide the target from the request words ("publish or merge to main" → `--target production`; else none = ap-main); `--batch <name>` for tasks given together; `orca worktree create ... --base-branch <base branch>` (the production branch for target production, else the working branch); the brief's WHERE names the target and the base.
+skills/merge: target working → the merge deputy (in the main checkout, on ap-main); target production → `agent-promote.sh --task "<name>" --branch <branch> --owner-quote "<his words>"` (the main manager, after the gate); on "batch <name>: all merged" → `agent-nightly.sh --start` on ap-main, then report to the owner for the publish (`agent-promote.sh --owner-quote`); a red run → `agent-nightly.sh --failures` → a new fixer agent.
+agents/merge-deputy.md: `<working branch>` in "Your brief gives"; it works in the main checkout, which is on the working branch: `git merge --no-ff origin/<branch>` there and `git push origin <working branch>` (never `git push origin main`); a task with target production is not its job (agent-promote.sh --task).
+skills/init: init creates the working branch from the production branch and switches the main checkout to it (one line each).
+Quiz: Q25 and Q39 as tests/test_check_rules.py.
