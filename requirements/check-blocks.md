@@ -702,3 +702,14 @@ and "17 settings" where PRINCIPLES.md counts them.
 - P6 Each promote uses its own short-lived worktree (`<git common dir>/agent_promote_wt_<pid>`) and removes only that one.
 - P7 The sweep counts a branch as merged when it is in origin/<production> or origin/<working branch> (the stored one); its advice: "merge it into the working branch, or remove it by hand".
 - P8 A failed push of the working branch: `working branch: not pushed: <git's first line>` (init and the start); a failed creation: `working branch: not created: <git's first line>`. The lost twin of test_this_repo_has_its_file comes back (agent_repo.conf tracked, its core paths pinned).
+
+## 38. Owner order 16:4x (TELL 10b4d922, "1. ok", option A): what happens after DONE FAIL and LOST
+
+- DONE FAIL -> the main manager reviews the report, then sends the task manager a fix order in the fixed shape (where, what is seen, what is expected, evidence); never merged, never closed silently.
+- LOST (the watch cannot reach a machine or a pane) -> wait one more sweep; still lost -> tell the owner in one line with the machine and the task; never redispatch the task on another machine by itself.
+- Rule text, W15, right after the line that lists the signals that wake the main manager (each at most 200 characters):
+```
+- DONE FAIL → the main manager reviews the report, then sends the task manager a fix order (where, what is seen, what is expected, evidence). Never merged, never closed silently
+- LOST (the watch cannot reach a machine or a pane) → wait one more sweep; still lost → tell the owner in one line with the machine and the task
+- Never redispatch a LOST task on another machine by itself
+```

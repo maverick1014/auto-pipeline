@@ -312,6 +312,23 @@ class TestP8LostTwin(unittest.TestCase):
             self.assertIn(p, core.split("=", 1)[1].split(","))
 
 
+class TestAfterDoneFailAndLost(unittest.TestCase):
+    """Section 38 (owner order 16:4x, TELL 10b4d922): what the main manager does after DONE FAIL and LOST."""
+
+    def test_w15(self):
+        w15 = rule("W15. ", "W16. ")
+        lines = w15.splitlines()
+        for phrase in ("DONE FAIL → the main manager reviews the report, then sends the task manager a fix order "
+                       "(where, what is seen, what is expected, evidence). Never merged, never closed silently",
+                       "LOST (the watch cannot reach a machine or a pane) → wait one more sweep; still lost → tell the "
+                       "owner in one line with the machine and the task",
+                       "Never redispatch a LOST task on another machine by itself"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, w15)
+        signals = [i for i, l in enumerate(lines) if "wake the main manager" in l and "LOST" in l][0]
+        self.assertTrue(lines[signals + 1].startswith("- DONE FAIL → "), lines[signals + 1])
+
+
 class TestF11(unittest.TestCase):
     def test_docstring(self):
         head = read("bin", "agent_conf.py").split('"""')[1]
