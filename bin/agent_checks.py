@@ -28,7 +28,8 @@ if HERE not in sys.path:
 FALLBACK = ["DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS", "DB CHECK", "DATA CHECK", "FULL SUITE",
             "CORE REVIEW", "DIFF READ", "EXAMPLES TEST", "FLOW CHECK", "UI CHECK", "REAL DATA COUNT"]
 SIGN = "OWNER SIGN"
-BUILDER_BLOCKS = ("PR REVIEW", "DIFF READ", "FLOW CHECK", "UI CHECK")
+BUILDER_BLOCKS = ("PR REVIEW", "CORE REVIEW", "DIFF READ", "FLOW CHECK", "UI CHECK")
+NO_WB_NOTE = "note: no working branch stored in this clone: give --base origin/<working branch> (the brief names it)"
 DATE_RE = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}"
 
 
@@ -542,10 +543,13 @@ def default_base(root, d, f):
         return prod
     try:
         import agent_conf
-        wb = agent_conf.working_branch(d)
+        wb = agent_conf.working_branch(d)        # reads the stored name only (F10)
     except Exception:
-        wb = ""
-    if wb and git_line(d, "rev-parse", "--verify", "-q", "refs/remotes/origin/%s^{commit}" % wb):
+        wb = None
+    if not wb:
+        print(NO_WB_NOTE)
+        return prod
+    if git_line(d, "rev-parse", "--verify", "-q", "refs/remotes/origin/%s^{commit}" % wb):
         return "origin/" + wb
     return prod
 

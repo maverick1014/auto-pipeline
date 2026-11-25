@@ -1,4 +1,4 @@
-"""The one reader of the 16 auto-pipeline settings.
+"""The one reader of the 17 auto-pipeline settings.
 
 The settings live only in Claude Code: /plugin -> Installed -> auto-pipeline -> Configure.
 They are stored in <claude config dir>/settings.json under
@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 
 PLUGIN_ID = "auto-pipeline@auto-pipeline"
 CHANGE_LINE = "change: /plugin -> Installed -> auto-pipeline -> Configure"
@@ -869,9 +870,27 @@ def cli_model(spec):
 # ------------------------------------------------------------------ working branch
 
 
-def working_branch(repo):
-    """The working branch of this clone: the stored git config auto-pipeline.workingbranch, else the setting
-    with <name> = git user.name cleaned, stored at once."""
+def _production_branch(repo, cfg):
+    """production_branch in agent_repo.conf, else the target of origin/HEAD, else main."""
+    try:
+        with open(os.path.join(repo, REPO_FILE), encoding="utf-8", errors="replace") as fh:
+            for line in fh.read().splitlines():
+                m = re.match(r"^\s*production_branch\s*=\s*(\S+)\s*$", line)
+                if m:
+                    return m.group(1)
+    except OSError:
+        pass
+    head = cfg("symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD")
+    if head.startswith("origin/"):
+        return head[len("origin/"):]
+    return "main"
+
+
+def working_branch(repo, derive=False):
+    """The working branch of this clone. Without derive: the stored git config auto-pipeline.workingbranch, or
+    None when nothing is stored (nothing is stored by a read). With derive=True (init and the start only): the
+    setting with <name> = git user.name cleaned (empty: the login name, else "user"), stored at once. A setting
+    equal to the production branch is never used: the default form is used instead, with one stderr line."""
     def cfg(*a):
         try:
             r = subprocess.run(["git", "-C", repo] + list(a), stdout=subprocess.PIPE,
@@ -882,13 +901,30 @@ def working_branch(repo):
     stored = cfg("config", "--local", "--get", "auto-pipeline.workingbranch")
     if stored:
         return stored
+    if not derive:
+        return None
+
+    def named(form):
+        if "<name>" not in form:
+            return form
+        who = re.sub(r"[^a-z0-9]+", "-", cfg("config", "user.name").lower()).strip("-")
+        if not who:
+            try:
+                import getpass
+                login = getpass.getuser()
+            except Exception:
+                login = ""
+            who = re.sub(r"[^a-z0-9-]+", "-", login.lower()).strip("-") or "user"
+        return form.replace("<name>", who)
     try:
         value = str(get("working_branch")).strip() or WORKING_BRANCH_DEFAULT
     except Exception:
         value = WORKING_BRANCH_DEFAULT
-    if "<name>" in value:
-        who = re.sub(r"[^a-z0-9]+", "-", cfg("config", "user.name").lower()).strip("-") or "user"
-        value = value.replace("<name>", who)
+    value = named(value)
+    if value == _production_branch(repo, cfg):
+        default = named(WORKING_BRANCH_DEFAULT)
+        sys.stderr.write('working branch: "%s" is the production branch; using %s\n' % (value, default))
+        value = default
     cfg("config", "--local", "auto-pipeline.workingbranch", value)
     return value
 
@@ -938,7 +974,7 @@ def main(argv):
     if len(argv) == 2 and argv[0] == "get":
         return _cmd_get(argv[1])
     if len(argv) == 2 and argv[0] == "working-branch":
-        sys.stdout.write(working_branch(argv[1]) + "\n")
+        sys.stdout.write(working_branch(argv[1], derive=True) + "\n")
         return 0
     if argv == ["show"]:
         return _cmd_lines(show_lines)

@@ -462,7 +462,14 @@ def human_quiet(cwd, argv):
         except ValueError:
             pass
     newest = None
-    for d in project_folders(repo):
+    wanted = opts["--session"] + ".jsonl"
+    folders = project_folders(repo)
+    if not any(os.path.isfile(os.path.join(d, wanted)) for d in folders):
+        # a session started in a subfolder lives in another project folder: look in every one (F9)
+        for home in config_homes():
+            folders += [os.path.dirname(x) for x in
+                        glob.glob(os.path.join(glob.escape(home), "projects", "*", glob.escape(wanted)))]
+    for d in folders:
         path = os.path.join(d, opts["--session"] + ".jsonl")
         try:
             fh = open(path, "r", encoding="utf-8", errors="replace")

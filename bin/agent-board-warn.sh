@@ -25,10 +25,8 @@ except Exception: print("EVENT=; HCWD=; SUB=")' 2>/dev/null)"
   NOW="${AGENT_FAKE_NOW:-$(date '+%Y-%m-%d %H:%M')}"
   PYTHONPATH="$PLUGIN_ROOT/bin" python3 - "$PROJECT_ROOT" "$PLUGIN_ROOT" "$NOW" "$PROJECT_GITDIR/agent_warn_seen.json" "$EVENT" <<'PY'
 import json, os, sys
-import agent_board as b
 
 root, plugin, now, state, event = sys.argv[1:6]
-lines = b.board_warnings(root, plugin, now)
 try:
     with open(state) as fh:
         seen = json.load(fh)
@@ -36,18 +34,22 @@ try:
         seen = {}
 except (IOError, ValueError):
     seen = {}
+if seen.get("checked") == now:      # the board is built at most once a minute: leave before importing it
+    sys.exit(0)
 
 
 def save(data):
+    data["checked"] = now
     tmp = "%s.tmp.%d" % (state, os.getpid())
     with open(tmp, "w") as fh:
         json.dump(data, fh)
     os.replace(tmp, state)
 
 
+import agent_board as b
+lines = b.board_warnings(root, plugin, now)
 if not lines:
-    if seen.get("set"):
-        save({"set": [], "at": seen.get("at", "")})
+    save({"set": [], "at": seen.get("at", "")} if seen.get("set") else dict(seen))
     sys.exit(0)
 
 
@@ -57,11 +59,13 @@ def keys(ls):
 
 
 if keys(lines) == keys(seen.get("set")):
+    save(dict(seen))
     sys.exit(0)
 last = b.parse_time(seen.get("at")) if isinstance(seen.get("at"), str) else None
 if last is not None:
     gap = b.minutes(last, b.parse_time(now))
     if gap is not None and gap < 1:
+        save(dict(seen))
         sys.exit(0)
 save({"set": lines, "at": now})
 text = "Board warning for the main manager, act in this turn:\n" + "\n".join(lines)
