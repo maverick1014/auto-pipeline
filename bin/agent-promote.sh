@@ -5,8 +5,9 @@
 #       publish: verify the words, sync (production into the working branch), the last nightly must be green on the working
 #       branch tip, production must be an ancestor; then push the tip to origin/<production>, the local production ref follows,
 #       the checkout stays on the working branch; the release build (bin/agent-release.sh --push) runs right after.
-#   agent-promote.sh --task "<task>" --branch <branch> --owner-quote "<words>" [--time <t>]
-#       the direct path: <branch> is merged (--no-ff) into origin/<production> in a short-lived worktree and pushed, the
+#   agent-promote.sh --task "<task>" --branch <branch>
+#       the direct path: the words are the ones stored at `todo add --target production --owner-quote` (no quote here);
+#       the gate runs first (agent-file.sh checks gate), nothing is pushed on GATE REFUSED; then <branch> is merged (--no-ff) into origin/<production> in a short-lived worktree and pushed, the
 #       release build runs, then production is merged back into the working branch and pushed.
 #   agent-promote.sh --sync
 #       in the main checkout (on the working branch): merge origin/<production> into the working branch when it is not in
