@@ -867,68 +867,24 @@ def cli_model(spec):
     return base + suffix
 
 
-# ------------------------------------------------------------------ owner words (check-blocks section 47)
-# Words in the owner's quote: a block is removable only when the words name it and name leaving it out (G1);
-# a production target needs a word of the publish (G4). Matched case-insensitive; an ASCII word must stand
-# alone (so "ui" is not found in "build"); a CJK word is a plain substring.
+# ------------------------------------------------------------------ owner sentences (check-blocks section 51 H2)
+# An approval is one exact sentence the tool names, typed by the owner and verified as his typed prompt.
 
-BLOCK_WORDS = {
-    "PR REVIEW": ["review", "pr review", "diff read", "评审", "审查"],
-    "DIFF SCAN": ["scan", "diff scan", "扫描"],
-    "BUILD": ["build", "compile", "构建", "编译"],
-    "RELATED TESTS": ["related", "related test", "related tests", "相关测试"],
-    "MODULE TESTS": ["module", "module test", "module tests", "模块测试"],
-    "GUARD TESTS": ["guard", "guard test", "guard tests", "守卫测试"],
-    "DB CHECK": ["db", "database", "migration", "数据库", "迁移"],
-    "DATA CHECK": ["data", "数据"],
-    "CORE REVIEW": ["core", "review", "核心"],
-    "EXAMPLES TEST": ["example", "examples", "example test", "examples test", "示例"],
-    "FLOW CHECK": ["flow", "click path", "流程"],
-    "UI CHECK": ["ui", "screen", "browser", "visual", "界面"],
-    "REAL DATA COUNT": ["count", "real data", "数据"],
-}
-SKIP_WORDS = ["skip", "without", "no need", "remove", "drop", "leave out", "leave it out", "left out", "not needed",
-              "don't need", "do not need", "omit", "不用", "跳过", "不需要", "不要", "去掉", "省略"]
-NEGATION_WORDS = ["not", "don't", "dont", "do not", "never", "no", "wait", "later", "yet", "after", "before",
-                  "without", "hold", "unless", "until", "stop", "cannot", "can't", "不", "别", "先", "等", "暂", "未"]
-PUBLISH_WORDS = ["publish", "production", "merge to main", "merge into main", "release", "deploy", "live",
-                 "go live", "ship", "上线", "发布"]
+def approval_key(text):
+    """Lower-cased, punctuation dropped, extra spaces dropped: how two sentences are compared."""
+    return re.sub(r"[^\w]+", " ", (text or "").lower().replace("_", " ")).strip()
 
 
-def _tokens(text):
-    low = (text or "").lower().replace("\u2019", "'")
-    return re.findall(r"[a-z0-9']+|[\u4e00-\u9fff]", low)
+def publish_sentence(task):
+    return "yes, publish %s to production" % task
 
 
-def skip_before_name(text, block):
-    """G11: a skip word stands right before the block's own name (at most 3 words between)."""
-    toks = _tokens(text)
-    skips = [_tokens(w) for w in SKIP_WORDS]
-    names = [_tokens(w) for w in BLOCK_WORDS.get(block, [])]
-    for i in range(len(toks)):
-        for sk in skips:
-            if not sk or toks[i:i + len(sk)] != sk:
-                continue
-            rest = toks[i + len(sk):]
-            for nm in names:
-                if not nm:
-                    continue
-                for k in range(0, 4):
-                    if rest[k:k + len(nm)] == nm:
-                        return True
-    return False
+def skip_sentence(block, task):
+    return "yes, skip %s for %s" % (block, task)
 
 
-def has_word(text, words):
-    """True when the text holds one of the words (case-insensitive; an ASCII word stands alone)."""
-    low = (text or "").lower().replace("\u2019", "'")
-    for w in words:
-        if re.match(r"^[a-z0-9' ]+$", w):
-            if re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(w), low):
-                return True
-        elif w in low:
-            return True
-    return False
+def says(text, sentence):
+    return approval_key(text) == approval_key(sentence)
 
 
 # ------------------------------------------------------------------ working branch

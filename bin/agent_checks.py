@@ -233,11 +233,8 @@ def cmd_owner_words(ctx, a):
     if "\n" in quote or "\r" in quote:
         raise Refuse("todo add: --owner-quote must not hold a line break")
     import agent_conf
-    if not agent_conf.has_word(quote, agent_conf.PUBLISH_WORDS):
-        raise Refuse("todo add: the owner's words do not name the publish")
-    if agent_conf.has_word(quote, agent_conf.NEGATION_WORDS):
-        raise Refuse("todo add: the owner's words do not clearly say publish now: ask him one plain question "
-                     "and quote his answer")
+    if not agent_conf.says(quote, agent_conf.publish_sentence(task)):
+        raise Refuse("todo add: ask the owner to type exactly: %s" % agent_conf.publish_sentence(task))
     verify_owner(ctx, quote, when or None, "todo add: owner words not verified, nothing written: ")
     gd = common_dir(ctx["root"])
     if gd:
@@ -307,9 +304,8 @@ def cmd_todo_checks(ctx, a):
         if block in (SIGN, "PR REVIEW"):
             raise Refuse("todo checks: %s is never removed" % block)
         import agent_conf
-        if not agent_conf.skip_before_name(quote, block):
-            raise Refuse("todo checks: the owner's words do not name %s and leaving it out: ask him one plain "
-                         "question and quote his answer" % block)
+        if not agent_conf.says(quote, agent_conf.skip_sentence(block, name)):
+            raise Refuse("todo checks: ask the owner to type exactly: %s" % agent_conf.skip_sentence(block, name))
         new = [b for b in old if b != block]
         at = field_index(f, "checks")
         removed = "removed %s %s" % (block, ctx["now"])
@@ -691,6 +687,7 @@ def default_base(root, d, f):
     return prod
 
 
+HEAD_BLOCKS = ("PR REVIEW", "FLOW CHECK", "UI CHECK", "OWNER SIGN", "DB CHECK", "DATA CHECK")
 LAUNCH_KIND = {"PR REVIEW": ("reviewer", "reviewer"), "FLOW CHECK": ("check-deputy", "check deputy"),
                "UI CHECK": ("check-deputy", "check deputy")}
 
@@ -886,12 +883,12 @@ def cmd_gate(ctx, a):
             lines.append("%s: pass with no commit, not accepted" % b)
             refused.append("%s no commit" % b)
         elif not on_branch(d, r[3], head, own):
-            if b in LAUNCH_KIND:
+            if b in HEAD_BLOCKS:
                 lines.append("%s: pass at %s, not a commit of this branch (head %s), not accepted" % (b, r[3], head[:12]))
             else:
                 lines.append("%s: the pass was at %s, not a commit of this branch, not accepted" % (b, r[3]))
             refused.append("%s not on this branch" % b)
-        elif b in LAUNCH_KIND and at_head(d, r[3], head, base) is not None:
+        elif b in HEAD_BLOCKS and at_head(d, r[3], head, base) is not None:
             why = at_head(d, r[3], head, base)
             if why[0] == "changed":
                 lines.append("%s: the merge after the review changed code (%s): review the new head" % (b, why[1]))
