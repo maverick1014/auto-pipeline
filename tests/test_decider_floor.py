@@ -453,7 +453,7 @@ class TestQuiz36(ScriptCase):
         self.assertIn("QUIZ RESULT: 39/39 PASS", out)
 
     def test_wrong_letters_name_the_rule(self):
-        for good, rule_code, wrongs in (("35B", "S1", ("35A", "35C", "35D")),
+        for good, rule_code, wrongs in (("35B", "R8", ("35A", "35C", "35D")),   # the release run (R8), check-blocks section 27
                                         ("36C", "W17", ("36A", "36B", "36D"))):
             for wrong in wrongs:
                 with self.subTest(wrong=wrong):

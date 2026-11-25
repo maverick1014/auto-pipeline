@@ -578,7 +578,7 @@ class TestUserConfig(unittest.TestCase):
             "main_manager": "string", "task_manager": "string", "reviewer_model": "string", "helper_model": "string",
             "max_usage_percent": "number",
             "permission_mode": "string", "auto_resume": "boolean", "todo_before_agent": "boolean", "working_branch": "string",
-            "watch_quiet_min": "number", "housekeep_interval_min": "number",
+            "watch_quiet_min": "number", "housekeep_interval_min": "number", "clear_quiet_min": "number",
             "city_port": "number", "city_idle_min": "number"}   # owner 1A: no Danger paths
     DEFAULTS = {"runtime": "auto", "language": "en",
                 "main_manager": "opus-5.5:high", "max_usage_percent": 80}

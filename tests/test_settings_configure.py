@@ -117,6 +117,8 @@ ORDER = [
     ("working_branch", "Flow: Working branch", "string", agent_conf.WORKING_BRANCH_DEFAULT),
     ("watch_quiet_min", "Stuck: Consider stuck after (min)", "number", 15),
     ("housekeep_interval_min", "Stuck: Tidy every (min)", "number", 120),
+    # owner order 2026-11-25 (TELL 9bb87b13): the auto clear waits until no human typed for this long
+    ("clear_quiet_min", "Context: Auto clear after quiet (min)", "number", 30),
     ("city_port", "City: City port", "number", 4777),
     ("city_idle_min", "City: City auto close (min)", "number", 30),
 ]
@@ -273,6 +275,7 @@ class TestSchema(unittest.TestCase):
         self.assertEqual((by["max_usage_percent"]["min"], by["max_usage_percent"]["max"]), (1, 100))
         self.assertEqual((by["housekeep_interval_min"]["min"], by["housekeep_interval_min"]["max"]), (0, 1440))
         self.assertEqual((by["city_port"]["min"], by["city_port"]["max"]), (1024, 65535))
+        self.assertEqual((by["clear_quiet_min"]["min"], by["clear_quiet_min"]["max"]), (0, 1440))
 
     def test_plugin_json_user_config_is_built_from_settings(self):
         with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as fh:

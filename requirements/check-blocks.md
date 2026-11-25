@@ -660,3 +660,22 @@ Contract (task manager):
 - C51 `agent-file.sh heartbeat "<task>" <step 0-7> <work minutes> "<what runs now>"`: one state line `HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date>`; a bad step, minutes or empty text: refused, nothing written. The dispatch brief's HEARTBEAT line names this command.
 - C52 `agent-file.sh todo est "<name>" +<minutes>` adds to the estimate (guess unchanged), every other field stays; prints `todo est: <name> <old>m -> <new>m`. The board's bar follows the new estimate and never shows less than the start of the task's stage.
 - C53 `agent-file.sh tell`: the line before `TELL OK ...` is `if this message adds work: agent-file.sh todo est "<task>" +<minutes>`.
+
+## 36. Owner order 2026-11-25 15:5x (TELL 9bb87b13): the auto clear waits until the human has been quiet
+
+- His words: "When no human interactive with you within the reent 30 minutes then you can clean ya". Cause: at 15:40 the auto clear wiped the main manager's chat while the owner was mid-discussion (his last prompt 15:34); it counted compactions only.
+- The auto clear (agent-autoclear.sh, the LIMIT line of agent-start.sh) fires only when no human has typed a prompt in that pane during the last N minutes (new Configure item, default 30); until then it waits and tries again at the next idle prompt. It holds for every session a human talks to (main manager, Helper); a task manager nobody types into is cleared as today.
+- A human prompt = typed by the human: not a task notification, a tell pointer, a cross-session message, the watch, or the auto clear's own prompts (agent-owner-order.sh verify already tells a typed owner prompt apart; reuse it). The quiz has no question about the clear: no quiz change. Section 34 is final (owner: "for ths one ok").
+
+Contract (task manager):
+- C54 Setting `clear_quiet_min`, Configure item "Context: Auto clear after quiet (min)", number, default 30, range 0-1440, right after housekeep_interval_min; 0 = no wait (the clear as before). 17 settings.
+- C55 `agent-owner-order.sh human-quiet --session <id> --minutes <n> [--repo <folder>]` (repo default: the caller's folder): the newest human prompt of that session's transcript (`<config home>/projects/<folder name>/<id>.jsonl`; a prompt verify counts as the owner's, pasted ones too) except the auto clear's own texts (they start with "AUTO CLEAR:", "/clear", "/goal ", "CLEARED:"); now = AGENT_FAKE_NOW when set, else the clock; exit 0 and `quiet` when there is none or it is n minutes old or older (n = 0: always quiet), else exit 1 and `typed <YYYY-MM-DD HH:MM>` (local time). Read only.
+- C56 agent-autoclear.sh: at step 1 (before the save prompt) and step 3 (before /clear), after the input box is empty: `human-quiet --session <session id> --minutes <clear_quiet_min> --repo <its folder>`; not quiet -> one line `AUTO CLEAR waiting: a human typed at <HH:MM>; the clear waits for <N> quiet minutes | <date>` (once per wait), pause compact_clear_check_sec, wait for the idle prompt again, check again. Not quiet at step 3 -> once quiet, back to step 1 (the save prompt again).
+- C57 The LIMIT line (agent-start.sh, pane case) with N > 0: `LIMIT: compacted <n> times. Save agent_state.txt now. This pane gets a save prompt and /clear at its next idle prompt once no human has typed for <N> minutes (S8).`; N = 0: the old line.
+- C58 Rule text, S8 (replaces the "Compacted 2 times" line; each line at most 200 characters):
+```
+- Compacted 2 times (fixed) → save state. Orca: `agent-autoclear.sh` types a save prompt, `/clear`, then `/goal` into the own pane, only at an idle prompt with an empty input box
+- The auto clear fires only when no human has typed a prompt in that pane for the last N minutes (setting "Context: Auto clear after quiet (min)", default 30); until then it waits and tries again
+- Not a human prompt: a task notification, a tell pointer, a cross-session message, the watch or the auto clear's own prompts. A task manager nobody types into is cleared as today
+```
+and "17 settings" where PRINCIPLES.md counts them.

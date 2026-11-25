@@ -56,8 +56,11 @@ CONT = "CLEARED: continue from agent_state.txt (S8)."
 GOAL = ("task manager goal-x: done when DONE PASS or DONE FAIL is written under === REPORT === in "
         "agent_state.txt and the branch is pushed, or a QUESTION:, MOCK READY or CLOSE CASE line waits "
         "for an answer, or you saved agent_state.txt after an AUTO CLEAR notice")
-LIMIT_PANE = ("LIMIT: compacted %d times. Save agent_state.txt now, then stop. This pane gets a save prompt "
-              "and /clear at its next idle prompt (S8).")
+# check-blocks section 36 (owner 2026-11-25): the clear waits until no human typed for clear_quiet_min (30)
+LIMIT_PANE = ("LIMIT: compacted %d times. Save agent_state.txt now. This pane gets a save prompt "
+              "and /clear at its next idle prompt once no human has typed for 30 minutes (S8).")
+LIMIT_PANE_NO_WAIT = ("LIMIT: compacted %d times. Save agent_state.txt now, then stop. This pane gets a save prompt "
+                      "and /clear at its next idle prompt (S8).")
 LIMIT_NO_PANE = ("LIMIT: compacted %d times. No pane to type into: save agent_state.txt, then tell the "
                  "human to type /clear.")
 LIMIT_OLD = "LIMIT: compacted %d times. Write agent_state.txt, end this session, restart from the file (S8, S2)."

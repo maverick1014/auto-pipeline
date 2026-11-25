@@ -156,7 +156,7 @@ class TestPrinciplesR8(unittest.TestCase):
         # never a rule line that the table of blocks does not back
         text = read("PRINCIPLES.md").split("## Notice")[0]
         found = set(re.findall(r"\b([A-Z]{2,}(?: [A-Z]{2,})+)\b", text))
-        extra = {"OWNER SIGN", "NIGHTLY RUN", "RELEASE RUN", "RELEASE SMOKE", "TEST RUN",   # sign, net, runner
+        extra = {"OWNER SIGN", "NIGHTLY RUN", "RELEASE RUN", "RELEASE SMOKE", "TEST RUN", "URGENT FIX",   # sign, net, runner
                  "DONE PASS", "DONE FAIL", "CLOSE CASE", "NEEDS HUMAN", "MOCK READY", "STALE PLUGIN",
                  "STATE LONG", "OWNER TODO", "QUESTIONS PAGE", "OWNER ORDER", "REPO TASK",   # report words
                  "GATE PASS", "GATE REFUSED", "CHECK PASS", "CHECK FAIL", "MERGE PASS", "MERGE FAIL",
@@ -522,7 +522,7 @@ class TestMemoryGate(unittest.TestCase):
             conf = json.load(fh)["userConfig"]
         self.assertNotIn("heavy_test_slots", conf)
         self.assertNotIn("max_agents", conf)
-        self.assertEqual(len(conf), 15)   # + Reviewer model (owner 2A)
+        self.assertEqual(len(conf), 17)   # + Reviewer model (owner 2A), Working branch, Auto clear after quiet
 
 class TestKeepTheResultLines(unittest.TestCase):
     """Core review re-check defect A (b, c): a verified task's worktree is removed before the owner's yes
