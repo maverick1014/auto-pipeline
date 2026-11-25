@@ -29,7 +29,7 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 aaa498cdfdcc8351 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd f79484733aea291b 73cfa63d05267f97 )
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 aaa498cdfdcc8351 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 73cfa63d05267f97 )
 RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S5 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 S1 W17 W18 R8 R8 )
 N=39
 
@@ -261,7 +261,7 @@ Q6. You are one of four agents. You changed files under api/auth/. Which tests d
   A. The full suite
   B. Tests for all of api/
   C. None; the manager runs them
-  D. Tests for api/auth/ only
+  D. The tests agent-level.sh lists under RELATED TESTS (they import or name the changed files)
 
 Q7. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
   A. Ask the owner again
@@ -317,11 +317,11 @@ Q15. Your last reply asked the owner questions 1 and 2. He has not answered. You
   C. Mention them only if the reply is short
   D. Repeat 1 and 2 under the same numbers in the decide section, the new one is 3
 
-Q16. A small task goes the fast lane. Which steps does it skip?
-  A. The todo line and the estimate
-  B. The worktree, failing tests first, the agent browser E2E, the full test run (minimal test at merge)
-  C. Verify and push
-  D. Merge and cleanup
+Q16. A small logic task (one function, about 30 minutes) needs a new test. Who does it?
+  A. A task manager in a new worktree, because it needs a test
+  B. One subagent in its own worktree: it writes the example tests, runs its blocks, pushes a branch
+  C. The main manager itself
+  D. Nobody: skip the test, it is small
 
 Q17. You are the main manager. A new feature will take about a day.
   A. Do it in this chat
@@ -374,8 +374,8 @@ Q24. You must change the permission mode.
 Q25. A big task takes the full flow. The order is:
   A. Worktree, workers build, failing tests, verify, merge
   B. Failing tests, worktree, mock, workers build, merge
-  C. Todo line + estimate, mock if UI, worktree + task manager, failing tests, workers build, verify, push, browser E2E, merge + cleanup, todo done
-  D. Mock, workers build, todo line, browser E2E, merge
+  C. Todo line + estimate, mock if UI, worktree + task manager, failing tests, workers build, verify, push, acceptance blocks, merge + cleanup, todo done
+  D. Mock, workers build, todo line, acceptance blocks, merge
 
 Q26. You start a new session. agent-start.sh says a main manager is already running.
   A. Become a second main manager
@@ -449,17 +449,17 @@ Q37. You are the main manager. The owner runs /auto-pipeline:question; agent-fil
   C. Run agent-file.sh questions --page, publish the page with the Artifact tool, then one line: the count, the link, "answer all, then tell me"
   D. Read every agent_state.txt and write your own summary
 
-Q38. A diff only rewords two lines in PRINCIPLES.md, a core path in agent_repo.conf. Its risk type:
-  A. A: doc or text only, even in PRINCIPLES.md; the main manager reads the diff
-  B. B: UI, Chrome compare with the approved mock
-  C. C: logic, failing tests first
-  D. D: it is a core path, the owner signs before merge
+Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: DIFF SCAN, RELATED TESTS, GUARD TESTS; dispatch planned DIFF READ. What runs?
+  A. The full suite once
+  B. Those three blocks and a DIFF READ by someone who did not write it, nothing else
+  C. Lint, type-check, UI CHECK and FLOW CHECK as well
+  D. Nothing: it is only text
 
-Q39. agent-level.sh prints "touches core path bin/agent_conf.py: judge from the brief whether it is D". The brief adds one new setting. You:
-  A. Raise the task to D: it is a core path
-  B. Ignore the line: it is only a hint
-  C. Judge from the brief: a new feature is normally C, D only when core code many things depend on changes; a second read-only agent checks the type, a disagreement goes to the owner
-  D. Ask the owner before every task that touches a core path
+Q39. The merge gate prints "GATE REFUSED t: DIFF READ missing". The owner is asleep. You:
+  A. Take DIFF READ off the todo line and merge
+  B. Merge: it is only a diff read
+  C. Have someone who did not build it read the diff and write its pass line (agent-file.sh check), then run the gate again; a block goes only on a verified owner order
+  D. Write the pass line yourself as the builder
 QUIZ
   exit 0
 fi

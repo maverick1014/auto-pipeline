@@ -8,26 +8,30 @@ Run these in order. First match wins.
 
 Every order you send another agent (brief, task, decision) starts with `[<model> <effort>]`: your own, from the `YOU:` line of your start text (PRINCIPLES.md W17).
 
-1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh time`, and the RESOURCES line. Pick the risk type A-D (R8) by the acceptance criterion that exists; a mixed task gets its parts checked each by its own type; unsure between two, take the higher. Estimate the task in minutes of agent work only; the waits (mock gate, owner question or review, hold, suite slot) are not in it. First write your own guess in minutes, before you run the estimator. Then run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh estimate --type <t> --lane fast|full --mock yes|no "<one line what>" --guess <your minutes>` (only facts known before dispatch). Its minutes go on the todo line as est. A blend version shows a `blend:` line; any other version says `guess: <g>m, not used` until a retrain picks the blend. Its range and its `like` lines (the 3 nearest past tasks) are the reason you give. It says `rubric`: the rubric won its backtest (or no version is trained yet), so its numbers are the rubric row.
+1. `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh time`, and the RESOURCES line. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh next` at every wake (a report, a watch signal, a human message) and dispatch what it lists as START at once; a task the owner already approved needs no new question. Estimate the task in minutes of agent work only; the waits (mock gate, owner question or review, hold, suite slot) are not in it. First write your own guess in minutes, before you run the estimator. Then run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh estimate --type <t> --lane fast|full --mock yes|no "<one line what>" --guess <your minutes>` (only facts known before dispatch; `<t>` is the kind of work: page, server, script, docs, cloud, app, data or mixed). Its minutes go on the todo line as est. A blend version shows a `blend:` line; any other version says `guess: <g>m, not used` until a retrain picks the blend. Its range and its `like` lines (the 3 nearest past tasks) are the reason you give. It says `rubric`: the rubric won its backtest (or no version is trained yet), so its numbers are the rubric row.
 
-Pick the type from the brief (R8): what changes, how much other code depends on it. Never from file paths alone. A doc or text diff is A, even in PRINCIPLES.md. A new feature is normally C; D only for core code many other things depend on.
+Pick the brief blocks (R8) from what the owner approved: what changes for the user, how much other code depends on it. The tool decides its own blocks from the real diff before merge (`agent-level.sh check`); you only add the ones the brief shows:
+- DIFF READ: text, style, a simple move (banner -> toast)
+- EXAMPLES TEST: behaviour or logic changes
+- FLOW CHECK: a behaviour a user can reach changes
+- UI CHECK: new page, re-layout, size or responsive change
+- REAL DATA COUNT: a rule, limit or validation is added or tightened, or a list, print or export changes
+- CORE REVIEW: the brief changes who can see or do what, or a posting rule
 
-A `touches core path <file>: judge from the brief whether it is D` line of agent-level.sh is only a hint, never a type.
-
-Then a second agent, read-only (`Explore`), gets the brief and the code, not the manager's answer, and names the type. A disagreement goes to the owner as a question (`park add`).
+Every `todo add` line carries them as `--checks "<BLOCK>,<BLOCK>"`. A requirement table copies its defaults from the released template and lists every changed default for the owner. A second agent only for CORE REVIEW or when someone wants a tool-triggered block removed (a removal needs a verified owner order).
 
 Parallel features? → first find the code they share (models, components, APIs). The shared part is its own task, merged first; the features that need it get `todo wait "<name>" on queue --after <shared task>` (W9).
 
 Touches another repo? → W12: keep your part, send the peer main manager the cross-repo brief below, called side first, hold your todo line until its DONE PASS.
 
-2. Small task (fast lane, R1)? → first `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<task>" small "<one line what>" <est_minutes> --guess <your_guess> --level <A-D>` (the guard refuses a deputy for a task with no todo line), then `Agent` with `subagent_type: fast-lane-deputy`, description `<task> Deputy`. Type D never takes the fast lane (R8): it goes to step 4 or 7. The deputy brief carries the type: `[<model> <effort>]` first, then `level: <A-D>`, the task, the file(s), the one test if any. Done. After its DONE PASS: `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" --lane fast --work <m> --type <t>`.
+2. Small task (fast lane, R1)? → first `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<task>" small "<one line what>" <est_minutes> --guess <your_guess> --checks "<BLOCK>,<BLOCK>" --builder "<task> Deputy"` (the guard refuses a deputy for a task with no todo line), then `Agent` with `subagent_type: fast-lane-deputy`, `isolation: "worktree"`, description `<task> Deputy`. It works in its own git worktree and pushes a branch; several small tasks run side by side. The deputy brief carries `[<model> <effort>]` first, then `checks: <the BLOCK list>`, the task, the file(s). When EXAMPLES TEST is planned the deputy writes the example tests first. Done. After its DONE PASS: run the blocks the brief planned that the deputy cannot (DIFF READ, FLOW CHECK, UI CHECK go to a check deputy by `/merge`), then a merge-deputy merges its branch (`/merge`), then `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo done "<name>" --lane fast --work <m> --type <t>`.
 3. Touches a live worktree's module? → `SendMessage` the task to that task manager. Status `final` → hold it, tell the human.
 4. Big, and a live task manager has capacity? → `SendMessage` it to that task manager.
 5. Idle or done worktrees in `agent_worktree.txt`? → run `/merge` for each first.
 6. RESOURCES over cap, or agents in state working or permission at `max_agents` (done or idle panes do not count)? → wait, tell the human.
 7. Otherwise, ask `${CLAUDE_PLUGIN_ROOT}/bin/agent-runtime.sh kind` first: orca, plain or cloud.
    ```
-   ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes> --guess <your_guess> --level <A-D>
+   ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo add "<name>" big "<one line what>" <est_minutes> --guess <your_guess> --checks "<BLOCK>,<BLOCK>"
    ```
    Once the worktree path is known (the board reads it), record where it runs:
    ```
@@ -39,6 +43,7 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    orca terminal create --worktree path:<worktree path> --title "<name> Task Manager" --command "AGENT_ROLE=task-manager claude --name '<name> Task Manager' --model '<model>' --effort <effort> --permission-mode <mode>" --json
    orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json
    ```
+   `worktree create` opens default tabs (a shell "Terminal 1" and a Claude "<name> Task Manager" session). Use that default agent pane for the brief (`orca terminal list --worktree path:<worktree path> --json` gives its handle, skip the `terminal create` line), or close it first; never open a second one beside it.
    A new pane stops at a menu (trust prompt)? `orca terminal send` has no key flag: send the raw key as text, then Enter, e.g. Down: `orca terminal send --terminal <handle> --text $'\x1b[B' --enter`.
    Then start, or restart, the ONE watch with Bash `run_in_background`:
    ```
@@ -80,7 +85,7 @@ Answer with its line: a duration AND a clock time, and when he is needed next. N
 [<model> <effort>] Brief from the main manager (<my session name>): you are the task manager for "<name>".
 WHERE: worktree <worktree path>, branch <branch>. Main repo <main repo> only for ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
 TODO LINE: <the todo line, as agent-file.sh show prints it>
-LEVEL: <A-D> (R8 check: <the check of that type, per part for a mixed task>)
+CHECKS: <the BLOCK list of the todo line> (R8; the tool adds its own blocks from the real diff before merge)
 GOAL: task manager <name>: done when DONE PASS or DONE FAIL is written under === REPORT === in agent_state.txt and the branch is pushed, or a "QUESTION:", "MOCK READY" or "CLOSE CASE" line waits for an answer, or you saved agent_state.txt after an AUTO CLEAR notice
 FEATURE: <requirement, 5 to 10 lines. Files to produce. What the user sees. Validation rules.>
 STEPS (at the start of each step run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" <stage>`; on another machine it writes a STAGE line into agent_state.txt and the main manager's watch carries it):
@@ -88,9 +93,9 @@ STEPS (at the start of each step run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh to
  0b kick-off: read the brief, then send the main manager your questions as QUESTION: lines (agent-file.sh state add) and wait for the answers before step 1; the main manager answers what it can and asks the owner only the rest (W1). After that, default + log (W1)
  1 register: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" register, then ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" working
  2 mock: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" mock; first if UI (W2): commit mock/<name>-mock.html, send me the path, STOP until "mock yes"; on another machine also append one line "MOCK READY <name>: <mock path>" to agent_state.txt in your worktree
- 3 tests: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" tests; write the failing tests yourself (W3), commit
+ 3 tests: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" tests; write the failing tests yourself (W3; the EXAMPLES TEST block), commit
  4 workers: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" workers; after each verified slice ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" workers <i>/<m> (i of m slices done). Agent subagent_type worker, description "<name> Worker <n>: <slice>", max 2 at once, each gets named files + one test command (W4); every worker brief starts with your own `[<model> <effort>]`. Check RESOURCES before each spawn (S3, S4). The board records each worker by itself (bin/agent-guard.sh). Only in a session without hooks (plain or cloud): ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker on <n> "<slice>" when it starts, ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worker off <n> when it ends
- 5 verify: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" verify; every worker result yourself. Full suite once. Defect → back to the worker with evidence. Set status final: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" final
+ 5 verify: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" verify; every worker result yourself; run the blocks of the task (`agent-level.sh check --base <ref>` lists them, one `agent-file.sh check` line per block). Defect → back to the worker with evidence. Set status final: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh worktree set "<worktree path>" "<name>" final
  6 push: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" push; commit, git push -u origin <branch>
  7 report: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" report; done, set status done, stay idle
 REPORT: append it to agent_state.txt in your worktree (`agent-file.sh state add`) under "=== REPORT ===", nothing else. First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then Result (test count), What changed (files), What to decide. Then the E2E click path: start command, URL, exact clicks, expected result, how to restore. Then one line: TIME: est <n>m, actual <n>m, wait <n>m (actual = agent work only; wait = mock gate, owner question or review, hold, suite slot). Then one line: FACTS: type <page|server|script|docs|cloud|app|data|mixed>, lane full, mock <yes|no>, bounces <n>, workers <n>, tests <n added>, scope adds <n>.
@@ -98,7 +103,7 @@ ASK: append a line starting "QUESTION:" to agent_state.txt (`agent-file.sh state
 HEARTBEAT: every 15 min, one line "HEARTBEAT <name>: step <n> of 7, work <m>m, <what runs now>" appended to agent_state.txt (`agent-file.sh state add`).
 CLOSE: on "close case" from me or the human: start nothing new, commit + push (WIP if unfinished), report into agent_state.txt (`agent-file.sh state add`), first line "CLOSE CASE <name>: finished" or "CLOSE CASE <name>: unfinished", then done, left + next steps, tests, click path, ideas, TIME. Wait for my decision; never close yourself.
 STATE: write agent_state.txt after every step (S7, S8): one line = `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh state add "<line>"`, never echo >>.
-NEVER: Claude in Chrome (W5). Product code. Full suite twice (W4). Files outside the worktree except via ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
+NEVER: Claude in Chrome (W5). Product code. Files outside the worktree except via ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
 ```
 
 ## Cross-repo brief (W12, fill the <>)
