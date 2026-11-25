@@ -24,6 +24,7 @@ Run: python3 -m unittest tests.test_check_cleanup
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -316,3 +317,62 @@ class TestRemoteListsToo(unittest.TestCase):
         body = src[src.index("    def gather_machine("):]
         body = body[:body.index("\n    def ", 10)]
         self.assertIn("list_complete(", body)
+
+
+# ---------------------------------------------------------------- section 23: a Helper that joined
+
+import test_agent_name as tn  # noqa: E402
+
+
+class TestHelperJoin(tn.HelperCase):
+    """Owner 2026-11-25: a human-direct session keeps its protection only while the human alone drives it."""
+
+    def join(self, task, env=None, sid=tn.SID_A):
+        base = {"CLAUDE_PID": tn.NOBODY, "ORCA_TERMINAL_HANDLE": "term_helper"}
+        if sid is not None:
+            base["CLAUDE_CODE_SESSION_ID"] = sid
+        base.update(env or {})
+        return self.repo.run("agent-file.sh", "helper-join", task, env=base)
+
+    def rows(self):
+        return [l for l in self.repo.read("agent_worktree.txt").splitlines() if l.strip()]
+
+    def test_the_protected_line_becomes_a_normal_task_line(self):
+        self.set_task("City Office 2")
+        r = self.join("city-office-2")
+        self.assertOk(r)
+        mine = [l for l in self.rows() if l.startswith(self.repo.dir + " | ")]
+        self.assertEqual(len(mine), 1, self.rows())
+        self.assertRegex(mine[0], r"^%s \| city-office-2 \| working \| since \d{4}-\d{2}-\d{2} \d{2}:\d{2} \| "
+                                  r"pane term_helper \| session %s$" % (re.escape(self.repo.dir), re.escape(tn.SID_A)))
+        self.assertNotIn("human-direct", mine[0])
+        self.assertIn("helper-join: city-office-2 (pane term_helper, session %s)" % tn.SID_A, r.stdout)
+
+    def test_only_a_helper_may_join(self):
+        before = self.repo.read("agent_worktree.txt")
+        r = self.repo.run("agent-file.sh", "helper-join", "x", env={"CLAUDE_PID": str(os.getpid())})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        r = self.repo.run("agent-file.sh", "helper-join", "x", env={"AGENT_ROLE": "task-manager",
+                                                                    "CLAUDE_PID": tn.NOBODY})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(self.repo.read("agent_worktree.txt"), before)
+
+
+class TestHelperJoinRules(unittest.TestCase):
+
+    def test_w10(self):
+        w10 = read("PRINCIPLES.md").split("W10. ")[1].split("W11. ")[0]
+        for phrase in ("keeps its protection only while the human alone drives it", "agent-file.sh helper-join",
+                       "takes a task from the main manager or reports DONE to it", "claude --resume <session id>"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, w10)
+
+    def test_merge_deputy_closes_a_joined_helper(self):
+        text = read("agents", "merge-deputy.md")
+        for phrase in ("helper-join", "like a task manager", "claude --resume <session id>"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_merge_and_dispatch_skills(self):
+        self.assertIn("only while the human alone drives it", read("skills", "merge", "SKILL.md"))
+        self.assertIn("helper-join", read("skills", "dispatch", "SKILL.md"))
