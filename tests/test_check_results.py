@@ -494,6 +494,17 @@ class TestGate(Case):
         r = self.gate("--results", path)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_results_from_a_report_with_indented_lines(self):
+        # final review: the REPORT is written with state add, which refuses a line starting with CHECK,
+        # so the REPORT carries the CHECK lines indented; --results reads them with the indent
+        path = os.path.join(self.repo.base, "report.txt")
+        with open(path, "w") as fh:
+            fh.write("=== REPORT ===\nDONE PASS t\n")
+            for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "DIFF READ"):
+                fh.write("  CHECK t %s: pass | by t Check | ok | 2026-11-25 13:00\n" % b)
+        r = self.gate("--results", path)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_no_todo_line_needs_checks(self):
         r = self.af("checks", "gate", "ghost", "--dir", self.repo.dir, "--base", "base")
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)

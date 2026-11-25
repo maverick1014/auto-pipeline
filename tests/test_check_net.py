@@ -133,6 +133,16 @@ class TestNightly(NetCase):
         out = self.nightly("--misses").stdout.splitlines()
         self.assertEqual(out[-1], "misses: 1 since %s" % date)
 
+    def test_a_nightly_started_after_the_bump_lets_the_release_go(self):
+        # final review defect D: merge skill step 8 bumps first, then --release-ok says no, then --start
+        self.put({".claude-plugin/plugin.json": '{"name": "p", "version": "0.2.0"}\n'})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "bump 0.2.0")
+        self.assertEqual(self.nightly("--release-ok").returncode, 1)
+        self.nightly("--start", "--wait")
+        r = self.nightly("--release-ok")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_the_nightly_tests_the_commit_not_the_shared_checkout(self):
         # re-check defect G: merge deputies work in the main checkout at night
         self.put({"src/x.txt": "half merged\n"})                    # uncommitted, in the main checkout

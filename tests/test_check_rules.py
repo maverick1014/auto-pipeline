@@ -483,6 +483,7 @@ class TestKeepTheResultLines(unittest.TestCase):
         brief = section(read("skills", "dispatch", "SKILL.md"), "## Task manager brief", "## Cross-repo brief")
         report = [l for l in brief.splitlines() if l.startswith("REPORT:")][0]
         self.assertIn("CHECK lines", report)
+        self.assertIn("indented", report)   # state add refuses a line that starts with CHECK
 
     def test_merge_runs_the_gate_on_a_scratch_copy_when_the_worktree_is_gone(self):
         text = read("skills", "merge", "SKILL.md")
