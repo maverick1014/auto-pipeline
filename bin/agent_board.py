@@ -12,7 +12,8 @@ Rows (whole repo): every line of agent_todo.txt; every human-direct line of agen
 the state lines (OWNER TODO, PARKED, WORKER) of the main repo's agent_state.txt and of every agent_worktree.txt
 folder that is on this machine (a folder that is not here: a note line after the table).
 Progress column: the "stage <stage>[ <i>/<m>] since <date>" field of a todo line (--self: else the "STAGE <name>:"
-line of its own agent_state.txt) gives a bar by the fixed stage weights (agent_conf.CONSTANTS). The parse, progress and done-by functions are plain module functions (a status
+line of its own agent_state.txt) gives a bar by the fixed stage weights (agent_conf.CONSTANTS); the "beat <m>m <text>" field (todo beat, written by the watch from a
+heartbeat) follows the bar. The parse, progress and done-by functions are plain module functions (a status
 line can call them). --watch <sec>: redraw every <sec> seconds until Ctrl-C.
     agent_board.py --statusline    (stdin: Claude Code's session JSON) one line per todo task that runs with a stage
                                    (name, bar, stage, done by) or waits on the owner or on others; queue, hold and
@@ -568,7 +569,7 @@ class Board:
         t = {"name": f[0].strip(), "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
              "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None,
-             "who": None, "after": None, "wrun": None, "started": None, "swaited": 0}
+             "who": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": ""}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
             if m and t["est"] is None:
@@ -610,6 +611,10 @@ class Board:
                 # a type letter; an old number reads as 0=A 1=B 2,3=C 4=D (R8)
                 v = m.group(1)
                 t["level"] = v if v.isalpha() else ("ABCCD" + "D" * 20)[int(v)]
+                continue
+            m = re.match(r"beat (.+)$", x)
+            if m and not t["beat"]:
+                t["beat"] = m.group(1).strip()
                 continue
             m = re.match(r"waited in stage (\d+)m$", x)
             if m:
@@ -721,6 +726,8 @@ class Board:
             progress = "-" if p is None else bar_text(p)
             if p is not None:
                 info = {"type": "run", "name": t["name"], "stage": t["stage"], "bar": progress, "done": done}
+            if p is not None and t["beat"]:
+                progress += " " + collapse(t["beat"])      # the last heartbeat: "<m>m <what runs now>"
         if info is not None:
             info["group"], info["notstarted"] = group, bool(t["since"] is None and started is None and not kind)
         status += self.watch_warn(t, group)

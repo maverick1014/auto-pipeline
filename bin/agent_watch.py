@@ -415,26 +415,53 @@ def scan_state(text):
     return n, count, last, w, wakes
 
 
-def stage_of(text, name):
+STEP_STAGES = ["brief", "register", "mock", "tests", "workers", "verify", "push", "report"]
+HEARTBEAT_LINE = re.compile(r"^HEARTBEAT (\S+): step ([0-7]) of 7, work (\d+)m, (.*?)(?: \| .*)?$")
+STEP_LINE = re.compile(r"^STEP ([0-7])\b")
+
+
+def progress_of_line(line, name):
+    """(stage, beat) of one state line, or None when it says nothing about this task's stage.
+    STAGE <name>: <stage>[ <i>/<m>] | since ...; HEARTBEAT <name>: step <n> of 7, work <m>m, <text> [| date]
+    (beat "<m>m <text>"); STEP <n> <word>: ... (n = 0..7: brief register mock tests workers verify push report)."""
+    line = line.rstrip("\r")
     prefix = "STAGE %s: " % name
-    value = ""
+    if line.startswith(prefix):
+        return re.sub(r" \| since.*", "", line[len(prefix):]), ""
+    m = HEARTBEAT_LINE.match(line)
+    if m and m.group(1) == name:
+        return STEP_STAGES[int(m.group(2))], ("%sm %s" % (m.group(3), m.group(4))).strip()
+    m = STEP_LINE.match(line)
+    if m:
+        return STEP_STAGES[int(m.group(1))], ""
+    return None
+
+
+def stage_of(text, name):
+    """(stage, beat) of the newest (last) STAGE, HEARTBEAT or STEP line of this task; ("", "") when none."""
+    value, full = ("", ""), ""
     for line in text.split("\n"):
-        if line.startswith(prefix):
-            value = line[len(prefix):]
-    return re.sub(r" \| since.*", "", value.rstrip("\r"))
+        got = progress_of_line(line, name)
+        if got:
+            if line.startswith("STAGE "):
+                full = got[0]
+            elif full.split()[:1] == [got[0]]:
+                got = (full, got[1])        # a heartbeat of the stage the STAGE line named keeps its "<i>/<m>"
+            value = got
+    return value
 
 
 def remote_command(path):
-    """The one short command: FSIG <n> <lines> <waiting> <last STAGE line>|<last wake line> FEND (R1: no
-    task name in it; Python picks the task's own stage). Under 400 chars or the task is not watched."""
-    return ("awk '/^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
-            "{n++;l=$0;w=/^([[][^]]*[]] )?[QM]/?1:2}/^TELL /{w=0}/^ *([[][^]]*[]] +)?ANSWER:/{if(w==1)w=0}"
-            "/^STAGE /{v=substr($0,7)}END{sub(/ [|] since.*/,\"\",v);"
-            "print \"FSIG\",n+0,NR,w+0,v \"|\" substr(l,1,%d),\"FEND\"}' %s"
+    """The one short command: FSIG <n> <lines> <waiting> <1 when the newest such line says "started"> <newest
+    STAGE|HEARTBEAT|STEP line>|<last wake line> FEND (R1: no task name in it; Python picks the task's own stage). Under 400 chars or the task is not watched."""
+    return ("awk -F' [|] ' '/^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
+            "{n++;l=$0;w=/^([[][^]]*[]] )?[QM]/?1:2}/^TELL |^ *([[][^]]*[]] +)?ANSWER:/{if(w==1||/^T/)w=0}"
+            "/^(STAGE|HEARTBEAT|STEP) /{v=substr($1,1,99);t=/tarted/}"
+            "END{print \"FSIG\",n,NR,w,t+0,v \"|\" substr(l,1,%d),\"FEND\"}' %s"
             % (LAST_CUT, shlex.quote(path + "/agent_state.txt")))
 
 
-FSIG = re.compile(r"^FSIG (\d+) (\d+) (\d+) (.*) FEND$")
+FSIG = re.compile(r"^FSIG (\d*) (\d+) (\d*) ([01]) (.*) FEND$")
 
 
 class Obs:
@@ -443,7 +470,8 @@ class Obs:
     def __init__(self, kind, err="", lines=None):
         self.kind, self.err, self.lines = kind, err, lines or []
         self.fn = self.fl = self.w = 0
-        self.last = self.stage = ""
+        self.last = self.stage = self.beat = ""
+        self.started = False
         self.wakes = []
         self.exited = False
 
@@ -465,7 +493,7 @@ class Task:
         self.lost = set()           # pane handles already reported LOST (R3)
         self.prev_ok, self.prev_screen, self.prev_fp = False, "", None
         self.same = self.idle = self.fails = 0
-        self.laststage = ""
+        self.laststage = self.lastbeat = ""
         self.confirmed = self.changed = ""
         self.stall_reason, self.stall_screen, self.stall_fp = "", "", None
         self.urgent = False
@@ -702,33 +730,51 @@ class Engine:
             if text is None:
                 return Obs("exited", lines=lines) if exited else Obs("fail", "cannot read %s" % f, lines)
             o.fn, o.fl, o.last, o.w, o.wakes = scan_state(text)
-            o.stage = stage_of(text, t.name)
+            o.stage, o.beat = stage_of(text, t.name)
+            body = [l for l in text.split("\n") if l.strip()]
+            o.started = bool(body) and "tarted" in body[-1]
             return o
         hit, err = self.shell_exchange(t, remote_command(t.path))
         if hit is None:
             return Obs("exited", lines=lines) if exited else Obs("fail", err, lines)
-        o.fn, o.fl, o.w = int(hit.group(1)), int(hit.group(2)), int(hit.group(3))
-        v, _, o.last = hit.group(4).partition("|")
-        prefix = "%s: " % t.name
-        o.stage = v[len(prefix):] if v.startswith(prefix) else ""
+        o.fn, o.fl, o.w = int(hit.group(1) or 0), int(hit.group(2)), int(hit.group(3) or 0)
+        o.started = hit.group(4) == "1"
+        v, _, o.last = hit.group(5).partition("|")
+        o.stage, o.beat = progress_of_line(v, t.name) or ("", "")
         return o
 
-    def carry_stage(self, t, stage):
-        if not stage or stage == t.laststage:
-            return
-        t.laststage = stage
-        parts = stage.split()
-        cmd = [os.path.join(HERE, "agent-file.sh"), "todo", "stage", t.name] + parts[:2]
+    def run_todo(self, args):
+        """agent-file.sh todo <args> in the main repo -> (ok, first line of the message)."""
+        cmd = [os.path.join(HERE, "agent-file.sh"), "todo"] + args
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, cwd=self.ctx.main, timeout=60,
                                stdin=subprocess.DEVNULL)
             ok, msg = r.returncode == 0, (r.stderr or r.stdout)
         except (OSError, subprocess.SubprocessError) as e:
             ok, msg = False, str(e)
-        if ok:
-            out("%s stage %s: %s" % (hhmm(), t.name, stage))
-        else:
-            out("%s stage %s: not carried (%s)" % (hhmm(), t.name, (msg.strip().splitlines() or [""])[0][:150]))
+        return ok, (msg.strip().splitlines() or [""])[0][:150]
+
+    def carry_stage(self, t, stage, beat=""):
+        """The newest STAGE, HEARTBEAT or STEP line of the task goes into the main repo's todo line (the main repo
+        is the brain): its stage by todo stage, a heartbeat's "<m>m <text>" by todo beat."""
+        if stage and stage != t.laststage:
+            old = t.laststage.split()
+            # a heartbeat knows only the stage word: it keeps the carried "workers <i>/<m>"
+            keep = len(old) == 2 and stage == old[0]
+            if not keep:
+                t.laststage, t.lastbeat = stage, ""
+                ok, msg = self.run_todo(["stage", t.name] + stage.split()[:2])
+                if ok:
+                    out("%s stage %s: %s" % (hhmm(), t.name, stage))
+                else:
+                    out("%s stage %s: not carried (%s)" % (hhmm(), t.name, msg))
+        if beat and beat != t.lastbeat:
+            t.lastbeat = beat
+            ok, msg = self.run_todo(["beat", t.name, beat])
+            if ok:
+                out("%s beat %s: %s" % (hhmm(), t.name, beat))
+            else:
+                out("%s beat %s: not carried (%s)" % (hhmm(), t.name, msg))
 
     def baseline(self, t):
         """The first read of a task: file signals already there are the baseline (B5, R2, R13)."""
@@ -746,7 +792,7 @@ class Engine:
                     t.last = saved["last"]
             self.load_stall(t, saved)
             return
-        self.carry_stage(t, o.stage)
+        self.carry_stage(t, o.stage, o.beat)
         if isinstance(sig, int):
             if o.fn < sig:
                 t.base, t.last = o.fn, o.last
@@ -801,7 +847,7 @@ class Engine:
                 events.append(("WATCH LOST %s: %s" % (t.name, o.err), None))
             return "fail %d/3" % t.fails
         t.fails = 0
-        self.carry_stage(t, o.stage)
+        self.carry_stage(t, o.stage, o.beat)
         now = now_text()
         t.confirmed = now
         screen = "\n".join(o.lines)
@@ -811,7 +857,7 @@ class Engine:
         elif not t.changed:
             t.changed = now
         file_same = t.prev_ok and fp == t.prev_fp
-        shells = shells_running(screen)
+        shells = shells_running(screen) or self.run_started(t, o, now)
         if file_same and screen == t.prev_screen and not shells:
             t.same += 1
         else:
@@ -870,6 +916,15 @@ class Engine:
         if t.same > 0:
             return "same %d" % t.same
         return "ok"
+
+    def run_started(self, t, o, now):
+        """The newest state line says a background run started, and the file has not been quiet for watch_quiet_min
+        yet: the manager waits for its own run, not stalled."""
+        if not o.started:
+            return False
+        since = parse_time(t.changed)
+        here = parse_time(now)
+        return since is not None and here is not None and (here - since).total_seconds() / 60 < quiet_limit()
 
     def one_sweep(self):
         fresh = self.prepare(False)
@@ -1047,12 +1102,26 @@ def fmt_num(x):
     return str(int(x)) if float(x) == int(x) else str(x)
 
 
+def quiet_limit():
+    """watch_quiet_min (agent.conf, default 15; the board's "not confirmed" uses it too)."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agent_conf
+        v = agent_conf.get("watch_quiet_min")
+        return v if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 240 else 15
+    except Exception:
+        return 15
+
+
 def shells_running(screen):
     """B6, B7: something still runs in the background: `shell still running`, `<n> shells still running`,
     `Waiting for <n> background agent(s) to finish`, or an agents-panel row of a running subagent
     (`  ◯ <type>  <task>  2m 45s · ...`). The bare `⏺ main` row shows on idle panes too: not busy."""
     return ("shell still running" in screen
             or re.search(r"\b\d+ shells? still running", screen) is not None
+            or re.search(r"(?m)\b[1-9]\d* (?:shells?|monitors?)\b", "\n".join(screen.split("\n")[-6:])) is not None
             or re.search(r"Waiting for \d+ background agents? to finish", screen) is not None
             or re.search(r"(?m)^ +[\u25ef\u25d0\u25d1\u25d2\u25d3\u2800-\u28ff] +\S.*\b\d+s\b", screen) is not None)
 
