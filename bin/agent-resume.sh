@@ -45,9 +45,7 @@ esac
 max_usage_percent=$(setting max_usage_percent) || max_usage_percent=80
 task_manager=$(setting task_manager) || task_manager=opus-5.5:high
 permission_mode=$(setting permission_mode) || permission_mode=bypassPermissions
-max_agents=$(setting max_agents) || max_agents=4
 case "$max_usage_percent" in ''|*[!0-9]*) max_usage_percent=80;; esac
-case "$max_agents" in ''|*[!0-9]*) max_agents=4;; esac
 
 . "$PLUGIN_ROOT/bin/agent-resources.sh"
 . "$PLUGIN_ROOT/bin/agent-runtime.sh"
@@ -105,7 +103,6 @@ model_name() {
 # ---- orca-only setup: live pane lookup, one runtime call. orca may be down. ----
 orca_down=0
 ps_tsv=""
-total_live_panes=0
 if [ "$KIND" = "orca" ]; then
   MODEL=$(model_name "$task_manager")
   EFFORT=${task_manager#*:}
@@ -128,14 +125,20 @@ for w in data.get("result", {}).get("worktrees", []):
 ')
   fi
 
-  # The cap counts spawned agents in state working or permission, not main
-  # managers and not done or idle panes (rule S6). Column 2 (any agent at the
-  # path) is a live pane for live_pane(): a done pane or a main manager pane
-  # still blocks a relaunch. Column 4 (busy agents) is what fills a cap slot.
-  if [ "$orca_down" -eq 0 ] && [ -n "$ps_tsv" ]; then
-    total_live_panes=$(printf '%s\n' "$ps_tsv" | awk -F'\t' '$3!=1{sum+=$4} END{print sum+0}')
+  # No count cap (check-blocks section 25): column 2 (any agent at the path) is a live pane for
+  # live_pane(); a done pane or a main manager pane still blocks a relaunch. Whether one more pane
+  # fits is the memory rule below.
+fi
+# The memory rule: memory in use + live reservations + the panes planned in this run + one pane's need
+# <= the Max memory % limit. "numbers" = "<used MB> <reserved MB> <limit MB> <pane MB>".
+room_used=0; room_reserved=0; room_limit=0; room_pane=550; room_known=0
+if room_nums=$(cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" numbers 2>/dev/null </dev/null); then
+  set -- $room_nums
+  if [ "$#" -eq 4 ]; then
+    room_used=$1; room_reserved=$2; room_limit=$3; room_pane=$4; room_known=1
   fi
 fi
+room_planned=0
 relaunch_count=0
 cap_lines=""
 need_by_hand=""
@@ -176,10 +179,15 @@ else
         relaunched="no, pane is live"
       elif [ "$over_cap" -eq 1 ]; then
         relaunched="no, over cap"
-      elif [ "$((total_live_panes + relaunch_count))" -ge "$max_agents" ]; then
-        relaunched="no, cap reached"
-        cap_lines="${cap_lines}cap reached ($((total_live_panes + relaunch_count))/$max_agents), not relaunching $path
+      elif [ "$room_known" -ne 1 ] || [ "$((room_used + room_reserved + room_planned + room_pane))" -gt "$room_limit" ]; then
+        relaunched="no, no room"
+        if [ "$room_known" -ne 1 ]; then
+          cap_lines="${cap_lines}no room (memory unknown), not relaunching $path
 "
+        else
+          cap_lines="${cap_lines}no room ($((room_used + room_reserved + room_planned)) MB + $room_pane MB > $room_limit MB), not relaunching $path
+"
+        fi
       else
         mode_eff="$permission_mode"
         cmd="AGENT_ROLE=task-manager claude --model $MODEL --effort $EFFORT --permission-mode $mode_eff"
@@ -190,6 +198,7 @@ else
           relaunched="yes"
         fi
         relaunch_count=$((relaunch_count + 1))
+        room_planned=$((room_planned + room_pane))
       fi
     else
       # plain, cloud: no terminals. Same "is this worth relaunching" checks,

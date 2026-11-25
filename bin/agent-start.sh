@@ -906,6 +906,12 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
   fi
 fi
 
+# check-blocks section 25 (C29): the main manager measures its own pane once, detached, never waited for. The weights
+# key "pane" is what a new pane costs in the memory gate (550 MB until measured).
+if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-room.sh" ]; then
+  ( cd "$PROJECT_ROOT" 2>/dev/null && nohup "$PLUGIN_ROOT/bin/agent-room.sh" measure-pane "${CLAUDE_PID:-$PPID}" >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
+fi
+
 # ---- compaction: short, no resources, no counts, no quiz. Same byte cap. ----
 if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   COMPACT_TEXT=$(print_compact_lines; printf 'X'); COMPACT_TEXT=${COMPACT_TEXT%X}
