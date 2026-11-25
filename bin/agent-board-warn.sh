@@ -15,8 +15,9 @@ IN=$(cat 2>/dev/null) || IN=""
   eval "$(printf '%s' "$IN" | python3 -c 'import json,sys,shlex
 try:
     d=json.load(sys.stdin)
-    print("EVENT=%s; HCWD=%s" % (shlex.quote(str(d.get("hook_event_name",""))), shlex.quote(str(d.get("cwd","")))))
-except Exception: print("EVENT=; HCWD=")' 2>/dev/null)"
+    print("EVENT=%s; HCWD=%s; SUB=%s" % (shlex.quote(str(d.get("hook_event_name",""))), shlex.quote(str(d.get("cwd",""))), "1" if d.get("agent_id") else ""))
+except Exception: print("EVENT=; HCWD=; SUB=")' 2>/dev/null)"
+  [ -z "$SUB" ] || exit 0
   roots_read "$HCWD"
   repo_set_up || exit 0
   role_read
@@ -48,7 +49,14 @@ if not lines:
     if seen.get("set"):
         save({"set": [], "at": seen.get("at", "")})
     sys.exit(0)
-if lines == seen.get("set"):
+
+
+def keys(ls):
+    import re
+    return sorted(re.sub(r" \(\d+m\)(?= ->)", "", x) for x in ls or [] if isinstance(x, str))
+
+
+if keys(lines) == keys(seen.get("set")):
     sys.exit(0)
 last = b.parse_time(seen.get("at")) if isinstance(seen.get("at"), str) else None
 if last is not None:

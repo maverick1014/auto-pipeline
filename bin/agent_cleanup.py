@@ -109,6 +109,20 @@ def real(path):
     return os.path.realpath(path) if path else ""
 
 
+def list_complete(data):
+    """False when an orca terminal list may be truncated or malformed: then it is unknown."""
+    res = data.get("result") if isinstance(data, dict) else None
+    if not isinstance(res, dict):
+        return False
+    terms = res.get("terminals")
+    if not isinstance(terms, list) or res.get("truncated"):
+        return False
+    total = res.get("totalCount")
+    if isinstance(total, int) and not isinstance(total, bool) and total > len(terms):
+        return False
+    return True
+
+
 def items(data, key):
     """result.<key> of an orca answer, as a list of dicts (else empty)."""
     res = data.get("result") if isinstance(data, dict) else None
@@ -328,7 +342,7 @@ class Sweep(object):
         terms = self.orca_read(["terminal", "list", "--json"])
         self.list_ok = lst is not None
         self.ps_ok = ps is not None
-        self.term_ok = terms is not None
+        self.term_ok = terms is not None and list_complete(terms)
         if lst is None:
             self.note("orca not answering: worktrees and panes not checked")
         root = real(self.root)
@@ -990,9 +1004,12 @@ class Sweep(object):
             if idle <= UNUSED_PANE_MIN:
                 continue
             if term.get("agentIdentity"):
-                if handle in launched:
-                    continue
-            elif not self.only_prompts(term.get("preview")):
+                if handle not in launched:
+                    self.keep("pane " + handle, path,
+                              "idle agent pane, no task record, idle %dm" % idle,
+                              "close it by hand if nobody uses it")
+                continue
+            if not self.only_prompts(term.get("preview")):
                 continue
             self.close_tried.add(("", handle))
             tail = "%s (%s) in %s: never got a prompt, idle %dm" % (handle, title, path, idle)
