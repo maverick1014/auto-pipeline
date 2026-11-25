@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -529,7 +530,8 @@ class TestGate(Case):
         path = os.path.join(self.repo.base, "report.txt")
         with open(path, "w") as fh:
             for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
-                fh.write("CHECK t %s: pass | by tm | ok | 2026-11-25 13:00\n" % b)
+                fh.write("CHECK t %s: pass | by tm | at %s | ok | %s\n"            # section 44 F3: the commit
+                         % (b, self.git("rev-parse", "HEAD").strip()[:12], time.strftime("%Y-%m-%d %H:%M")))
         r = self.gate("--results", path)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
@@ -540,7 +542,8 @@ class TestGate(Case):
         with open(path, "w") as fh:
             fh.write("=== REPORT ===\nDONE PASS t\n")
             for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
-                fh.write("  CHECK t %s: pass | by t Check | ok | 2026-11-25 13:00\n" % b)
+                fh.write("  CHECK t %s: pass | by t Check | at %s | ok | %s\n"     # section 44 F3: the commit
+                         % (b, self.git("rev-parse", "HEAD").strip()[:12], time.strftime("%Y-%m-%d %H:%M")))
         r = self.gate("--results", path)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 

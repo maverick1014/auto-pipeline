@@ -803,7 +803,10 @@ def cmd_gate(ctx, a):
         elif b in LAUNCH_KIND and not launched(launches, LAUNCH_KIND[b][0], r[4]):
             lines.append("%s: no %s launched by the main manager for %s, not accepted" % (b, LAUNCH_KIND[b][1], task))
             refused.append("%s not launched by the main manager" % b)
-        elif b in LAUNCH_KIND and r[3] and not at_head(d, r[3], head, base):
+        elif b in LAUNCH_KIND and not r[3]:
+            lines.append("%s: pass with no commit, not accepted" % b)
+            refused.append("%s no commit" % b)
+        elif b in LAUNCH_KIND and not at_head(d, r[3], head, base):
             lines.append("%s: pass at %s, not at the head %s, not accepted" % (b, r[3], head[:12]))
             refused.append("%s not at the head" % b)
         else:
