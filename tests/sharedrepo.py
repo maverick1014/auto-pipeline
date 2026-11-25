@@ -52,9 +52,15 @@ def tree_state(base):
     return rows
 
 
-def remember_runs(repo, after=None):
-    """Make repo.run() answer a repeated call from memory. after(): called
-    after each real (first) run."""
+def changed_paths(old, new):
+    before = {r[0]: r for r in old}
+    after = {r[0]: r for r in new}
+    return sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
+
+
+def remember_runs(repo, after=None, before=None):
+    """Make repo.run() answer a repeated call from memory. before(): called
+    right before each real (first) run; after(): right after it."""
     real = repo.run
     seen = {}
 
@@ -62,6 +68,8 @@ def remember_runs(repo, after=None):
         key = json.dumps([script, list(args), sorted((kwargs.get("env") or {}).items()),
                           kwargs.get("stdin"), kwargs.get("cwd")], default=str)
         if key not in seen:
+            if before:
+                before()
             seen[key] = real(script, *args, **kwargs)
             if after:
                 after()
@@ -157,7 +165,8 @@ def shared_fixture(guard=None, remember=(), remember_repo=False):
                 finally:
                     del self.addCleanup
                 if remember_repo and getattr(self, "repo", None) is not None:
-                    remember_runs(self.repo, after=lambda: resnap(self))
+                    remember_runs(self.repo, after=lambda: resnap(self),
+                                  before=lambda: precheck(self))
                 for key, value in vars(self).items():
                     if key not in before or before[key] is not value:
                         setattr(cls, key, value)
@@ -172,10 +181,29 @@ def shared_fixture(guard=None, remember=(), remember_repo=False):
             # first real run of each remembered call
             cls._once_state = tree_state(folder_of(self)) if guard else None
 
+        def precheck(self):
+            # right before a new real run: a write the test made so far would
+            # be taken into the baseline by resnap, so remember it for tearDown
+            if not guard or getattr(cls, "_once_state", None) is None:
+                return
+            now = tree_state(folder_of(self))
+            if now != cls._once_state:
+                early = cls.__dict__.get("_once_early")
+                if early is None:
+                    early = cls._once_early = []
+                early.extend(changed_paths(cls._once_state, now))
+
         def tearDown(self):
             teardown(self)
             if not guard:
                 return
+            early = cls.__dict__.get("_once_early")
+            if early:
+                paths = sorted(set(early))
+                del early[:]
+                cls._once_state = tree_state(folder_of(self))
+                self.fail("this test changed the shared fixture before a new call "
+                          "(give it its own setUp): %s" % ", ".join(paths[:10]))
             now = tree_state(folder_of(self))
             if now != cls._once_state:
                 before = {r[0]: r for r in cls._once_state}
@@ -196,6 +224,7 @@ def shared_fixture(guard=None, remember=(), remember_repo=False):
                         cls._remembered = store
                     key = json.dumps([name, list(args), sorted(kwargs.items())], default=str)
                     if key not in store:
+                        precheck(self)
                         store[key] = real(self, *args, **kwargs)
                         resnap(self)
                     return store[key]
