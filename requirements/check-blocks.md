@@ -292,3 +292,7 @@ S1: "- Core paths of a repo (`level3_paths`, `level4_paths`) live in its committ
 
 F. Map: "Risk types: R8" becomes "Check blocks: R8"; the tree gets "  ├── Check deputy       (Sonnet 5, medium)  diff read, flow and UI checks, release smoke; one at a time on the browser" and the main manager line "(Opus 5.5, xhigh · the main chat · free for the human)"; scripts: "bin/agent-level.sh   the blocks a diff triggers (R8): agent-level.sh check --base <ref>", "bin/agent_blocks.py  the one table of blocks and triggers (R8)", "bin/agent-board-warn.sh  hook: a new or changed board warning into the main manager's context"; commands: "bin/agent-file.sh next  the queued tasks that can start now, then the board warnings", "bin/agent-file.sh checks gate <task> --dir <path>  the merge gate"; Files table: a row for `agent_repo.conf` (init, agents via `edge add` / who reads: agent-level.sh, the gate, init).
 Every other "type", "level" or "R8 check" word in PRINCIPLES.md, skills and agents goes (tests/test_check_rules.py LEVEL_WORDS).
+
+## 14. Contract: the watch's slot wake (section 2, tests/test_check_warnings.py TestWatchSlot)
+
+- `agent-watch.sh --all` exits with `WATCH SLOT <name>: can start (run agent-file.sh next)` when `agent-file.sh next` lists START for a line with an open queue wait (after-task closed, or none). A line that never queued never wakes it. Each name is said once: the status file keeps `"slots": [<names said>]`.

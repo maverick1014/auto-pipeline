@@ -341,7 +341,7 @@ class ScriptRepo:
     CONF_KEY = {"fast_lane_deputy": "helper_model", "merge_deputy": "helper_model",
                 "worker": "helper_model", "board_guard": "todo_before_agent"}
     # owner 1A 2026-11-25: core paths are repo facts, in <project>/agent_repo.conf
-    REPO_KEYS = ("level3_paths", "level4_paths")
+    REPO_KEYS = ("level3_paths", "level4_paths", "core_paths")   # check-blocks: core_paths too
     BOOL_KEYS = ("auto_update", "auto_resume", "todo_before_agent")
     NUMBER_KEYS = ("max_agents", "max_usage_percent", "heavy_test_slots", "watch_quiet_min",
                    "housekeep_interval_min", "city_port", "city_idle_min")

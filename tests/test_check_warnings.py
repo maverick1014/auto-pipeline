@@ -11,6 +11,7 @@ Written by the task manager before any code (TELL 315ae904, owner 2026-11-25).
         lines; PostToolUse: {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": ..}}.
         First line "Board warning for the main manager, act in this turn:". Exit 0, stderr empty, no orca.
     (3) rule text: tests/test_check_rules.py (W15).
+    (2b) the watch wakes the main manager when a slot is free and a task is queued: WATCH SLOT <name>
     (4) the watch: a target task with no task manager pane is watched through the live pane of the
         human-direct Helper whose task names it (field 3 "task: <Task Name>", the name in lower case with
         runs of other characters as "-"); the pane is found in the Helper's folder by its title
@@ -185,6 +186,45 @@ class TestHelperPaneConfirms(AllCase):
                          "worktreePath": self.repo.dir, "agentIdentity": "claude"}])
         self.run_all(max_sweeps="2")
         self.assertFalse(self.status()["tasks"]["city-office-2"]["watched"])
+
+
+class TestWatchSlot(AllCase):
+    """Section 2: the watch wakes the main manager when a slot is free and a task is queued.
+    Only a line with an open queue wait whose after-task is closed (or that has none) counts;
+    each name is said once (the status file keeps "slots": [names said])."""
+
+    def queued(self, name, after=None):
+        self.todo(name)
+        args = ["todo", "wait", name, "on", "queue"] + (["--after", after] if after else [])
+        self.assertOk(self.repo.run("agent-file.sh", *args))
+
+    def test_a_queued_task_that_can_start_wakes_the_manager(self):
+        self.task("alpha")
+        self.queued("q")
+        text = self.text(self.run_all(max_sweeps="3"))
+        self.assertEqual(self.one_watch(text), "WATCH SLOT q: can start (run agent-file.sh next)")
+        self.assertEqual(self.status()["slots"], ["q"])
+
+    def test_said_once(self):
+        self.task("alpha")
+        self.queued("q")
+        self.run_all(max_sweeps="3")
+        text = self.text(self.run_all(max_sweeps="2"))
+        self.assertEqual(self.one_watch(text), "WATCH MAX all")
+
+    def test_after_an_open_task_no_wake(self):
+        self.task("alpha")
+        self.todo("alpha-line")
+        self.assertOk(self.repo.run("agent-file.sh", "todo", "stage", "alpha-line", "tests"))
+        self.queued("q", after="alpha-line")
+        text = self.text(self.run_all(max_sweeps="2"))
+        self.assertEqual(self.one_watch(text), "WATCH MAX all")
+
+    def test_a_line_that_never_queued_never_wakes(self):
+        self.task("alpha")
+        self.todo("plain")
+        text = self.text(self.run_all(max_sweeps="2"))
+        self.assertEqual(self.one_watch(text), "WATCH MAX all")
 
 
 if __name__ == "__main__":
