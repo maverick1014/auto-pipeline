@@ -261,6 +261,8 @@ W15. Watch
 - Verify every launch within 2 min
 - One `agent-watch.sh --all` in the background (Bash run_in_background) watches every task manager, local and on another machine: its pane and its worktree `agent_state.txt` (a report goes under `=== REPORT ===`); restart it after each wake
 - A task manager's HEARTBEAT, ACK, report and question go into `agent_state.txt` only, never SendMessage; only DONE PASS, DONE FAIL, QUESTION:, MOCK READY, CLOSE CASE and the watch's STALL and LOST wake the main manager
+- The watch carries a task's stage to the main repo from the newest STAGE line or HEARTBEAT step (0-7 = brief to report); the heartbeat's work minutes and text go to the board's progress cell
+- A manager at its idle prompt while its own background run goes (pane shows shells or monitors, or its newest state line says started, for watch_quiet_min) is not a stall
 - Long text to a task manager: `agent-file.sh tell <task> "<msg>"` (the block goes into its file, one pointer line to its pane, receipt checked)
 - Start and resume print the `agent-watch.sh --all` command when no watch runs
 - The board says `not confirmed <n>m` when a task is not watched or has been quiet
@@ -270,6 +272,7 @@ W15. Watch
 W16. Known traps
 - A push to the integration branch denied by the auto-mode classifier → never retry or work around. Hand the owner one `! git push ...` line, or ask for an allow rule (init prints `Bash(git push origin main)` as optional)
 - A cross-session message held because permission modes differ → say so, ask the owner to click Deliver, never type it into the pane
+- MODE MISMATCH line at start (this session's mode differs from the Permission mode setting) → tell the owner once, plainly; never change a mode, never skip the approval
 - Remote Orca pane: a long `terminal send` (~4 KB) arrives cut → write the brief into the worktree's `agent_state.txt` in chunks, send a one-line pointer
 - Find another agent's pane with `orca worktree ps --json`, never by its title (titles are often from an old task)
 - `terminal read` shows only the visible screen → use `--cursor`

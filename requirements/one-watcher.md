@@ -38,7 +38,7 @@ LAUNCH kinds are spelled as agent_guard.py writes them: `tm-pane`, `shell-pane` 
 
 | # | Rule | Example |
 |---|---|---|
-| B1 | Each sweep reads every watched target: its TM pane (`orca terminal read`) and its state file (local: the file; remote: one short command through its shell pane, under 400 chars, answer read with `--cursor`, as the single mode does today) | |
+| B1 | Each sweep reads every watched target: its TM pane (`orca terminal read`) and its state file (local: the file; remote: one short command through its shell pane, under 500 chars (was 400; a 140-char path must fit), answer read with `--cursor`, as the single mode does today) | |
 | B2 | Wake lines fire: `WATCH SIGNAL <name>: <line>`, then the last 15 screen lines of that TM | `WATCH SIGNAL one-watcher: QUESTION: RULES READY one-watcher: requirements/one-watcher.md, rules yes? \| 2026-11-23 18:10` |
 | B3 | Never wake (part 4): HEARTBEAT, ACK, STAGE, ANSWER, TELL lines, any other line. They count as a file change (no stall). STAGE is still carried to the todo line as today | `HEARTBEAT one-watcher: step 4 of 7, work 40m, worker 1` → sweep line only |
 | B4 | One sweep finishes every target first, then prints one WATCH line (+ evidence) per event, in target order, then exits 0. Two tasks with a new line in one sweep → two WATCH lines, one exit | `WATCH SIGNAL a: DONE PASS a` and `WATCH SIGNAL b: QUESTION: port?` |
@@ -126,7 +126,7 @@ Gaps the first tests did not catch. Each closes a way the watch could miss a wak
 
 | # | Fix | Rows |
 |---|---|---|
-| R1 | The remote read command is built short enough for real sizes (30-char name under a v4-plus path); a command that would still be 400 chars or more is never sent: not watched, why `read command too long (<n> chars)` | B1 |
+| R1 | The remote read command is built short enough for real sizes (30-char name under a v4-plus path); a command that would still be 500 chars or more is never sent: not watched, why `read command too long (<n> chars)` | B1 |
 | R2 | A task not baselined in a run (not watched, or the run ended before its first good read) keeps its saved wake-line count in the status file (or null = seen for the first time); it never falls to 0 | B5 |
 | R3 | An exited pane: the state file is still read, its new wake lines fire first, then `WATCH LOST <name>: pane exited (…)`. LOST is reported once per pane handle (kept in the status file; sweep state `lost`); a new pane for the task is watched again | B11, B13 |
 | R4 | Idle-prompt and login stalls are held by (reason, state file) only, not by the screen (a status line clock moves): reported once until the file changes | B7, B8, B10 |
