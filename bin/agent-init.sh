@@ -345,7 +345,8 @@ BLOCK
 echo "Those permission rules go into .claude/settings.json in this project."
 echo "A plugin cannot add permission rules by itself: either paste the block, or run $PLUGIN_ROOT/bin/agent-init.sh --add-permissions and it merges them for you."
 ask_add_permissions
-wb_allow=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" working-branch "$ROOT" 2>/dev/null </dev/null) || wb_allow=""
+if [ -n "$NO_BRANCH" ]; then wb_cmd=stored-working-branch; else wb_cmd=working-branch; fi
+wb_allow=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" "$wb_cmd" "$ROOT" 2>/dev/null </dev/null) || wb_allow=""
 [ -n "$wb_allow" ] || wb_allow="<your working branch>"
 echo "Optional: if the auto-mode classifier denies the push of your working branch, also allow \"Bash(git push origin $wb_allow)\"."
 
