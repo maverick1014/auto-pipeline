@@ -350,3 +350,17 @@ skills/merge step 8: before `bin/agent-release.sh --push`, run `bin/agent-nightl
 F map: scripts `bin/agent-nightly.sh  the nightly run of all tests: gates nothing, records selection misses, --release-ok`, `bin/agent-test-run.sh  every test run: light or heavy by measured weight, the heavy-test slot`; commands `bin/agent-nightly.sh --status | --misses | --release-ok`.
 Quiz Q9 (rule S5, answer A): see tests/test_check_rules.py QUIZ_Q9.
 Every "FULL SUITE" and "NIGHTLY SUITE" word leaves PRINCIPLES.md, skills and agents.
+
+## 17. Owner decision 1A, 2026-11-25 15:0x (TELL 6ce0708e): rapid-development flow
+
+- (1) No task runs the full suite: a task runs its related/module tests and its needed checks, then merges into the WORKING BRANCH.
+- (2) Working branch = the branch that does not reach users: in auto-pipeline that is main (users install `release`); a repo whose main deploys to production keeps a branch `dev` as working branch, and dev merges into main only at release. agent_repo.conf names it (`working_branch=`, default main when a release branch exists, else dev); init asks nothing, it detects and writes it.
+- (3) The full suite runs ONCE on the working branch before a release (and the nightly net). Failures: the main manager gives them to a NEW fixer agent (fast-lane deputy or a task manager by size), never back to the builder. The release waits until that run is green.
+- (4) This task follows it too: no full suite in this task; its final check is the module tests of what it touched (nearly all tests; with a free heavy slot, in 2 processes).
+
+Contract (task manager):
+- C8 agent_repo.conf `working_branch=<name>`; init writes it after real_data: `main` when a branch named `release` exists (local or origin), else `dev`; an existing value is never changed. The reader `agent_conf.repo_conf()` gives it, default `main` when the key is missing.
+- C9 `agent-file.sh checks gate`: `--base` default `origin/<working_branch>`.
+- C10 `agent-nightly.sh`: --start tests the tip of the working branch (local branch `<working_branch>`, else HEAD), in its scratch tree; --release-ok compares with that tip, or its parent when the tip only bumps .claude-plugin/plugin.json; a nightly run started after the bump (on the tip) counts too.
+- C11 NET rows: NIGHTLY RUN, RELEASE RUN, RELEASE SMOKE. RELEASE RUN runs: "the full suite once on the working branch before a release (a green nightly on that commit counts); failures go to a new fixer agent, never back to the builder; the release waits until it is green".
+- C12 Rule text: R1 step 9 "Merge into the working branch + cleanup"; R8 the working branch and the release run lines; W8 the deputy merges into the working branch; merge skill, merge deputy (brief field `working branch: <name>`, `git merge` there, `git push origin <working branch>`), dispatch brief; quiz Q25 option C ("merge into the working branch + cleanup") and Q35 (rule R8, answer B: a failure of the release run goes to a new fixer agent).
