@@ -188,7 +188,7 @@ class TestEffectiveRefusesDefault(TmpCase):
 
     def test_a_stored_default_is_not_set(self):
         self.configure(permission_mode="default")
-        self.assertEqual(agent_conf.get("permission_mode"), "auto")
+        self.assertEqual(agent_conf.get("permission_mode"), "bypassPermissions")
         self.assertEqual(agent_conf.source("permission_mode"), "default")
 
     def test_an_old_user_file_is_ignored(self):
@@ -212,7 +212,7 @@ class TestCityLine(TmpCase):
 
     def test_default_never_reaches_a_local_line(self):
         words = self.words("permission_mode=default\n")
-        self.assertEqual(flag(words, "--permission-mode"), "auto")
+        self.assertEqual(flag(words, "--permission-mode"), "bypassPermissions")
         self.assertNotIn("default", words)
 
     def test_a_user_file_never_reaches_a_line(self):
@@ -240,7 +240,7 @@ class TestScriptsRefuseDefault(ScriptCase):
     def test_get_never_prints_default(self):
         """dispatch and a Helper read the mode with `agent-settings.sh get`."""
         self.repo.set_conf("permission_mode", "default")
-        self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "auto (from default)\n")
+        self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "bypassPermissions (from default)\n")
         self.repo.set_conf("permission_mode", "manual")
         self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "manual (from Configure)\n")
 
@@ -257,10 +257,10 @@ class TestResumeRefusesDefault(ScriptCase):
         self.assertEqual(len(calls), 1, calls)
         return calls[0][calls[0].index("--command") + 1]
 
-    def test_default_relaunches_in_auto(self):
+    def test_default_relaunches_in_the_setting_default(self):
         self.repo.set_conf("permission_mode", "default")
         command = self.command()
-        self.assertTrue(command.endswith("--permission-mode auto"), command)
+        self.assertTrue(command.endswith("--permission-mode bypassPermissions"), command)
         self.assertNotIn("default", command)
 
     def test_dont_ask_reaches_the_relaunch(self):
@@ -275,7 +275,7 @@ class TestStartLineRefusesDefault(ScriptCase):
         self.repo.set_conf("permission_mode", "default")
         out = self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"}))
         lines = [l for l in out.splitlines() if l.startswith("PERMISSION:")]
-        self.assertEqual(lines, ["PERMISSION: auto (from default)"])
+        self.assertEqual(lines, ["PERMISSION: bypassPermissions (from default)"])
 
 
 # ===================================================================== S2

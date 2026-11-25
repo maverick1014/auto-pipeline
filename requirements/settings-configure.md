@@ -33,7 +33,7 @@ Groups cannot show, so the group is the first word of the title.
 | 7 | max_agents | Load: Max agents | number 1-16 | 4 | max_agents |
 | 8 | max_usage_percent | Load: Max memory % | number 1-100 | 80 | max_usage_percent |
 | 9 | heavy_test_slots | Load: Heavy test slot/time | number 1-8 | 1 | heavy_test_slots |
-| 10 | permission_mode | Permissions: Permission mode | string, picker | auto | permission_mode (user file wins) |
+| 10 | permission_mode | Permissions: Permission mode | string, picker | bypassPermissions (owner order 2026-11-25, as since 2026-11-04) | permission_mode (user file wins) |
 | 11 | auto_resume | Permissions: Auto resume | boolean | true | auto_resume |
 | 12 | todo_before_agent | Rules: Todo before agent | boolean | true | board_guard (on = true; record, off = false) |
 | 13 | watch_quiet_min | Stuck: Consider stuck after (min) | number 1-240 | 15 | watch_quiet_min |

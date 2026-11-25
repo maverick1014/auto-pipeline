@@ -358,7 +358,7 @@ class TestOpen(AddCase):
         self.known(bare)
         code, body = self.add(bare)
         self.assertEqual(code, 200, body)
-        self.assertEqual(shlex.split(self.calls[0][2]), ["claude", "--name", "bare Manager"] + ["--model", "opus", "--effort", "high", "--permission-mode", "auto"] + [PROMPT])
+        self.assertEqual(shlex.split(self.calls[0][2]), ["claude", "--name", "bare Manager"] + ["--model", "opus", "--effort", "high", "--permission-mode", "bypassPermissions"] + [PROMPT])
 
     def test_unknown_territory(self):
         self.known(self.shop)
@@ -508,9 +508,9 @@ class TestCommand(AddCase):
     def test_agent_conf_text_cannot_break_the_line(self):
         cases = {
             # settings-configure: a refused value reads as the setting default
-            "both": ("main_manager=opus-5.5:high; touch pwned\npermission_mode=auto$(touch pwned)\n", ["--model", "opus", "--effort", "high", "--permission-mode", "auto"]),
+            "both": ("main_manager=opus-5.5:high; touch pwned\npermission_mode=auto$(touch pwned)\n", ["--model", "opus", "--effort", "high", "--permission-mode", "bypassPermissions"]),
             "mode": ("main_manager=opus-5.5:xhigh\npermission_mode=auto && touch pwned\n",
-                     ["--model", "opus", "--effort", "xhigh", "--permission-mode", "auto"]),
+                     ["--model", "opus", "--effort", "xhigh", "--permission-mode", "bypassPermissions"]),
             "model": ("main_manager=`touch pwned`:high\npermission_mode=plan\n",
                       ["--model", "opus", "--effort", "high", "--permission-mode", "plan"]),
             "effort": ("main_manager=opus-5.5:huge\npermission_mode=auto\n", ["--model", "opus", "--effort", "high", "--permission-mode", "auto"]),

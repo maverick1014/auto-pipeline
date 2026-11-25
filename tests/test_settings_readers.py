@@ -117,7 +117,7 @@ class TestSettingsScript(SettingsCase):
         self.assertEqual(self.assertOk(self.settings("get", "language")), "en (from default)\n")
         self.repo.set_conf("language", "zh")
         self.assertEqual(self.assertOk(self.settings("get", "language")), "zh (from Configure)\n")
-        self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "auto (from default)\n")
+        self.assertEqual(self.assertOk(self.settings("get", "permission_mode")), "bypassPermissions (from default)\n")
         self.assertEqual(self.assertOk(self.settings("get", "stage_tests")), "20 (from constant)\n")
 
     def test_get_an_unknown_key_fails(self):

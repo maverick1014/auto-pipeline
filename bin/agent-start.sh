@@ -760,7 +760,7 @@ print_compact_lines() {
 print_mode_lines() {
   local pyp="$PLUGIN_ROOT/bin" m rk upd au
   m=$("$PLUGIN_ROOT/bin/agent-settings.sh" get permission_mode 2>/dev/null </dev/null) || m=""
-  [ -n "$m" ] || m="auto (from default)"
+  [ -n "$m" ] || m="bypassPermissions (from default)"
   echo "PERMISSION: $m"
   case $role in
     main|takeover) rk=main_manager;;

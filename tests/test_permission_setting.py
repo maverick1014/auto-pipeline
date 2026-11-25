@@ -11,7 +11,8 @@ CONTRACT
    raises.
 2. bin/agent-resume.sh: --permission-mode <the setting>.
 3. Start text, every role: exactly one line "PERMISSION: <the agent-settings.sh get
-   permission_mode output>", e.g. "PERMISSION: auto (from default)",
+   permission_mode output>", e.g. "PERMISSION: bypassPermissions (from default)" (owner order
+   2026-11-25: the default is bypassPermissions, as since 2026-11-04),
    "PERMISSION: acceptEdits (from Configure)". No "USER CONF:" line ever.
 4. skills/dispatch/SKILL.md and PRINCIPLES.md W10 take <mode> from
    `agent-settings.sh get permission_mode`; W10's "- New terminals" line names the
@@ -67,16 +68,16 @@ class TestCityCommand(unittest.TestCase):
         words = self.words()
         return words[words.index("--permission-mode") + 1] if "--permission-mode" in words else None
 
-    def test_nothing_set_is_auto(self):
-        self.assertEqual(self.mode(), "auto")
+    def test_nothing_set_is_bypass(self):
+        self.assertEqual(self.mode(), "bypassPermissions")
 
     def test_the_setting_wins(self):
         self.configure(permission_mode="bypassPermissions")
         self.assertEqual(self.mode(), "bypassPermissions")
 
-    def test_a_refused_value_falls_back_to_auto(self):
+    def test_a_refused_value_falls_back_to_the_default(self):
         self.configure(permission_mode="$(touch pwned)")
-        self.assertEqual(self.mode(), "auto")
+        self.assertEqual(self.mode(), "bypassPermissions")
         self.assertFalse(os.path.exists(os.path.join(self.folder, "pwned")))
 
     def test_old_files_decide_nothing(self):
@@ -84,7 +85,7 @@ class TestCityCommand(unittest.TestCase):
             fh.write("main_manager=opus-5.5:xhigh\npermission_mode=plan\n")
         with open(os.environ["AUTO_PIPELINE_USER_CONF"], "w") as fh:
             fh.write("permission_mode=acceptEdits\n")
-        self.assertEqual(self.mode(), "auto")
+        self.assertEqual(self.mode(), "bypassPermissions")
         self.assertEqual(self.words()[self.words().index("--effort") + 1], "high")
 
     def test_the_whole_line(self):
@@ -95,7 +96,7 @@ class TestCityCommand(unittest.TestCase):
     def test_never_raises(self):
         with open(os.path.join(self.cfg, "settings.json"), "w") as fh:
             fh.write("{broken")
-        self.assertEqual(self.mode(), "auto")
+        self.assertEqual(self.mode(), "bypassPermissions")
 
 
 class TestResume(ScriptCase):
@@ -115,11 +116,11 @@ class TestResume(ScriptCase):
         self.assertTrue(self.command().endswith("--permission-mode acceptEdits"))
 
     def test_an_old_user_file_decides_nothing(self):
-        self.repo.set_user_conf("permission_mode=bypassPermissions\n")
-        self.assertTrue(self.command().endswith("--permission-mode auto"))
+        self.repo.set_user_conf("permission_mode=plan\n")
+        self.assertTrue(self.command().endswith("--permission-mode bypassPermissions"))
 
-    def test_nothing_set_is_auto(self):
-        self.assertTrue(self.command().endswith("--permission-mode auto"))
+    def test_nothing_set_is_bypass(self):
+        self.assertTrue(self.command().endswith("--permission-mode bypassPermissions"))
 
 
 class TestLaunchText(unittest.TestCase):
@@ -158,7 +159,7 @@ class TestStartPermissionLine(ScriptCase):
 
     def test_not_set(self):
         self.assertEqual(self.lines_with(self.start(), "PERMISSION:"),
-                         ["PERMISSION: auto (from default)"])
+                         ["PERMISSION: bypassPermissions (from default)"])
 
     def test_the_main_manager_gets_it_too(self):
         out = self.assertOk(self.repo.run("agent-start.sh"))

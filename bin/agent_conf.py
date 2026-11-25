@@ -62,7 +62,7 @@ SETTINGS = [
        "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.", min=1, max=100),
     _s("heavy_test_slots", "Load: Heavy test slot/time", "number", 1,
        "How many heavy test runs may run at once. Whole number, 1 to 8.", min=1, max=8),
-    _s("permission_mode", "Permissions: Permission mode", "string", "auto",
+    _s("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions",
        "How much an agent may do without asking. bypassPermissions asks nothing; auto lets the model judge.",
        options=PERMISSION_MODES),
     _s("auto_resume", "Permissions: Auto resume", "boolean", True,

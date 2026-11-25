@@ -183,9 +183,10 @@ class TestLaunchLine(LineCase):
                          ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "bypassPermissions", PROMPT])
 
     def test_nothing_set_is_the_defaults(self):
+        os.remove(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "settings.json"))
         folder = self.folder("bare", None)
         self.assertEqual(shlex.split(ac.agent_command("x Manager", folder)),
-                         ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
+                         ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "bypassPermissions", PROMPT])
 
     def test_the_old_cloud_key_decides_nothing(self):
         conf = conf_text(cloud_permission_mode="bypassPermissions")
@@ -205,13 +206,15 @@ class TestLaunchLine(LineCase):
         folder = self.folder("both", conf)
         command = ac.agent_command("x Manager", folder)
         self.assertEqual(shlex.split(command),
-                         ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "auto", PROMPT])
+                         ["claude", "--name", "x Manager"] + MODEL + ["--permission-mode", "bypassPermissions", PROMPT])
         self.assertNotIn("pwned", command)
 
-    def test_the_shipped_default_is_auto(self):
+    def test_the_shipped_default_is_bypass(self):
+        # owner order 2026-11-25: the default stays bypassPermissions (as since 2026-11-04)
+        os.remove(os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "settings.json"))
         folder = self.folder("shipped", None)
         local = shlex.split(ac.agent_command("x Manager", folder))
-        self.assertEqual(local[local.index("--permission-mode") + 1], "auto")
+        self.assertEqual(local[local.index("--permission-mode") + 1], "bypassPermissions")
 
 
 class TestAddAgent(LineCase):
@@ -311,8 +314,9 @@ class TestSkipWarning(InitCase):
         self.assertBlockStillParses(out)
         self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "settings.json.bak-auto-pipeline")))
 
-    def test_the_default_auto_is_quiet(self):
-        self.assertEqual(self.warn_lines(self.assertOk(self.init())), [])
+    def test_the_default_bypass_warns_too(self):
+        # owner order 2026-11-25: the default is bypassPermissions, so init warns about the skip key
+        self.assertOneWarning(self.assertOk(self.init()))
 
     def test_the_key_set_is_quiet(self):
         path = self.settings({"skipDangerousModePermissionPrompt": True, "theme": "dark"})
@@ -335,10 +339,10 @@ class TestSkipWarning(InitCase):
                 self.assertEqual(open(path, "rb").read(), before, "never writes the user's settings file")
 
     def test_broken_json_warns(self):
-        # a broken settings.json: the setting reads as the default (auto), so no warning
+        # a broken settings.json: the setting reads as its default (bypassPermissions), so it warns
         path = self.settings(raw="{not json")
         out = self.assertOk(self.init())
-        self.assertEqual(self.warn_lines(out), [])
+        self.assertOneWarning(out)
         self.assertEqual(open(path).read(), "{not json")
 
     def test_auto_is_quiet(self):

@@ -95,7 +95,7 @@
         "dontAsk",
         "plan"
       ],
-      "default": "auto"
+      "default": "bypassPermissions"
     },
     "auto_resume": {
       "type": "boolean",

@@ -109,7 +109,7 @@ ORDER = [
     ("max_agents", "Load: Max agents", "number", 4),
     ("max_usage_percent", "Load: Max memory %", "number", 80),
     ("heavy_test_slots", "Load: Heavy test slot/time", "number", 1),
-    ("permission_mode", "Permissions: Permission mode", "string", "auto"),
+    ("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions"),   # owner order 2026-11-25
     ("auto_resume", "Permissions: Auto resume", "boolean", True),
     ("todo_before_agent", "Rules: Todo before agent", "boolean", True),
     ("watch_quiet_min", "Stuck: Consider stuck after (min)", "number", 15),
@@ -374,7 +374,7 @@ class TestGet(unittest.TestCase):
         self.h.configure({"runtime": "docker", "permission_mode": "yolo"})
         env = self.h.env()
         self.assertEqual(agent_conf.get("runtime", env), "auto")
-        self.assertEqual(agent_conf.get("permission_mode", env), "auto")
+        self.assertEqual(agent_conf.get("permission_mode", env), "bypassPermissions")
         self.assertEqual(len(agent_conf.warnings(env)), 2)
 
     def test_manager_below_the_decider_floor_is_refused(self):
@@ -426,7 +426,7 @@ class TestGet(unittest.TestCase):
             env = self.h.env(AUTO_PIPELINE_USER_CONF=user)
             self.assertEqual(agent_conf.get("language", env), "en")
             self.assertEqual(agent_conf.get("max_agents", env), 4)
-            self.assertEqual(agent_conf.get("permission_mode", env), "auto")
+            self.assertEqual(agent_conf.get("permission_mode", env), "bypassPermissions")   # the default, not the old file's
         finally:
             os.chdir(old_cwd)
 
@@ -696,18 +696,25 @@ class TestMigration(unittest.TestCase):
     def test_the_user_file_moves_too_and_wins_for_its_keys(self):
         self.old_conf("permission_mode=acceptEdits\n")
         with open(self.user, "w") as fh:
-            fh.write("permission_mode=bypassPermissions\nauto_update=off\n")
+            fh.write("permission_mode=plan\nauto_update=off\n")   # plan: not the default (bypassPermissions)
         out = "\n".join(self.migrate())
         payload = {}
         for call in self.configure_calls():
             payload.update(json.loads(call["stdin"]))
-        self.assertEqual(payload, {"permission_mode": "bypassPermissions", "auto_update": "false"})
+        self.assertEqual(payload, {"permission_mode": "plan", "auto_update": "false"})
         self.assertIn("auto-pipeline.conf", out)
 
     def test_the_user_file_path_can_come_from_the_env(self):
-        other = self.h.write("elsewhere/u.conf", "permission_mode=bypassPermissions\n")
+        other = self.h.write("elsewhere/u.conf", "permission_mode=plan\n")
         self.migrate(AUTO_PIPELINE_USER_CONF=other)
-        self.assertEqual(self.h.options().get("permission_mode"), "bypassPermissions")
+        self.assertEqual(self.h.options().get("permission_mode"), "plan")
+
+    def test_a_user_file_bypass_is_the_default_and_not_moved(self):
+        # owner order 2026-11-25: bypassPermissions is the default, so nothing to write
+        with open(self.user, "w") as fh:
+            fh.write("permission_mode=bypassPermissions\n")
+        self.migrate()
+        self.assertEqual(self.configure_calls(), [])
 
     def test_a_bad_old_value_is_not_moved(self):
         self.old_conf("max_agents=99\nlanguage=zh\n")

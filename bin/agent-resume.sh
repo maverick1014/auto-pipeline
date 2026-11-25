@@ -44,7 +44,7 @@ esac
 # different place when this script runs from inside a worktree.
 max_usage_percent=$(setting max_usage_percent) || max_usage_percent=80
 task_manager=$(setting task_manager) || task_manager=opus-5.5:high
-permission_mode=$(setting permission_mode) || permission_mode=auto
+permission_mode=$(setting permission_mode) || permission_mode=bypassPermissions
 max_agents=$(setting max_agents) || max_agents=4
 case "$max_usage_percent" in ''|*[!0-9]*) max_usage_percent=80;; esac
 case "$max_agents" in ''|*[!0-9]*) max_agents=4;; esac
