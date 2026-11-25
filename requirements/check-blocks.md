@@ -679,3 +679,26 @@ Contract (task manager):
 - Not a human prompt: a task notification, a tell pointer, a cross-session message, the watch or the auto clear's own prompts. A task manager nobody types into is cleared as today
 ```
 and "17 settings" where PRINCIPLES.md counts them.
+
+## 37. CORE REVIEW findings (2026-11-25 16:4x, an independent read-only agent): fixes, each with a small test
+
+- F1 agents/merge-deputy.md step 2: the deputy reads `git branch --show-current` in the main checkout first. On `<working branch>`: merge there and `git push origin <working branch>`. Still on the production branch (a repo not switched yet, section 33: "until it has switched, merges go on as before"): merge there as before and push that branch. Any other branch: FAIL, nothing merged. Rule: "push the branch the main checkout is on".
+- F2 CORE REVIEW joins the builder rule (bin/agent_checks.py BUILDER_BLOCKS, R8 text): a CORE REVIEW pass by the task's own task manager, worker or deputy is refused like PR REVIEW.
+- F3 No standing allow rule for a push to production: W16 and agent-init.sh say "working branch" instead of "integration branch"; init's optional allow line names `Bash(git push origin <working branch>)` with the real name, never `git push origin main`; skills/clean-up pushes the branch the main checkout is on.
+- F4 `agent_conf.working_branch`: a setting value equal to the repo's production branch is never used: the default form is used instead, with one stderr line `working branch: "<value>" is the production branch; using <default>`.
+- F5 W9 and W15 speak of room, not slots: W9 "dispatches what can start: room under the Max memory % limit (S3)"; W15 "when there is room for a queued task (WATCH SLOT)". The signal name WATCH SLOT stays.
+- F6 R8 and skills/dispatch: "Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed".
+- F7 skills/merge: description "send the reviewer and the check deputy" (no "run the browser E2E"; also PRINCIPLES.md); step 1 bounces a report without a click path only when FLOW CHECK or UI CHECK is planned; skills/merge and skills/dispatch: an early fix: "merge its base branch back into your branch" (the working branch, or the production branch for a direct fix), never "merge main back".
+- F8 agent-board-warn.sh: reads its state first and builds the board at most once a minute (`"checked": "<minute>"` in agent_warn_seen.json); inside that minute it exits before importing the board.
+- F9 human-quiet: when the folder from --repo has no `<session>.jsonl`, it looks in every project folder of every config home for that session file (a session started in a subfolder).
+- F10 The name is derived only by init and the start (`working_branch(repo, derive=True)`); every other caller reads the stored value only (`working_branch(repo)` returns None when nothing is stored, stores nothing). The gate with nothing stored: base origin/<production> and one note `note: no working branch stored in this clone: give --base origin/<working branch> (the brief names it)`. agent-promote.sh and agent-nightly.sh with nothing stored: refused, `no working branch stored in this clone: run agent-init.sh or start the main manager here`. An empty git user.name: the login name (cleaned), else "user". The CLI `working-branch <repo>` derives (it is the person's own command).
+- F11 bin/agent_conf.py docstring: 17 settings.
+- PR REVIEW findings (2026-11-25 16:4x, the reviewer), same section:
+- P1 agent_promote.py direct path: the local production ref follows the merge (fast-forward only) before the release build runs, so the release (which builds only from a commit on local production) succeeds.
+- P2 The direct path refuses a task branch that carries commits of the working branch not in production: `<branch> carries commits of <working branch> that are not in <production>: branch it from <production>`, nothing pushed. The urgent deputy and the dispatch skill start the branch with `git switch -c <branch> origin/<production branch>`.
+- P3 `follow_local` moves the local production ref only as a fast-forward; else one line `local <production> not moved: not a fast-forward` (never backward).
+- P4 init switches the checkout only in a new repo (no agent_state.txt in its root); a repo that already uses the plugin gets the branch created and the start's `WORKING BRANCH: ... at a quiet point ...` line (section 33).
+- P5 `agent-init.sh --no-branch`: no working-branch step. The start's first-run setup runs `agent-init.sh" --no-measure --no-branch` (the start creates the branch itself, C44); agent-cloud-pack.sh passes --no-branch.
+- P6 Each promote uses its own short-lived worktree (`<git common dir>/agent_promote_wt_<pid>`) and removes only that one.
+- P7 The sweep counts a branch as merged when it is in origin/<production> or origin/<working branch> (the stored one); its advice: "merge it into the working branch, or remove it by hand".
+- P8 A failed push of the working branch: `working branch: not pushed: <git's first line>` (init and the start); a failed creation: `working branch: not created: <git's first line>`. The lost twin of test_this_repo_has_its_file comes back (agent_repo.conf tracked, its core paths pinned).

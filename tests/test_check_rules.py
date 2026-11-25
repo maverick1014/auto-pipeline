@@ -222,15 +222,18 @@ class TestPrinciplesOtherRules(unittest.TestCase):
     def test_w9_small_tasks_and_self_assignment(self):
         w9 = self.rule("W9. ", "W10. ")
         for phrase in ("own git worktree", "never share a checkout", "agent-file.sh next",
-                       "at every wake", "needs no new question", "todo done", "slot"):
+                       "at every wake", "needs no new question", "todo done",
+                       "room under the Max memory % limit (S3)"):   # section 37 F5: room, not slots
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w9)
+        self.assertNotIn("free slot under the machine caps", w9)
         self.assertNotIn("Never spawn a worktree for a small task", w9)
 
     def test_w15_restart_the_watch_first(self):
         w15 = self.rule("W15. ", "W16. ")
         self.assertIn("the first action is to start the watch again, then handle the signal", w15)
-        self.assertIn("a slot is free", w15)
+        self.assertIn("when there is room for a queued task (WATCH SLOT)", w15)   # section 37 F5: room, not slots
+        self.assertNotIn("slot is free", w15)
         self.assertIn("board warning", w15)
 
     def test_the_map_names_the_new_pieces(self):
