@@ -45,18 +45,11 @@ Relaunch, one orca call per worktree, with exactly these arguments:
 A live pane = the worktree is in `orca worktree ps --json` with a non-empty agents list.
 An empty agents list means the pane is gone, even when a plain shell is still open.
 
-The agent cap (S6). Before each relaunch, count every agent in state working
-or permission in `orca worktree ps --json`, across every worktree and every
-repo, plus the relaunches this run has already made. The cap is per device, so
-agents in other repos count. An agent in state done or idle does NOT count
-(owner 2026-11-02: a finished idle pane is no load). A pane in a worktree the
-JSON marks "isMainWorktree": true is a main manager and does NOT count either.
-At or over max_agents from agent.conf:
-  - the row reads "no, cap reached"
-  - and one plain line prints after the table, one per skipped worktree:
-        cap reached (<n>/<max>), not relaunching <path>
-A --dry-run "would" takes a slot too, so the plan it prints is honest.
-The resource cap is checked first: "no, over cap" wins over "no, cap reached".
+No count cap (owner 2026-11-25, check-blocks section 25): a pane is relaunched while memory in use
++ live reservations + the panes this run planned + one pane's need fits under the Max memory % limit
+(TestRoomForPanes); else the row reads "no, no room" and one line prints after the table:
+        no room (<in use + reserved + planned> MB + <pane> MB > <limit> MB), not relaunching <path>
+A --dry-run "would" plans its pane too. The resource guard is checked first: "no, over cap".
 
 Resources come from agent-resources.sh, which honours AGENT_FAKE_RAM and AGENT_FAKE_CPU
 so tests never have to measure the real machine.
@@ -77,7 +70,9 @@ to sweep. They are a different shape, not a crippled copy:
   - the counts still print, and the exit code is 0
 """
 
+import json
 import os
+import subprocess
 import sys
 import unittest
 
@@ -371,170 +366,72 @@ class TestTable(ResumeCase):
         self.assertIn("ideas: 0 waiting", out)
 
 
-class TestAgentCap(ResumeCase):
-    """S6: max_agents is a machine limit. Resume must not blow past it."""
+class TestRoomForPanes(ResumeCase):
+    """Owner 2026-11-25 (check-blocks section 25, F): no count cap. A pane is relaunched while
+    memory in use + the live reservations + the panes this run already planned + one pane's need
+    fits under the Max memory % limit. A pane needs its measured MB (weights key "pane"), 550 MB
+    while it was never measured. Done, idle and main-manager panes are no count problem any more."""
 
-    def setup_cap(self, max_agents, dead, live_elsewhere=0, main_managers=0):
-        """`dead` worktrees needing a relaunch, plus panes busy somewhere else."""
-        self.repo.set_conf("max_agents", str(max_agents))
+    def setup_room(self, dead, pane_mb=2000):
+        if pane_mb is not None:
+            gd = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--path-format=absolute",
+                                 "--git-common-dir"], capture_output=True, text=True, check=True).stdout.strip()
+            with open(os.path.join(gd, "agent_test_weights.json"), "w") as fh:
+                json.dump({"pane": "0 s %d MB" % pane_mb}, fh)
         paths = [self.repo.make_worktree("dead%d" % i) for i in range(dead)]
-        self.repo.set_worktree_lines([(p, "dead%d" % i, "working")
-                                      for i, p in enumerate(paths)])
-        panes = [{"path": p, "agents": []} for p in paths]
-        for i in range(live_elsewhere):
-            panes.append({"path": "/elsewhere/%d" % i, "agents": ["working"]})
-        for i in range(main_managers):
-            panes.append({"path": "/other-repo/%d" % i, "agents": ["working"],
-                          "is_main": True})
-        self.repo.set_panes(panes)
+        self.repo.set_worktree_lines([(p, "dead%d" % i, "working") for i, p in enumerate(paths)])
+        self.repo.set_panes([{"path": p, "agents": []} for p in paths]
+                            + [{"path": "/elsewhere/%d" % i, "agents": ["working"]} for i in range(6)])
         return paths
 
-    def test_stops_relaunching_at_the_cap(self):
-        paths = self.setup_cap(max_agents=3, dead=3, live_elsewhere=2)
-        out = self.assertOk(self.resume())
-        self.assertEqual(len(self.repo.create_calls()), 1, out)
-        self.assertEqual(self.relaunched_for(out, paths[0]), "yes")
-        self.assertEqual(self.relaunched_for(out, paths[1]), "no, cap reached")
-        self.assertEqual(self.relaunched_for(out, paths[2]), "no, cap reached")
+    def env(self, ram="40", total="10000"):
+        return {"AGENT_FAKE_RAM": ram, "AGENT_FAKE_RAM_TOTAL_MB": total,
+                "AGENT_RESERVE_FILE": os.path.join(self.repo.base, "reserve.json")}
 
-    def test_relaunches_count_towards_the_cap(self):
-        paths = self.setup_cap(max_agents=2, dead=3, live_elsewhere=0)
-        out = self.assertOk(self.resume())
+    def test_relaunches_while_memory_has_room(self):
+        paths = self.setup_room(dead=3)                     # 4000 + 2000 + 2000 <= 8000; a third is over
+        out = self.assertOk(self.resume(env=self.env()))
         self.assertEqual(len(self.repo.create_calls()), 2, out)
-        self.assertEqual(self.relaunched_for(out, paths[2]), "no, cap reached")
-
-    def test_done_and_idle_agents_do_not_count(self):
-        paths = self.setup_cap(max_agents=2, dead=1)
-        self.repo.set_panes([{"path": paths[0], "agents": []},
-                             {"path": "/elsewhere/a", "agents": ["done"]},
-                             {"path": "/elsewhere/b", "agents": ["done", "idle"]},
-                             {"path": "/elsewhere/c", "agents": ["idle"]}])
-        out = self.assertOk(self.resume())
         self.assertEqual(self.relaunched_for(out, paths[0]), "yes")
+        self.assertEqual(self.relaunched_for(out, paths[1]), "yes")
+        self.assertEqual(self.relaunched_for(out, paths[2]), "no, no room")
+        self.assertIn("no room (8000 MB + 2000 MB > 8000 MB), not relaunching %s" % paths[2], out)
 
-    def test_working_and_permission_agents_count(self):
-        paths = self.setup_cap(max_agents=2, dead=1)
-        self.repo.set_panes([{"path": paths[0], "agents": []},
-                             {"path": "/elsewhere/a", "agents": ["working"]},
-                             {"path": "/elsewhere/b", "agents": ["permission", "done"]}])
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.relaunched_for(out, paths[0]), "no, cap reached")
-        self.assertIn("cap reached (2/2), not relaunching %s" % paths[0], out)
-
-    def test_a_done_pane_is_still_a_live_pane(self):
-        paths = self.setup_cap(max_agents=3, dead=1)
-        self.repo.set_panes([{"path": paths[0], "agents": ["done"]}])
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.relaunched_for(out, paths[0]), "no, pane is live")
-
-    def test_a_full_cap_relaunches_nothing(self):
-        paths = self.setup_cap(max_agents=1, dead=2, live_elsewhere=1)
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.repo.create_calls(), [])
-        for path in paths:
-            self.assertEqual(self.relaunched_for(out, path), "no, cap reached")
-
-    def test_the_cap_line_names_the_numbers_and_the_path(self):
-        paths = self.setup_cap(max_agents=3, dead=2, live_elsewhere=3)
-        out = self.assertOk(self.resume())
-        for path in paths:
-            self.assertIn("cap reached (3/3), not relaunching %s" % path, out)
-
-    def test_the_cap_line_counts_the_relaunches_it_made(self):
-        paths = self.setup_cap(max_agents=2, dead=3, live_elsewhere=0)
-        out = self.assertOk(self.resume())
-        self.assertIn("cap reached (2/2), not relaunching %s" % paths[2], out)
-
-    def test_no_cap_line_when_nothing_is_capped(self):
-        self.setup_cap(max_agents=4, dead=1, live_elsewhere=0)
-        out = self.assertOk(self.resume())
+    def test_many_live_agents_are_no_count_problem(self):
+        paths = self.setup_room(dead=1)                     # six working panes elsewhere: no cap any more
+        out = self.assertOk(self.resume(env=self.env()))
+        self.assertEqual(self.relaunched_for(out, paths[0]), "yes")
         self.assertNotIn("cap reached", out)
 
-    def test_panes_in_worktrees_that_are_not_in_the_file_still_count(self):
-        paths = self.setup_cap(max_agents=2, dead=1, live_elsewhere=2)
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.repo.create_calls(), [])
-        self.assertEqual(self.relaunched_for(out, paths[0]), "no, cap reached")
+    def test_an_unmeasured_pane_needs_550_mb(self):
+        paths = self.setup_room(dead=1, pane_mb=None)
+        out = self.assertOk(self.resume(env=self.env(ram="75")))   # 7500 + 550 > 8000
+        self.assertEqual(self.relaunched_for(out, paths[0]), "no, no room")
+        self.assertIn("no room (7500 MB + 550 MB > 8000 MB), not relaunching %s" % paths[0], out)
 
-    def test_dry_run_respects_the_cap_and_launches_nothing(self):
-        paths = self.setup_cap(max_agents=2, dead=3, live_elsewhere=0)
-        out = self.assertOk(self.resume("--dry-run"))
+    def test_dry_run_plans_by_the_same_rule(self):
+        paths = self.setup_room(dead=3)
+        out = self.assertOk(self.resume("--dry-run", env=self.env()))
         self.assertEqual(self.repo.create_calls(), [])
-        self.assertEqual(self.relaunched_for(out, paths[0]), "would")
-        self.assertEqual(self.relaunched_for(out, paths[1]), "would")
-        self.assertEqual(self.relaunched_for(out, paths[2]), "no, cap reached")
+        self.assertEqual([self.relaunched_for(out, p) for p in paths], ["would", "would", "no, no room"])
 
-    def test_the_resource_cap_is_checked_first(self):
-        paths = self.setup_cap(max_agents=1, dead=1, live_elsewhere=1)
-        out = self.assertOk(self.resume(env={"AGENT_FAKE_RAM": "95"}))
+    def test_the_resource_guard_is_checked_first(self):
+        paths = self.setup_room(dead=1)
+        out = self.assertOk(self.resume(env=self.env(ram="95")))
         self.assertEqual(self.relaunched_for(out, paths[0]), "no, over cap")
 
-    def test_a_live_pane_is_not_a_cap_problem(self):
-        """A worktree that still has its own pane is skipped for that reason."""
-        self.repo.set_conf("max_agents", "1")
+    def test_a_live_pane_is_skipped_for_that_reason(self):
         path = self.repo.make_worktree("alive")
         self.repo.set_worktree_lines([(path, "alive", "working")])
         self.repo.set_panes([{"path": path, "agents": ["working"]}])
-        out = self.assertOk(self.resume())
+        out = self.assertOk(self.resume(env=self.env()))
         self.assertEqual(self.relaunched_for(out, path), "no, pane is live")
-        self.assertNotIn("cap reached", out)
 
-    def test_the_cap_lines_come_after_the_table(self):
-        self.setup_cap(max_agents=1, dead=2, live_elsewhere=1)
-        out = self.assertOk(self.resume())
-        self.assertLess(out.index("worktree | status | relaunched"),
-                        out.index("cap reached"))
-        self.assertLess(out.index("cap reached"), out.index("todo:"))
-
-
-class TestMainManagersDoNotCount(ResumeCase):
-    """S6: the cap counts spawned agents. A main manager is not one of them.
-
-    This is the real shape of the machine: `orca worktree ps --json` reports
-    every repo Orca manages, and most of those panes are other repos' main
-    managers. Counting them fills the cap before resume even starts.
-    """
-
-    def setup_cap(self, **kwargs):
-        return TestAgentCap.setup_cap(self, **kwargs)
-
-    def test_a_main_manager_pane_does_not_fill_a_slot(self):
-        paths = self.setup_cap(max_agents=1, dead=1, main_managers=3)
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.relaunched_for(out, paths[0]), "yes")
-        self.assertEqual(len(self.repo.create_calls()), 1)
-
-    def test_the_real_shape_of_this_laptop(self):
-        """Three other repos' main managers, one spawned agent, cap 4."""
-        paths = self.setup_cap(max_agents=4, dead=2, live_elsewhere=1,
-                               main_managers=3)
-        out = self.assertOk(self.resume())
-        self.assertEqual(len(self.repo.create_calls()), 2, out)
-        self.assertNotIn("cap reached", out)
-
-    def test_spawned_panes_still_count(self):
-        paths = self.setup_cap(max_agents=2, dead=2, live_elsewhere=2,
-                               main_managers=5)
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.repo.create_calls(), [])
-        self.assertEqual(self.relaunched_for(out, paths[0]), "no, cap reached")
-
-    def test_the_cap_line_leaves_main_managers_out_of_the_count(self):
-        self.setup_cap(max_agents=2, dead=1, live_elsewhere=2, main_managers=4)
-        out = self.assertOk(self.resume())
-        self.assertIn("cap reached (2/2), not relaunching", out)
-
-    def test_a_worktree_of_this_repo_that_is_also_the_main_repo(self):
-        """The main repo can carry a worktree line. Its pane is a main manager."""
-        self.repo.set_conf("max_agents", "1")
-        dead = self.repo.make_worktree("dead")
-        self.repo.set_worktree_lines([(dead, "dead", "working")])
-        self.repo.set_panes([
-            {"path": dead, "agents": []},
-            {"path": self.repo.dir, "agents": ["working"], "is_main": True},
-        ])
-        out = self.assertOk(self.resume())
-        self.assertEqual(self.relaunched_for(out, dead), "yes")
+    def test_the_no_room_lines_come_after_the_table(self):
+        self.setup_room(dead=3)
+        out = self.assertOk(self.resume(env=self.env()))
+        self.assertLess(out.index("worktree | status | relaunched"), out.index("no room ("))
+        self.assertLess(out.index("no room ("), out.index("todo:"))
 
 
 class TestOrcaDown(ResumeCase):

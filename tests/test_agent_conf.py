@@ -21,7 +21,6 @@ import agent_conf
 class TestValidateNumbers(unittest.TestCase):
     CASES = [
         ("max_usage_percent", 1, 100),
-        ("max_agents", 1, 16),
     ]
 
     def test_bounds_are_good(self):
@@ -47,7 +46,7 @@ class TestValidateNumbers(unittest.TestCase):
     def test_not_a_whole_number_is_bad(self):
         for value in ("", "abc", "4.5", "four", "4 agents", " "):
             with self.subTest(value=value):
-                self.assertTrue(agent_conf.validate_value("max_agents", value))
+                self.assertTrue(agent_conf.validate_value("max_usage_percent", value))
 
 
 class TestValidateRoles(unittest.TestCase):

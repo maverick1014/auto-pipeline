@@ -611,7 +611,8 @@ class TestNext(Case):
         self.assertNotIn("waiting queue", self.line("b"))
         self.assertNotIn("after a", self.line("b"))
         out = self.next().stdout.splitlines()
-        self.assertRegex(out[0], r"^NEXT: 1 can start \(slots \d+ of \d+, RAM 10% under \d+%\)$")
+        # check-blocks section 25 (owner 2026-11-25): no slots, the memory rule decides
+        self.assertRegex(out[0], r"^NEXT: 1 can start \(room \d+ MB under the 80% limit\)$")
         self.assertIn("START b | est 10m | what b", out)
 
     def test_after_task_still_open_waits(self):
@@ -630,20 +631,22 @@ class TestNext(Case):
         out = self.next().stdout.splitlines()
         self.assertTrue(any(l.startswith("WAIT b: clashes with a on ") for l in out), out)
 
-    def test_no_slot_starts_nothing(self):
-        self.repo.set_conf("max_agents", 1)
+    def test_no_room_for_a_pane_starts_nothing(self):
         self.add("a", "--scope", "x/**")
         self.ok("todo", "stage", "a", "tests")
         self.add("b", "--scope", "y/**")
-        out = self.next().stdout.splitlines()
-        self.assertTrue(out[0].startswith("NEXT: 0 can start: "), out)
-        self.assertIn("slot", out[0])
+        out = self.ok("next", env={"AGENT_FAKE_RAM": "75", "AGENT_FAKE_RAM_TOTAL_MB": "10000",
+                                   "AGENT_RESERVE_FILE": os.path.join(self.repo.base, "reserve.json")}).stdout.splitlines()
+        self.assertEqual(out[0], "NEXT: 0 can start: no room: 7500 MB in use + 0 MB reserved + 550 MB for a pane "
+                                 "> 8000 MB")
 
-    def test_ram_over_the_cap_starts_nothing(self):
+    def test_many_running_tasks_are_no_count_problem(self):
+        for n in ("a", "c", "d", "e", "f"):
+            self.add(n, "--scope", "%s/**" % n)
+            self.ok("todo", "stage", n, "tests")
         self.add("b", "--scope", "y/**")
-        out = self.next(ram="95").stdout.splitlines()
-        self.assertTrue(out[0].startswith("NEXT: 0 can start: "), out)
-        self.assertIn("RAM 95%", out[0])
+        out = self.next().stdout.splitlines()
+        self.assertIn("START b | est 10m | what b", out)
 
     def test_a_held_or_owner_wait_never_starts(self):
         self.add("h")

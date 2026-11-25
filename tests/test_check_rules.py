@@ -32,8 +32,14 @@ QUIZ_Q6 = """Q6. You are one of four agents. You changed files under api/auth/. 
   C. None; the manager runs them
   D. The tests agent-level.sh lists under RELATED TESTS (they import or name the changed files)"""
 
+QUIZ_Q8 = """Q8. Memory in use plus what a new agent pane needs would pass the Max memory % limit. You need a new sub-agent.
+  A. Start it: it is only one
+  B. Start it with a smaller model
+  C. Start nothing new: close done and idle panes and stop test runs first, never a working agent; still over: tell the main manager
+  D. Ask the human"""
+
 QUIZ_Q9 = """Q9. You want to start a test run. Memory in use now plus what this run is known to need would pass the Max memory % limit. You:
-  A. Wait: agent-room.sh says no until the sum fits under the limit (a run of unknown weight starts only alone)
+  A. Wait: agent-room.sh says no until the sum fits under the limit (a never measured run starts at once under a memory monitor)
   B. Start it anyway: it is only one run
   C. Take a heavy-test slot and start it
   D. Skip your tests"""
@@ -359,7 +365,7 @@ class TestQuiz(ScriptCase):
 
     def test_the_changed_questions(self):
         out = self.quiz()
-        for n, text in ((6, QUIZ_Q6), (9, QUIZ_Q9), (16, QUIZ_Q16), (25, QUIZ_Q25), (35, QUIZ_Q35), (38, QUIZ_Q38), (39, QUIZ_Q39)):
+        for n, text in ((6, QUIZ_Q6), (8, QUIZ_Q8), (9, QUIZ_Q9), (16, QUIZ_Q16), (25, QUIZ_Q25), (35, QUIZ_Q35), (38, QUIZ_Q38), (39, QUIZ_Q39)):
             with self.subTest(q=n):
                 self.assertEqual(self.question(out, n), text)
 
@@ -459,7 +465,9 @@ class TestMemoryGate(unittest.TestCase):
     def test_s3_to_s6(self):
         s = section(self.text(), "S3. ", "S7. ")
         for phrase in ("memory in use now + the memory this run is known to need", "Load: Max memory %",
-                       "measured peak MB", "not measured yet", "starts alone once", "a Claude pane counts too",
+                       "measured peak MB", "never measured", "starts at once with a monitor on its memory",
+                       "the newest, unmeasured one first", "records its peak MB", "tried again when there is room",
+                       "Only test and build runs are stopped", "a Claude pane counts too",
                        "reservation list", "a dead pid frees its entry", "CPU", "the soft one", "the hard gate",
                        "Long but light runs just go", "agent-room.sh"):
             with self.subTest(phrase=phrase):
@@ -488,10 +496,27 @@ class TestMemoryGate(unittest.TestCase):
                 self.assertIn(phrase, w8)
         self.assertIn("scratch clones", read("agents", "merge-deputy.md"))
 
+    def test_s4_over_the_limit(self):
+        s4 = section(self.text(), "S4. ", "S5. ")
+        for phrase in ("start nothing new", "close done and idle panes first", "stop test runs before anything else",
+                       "never stop a working agent", "tell the main manager", "agent-room.sh relief"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, s4)
+
+    def test_s6_no_count_caps(self):
+        s6 = section(self.text(), "S6. ", "S7. ")
+        self.assertIn("No count caps", s6)
+        self.assertIn("a new agent pane is admitted by the same rule", s6)
+        self.assertNotIn("Max agents", self.text())
+        self.assertNotIn("max_agents", read("skills", "dispatch", "SKILL.md"))
+
     def test_plugin_json_has_no_slot_setting(self):
         import json
         with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as fh:
-            self.assertNotIn("heavy_test_slots", json.load(fh)["userConfig"])
+            conf = json.load(fh)["userConfig"]
+        self.assertNotIn("heavy_test_slots", conf)
+        self.assertNotIn("max_agents", conf)
+        self.assertEqual(len(conf), 14)
 
 class TestKeepTheResultLines(unittest.TestCase):
     """Core review re-check defect A (b, c): a verified task's worktree is removed before the owner's yes

@@ -128,7 +128,7 @@ class TestSettingsScript(SettingsCase):
     def test_every_change_path_is_refused_and_writes_nothing(self):
         self.repo.set_conf("language", "zh")
         before = self.stored()
-        for args in (("language", "en"), ("max_agents", "3"), ("--user", "permission_mode", "auto"),
+        for args in (("language", "en"), ("max_usage_percent", "30"), ("--user", "permission_mode", "auto"),
                      ("menu",), ("sync",), ("set", "language", "en")):
             with self.subTest(args=args):
                 r = self.settings(*args)
@@ -187,12 +187,12 @@ class TestStart(StartCase):
         self.assertNotIn("agent.conf", out)
 
     def test_a_bad_stored_value_is_said(self):
-        self.repo.set_conf("max_agents", 99)
+        self.repo.set_conf("max_usage_percent", 999)
         out = self.assertOk(self.start())
-        self.assertTrue([l for l in self.lines(out) if l.startswith("SETTINGS:") and "max_agents=99" in l], out)
+        self.assertTrue([l for l in self.lines(out) if l.startswith("SETTINGS:") and "max_usage_percent=999" in l], out)
 
     def test_an_old_agent_conf_is_moved_once(self):
-        self.repo.set_old_conf("language=zh\nmax_agents=6\n")
+        self.repo.set_old_conf("language=zh\nmax_usage_percent=60\n")
         out = self.assertOk(self.start())
         self.assertIn("moved language=zh from", out)
         calls = [c for c in self.repo.claude_calls() if c["args"][:2] == ["plugin", "configure"]]
@@ -282,7 +282,7 @@ class TestTexts(unittest.TestCase):
         self.assertRegex(text, r"(?i)settings live only in")
         # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
         self.assertIn("agent_repo.conf", text)
-        self.assertRegex(text, r"(?i)15 settings|fifteen settings")   # owner 2026-11-25: the slot setting is gone
+        self.assertRegex(text, r"(?i)14 settings|fourteen settings")   # owner 2026-11-25: slots and Max agents are gone
 
     # test_r8_is_main_s_text (R8 frozen as on main 85b99de) is gone: the owner approved check-blocks on
     # 2026-11-25, R8 is "Check blocks" now (tests/test_check_rules.py pins it)

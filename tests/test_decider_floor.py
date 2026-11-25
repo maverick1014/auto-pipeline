@@ -436,11 +436,11 @@ class TestQuiz36(ScriptCase):
         self.assertIn('--answer "1A 2B 3C ... 39D"', out)
         self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 39)
 
-    def test_q35_is_where_settings_change(self):
-        # settings-configure 2026-11-25: was "the user file wins over agent.conf"
+    def test_q35_is_the_release_run(self):
+        # check-blocks 2026-11-25 (owner 1A): Q35 asks who fixes a failing release run (Max agents is gone)
         head, options = self.question(self.quiz(), 35)
-        self.assertIn("Max agents", head)
-        self.assertIn("/plugin -> Installed -> auto-pipeline -> Configure", options[1])
+        self.assertIn("full suite runs once on the working branch", head)
+        self.assertIn("new fixer agent", options[1])
 
     def test_q36_is_the_floor(self):
         head, options = self.question(self.quiz(), 36)

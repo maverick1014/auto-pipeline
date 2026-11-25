@@ -310,10 +310,10 @@ class RoomCase(NetCase):
         e.update(extra)
         return e
 
-    def hold(self, mb, what="other run"):
+    def hold(self, mb, what="other run", *extra):
         p = subprocess.Popen(["sleep", "30"])
         self.addCleanup(p.kill)
-        r = self.repo.run("agent-room.sh", "reserve", str(p.pid), str(mb), what, env=self.env())
+        r = self.repo.run("agent-room.sh", "reserve", str(p.pid), str(mb), what, *extra, env=self.env())
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return p
 
@@ -327,8 +327,8 @@ class RoomCase(NetCase):
 class TestRoom(RoomCase):
     script = "agent-room.sh"
 
-    def room(self, *args, **env):
-        return self.repo.run("agent-room.sh", *args, env=self.env(**env))
+    def room(self, *args, ram="40", **env):
+        return self.repo.run("agent-room.sh", *args, env=self.env(ram=ram, **env))
 
     def test_room_for_a_known_need(self):
         self.assertEqual(self.room("check", "3000").returncode, 0)       # 4000 + 0 + 3000 <= 8000
@@ -351,12 +351,47 @@ class TestRoom(RoomCase):
         self.assertEqual(self.room("check", "3000").returncode, 0)
         self.assertEqual(self.room("list").stdout.strip(), "")
 
-    def test_unknown_starts_only_alone(self):
-        self.assertEqual(self.room("check", "unknown").returncode, 0)
+    def test_unknown_starts_at_once_under_the_limit(self):
+        # section 25 (E): an unmeasured run is not held back; the monitor watches it
         self.hold(100)
-        r = self.room("check", "unknown")
+        self.assertEqual(self.room("check", "unknown").returncode, 0)
+        r = self.room("check", "unknown", ram="85")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("ROOM: no: unknown weight starts alone (1 jobs running)", r.stdout)
+        self.assertIn("ROOM: no: 8500 MB in use + 100 MB reserved + 0 MB > 8000 MB", r.stdout)
+
+    def test_relief_stops_the_newest_unmeasured_test_run_never_an_agent(self):
+        import time
+        older = self.hold(2000, "build")
+        time.sleep(1.1)
+        p = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(p.kill)
+        self.room("reserve", str(p.pid), "1500", "related", "--kind", "test", "--unmeasured")
+        pane = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(pane.kill)
+        self.room("reserve", str(pane.pid), "600", "pane", "--kind", "pane")
+        r = self.room("relief", ram="90", AGENT_FAKE_HOST="pc2")          # 9000 MB in use, limit 8000
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.strip(), "OVER LIMIT pc2: 1000 MB over; stopped 1 test runs (%d); "
+                                           "working agents left alone" % p.pid)
+        self.assertIsNotNone(p.wait(timeout=5))
+        self.assertIsNone(older.poll())
+        self.assertIsNone(pane.poll())
+
+    def test_relief_under_the_limit_stops_nothing(self):
+        self.hold(500)
+        r = self.room("relief")
+        self.assertEqual(r.stdout.strip(), "ROOM: ok")
+
+    def test_measure_pane_keeps_the_highest(self):
+        p = subprocess.Popen([sys.executable, "-c", "b = bytearray(120 * 1024 * 1024); import time; time.sleep(20)"])
+        self.addCleanup(p.kill)
+        import time
+        time.sleep(1.5)
+        r = self.room("measure-pane", str(p.pid))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(self.gitdir(), "agent_test_weights.json")) as fh:
+            mb = int(json.load(fh)["pane"].split()[2])
+        self.assertGreaterEqual(mb, 100)
 
     def test_release_and_list(self):
         p = self.hold(700, "the nightly")
@@ -386,20 +421,76 @@ class TestTestRun(RoomCase):
         with open(path) as fh:
             return json.load(fh).get(key)
 
-    def test_unknown_weight_starts_alone_then_is_known(self):
+    def test_unknown_weight_starts_at_once_then_is_known(self):
         r = self.run_test("related", "python3", "-c", "print('hi')")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.splitlines()[0], "TEST RUN related: unknown weight, starts alone")
+        self.assertEqual(r.stdout.splitlines()[0], "TEST RUN related: unknown weight, starts at once, monitored")
         self.assertIn("hi", r.stdout)
         self.assertRegex(self.weight("related") or "", r"^\d+ s \d+ MB$")
         r = self.run_test("related", "python3", "-c", "print('hi')")
         self.assertRegex(r.stdout.splitlines()[0], r"^TEST RUN related: \d+ MB known \(\d+ s\)$")
 
-    def test_unknown_waits_while_another_job_runs(self):
+    def test_unknown_starts_beside_another_job(self):
         self.hold(100)
-        r = self.run_test("new", "true")
+        self.assertEqual(self.run_test("new", "true").returncode, 0)
+
+    def ram_file(self, value):
+        path = os.path.join(self.repo.base, "ram.txt")
+        with open(path, "w") as fh:
+            fh.write(value)
+        return path
+
+    def later(self, seconds, path, value):
+        import threading
+        def go():
+            with open(path, "w") as fh:
+                fh.write(value)
+        t = threading.Timer(seconds, go)
+        t.start()
+        self.addCleanup(t.cancel)
+
+    def test_the_monitor_stops_a_run_that_goes_over_and_records_its_peak(self):
+        ram = self.ram_file("40")
+        self.later(1.0, ram, "95")
+        r = self.run_test("big", "python3", "-c", "import time; time.sleep(6)",
+                          env=self.env(AGENT_FAKE_RAM_FILE=ram))
         self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
-        self.assertIn("ROOM: no: unknown weight starts alone (1 jobs running)", r.stdout + r.stderr)
+        self.assertRegex(r.stdout, r"(?m)^TEST RUN big: stopped over the limit \(9500 MB > 8000 MB\), "
+                                   r"peak \d+ MB recorded$")
+        self.assertRegex(self.weight("big") or "", r"^\d+ s \d+ MB$")
+
+    def test_a_stopped_run_is_tried_again_when_there_is_room(self):
+        ram = self.ram_file("40")
+        marker = os.path.join(self.repo.base, "tried")
+        self.later(1.0, ram, "95")
+        self.later(2.0, ram, "40")
+        cmd = ("import os, time, sys; p = %r\n"
+               "if os.path.exists(p): sys.exit(0)\n"
+               "open(p, 'w').close(); time.sleep(6)" % marker)
+        r = self.run_test("again", "python3", "-c", cmd, env=self.env(AGENT_FAKE_RAM_FILE=ram,
+                                                                      AGENT_TEST_RUN_WAIT_S="10"))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("stopped over the limit", r.stdout)
+
+    def test_a_run_that_is_not_the_pick_goes_on(self):
+        ram = self.ram_file("40")
+        newer = []
+        def add_newer():
+            p = subprocess.Popen(["sleep", "30"])
+            newer.append(p)
+            self.repo.run("agent-room.sh", "reserve", str(p.pid), "100", "newer", "--kind", "test",
+                          "--unmeasured", env=self.env())
+        import threading
+        threading.Timer(0.5, add_newer).start()
+        self.later(1.0, ram, "95")
+        with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:
+            fh.write("weight.mine=3 s 100 MB\n")
+        r = self.run_test("mine", "python3", "-c", "import time; time.sleep(2.5)",
+                          env=self.env(AGENT_FAKE_RAM_FILE=ram))
+        for p in newer:
+            p.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("stopped over the limit", r.stdout)
 
     def test_a_known_run_reserves_while_it_runs_and_releases(self):
         with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:

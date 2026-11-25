@@ -12,7 +12,7 @@ CONTRACT for bin/agent_conf.py:
     user_config()             the plugin.json "userConfig" object built from SETTINGS
                               (same key order; fields type, title, description, default,
                               options / min / max only when set)
-    CONSTANTS                 the 32 fixed internal values, by old agent.conf key
+    CONSTANTS                 the 33 fixed internal values, by old agent.conf key
     get(key, env=None)        the value: Configure (settings.json pluginConfigs), else
                               CLAUDE_PLUGIN_OPTION_<KEY> env, else the default. A
                               constant key gives its constant. An old role key
@@ -106,7 +106,7 @@ ORDER = [
     ("main_manager", "Models: Main manager model", "string", "opus-5.5:high"),
     ("task_manager", "Models: Task manager model", "string", "opus-5.5:high"),
     ("helper_model", "Models: Helper model", "string", "sonnet-5:medium"),
-    ("max_agents", "Load: Max agents", "number", 4),
+    # max_usage_percent: gone (owner 2026-11-25, TELL bd4e87ee): no count caps, the memory rule admits a pane
     ("max_usage_percent", "Load: Max memory %", "number", 80),
     # heavy_test_slots: gone (owner 2026-11-25, TELL 076c1faf): no slots, a memory gate (tests/test_check_net.py)
     ("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions"),   # owner order 2026-11-25
@@ -130,6 +130,7 @@ CONSTANTS = {
     "check_budget_s": 60,   # check-blocks: BUILD and GUARD TESTS per task only under it
     "unused_pane_min": 30,  # check-blocks slice 8: the sweep closes a pane that never got a prompt, idle over it
     "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024,   # check-blocks section 15 (owner 1A)
+    "verify_box_min": 15,   # check-blocks section 19/21: the run or browser check time box
 }
 
 CHANGE_LINE = "change: /plugin -> Installed -> auto-pipeline -> Configure"
@@ -266,7 +267,6 @@ class TestSchema(unittest.TestCase):
 
     def test_number_bounds(self):
         by = {s["key"]: s for s in agent_conf.SETTINGS}
-        self.assertEqual((by["max_agents"]["min"], by["max_agents"]["max"]), (1, 16))
         self.assertEqual((by["max_usage_percent"]["min"], by["max_usage_percent"]["max"]), (1, 100))
         self.assertEqual((by["housekeep_interval_min"]["min"], by["housekeep_interval_min"]["max"]), (0, 1440))
         self.assertEqual((by["city_port"]["min"], by["city_port"]["max"]), (1024, 65535))
@@ -317,17 +317,17 @@ class TestGet(unittest.TestCase):
             self.assertEqual(agent_conf.source(key, env), "default", key)
 
     def test_configure_value_wins(self):
-        self.h.configure({"language": "zh", "max_agents": 6, "auto_resume": False})
+        self.h.configure({"language": "zh", "max_usage_percent": 60, "auto_resume": False})
         env = self.h.env()
         self.assertEqual(agent_conf.get("language", env), "zh")
-        self.assertEqual(agent_conf.get("max_agents", env), 6)
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 60)
         self.assertIs(agent_conf.get("auto_resume", env), False)
         self.assertEqual(agent_conf.source("language", env), "Configure")
 
     def test_numbers_and_booleans_stored_as_text(self):
-        self.h.configure({"max_agents": "6", "auto_update": "false", "todo_before_agent": "true"})
+        self.h.configure({"max_usage_percent": "60", "auto_update": "false", "todo_before_agent": "true"})
         env = self.h.env()
-        self.assertEqual(agent_conf.get("max_agents", env), 6)
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 60)
         self.assertIs(agent_conf.get("auto_update", env), False)
         self.assertIs(agent_conf.get("todo_before_agent", env), True)
 
@@ -340,15 +340,15 @@ class TestGet(unittest.TestCase):
         self.assertEqual(agent_conf.get("city_port", self.h.env(CLAUDE_CONFIG_DIR=other)), 5000)
 
     def test_env_option_when_configure_has_none(self):
-        env = self.h.env(CLAUDE_PLUGIN_OPTION_LANGUAGE="ms", CLAUDE_PLUGIN_OPTION_MAX_AGENTS="3")
+        env = self.h.env(CLAUDE_PLUGIN_OPTION_LANGUAGE="ms", CLAUDE_PLUGIN_OPTION_MAX_USAGE_PERCENT="30")
         self.assertEqual(agent_conf.get("language", env), "ms")
-        self.assertEqual(agent_conf.get("max_agents", env), 3)
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 30)
         self.assertEqual(agent_conf.source("language", env), "env")
 
     def test_file_beats_env(self):
-        self.h.configure({"max_agents": 6})
-        env = self.h.env(CLAUDE_PLUGIN_OPTION_MAX_AGENTS="4")
-        self.assertEqual(agent_conf.get("max_agents", env), 6)
+        self.h.configure({"max_usage_percent": 60})
+        env = self.h.env(CLAUDE_PLUGIN_OPTION_MAX_USAGE_PERCENT="40")
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 60)
 
     def test_other_plugins_options_are_not_read(self):
         self.h.configure({}, other={"x@y": {"options": {"language": "zh"}}})
@@ -358,18 +358,18 @@ class TestGet(unittest.TestCase):
         with open(os.path.join(self.h.cfg, "settings.json"), "w") as fh:
             fh.write("{not json")
         env = self.h.env()
-        self.assertEqual(agent_conf.get("max_agents", env), 4)
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 80)
         self.assertTrue(any("settings.json" in w for w in agent_conf.warnings(env)))
 
     def test_out_of_range_gives_default_and_warning(self):
-        self.h.configure({"max_agents": 40})
+        self.h.configure({"max_usage_percent": 400})
         env = self.h.env()
-        self.assertEqual(agent_conf.get("max_agents", env), 4)
-        self.assertEqual(agent_conf.source("max_agents", env), "default")
+        self.assertEqual(agent_conf.get("max_usage_percent", env), 80)
+        self.assertEqual(agent_conf.source("max_usage_percent", env), "default")
         lines = agent_conf.warnings(env)
         self.assertEqual(len(lines), 1)
-        self.assertIn("max_agents=40", lines[0])
-        self.assertIn("1-16", lines[0])
+        self.assertIn("max_usage_percent=400", lines[0])
+        self.assertIn("1-100", lines[0])
         self.assertIn("default 4", lines[0])
 
     def test_bad_picker_value_gives_default(self):
@@ -420,14 +420,14 @@ class TestGet(unittest.TestCase):
 
     def test_old_files_are_never_read_for_a_value(self):
         with open(os.path.join(self.h.repo, "agent.conf"), "w") as fh:
-            fh.write("language=zh\nmax_agents=9\n")
+            fh.write("language=zh\nmax_usage_percent=90\n")
         user = self.h.write("home/.claude/auto-pipeline.conf", "permission_mode=bypassPermissions\n")
         old_cwd = os.getcwd()
         os.chdir(self.h.repo)
         try:
             env = self.h.env(AUTO_PIPELINE_USER_CONF=user)
             self.assertEqual(agent_conf.get("language", env), "en")
-            self.assertEqual(agent_conf.get("max_agents", env), 4)
+            self.assertEqual(agent_conf.get("max_usage_percent", env), 80)
             self.assertEqual(agent_conf.get("permission_mode", env), "bypassPermissions")   # the default, not the old file's
         finally:
             os.chdir(old_cwd)
@@ -451,7 +451,7 @@ class TestCli(unittest.TestCase):
         env = self.h.env()
         self.assertEqual(run_cli(["get", "language"], env).stdout, "zh\n")
         self.assertEqual(run_cli(["get", "auto_resume"], env).stdout, "off\n")
-        self.assertEqual(run_cli(["get", "max_agents"], env).stdout, "4\n")
+        self.assertEqual(run_cli(["get", "max_usage_percent"], env).stdout, "80\n")
         self.assertEqual(run_cli(["get", "worker"], env).stdout, "sonnet-5:medium\n")
         self.assertEqual(run_cli(["get", "stage_tests"], env).stdout, "20\n")
 
@@ -485,9 +485,9 @@ class TestCli(unittest.TestCase):
         self.assertNotIn("stage_tests", body)
 
     def test_show_names_a_bad_stored_value(self):
-        self.h.configure({"max_agents": 99})
+        self.h.configure({"max_usage_percent": 999})
         res = run_cli(["show"], self.h.env())
-        self.assertIn("max_agents=99", res.stdout)
+        self.assertIn("max_usage_percent=999", res.stdout)
 
     def test_show_never_writes(self):
         self.h.configure({"language": "zh"})
@@ -562,34 +562,34 @@ class TestMigration(unittest.TestCase):
         self.assertEqual(self.h.calls(), [])
 
     def test_differing_values_are_moved_with_the_official_command(self):
-        self.old_conf("language=zh\nmax_agents=6\nauto_resume=no\nboard_guard=record\n"
+        self.old_conf("language=zh\nmax_usage_percent=60\nauto_resume=no\nboard_guard=record\n"
                       "worker=sonnet-5:high\nfast_lane_deputy=sonnet-5:high\nmerge_deputy=sonnet-5:high\n")
         out = self.migrate()
         calls = self.configure_calls()
         self.assertEqual(len(calls), 1, self.h.calls())
         self.assertEqual(calls[0]["args"], ["plugin", "configure", "auto-pipeline@auto-pipeline", "--values-stdin"])
         self.assertEqual(json.loads(calls[0]["stdin"]), {
-            "language": "zh", "max_agents": "6", "auto_resume": "false",
+            "language": "zh", "max_usage_percent": "60", "auto_resume": "false",
             "todo_before_agent": "false", "helper_model": "sonnet-5:high"})
         self.assertEqual(self.h.options()["language"], "zh")
         self.assertIn("moved language=zh from %s to Configure" % self.conf, out)
-        self.assertIn("moved max_agents=6 from %s to Configure" % self.conf, out)
+        self.assertIn("moved max_usage_percent=60 from %s to Configure" % self.conf, out)
         self.assertIn("moved auto_resume=false from %s to Configure" % self.conf, out)
         self.assertTrue(out[0].startswith("SETTINGS MOVED: %s" % self.conf), out)
         self.assertIn("not read any more", out[0])
 
     def test_values_equal_to_the_default_are_not_moved(self):
-        self.old_conf("language=en\nmax_agents=4\nboard_guard=on\nauto_resume=yes\n")
+        self.old_conf("language=en\nmax_usage_percent=80\nboard_guard=on\nauto_resume=yes\n")
         out = self.migrate()
         self.assertEqual(self.configure_calls(), [])
         self.assertEqual(len(out), 1, out)
         self.assertTrue(out[0].startswith("SETTINGS MOVED:"))
 
     def test_a_value_the_human_set_is_never_overwritten(self):
-        self.old_conf("language=zh\nmax_agents=6\ncity_port=4777\n")
+        self.old_conf("language=zh\nmax_usage_percent=60\ncity_port=4777\n")
         self.h.configure({"language": "ms", "city_port": 5000})
         out = self.migrate()
-        self.assertEqual(json.loads(self.configure_calls()[0]["stdin"]), {"max_agents": "6"})
+        self.assertEqual(json.loads(self.configure_calls()[0]["stdin"]), {"max_usage_percent": "60"})
         self.assertEqual(self.h.options()["language"], "ms")
         self.assertIn("kept language=ms in Configure, skipped language=zh from %s" % self.conf, out)
         self.assertFalse([l for l in out if "city_port" in l], out)  # old value = default, nothing to say
@@ -661,9 +661,9 @@ class TestMigration(unittest.TestCase):
     def test_a_changed_old_file_is_read_again(self):
         self.old_conf("language=zh\n")
         self.migrate()
-        self.old_conf("language=zh\nmax_agents=7\n")
+        self.old_conf("language=zh\nmax_usage_percent=70\n")
         out = self.migrate()
-        self.assertIn("moved max_agents=7 from %s to Configure" % self.conf, out)
+        self.assertIn("moved max_usage_percent=70 from %s to Configure" % self.conf, out)
 
     def test_a_failed_write_prints_the_exact_command_and_tries_again(self):
         self.old_conf("language=zh\n")
@@ -718,11 +718,21 @@ class TestMigration(unittest.TestCase):
         self.migrate()
         self.assertEqual(self.configure_calls(), [])
 
-    def test_a_bad_old_value_is_not_moved(self):
-        self.old_conf("max_agents=99\nlanguage=zh\n")
+    def test_retired_settings_are_ignored_not_moved(self):
+        # check-blocks (owner 2026-11-25): Max agents and Heavy test slot/time are gone; an old value is
+        # ignored, never moved, never an error (pc2 printed "plugin has no options heavy_test_slots")
+        self.old_conf("max_agents=6\nheavy_test_slots=3\nlanguage=zh\n")
         out = "\n".join(self.migrate())
         self.assertEqual(json.loads(self.configure_calls()[0]["stdin"]), {"language": "zh"})
-        self.assertIn("max_agents=99", out)
+        self.assertNotIn("max_agents", out)
+        self.assertNotIn("heavy_test_slots", out)
+        self.assertNotIn("FAILED", out)
+
+    def test_a_bad_old_value_is_not_moved(self):
+        self.old_conf("max_usage_percent=999\nlanguage=zh\n")
+        out = "\n".join(self.migrate())
+        self.assertEqual(json.loads(self.configure_calls()[0]["stdin"]), {"language": "zh"})
+        self.assertIn("max_usage_percent=999", out)
 
     def test_unreadable_old_file_is_said(self):
         os.mkdir(os.path.join(self.h.repo, "agent.conf"))

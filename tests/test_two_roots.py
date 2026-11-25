@@ -256,13 +256,13 @@ class TestSettingsFromAnywhere(RootsCase):
     script = "agent-settings.sh"
 
     def test_show_reads_configure(self):
-        self.repo.set_conf("max_agents", "7")
+        self.repo.set_conf("max_usage_percent", "70")     # check-blocks: Max agents is gone (owner 2026-11-25)
         out = self.assertOk(self.repo.run("agent-settings.sh"))
-        self.assertIn("Max agents", out)
-        self.assertIn("7", out)
+        self.assertIn("Max memory", out)
+        self.assertIn("70", out)
 
     def test_set_is_refused_and_writes_nothing(self):
-        r = self.repo.run("agent-settings.sh", "max_agents", "6")
+        r = self.repo.run("agent-settings.sh", "max_usage_percent", "60")
         self.assertEqual(r.returncode, 1)
         self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
 

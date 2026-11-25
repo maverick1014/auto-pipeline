@@ -347,7 +347,7 @@ class ScriptRepo:
     # owner 1A 2026-11-25: core paths are repo facts, in <project>/agent_repo.conf
     REPO_KEYS = ("level3_paths", "level4_paths", "core_paths")   # check-blocks: core_paths too
     BOOL_KEYS = ("auto_update", "auto_resume", "todo_before_agent")
-    NUMBER_KEYS = ("max_agents", "max_usage_percent", "watch_quiet_min",
+    NUMBER_KEYS = ("max_usage_percent", "watch_quiet_min",
                    "housekeep_interval_min", "city_port", "city_idle_min")
 
     def claude_dir(self):
@@ -656,6 +656,8 @@ class ScriptRepo:
             # a run with the real $HOME gets its own city home, so a test
             # never touches the owner's real one
             env["AGENT_CITY_HOME"] = os.path.join(self.base, "cityhome-default")
+        # check-blocks section 24: a test never reads or writes the machine's real reservation list
+        env.setdefault("AGENT_RESERVE_FILE", os.path.join(self.base, "reservations.json"))
         env.setdefault("AGENT_FAKE_RAM", "10")
         env.setdefault("AGENT_FAKE_CPU", "10")
         # relief run by a test stops only what lies under this test's own
