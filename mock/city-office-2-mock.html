@@ -329,6 +329,10 @@ button{font:inherit;color:inherit}
   .ed-msg{bottom:calc(38% + 16px);max-width:calc(100% - 20px);min-width:0;width:calc(100% - 20px)}.ed-name input{width:8em}.ed-cnt{display:none}
   .ed-top{gap:6px;padding:6px 7px}.ed-top .btn{padding:6px 9px}.ed-name span{display:none}
 }
+
+.ed-mats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.ed-mat{all:unset;cursor:pointer;display:grid;justify-items:center;gap:2px;border:1.5px solid var(--line);border-radius:9px;padding:4px 2px;background:var(--panel-2);font-size:11px;color:var(--ink-2)}
+.ed-mat img{width:40px;height:40px;border-radius:6px;display:block}.ed-mat.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink) inset}
+.ed-surf span{display:grid}.ed-surf small{font-size:11px;color:var(--ink-3)}.ed-surf i{background-size:cover}.ed-ins-h i.big{background-size:cover}.ed-style .pal i.mt{background-size:cover}
 </style>
 
 <div class="app">
@@ -595,7 +599,7 @@ const DESIGN = {'auto-pipeline':{st:'done',v:0}, 'v4-plus':{st:'done',v:0}, 'v4-
 function shade(hex, dl){ const c = new THREE.Color(hex); c.offsetHSL(0.02*dl, 0, -0.035*dl); return '#' + c.getHexString(); }
 const OVR = {}, UNDO = {}, BY = {};
 function theme(id){
-  if(ARR && ARR.id === id) return Object.assign({}, BASE_TH, ARR.colors, {name: ARR.name || '还没起名', why: '', decor: []});
+  if(ARR && ARR.id === id) return Object.assign({}, BASE_TH, ARR.colors, {name: ARR.name || '还没起名', why: '', decor: [], mats: ARR.mats});
   const d = DESIGN[id];
   const t = d && d.st === 'done' && THEMES[id] && !OVR[id] ? themeAI(id) : BASE_TH;
   return OVR[id] ? Object.assign({}, BASE_TH, OVR[id]) : t;
@@ -714,6 +718,55 @@ function placeDecor(G, th){
   });
 }
 
+/* city-office-2 mock v3 (owner 2026-11-25: "the floor also want to able to change, because the floor affects a lot on the looking"):
+   each floor area has a material (a pattern drawn in code) and a colour. */
+const FLOOR_MATS = [['plain','素色地毯'],['wood','木地板'],['herring','人字拼'],['tile','小方砖'],['bigtile','大地砖'],['marble','大理石'],['concrete','水泥'],['checker','格子砖']];
+const MAT_ZH = Object.fromEntries(FLOOR_MATS);
+const DEF_MATS = {carpet:'plain', wood:'wood', tile:'tile'};
+const MAT_TILE = {plain:4, wood:3, herring:2, tile:2.6, bigtile:3.4, marble:4.5, concrete:4, checker:2.4};
+const TEXC = {};
+function tone(hex, dl){ const c = new THREE.Color(hex); c.offsetHSL(0, 0, dl); return '#' + c.getHexString(); }
+function matCanvas(kind, col){
+  const cv2 = document.createElement('canvas'); cv2.width = cv2.height = 256; const g = cv2.getContext('2d');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  g.fillStyle = col; g.fillRect(0, 0, 256, 256);
+  const line = (c, w) => { g.strokeStyle = c; g.lineWidth = w; };
+  if(kind === 'plain'){ for(let i=0;i<900;i++){ g.fillStyle = `rgba(0,0,0,${0.03 + rnd()*0.04})`; g.fillRect(rnd()*256, rnd()*256, 1.5, 1.5); } }
+  else if(kind === 'wood'){
+    for(let r=0;r<8;r++){ const off = (r % 2) * 64 + (r % 3) * 21;
+      for(let x=-128;x<256;x+=128){ g.fillStyle = tone(col, (rnd()-0.5)*0.07); g.fillRect(x+off, r*32, 128, 32);
+        line(tone(col, -0.16), 2); g.strokeRect(x+off+1, r*32+1, 126, 30);
+        g.strokeStyle = 'rgba(0,0,0,0.06)'; g.lineWidth = 1; for(let k=0;k<3;k++){ g.beginPath(); const yy = r*32 + 6 + rnd()*20; g.moveTo(x+off+4, yy); g.bezierCurveTo(x+off+40, yy+3, x+off+80, yy-3, x+off+124, yy+1); g.stroke(); } } } }
+  else if(kind === 'herring'){
+    for(let r=-1;r<9;r++) for(let c=-1;c<9;c++){ const x = c*32, y = r*32, left = (c % 2 === 0);
+      g.fillStyle = tone(col, (rnd()-0.5)*0.08); g.beginPath();
+      if(left){ g.moveTo(x, y); g.lineTo(x+32, y+32); g.lineTo(x+32, y+48); g.lineTo(x, y+16); } else { g.moveTo(x, y+32); g.lineTo(x+32, y); g.lineTo(x+32, y+16); g.lineTo(x, y+48); }
+      g.closePath(); g.fill(); line(tone(col, -0.15), 1.5); g.stroke(); } }
+  else if(kind === 'tile' || kind === 'bigtile' || kind === 'checker'){
+    const n = kind === 'bigtile' ? 2 : 4, sz = 256 / n;
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++){ g.fillStyle = kind === 'checker' ? ((i + j) % 2 ? tone(col, -0.12) : col) : tone(col, (rnd()-0.5)*0.03); g.fillRect(i*sz, j*sz, sz, sz); }
+    line(kind === 'checker' ? tone(col, -0.2) : tone(col, 0.06), kind === 'bigtile' ? 3 : 2.5);
+    for(let k=0;k<=n;k++){ g.beginPath(); g.moveTo(k*sz, 0); g.lineTo(k*sz, 256); g.stroke(); g.beginPath(); g.moveTo(0, k*sz); g.lineTo(256, k*sz); g.stroke(); } }
+  else if(kind === 'marble'){
+    for(let v=0;v<7;v++){ g.strokeStyle = `rgba(110,110,120,${0.15 + rnd()*0.25})`; g.lineWidth = 0.8 + rnd()*1.6; g.beginPath();
+      let x = rnd()*256, y = 0; g.moveTo(x, y); while(y < 256){ const nx = x + (rnd()-0.5)*60, ny = y + 20 + rnd()*30; g.quadraticCurveTo(x + (rnd()-0.5)*40, y + 10, nx, ny); x = nx; y = ny; } g.stroke(); } }
+  else if(kind === 'concrete'){
+    for(let i=0;i<3500;i++){ const d = rnd(); g.fillStyle = d < 0.5 ? `rgba(0,0,0,${0.05 + rnd()*0.09})` : `rgba(255,255,255,${0.06 + rnd()*0.12})`; g.fillRect(rnd()*256, rnd()*256, 1 + rnd()*2.5, 1 + rnd()*2.5); }
+    for(let i=0;i<14;i++){ g.fillStyle = `rgba(0,0,0,${0.03 + rnd()*0.04})`; g.beginPath(); g.arc(rnd()*256, rnd()*256, 8 + rnd()*26, 0, Math.PI*2); g.fill(); }
+    line('rgba(0,0,0,0.08)', 2); g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 256); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke(); }
+  return cv2;
+}
+function matTex(kind, col){
+  const key = kind + col; if(!TEXC[key]){ const t = new THREE.CanvasTexture(matCanvas(kind, col)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; TEXC[key] = t; }
+  return TEXC[key];
+}
+const MAT_THUMB = {};
+function matThumb(kind, col){ const k = kind + col; if(!MAT_THUMB[k]){ const c = matCanvas(kind, col), t = document.createElement('canvas'); t.width = t.height = 56; t.getContext('2d').drawImage(c, 0, 0, 128, 128, 0, 0, 56, 56); MAT_THUMB[k] = t.toDataURL(); } return MAT_THUMB[k]; }
+function floorMesh(kind, col, w, d, x, y, z, G){
+  const base = matTex(kind || 'plain', col), tex = base.clone(); tex.needsUpdate = true; const ts = MAT_TILE[kind] || 4; tex.repeat.set(w/ts, d/ts);
+  const m = new THREE.MeshLambertMaterial({map: tex}); const o = new THREE.Mesh(BOXG, m); o.scale.set(w, 0.02, d); o.position.set(x, y, z); o.userData.own = true; G.add(o); return o;
+}
+
 /* ---------------- floor build ---------------- */
 let floorG = null, walls = [], doors = [], people = [], buildId = 0;
 let SPOTS = {};
@@ -793,10 +846,10 @@ function buildFloor(){
 
   /* slab + zones (14 x 14) */
   box(14.4,0.4,14.4,C.slab,0,-0.2,0,G);
-  box(14,0.02,14,C.carpet,0,0.01,0,G);
-  box(5.4,0.02,4,C.wood,4.3,0.022,-5,G);
-  box(3.8,0.02,3.8,C.tile,-5.1,0.022,-5.1,G);
-  for(let i=0;i<=4;i++){ box(0.02,0.021,3.8,'#DCD6C8',-7+i*0.95,0.024,-5.1,G); box(3.8,0.021,0.02,'#DCD6C8',-5.1,0.024,-7+i*0.95,G); }
+  const MT = Object.assign({}, DEF_MATS, TH.mats || {});
+  floorMesh(MT.carpet, C.carpet, 14, 14, 0, 0.01, 0, G);
+  floorMesh(MT.wood, C.wood, 5.4, 4, 4.3, 0.022, -5, G);
+  floorMesh(MT.tile, C.tile, 3.8, 3.8, -5.1, 0.022, -5.1, G);
   mesh(CIRG, mat(C.rugMeet), 2.0,2.0,2.0, 4.6,0.03,4.0, G).rotation.x = -Math.PI/2;
   box(2.6,0.02,1.8,C.rugMgr,4.6,0.035,-5.3,G);
 
@@ -1790,12 +1843,12 @@ const SURF = {carpet:'地毯（办公区）', wood:'区经理室地板', tile:'�
 const LIGHT_SW = ['#F4EFE6','#E8DFCF','#DDD6C7','#D9C2A0','#E4DCCB','#D5E5DA','#D2E6EA','#CCD5E5','#E3E8F2','#F1ECE2','#EAD9C6','#E9DFCB'];
 const ANY_SW = ['#2A2B45','#2E3A66','#4D7CFE','#21A7BD','#2FB57A','#6FD4A8','#FFD36E','#E8A33A','#FF7593','#D9506E','#9B7BFF','#8A5A3C','#C99A6B','#EFDAB5','#F4F6FA','#5A3A26'];
 const STYLES = [
-  {name:'温馨木色', c:{accent:'#E8A33A', carpet:'#E8DFCF', wood:'#D9C2A0', tile:'#F1ECE2', desk:'#C99A6B', deskLeg:'#8A5A3C', chair:'#5A3A26', rugMeet:'#E9C9A0', rugMgr:'#B5653A'}},
-  {name:'冷色简约', c:{accent:'#4D7CFE', carpet:'#E3E8F2', wood:'#CCD5E5', tile:'#F4F6FA', desk:'#F4F6FA', deskLeg:'#8E98B3', chair:'#2E3A66', rugMeet:'#BFD0F7', rugMgr:'#4D7CFE'}},
-  {name:'清新绿植', c:{accent:'#2FB57A', carpet:'#D5E5DA', wood:'#C6DFCD', tile:'#EEF5EF', desk:'#EEF3EF', deskLeg:'#8DB59A', chair:'#2F7A57', rugMeet:'#9FD8BC', rugMgr:'#2FB57A'}},
-  {name:'工厂风',   c:{accent:'#FFB800', carpet:'#D7D9DE', wood:'#C3C7CF', tile:'#E6E8EC', desk:'#9AA1AE', deskLeg:'#3A3F55', chair:'#2A2B45', rugMeet:'#FFD36E', rugMgr:'#E8A33A'}},
-  {name:'书香',     c:{accent:'#8F3B2E', carpet:'#E9DFCB', wood:'#D3C3A6', tile:'#F1ECE2', desk:'#C9A57A', deskLeg:'#7A4E31', chair:'#5A3A26', rugMeet:'#B98F6A', rugMgr:'#8F3B2E'}},
-  {name:'活力粉',   c:{accent:'#FF7593', carpet:'#F3E4E8', wood:'#EBCFD6', tile:'#F8EEF1', desk:'#F4E1E6', deskLeg:'#C08C9A', chair:'#D9506E', rugMeet:'#F3B6C4', rugMgr:'#FF7593'}},
+  {name:'温馨木色', m:{carpet:'wood', wood:'herring', tile:'tile'}, c:{accent:'#E8A33A', carpet:'#E8DFCF', wood:'#D9C2A0', tile:'#F1ECE2', desk:'#C99A6B', deskLeg:'#8A5A3C', chair:'#5A3A26', rugMeet:'#E9C9A0', rugMgr:'#B5653A'}},
+  {name:'冷色简约', m:{carpet:'plain', wood:'bigtile', tile:'tile'}, c:{accent:'#4D7CFE', carpet:'#E3E8F2', wood:'#CCD5E5', tile:'#F4F6FA', desk:'#F4F6FA', deskLeg:'#8E98B3', chair:'#2E3A66', rugMeet:'#BFD0F7', rugMgr:'#4D7CFE'}},
+  {name:'清新绿植', m:{carpet:'plain', wood:'wood', tile:'checker'}, c:{accent:'#2FB57A', carpet:'#D5E5DA', wood:'#C6DFCD', tile:'#EEF5EF', desk:'#EEF3EF', deskLeg:'#8DB59A', chair:'#2F7A57', rugMeet:'#9FD8BC', rugMgr:'#2FB57A'}},
+  {name:'工厂风', m:{carpet:'concrete', wood:'concrete', tile:'checker'}, c:{accent:'#FFB800', carpet:'#D7D9DE', wood:'#C3C7CF', tile:'#E6E8EC', desk:'#9AA1AE', deskLeg:'#3A3F55', chair:'#2A2B45', rugMeet:'#FFD36E', rugMgr:'#E8A33A'}},
+  {name:'书香', m:{carpet:'wood', wood:'herring', tile:'bigtile'}, c:{accent:'#8F3B2E', carpet:'#E9DFCB', wood:'#D3C3A6', tile:'#F1ECE2', desk:'#C9A57A', deskLeg:'#7A4E31', chair:'#5A3A26', rugMeet:'#B98F6A', rugMgr:'#8F3B2E'}},
+  {name:'活力粉', m:{carpet:'plain', wood:'marble', tile:'checker'}, c:{accent:'#FF7593', carpet:'#F3E4E8', wood:'#EBCFD6', tile:'#F8EEF1', desk:'#F4E1E6', deskLeg:'#C08C9A', chair:'#D9506E', rugMeet:'#F3B6C4', rugMgr:'#FF7593'}},
 ];
 const THUMB = {};
 function makeThumbs(){
@@ -1815,14 +1868,14 @@ function makeThumbs(){
     blocked = saved; rr.dispose();
   }catch(e){ /* thumbnails are a nicety */ }
 }
-function edState(){ return {L: clone(ARR.L), colors: Object.assign({}, ARR.colors), name: ARR.name}; }
-function edSet(s){ ARR.L = clone(s.L); ARR.colors = Object.assign({}, s.colors); ARR.name = s.name; }
+function edState(){ return {L: clone(ARR.L), colors: Object.assign({}, ARR.colors), mats: Object.assign({}, ARR.mats), name: ARR.name}; }
+function edSet(s){ ARR.L = clone(s.L); ARR.colors = Object.assign({}, s.colors); ARR.mats = Object.assign({}, s.mats); ARR.name = s.name; }
 function enterArrange(){
   if(view !== 'inside') return;
   const ps = P.filter(d => d.repo === cur), base = layoutOf(cur, ps.filter(d => d.role === 'tm').length, ps.filter(d => d.role === 'helper').length);
   const t = theme(cur), colors = {};
   Object.keys(SURF).forEach(k => colors[k] = t[k]);
-  ARR = {id:cur, L:clone(base), colors, name: t === BASE_TH ? '' : t.name, sel:null, surf:null, hist:[], redo:[], hits:[], tab:'furniture', two:false, dirty:false, quit:false,
+  ARR = {id:cur, L:clone(base), colors, mats: Object.assign({}, DEF_MATS, t.mats || {}), name: t === BASE_TH ? '' : t.name, sel:null, surf:null, hist:[], redo:[], hits:[], tab:'furniture', two:false, dirty:false, quit:false,
          msg:'从左边把东西拖到楼层上，或者点一下加进来。点家具可以转向、删除、换颜色；点地面可以换地板颜色。', err:false, badI:null};
   ARR.start = edState();
   $('#dPop').hidden = true; closePanel(); stopFollow();
@@ -1843,7 +1896,7 @@ function leaveArrange(save){
     [['carpet','地毯'],['wood','区经理室地板'],['tile','茶水间地板']].forEach(([k,z]) => { const h = {}; new THREE.Color(ARR.colors[k]).getHSL(h); const L = Math.round(h.l*100); if(L < 55 || L > 95) bad.push(`${z}的亮度是 ${L}%，要在 55%–95% 之间`); });
     if(!ARR.name.trim()) bad.push('给这层起个名字（最多 20 字）');
     if(bad.length){ ARR.msg = '没保存：' + bad.join('；'); ARR.err = true; renderArrBar(); return; }
-    pushUndo(id); LAYOUT[id] = clone(ARR.L); OVR[id] = Object.assign({}, ARR.colors, {name: ARR.name.trim(), why:'你自己装修的', decor:[]}); BY[id] = 'owner';
+    pushUndo(id); LAYOUT[id] = clone(ARR.L); OVR[id] = Object.assign({}, ARR.colors, {name: ARR.name.trim(), why:'你自己装修的', decor:[], mats: Object.assign({}, ARR.mats)}); BY[id] = 'owner';
     log(`你自己装修了 ${floorNo(id)}F：${ARR.name.trim()}（${ARR.L.items.filter(i=>i.k==='tm').length} 张经理桌、${ARR.L.items.filter(i=>i.k==='helper').length} 张助理桌、${ARR.L.items.filter(i=>i.k==='decor').length} 件摆设）`);
   } else if(ARR.dirty && !ARR.quit){ ARR.quit = true; ARR.msg = '改动还没保存。再点一次「退出」就不要这些改动了。'; ARR.err = true; renderArrBar(); return; }
   ARR = null; stage.classList.remove('editing'); $('#edUI').hidden = true;
@@ -1894,7 +1947,7 @@ function arrRedo(){ const p = ARR.redo.pop(); if(!p) return; ARR.hist.push(edSta
 function arrReset(){
   const prev = edState(), ps = P.filter(d => d.repo === cur);
   ARR.L = defaultLayout(Math.min(9, Math.max(3, ps.filter(d => d.role === 'tm').length + 1)), Math.min(3, Math.max(1, ps.filter(d => d.role === 'helper').length)), {decor:[]});
-  Object.keys(SURF).forEach(k => ARR.colors[k] = BASE_TH[k]);
+  Object.keys(SURF).forEach(k => ARR.colors[k] = BASE_TH[k]); ARR.mats = Object.assign({}, DEF_MATS);
   ARR.sel = null; ARR.surf = null; edPush(prev); ARR.msg = '恢复成基本款了（还没保存）'; ARR.err = false; buildFloor(); renderArrBar();
 }
 function edColor(key, val){
@@ -1903,7 +1956,7 @@ function edColor(key, val){
     if(L < 55 || L > 95){ edSet(prev); ARR.msg = `${SURF[key]}的亮度是 ${L}%，要在 55%–95% 之间（太深人和名字会看不清）`; ARR.err = true; renderArrBar(); return; } }
   edPush(prev); ARR.msg = `${SURF[key]}换成了 ${val.toUpperCase()}`; ARR.err = false; buildFloor(); renderArrBar();
 }
-function edStyle(i){ const s = STYLES[i], prev = edState(); Object.assign(ARR.colors, s.c); if(!ARR.name.trim() || STYLES.some(x => x.name === ARR.name)) ARR.name = s.name; edPush(prev); ARR.msg = `套用了「${s.name}」的配色，家具位置不变`; ARR.err = false; buildFloor(); renderArrBar(); }
+function edStyle(i){ const s = STYLES[i], prev = edState(); Object.assign(ARR.colors, s.c); Object.assign(ARR.mats, s.m); if(!ARR.name.trim() || STYLES.some(x => x.name === ARR.name)) ARR.name = s.name; edPush(prev); ARR.msg = `套用了「${s.name}」的配色和地板，家具位置不变`; ARR.err = false; buildFloor(); renderArrBar(); }
 function pickSurface(e){
   arrRay(e); if(!ray.ray.intersectPlane(floorPlane, hitPt)) return;
   const x = hitPt.x, z = hitPt.z, m = ARR.L.items.find(it => it.k === 'meet');
@@ -1925,10 +1978,10 @@ function renderArrBar(){
   const n = k => ARR.L.items.filter(it => it.k === k).length;
   const card = (key, label, cnt, max) => `<button type="button" class="ed-card" data-add="${key}" title="拖到楼层上，或点一下">${THUMB[key] ? `<img src="${THUMB[key]}" alt="">` : '<i class="ph"></i>'}<b>${esc(label)}</b>${max ? `<small>${cnt}/${max}</small>` : ''}</button>`;
   let left = '';
-  if(ARR.tab === 'style') left = `<div class="ed-styles">${STYLES.map((s,i) => `<button type="button" class="ed-style" data-style="${i}"><span class="pal">${['carpet','wood','desk','chair','accent'].map(k => `<i style="background:${s.c[k]}"></i>`).join('')}</span><b>${s.name}</b></button>`).join('')}</div><p class="ed-note">只换配色，家具位置不变。</p>`;
+  if(ARR.tab === 'style') left = `<div class="ed-styles">${STYLES.map((s,i) => `<button type="button" class="ed-style" data-style="${i}"><span class="pal"><i class="mt" style="background-image:url(${matThumb(s.m.carpet, s.c.carpet)})"></i><i class="mt" style="background-image:url(${matThumb(s.m.wood, s.c.wood)})"></i>${['desk','chair','accent'].map(k => `<i style="background:${s.c[k]}"></i>`).join('')}</span><b>${s.name}</b></button>`).join('')}</div><p class="ed-note">换配色和地板材质，家具位置不变。</p>`;
   else if(ARR.tab === 'furniture') left = `<div class="ed-grid">${ED_KINDS.map(([k,z]) => card(k, z, n(k), KIND[k].max)).join('')}</div>`;
   else if(ARR.tab === 'decor') left = `<div class="ed-grid">${Object.keys(DECOR_ZH).map(id => card('decor:' + id, DECOR_ZH[id], '', 0)).join('')}</div><p class="ed-note">摆设 ${n('decor')}/8 件</p>`;
-  else left = `<div class="ed-surfs">${Object.keys(SURF).map(k => `<button type="button" class="ed-surf ${ARR.surf===k?'on':''}" data-surf="${k}"><i style="background:${ARR.colors[k]}"></i>${SURF[k]}</button>`).join('')}</div>`;
+  else left = `<div class="ed-surfs">${Object.keys(SURF).map(k => `<button type="button" class="ed-surf ${ARR.surf===k?'on':''}" data-surf="${k}"><i style="${ARR.mats[k] ? `background-image:url(${matThumb(ARR.mats[k], ARR.colors[k])})` : `background:${ARR.colors[k]}`}"></i><span>${SURF[k]}${ARR.mats[k] ? `<small>${MAT_ZH[ARR.mats[k]]}</small>` : ''}</span></button>`).join('')}</div>`;
   let right;
   if(ARR.sel != null){
     const it = ARR.L.items[ARR.sel], nm = itemName(ARR.L, ARR.sel), deskish = it.k === 'tm' || it.k === 'helper';
@@ -1939,9 +1992,11 @@ function renderArrBar(){
       ${it.k === 'decor' ? `<div class="ed-l">主色（摆设的点缀色）</div>${swatches('accent', ANY_SW)}` : ''}`;
   } else if(ARR.surf){
     const k = ARR.surf, light = ['carpet','wood','tile'].includes(k);
-    right = `<div class="ed-ins-h"><i class="big" style="background:${ARR.colors[k]}"></i><b>${SURF[k]}</b><small>${ARR.colors[k]}</small></div>${swatches(k, light ? LIGHT_SW : ANY_SW)}${light ? '<p class="ed-note">地板要够浅（亮度 55%–95%），人和名字才看得清。</p>' : ''}`;
+    right = `<div class="ed-ins-h"><i class="big" style="${light ? `background-image:url(${matThumb(ARR.mats[k], ARR.colors[k])})` : `background:${ARR.colors[k]}`}"></i><b>${SURF[k]}</b><small>${light ? MAT_ZH[ARR.mats[k]] + ' · ' : ''}${ARR.colors[k]}</small></div>
+      ${light ? `<div class="ed-l">材质</div><div class="ed-mats">${FLOOR_MATS.map(([m,z]) => `<button type="button" class="ed-mat ${ARR.mats[k]===m?'on':''}" data-mat="${k}|${m}"><img src="${matThumb(m, ARR.colors[k])}" alt=""><span>${z}</span></button>`).join('')}</div><div class="ed-l">颜色</div>` : ''}
+      ${swatches(k, light ? LIGHT_SW : ANY_SW)}${light ? '<p class="ed-note">地板要够浅（亮度 55%–95%），人和名字才看得清。</p>' : ''}`;
   } else {
-    right = `<div class="ed-ins-h"><b>怎么用</b></div><ul class="ed-tips"><li>从左边<b>拖</b>家具、摆设到楼层上，或<b>点一下</b>自动找空位</li><li><b>点家具</b>：拖动、转向（R）、复制、删除（Delete），换桌椅颜色</li><li><b>点地面</b>：换地毯、区经理室、茶水间的颜色</li><li>斜线是固定的地方（电梯、区经理室、茶水间、白板）</li><li>每个座位都要能从电梯走到；放不下会弹回去并说原因</li></ul>`;
+    right = `<div class="ed-ins-h"><b>怎么用</b></div><ul class="ed-tips"><li>从左边<b>拖</b>家具、摆设到楼层上，或<b>点一下</b>自动找空位</li><li><b>点家具</b>：拖动、转向（R）、复制、删除（Delete），换桌椅颜色</li><li><b>点地面</b>：换地板<b>材质</b>（木地板、人字拼、瓷砖、大理石、水泥…）和颜色</li><li>斜线是固定的地方（电梯、区经理室、茶水间、白板）</li><li>每个座位都要能从电梯走到；放不下会弹回去并说原因</li></ul>`;
   }
   el.innerHTML = `
     <div class="ed-top">
@@ -1966,6 +2021,7 @@ function renderArrBar(){
   el.querySelectorAll('[data-style]').forEach(b => b.onclick = () => edStyle(+b.dataset.style));
   el.querySelectorAll('[data-surf]').forEach(b => b.onclick = () => { ARR.surf = b.dataset.surf; ARR.sel = null; buildFloor(); renderArrBar(); });
   el.querySelectorAll('[data-col]').forEach(b => b.onclick = () => { const [k, c] = b.dataset.col.split('|'); edColor(k, c); });
+  el.querySelectorAll('[data-mat]').forEach(b => b.onclick = () => { const [k, m] = b.dataset.mat.split('|'); const prev = edState(); ARR.mats[k] = m; edPush(prev); ARR.msg = `${SURF[k]}换成了${MAT_ZH[m]}`; ARR.err = false; buildFloor(); renderArrBar(); });
   el.querySelectorAll('[data-colin]').forEach(inp => inp.onchange = () => edColor(inp.dataset.colin, inp.value));
   el.querySelectorAll('[data-act]').forEach(b => b.onclick = () => { const a = b.dataset.act; if(a === 'rotl') arrRotate(-1); else if(a === 'rotr') arrRotate(1); else if(a === 'copy') arrCopy(); else arrRemove(); });
   el.querySelectorAll('[data-add]').forEach(b => b.addEventListener('pointerdown', cardDown));

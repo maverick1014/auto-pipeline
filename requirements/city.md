@@ -49,6 +49,7 @@
 | `colors.carpet` (open office), `colors.manager_floor` (the area manager's glass room), `colors.pantry_floor` | #RRGGBB, HSL lightness 55-95% (people and labels stay readable) |
 | `colors.desk`, `colors.desk_leg`, `colors.chair`, `colors.meeting_rug`, `colors.manager_rug` | #RRGGBB |
 | `decor` | v 1 only: exactly 3 entries, one per slot (1 south-west corner, 2 south middle, 3 east wall): a catalogue id or `none` |
+| `materials` | optional, v 2: `{"carpet", "manager_floor", "pantry_floor"}`, each one of plain, wood, herringbone, tile, bigtile, marble, concrete, checker; missing = the base look (plain, wood, tile) |
 | `layout.items` | v 2 only: the pieces, each `{"k": "tm"\|"helper"\|"meet"\|"plant"\|"decor", "x", "z", "yaw"}`, plus `"id"` (a catalogue id) for decor and `"s"` (0.6-1.2) for a plant; x and z in tiles from the floor's middle, on the 0.2 grid, within ±6.95; yaw 0, 90, 180 or 270; the counts and checks of Room editor |
 
 - Catalogue (15 pieces, each fits 1.6 x 0.9 tiles, drawn in code): robot, conveyor, gears, chart, plants, safe, cabinets, printer, bookshelf, clock, cashier, goods, menu, scanner, lightbox.
@@ -70,7 +71,7 @@
 - The designer may also move furniture and decor (a layout, see Room editor); its files pass the same checks (owner, 2026-11-25, mock v1 question 3).
 
 ### Room editor
-- Owner, 2026-11-24 and 2026-11-25 (city-office-2): DIY B, "free placement of furniture and decor anywhere on the floor grid", and "the form is not very good ... refer to those renovation app like coohome". Mock: https://claude.ai/artifact/FUoJq6kKWSj2C58h9oofAR version 2, kept as `mock/city-office-2-mock.html` (owner yes pending).
+- Owner, 2026-11-24 and 2026-11-25 (city-office-2): DIY B, "free placement of furniture and decor anywhere on the floor grid", and "the form is not very good ... refer to those renovation app like coohome". Mock: https://claude.ai/artifact/FUoJq6kKWSj2C58h9oofAR, kept as `mock/city-office-2-mock.html`; owner yes on version 2 (2026-11-25: "ok this one i ok arleady") plus floor materials (version 3).
 - Opens from 装修 → 自己装修 and from the first-entry question. While it is open: people, the rail, the lift panel, the floor sign and the status pill are hidden; the floor in view stays.
 - Screen:
   - top bar: 退出, 方案名 (1-20 characters), 2D 俯视 / 3D, 撤销, 重做, 恢复基本款, the counts, 保存;
@@ -88,7 +89,8 @@
   - click a floor area (open office carpet, glass room floor, pantry floor, the area manager's rug, the meeting rug) or a piece (desk top, desk legs, chairs; accent for decor);
   - pick a swatch or a custom colour;
   - the three floors keep lightness 55-95%: a darker or whiter pick is refused with the number;
-  - 风格: 6 presets set the 9 colours (and the plan name when it is empty), never the layout.
+  - floor materials (owner, 2026-11-25: "the floor also want to able to change, because the floor affects a lot on the looking"): each of the three floor areas (open office, glass room, pantry) has a material and a colour; materials, drawn in code: 素色地毯 plain, 木地板 wood, 人字拼 herringbone, 小方砖 tile, 大地砖 big tile, 大理石 marble, 水泥 concrete, 格子砖 checker; the colour rule (lightness 55-95%) stays;
+  - 风格: 6 presets set the 9 colours and the 3 floor materials (and the plan name when it is empty), never the layout.
 - Checks, live while dragging, again on 保存, and by the server on every write whoever made it (Floor design):
   - every piece inside the floor;
   - none on a fixed area;
@@ -97,7 +99,7 @@
   A move or a turn that breaks a rule snaps back, and the message names the piece and the reason, e.g. 「经理桌 1」的座位被挡住了，从电梯走不过去.
 - Undo / redo inside the editor (60 steps). 退出 with unsaved changes asks once more, in the message line; no browser dialog. 保存 writes one design file: the history of 5 and 撤销上一步 work as before.
 - Seats: managers take the manager desks in the order the desks are listed, assistants the assistant desks. People beyond the desks stand in the meeting corner.
-- Phone: the catalogue is a sheet at the bottom and the inspector floats above it. Usable, computer first (owner question 2 pending).
+- Phone: the catalogue is a sheet at the bottom and the inspector floats above it. Usable, computer first (owner question 2 not answered yet; this is the recommended default).
 
 ## Data path
 - `hooks/hooks.json` → `bin/agent-city-hook.sh` → `<city dir>/events.jsonl` → `bin/agent_city.py` → SSE `/events` → page.
