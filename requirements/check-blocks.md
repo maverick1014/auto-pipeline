@@ -855,3 +855,15 @@ Decided by the main manager (listed for the owner):
 - C25 A pane's reservation lives on the machine the pane runs on: a pane on another machine is not reserved in the local list (resume and dispatch reserve only a local pane; the remote pane reserves itself there at its start).
 - C26 A pane measures itself once, at its first start (SessionStart source "startup"), never at resume or compact; the stored pane weight is the highest of the last 5 measurements (`pane_recent` in agent_test_weights.json), not the highest ever.
 - C27 An entry whose start time is unknown or empty expires after 6 hours (it cannot be verified).
+
+## 49. FIX ORDER 8 from the main manager (TELL ff975386, bounce 3: third pass of the review of the rule text at e7cb397, done as flow walks)
+
+- A10 (blocker) One way for every task, fast-lane included: `checks gate <task> --dir <d>` copies the task's CHECK lines it read from <d> into the main repo's agent_state.txt (as `checks gather` does, lines already there skipped), so promote's gate finds them there. A third walk in tests/check_blocks_demo.sh: an urgent small production task done by a fast-lane deputy in an Agent worktree (no agent_worktree.txt line).
+- A11 agents/reviewer.md: read `git diff <base>...<head>` after `git fetch`, from any checkout (no worktree needed); agents/check-deputy.md: its brief says where the app runs (a scratch copy of the head here, or the machine and how to reach it).
+- A12 skills/merge's `session:` field has three values: task manager | helper | fast-lane (a subagent's git worktree, no pane); agents/merge-deputy.md has a case for each.
+- A13 Quiz Q39 option B follows A9: "... merge to production with his verified words from dispatch (no second yes) ...".
+- A14 skills/merge maps the Reviewer model setting like dispatch: `agent_conf.py cli-model` gives the Agent call's model, and the effort goes into its own field.
+- A15 skills/dispatch step 2's template: `[--target production --owner-quote "<the owner's words>"]`.
+- A16 BUILDER_BLOCKS has no DIFF READ.
+- A17 agents/merge-deputy.md: for a production task the deputy checks the merge against the production branch (`git merge-base --is-ancestor origin/<branch> origin/<production branch>`), then deletes the branch with -D.
+- A18 skills/merge step 4: a remote task is gated on a scratch copy (`git worktree add --detach <scratch> origin/<branch>`, removed after); its reservation on the other machine goes by itself when its process ends (a dead pid is pruned), no release command.

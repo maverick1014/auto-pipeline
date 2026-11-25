@@ -76,7 +76,7 @@ QUIZ_Q38 = """Q38. A diff only changes one locale value. agent-level.sh check pr
 
 QUIZ_Q39 = """Q39. Production is broken and the owner wants it fixed now. You:
   A. Fix it on the working branch and wait for the next promote
-  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, get the owner's yes, merge to production (the release build runs by itself), then merge production back into the working branch
+  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with his verified words from dispatch (no second yes; the release build runs by itself), then merge production back into the working branch
   C. Push a fix straight to production with no check
   D. Wait for the nightly run"""
 
