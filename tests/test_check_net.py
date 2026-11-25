@@ -142,6 +142,23 @@ class TestNightly(NetCase):
         self.assertEqual(st["commit"], self.git("rev-parse", "HEAD"))
         self.assertEqual(len(self.git("worktree", "list").splitlines()), 1, "the scratch tree is gone")
 
+    def test_the_scratch_tree_sees_the_installed_dependency_folders(self):
+        # a clean scratch checkout has no node_modules or venv: the nightly links the main checkout's
+        # ignored dependency folders (node_modules, .venv, venv, vendor, .dart_tool, Pods), top level and
+        # one level down, into the scratch tree, read only by use; else every JS or Python repo is red
+        self.put({".gitignore": "node_modules/\npackages/*/node_modules/\n",
+                  "tests/test_dep.py": "import os, unittest\n\n\nclass D(unittest.TestCase):\n"
+                                       "    def test_dep(self):\n"
+                                       "        self.assertTrue(os.path.exists('node_modules/dep/index.js'))\n"
+                                       "        self.assertTrue(os.path.exists('packages/a/node_modules/x.js'))\n"})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "needs deps")
+        self.put({"node_modules/dep/index.js": "x\n", "packages/a/node_modules/x.js": "y\n"})
+        self.nightly("--start", "--wait")
+        self.assertEqual(self.status_file()["result"], "green", self.status_file())
+        self.assertTrue(os.path.exists(os.path.join(self.repo.dir, "node_modules", "dep", "index.js")),
+                        "the main checkout's folder stays")
+
     def test_a_red_first_run_is_no_miss(self):
         self.put({"src/x.txt": "broken\n"})
         self.git("commit", "-qam", "break")
