@@ -106,8 +106,8 @@
     "working_branch": {
       "type": "string",
       "title": "Flow: Working branch",
-      "description": "Branch that tasks merge into; init creates it and a worktree for it. The production branch (users) stays apart.",
-      "default": "ap-worktree"
+      "description": "Branch that tasks merge into; init creates it and switches the main checkout to it. <name> becomes your git user name. The production branch (users) stays apart.",
+      "default": "ap-main-<name>"
     },
     "watch_quiet_min": {
       "type": "number",

@@ -219,15 +219,13 @@ def production_branch(root, conf_text):
 
 
 def ensure_working_branch(root, conf_text, out):
-    """Create, when missing, the working_branch (a setting) from the production branch, and a worktree for it
-    at <parent of the main repo>/<main repo folder>-<working branch>. Existing ones are kept."""
+    """Create, when missing, the working branch (per person, agent_conf.working_branch) from the production
+    branch, switch the main checkout to it (local changes carried), push it when origin exists. No worktree."""
     try:
         import agent_conf
-        name = agent_conf.get("working_branch")
+        name = agent_conf.working_branch(root)
     except Exception:
-        name = "ap-worktree"
-    common = git_ok(root, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
-    main_root = common[:-len("/.git")] if common.endswith("/.git") else root
+        return
     prod = production_branch(root, conf_text)
     ref = "refs/heads/" + name
     if git_ok(root, "rev-parse", "--verify", "-q", ref).strip():
@@ -241,23 +239,23 @@ def ensure_working_branch(root, conf_text, out):
                 not git_ok(root, "rev-parse", "--verify", "-q", ref).strip():
             return
         out.append("working branch: created %s from %s" % (name, prod))
-    listing = git_ok(root, "worktree", "list", "--porcelain")
-    path, have = "", ""
-    for line in listing.splitlines():
-        if line.startswith("worktree "):
-            path = line[len("worktree "):]
-        elif line == "branch " + ref:
-            have = path
-    if have:
-        out.append("worktree: kept %s" % have)
-        return
-    target = os.path.join(os.path.dirname(main_root), "%s-%s" % (os.path.basename(main_root), name))
-    if os.path.exists(target):
-        out.append("worktree: kept %s" % target)
-        return
-    if subprocess.run(["git", "-C", root, "worktree", "add", "-q", target, name],
-                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-        out.append("worktree: created %s" % target)
+    cur = git_ok(root, "symbolic-ref", "--short", "-q", "HEAD").strip()
+    if cur == name:
+        out.append("checkout: on %s" % name)
+    else:
+        r = subprocess.run(["git", "-C", root, "switch", "-q", name], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.PIPE)
+        if r.returncode == 0:
+            out.append("checkout: switched to %s" % name)
+        else:
+            why = r.stderr.decode(errors="replace").strip().splitlines()
+            out.append("checkout: not switched to %s (git refused: %s)" % (name, why[0] if why else "unknown"))
+    if git_ok(root, "remote", "get-url", "origin").strip():
+        p = subprocess.run(["git", "-C", root, "push", "-q", "-u", "origin", name],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        if p.returncode != 0:
+            why = p.stderr.decode(errors="replace").strip().splitlines()
+            out.append("working branch: push failed (%s)" % (why[-1] if why else "unknown"))
 
 
 def fix_subjects(root):

@@ -991,6 +991,40 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
 "
   fi
 fi
+# C44: the working branch: made (and pushed) here, the checkout is never switched here. Main manager or takeover only.
+if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; then
+  wb_name=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" working-branch "$PROJECT_ROOT" 2>/dev/null </dev/null) || wb_name=""
+  if [ -n "$wb_name" ]; then
+    wb_made=""
+    if ! git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1; then
+      wb_prod=$(sed -n 's/^production_branch=//p' "$PROJECT_ROOT/agent_repo.conf" 2>/dev/null | tail -n 1 | tr -d '[:space:]')
+      if [ -z "$wb_prod" ]; then
+        wb_prod=$(git -C "$PROJECT_ROOT" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null) || wb_prod=""
+        wb_prod=${wb_prod#origin/}
+      fi
+      if [ -z "$wb_prod" ]; then
+        if git -C "$PROJECT_ROOT" rev-parse --verify -q refs/heads/main >/dev/null 2>&1; then wb_prod=main
+        else wb_prod=$(git -C "$PROJECT_ROOT" symbolic-ref --short -q HEAD 2>/dev/null) || wb_prod=""; fi
+      fi
+      wb_base=$wb_prod
+      git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_base" >/dev/null 2>&1 || wb_base="origin/$wb_prod"
+      if [ -n "$wb_prod" ] && git -C "$PROJECT_ROOT" branch "$wb_name" "$wb_base" >/dev/null 2>&1 </dev/null; then
+        wb_made=$wb_prod
+        if git -C "$PROJECT_ROOT" remote get-url origin >/dev/null 2>&1; then
+          git -C "$PROJECT_ROOT" push -q -u origin "$wb_name" >/dev/null 2>&1 </dev/null || true
+        fi
+      fi
+    fi
+    if git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1 \
+       && [ "$(git -C "$PROJECT_ROOT" symbolic-ref --short -q HEAD 2>/dev/null)" != "$wb_name" ]; then
+      wb_tail="switch the main checkout to $wb_name at a quiet point (no uncommitted work, no merge running): git switch $wb_name"
+      if [ -n "$wb_made" ]; then WATCH_TEXT="${WATCH_TEXT}WORKING BRANCH: created $wb_name from $wb_made; $wb_tail
+"
+      else WATCH_TEXT="${WATCH_TEXT}WORKING BRANCH: $wb_tail
+"; fi
+    fi
+  fi
+fi
 RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
 QUIZ_SID="${SID:-${CLAUDE_CODE_SESSION_ID:-}}"
 if [ -n "$QUIZ_SID" ] && [ -f "$PROJECT_GITDIR/agent_quiz_$QUIZ_SID" ]; then
@@ -1033,6 +1067,15 @@ ptr_bytes=0
 if [ -f "$STATE_DIR/agent_state.txt" ]; then
   ptr_n=$(count_lines "$STATE_DIR/agent_state.txt")
   [ "${ptr_n:-0}" -gt 0 ] && ptr_bytes=$(line_bytes "agent_state.txt: $ptr_n lines, read it now (S8)")
+fi
+
+# 0. the WORKING BRANCH line (about 150 bytes) gives way to a short form when it would leave the state block
+# less than its header plus the truncated marker.
+if [ -n "${wb_name:-}" ] && [ -n "$ptr_bytes" ] && [ "$ptr_bytes" -gt 0 ] \
+   && [ $(( CAP - fixed )) -lt $(( ptr_bytes + $(line_bytes "  (truncated, read the file)") )) ] \
+   && printf '%s' "$WATCH_TEXT" | grep -q '^WORKING BRANCH: '; then
+  WATCH_TEXT=$(printf '%s' "$WATCH_TEXT" | sed -E 's/^WORKING BRANCH: .*$/WORKING BRANCH: git switch '"$wb_name"' at a quiet point/'; printf 'X'); WATCH_TEXT=${WATCH_TEXT%X}
+  calc_fixed
 fi
 
 # 1. auto resume: header plus one pointer line.

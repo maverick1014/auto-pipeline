@@ -26,6 +26,7 @@ REPO_FILE = "agent_repo.conf"
 REPO_KEYS = ("level3_paths", "level4_paths")
 CORE_LINE = "core paths of this repo: agent_repo.conf"
 PERMISSION_MODES = ["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"]
+WORKING_BRANCH_DEFAULT = "ap-main-<name>"
 RUNTIME_VALUES = ["auto", "orca", "plain", "cloud"]
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 MANAGER_PICKS = ["opus-5.5:high", "opus-5.5:xhigh"]
@@ -68,8 +69,8 @@ SETTINGS = [
        "Resume the agents that were running by themselves when a main manager starts."),
     _s("todo_before_agent", "Rules: Todo before agent", "boolean", True,
        "On: a launch naming no open todo task is refused. Off: launches are only recorded on the board."),
-    _s("working_branch", "Flow: Working branch", "string", "ap-worktree",
-       "Branch that tasks merge into; init creates it and a worktree for it. The production branch (users) stays apart."),
+    _s("working_branch", "Flow: Working branch", "string", WORKING_BRANCH_DEFAULT,
+       "Branch that tasks merge into; init creates it and switches the main checkout to it. <name> becomes your git user name. The production branch (users) stays apart."),
     _s("watch_quiet_min", "Stuck: Consider stuck after (min)", "number", 15,
        "Minutes a running task's state file may stay unchanged before the board marks it not confirmed. 1 to 240.",
        min=1, max=240),
@@ -862,10 +863,37 @@ def cli_model(spec):
     return base + suffix
 
 
+# ------------------------------------------------------------------ working branch
+
+
+def working_branch(repo):
+    """The working branch of this clone: the stored git config auto-pipeline.workingbranch, else the setting
+    with <name> = git user.name cleaned, stored at once."""
+    def cfg(*a):
+        try:
+            r = subprocess.run(["git", "-C", repo] + list(a), stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, timeout=30)
+            return r.stdout.decode(errors="replace").strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    stored = cfg("config", "--local", "--get", "auto-pipeline.workingbranch")
+    if stored:
+        return stored
+    try:
+        value = str(get("working_branch")).strip() or WORKING_BRANCH_DEFAULT
+    except Exception:
+        value = WORKING_BRANCH_DEFAULT
+    if "<name>" in value:
+        who = re.sub(r"[^a-z0-9]+", "-", cfg("config", "user.name").lower()).strip("-") or "user"
+        value = value.replace("<name>", who)
+    cfg("config", "--local", "auto-pipeline.workingbranch", value)
+    return value
+
+
 # ------------------------------------------------------------------ CLI
 
 USAGE = ("usage: agent_conf.py get <key> | show | migrate <project root> "
-         "| cli-model <model[:effort]> | you <role_key> <pid>\n")
+         "| cli-model <model[:effort]> | you <role_key> <pid> | working-branch <repo>\n")
 
 
 def _cmd_get(key):
@@ -906,6 +934,9 @@ def main(argv):
         return 0
     if len(argv) == 2 and argv[0] == "get":
         return _cmd_get(argv[1])
+    if len(argv) == 2 and argv[0] == "working-branch":
+        sys.stdout.write(working_branch(argv[1]) + "\n")
+        return 0
     if argv == ["show"]:
         return _cmd_lines(show_lines)
     if len(argv) == 2 and argv[0] == "migrate":
