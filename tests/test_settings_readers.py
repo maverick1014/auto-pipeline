@@ -199,6 +199,22 @@ class TestStart(StartCase):
         out2 = self.assertOk(self.start())
         self.assertNotIn("moved language=zh", out2)
 
+    def test_the_moved_values_count_in_the_same_start(self):
+        # E2E 2026-11-25: the start that moves an old file already runs on the moved values.
+        # The fixture's claude stub only logs, so stand in for Claude Code's own write.
+        self.repo.set_old_conf("language=zh\n")
+        self.repo.stub_tool("claude", "#!%s\nimport json, os, sys\n"
+                            "data = sys.stdin.read()\n"
+                            "p = os.path.join(os.environ['CLAUDE_CONFIG_DIR'], 'settings.json')\n"
+                            "os.makedirs(os.path.dirname(p), exist_ok=True)\n"
+                            "d = json.load(open(p)) if os.path.exists(p) else {}\n"
+                            "d.setdefault('pluginConfigs', {}).setdefault(sys.argv[3], {}).setdefault('options', {})"
+                            ".update(json.loads(data) if data else {})\n"
+                            "json.dump(d, open(p, 'w'))\n" % sys.executable)
+        out = self.assertOk(self.start())
+        self.assertIn("moved language=zh from", out)
+        self.assertIn("LANGUAGE: zh", out)
+
     def test_a_stale_scope_of_this_folder_is_updated(self):
         here = os.path.realpath(self.repo.dir)
         self.installed([{"scope": "user", "version": "0.44.0"},

@@ -771,7 +771,7 @@ print_mode_lines() {
   python3 "$pyp/agent_conf.py" you "$rk" "$ME" 2>/dev/null </dev/null || true
   PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
 for w in a.warnings(): print(w)' 2>/dev/null </dev/null || true
-  python3 "$pyp/agent_conf.py" migrate "$PROJECT_ROOT" 2>/dev/null </dev/null || true
+  printf '%s' "$MIGRATE_TEXT"
   python3 "$pyp/agent_update.py" sync "$STATE_DIR" "$PROJECT_ROOT" 2>/dev/null </dev/null || true
   if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ] || [ "$role" = second ]; }; then
     upd=$(python3 "$pyp/agent_update.py" notice "$PLUGIN_ROOT" 2>/dev/null </dev/null) || upd=""
@@ -940,6 +940,8 @@ if [ "$role" = main ] || [ "$role" = takeover ]; then
   CLEAN_TEXT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --apply --short 2>/dev/null </dev/null || true; printf 'X'); CLEAN_TEXT=${CLEAN_TEXT%X}
 fi
 
+# the old-file move runs first, so the lines below already read the moved values
+MIGRATE_TEXT=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" migrate "$PROJECT_ROOT" 2>/dev/null </dev/null || true; printf 'X'); MIGRATE_TEXT=${MIGRATE_TEXT%X}
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
 # F1/F2: one WATCH line for the main manager or a takeover, orca only. The line comes from the files (no orca call);

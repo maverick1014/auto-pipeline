@@ -62,13 +62,15 @@ Rules and examples:
 
 27 keys (the brief said 26; its own list names 27). They live in `bin/agent_conf.py` `CONSTANTS`, read by name.
 
-## 4. Migration from the old files
+## 4. Migration from the old files (owner answer Q1, 2026-11-25)
 
-- Start and init look for `agent.conf` (repo top) and `~/.claude/auto-pipeline.conf`
-- Found: one `SETTINGS MOVED:` block lists every value that differs from the new default (old key -> new key), then one line: set them in `/plugin -> Installed -> auto-pipeline -> Configure`
-- The files are never read for a value again. They are not deleted by a script (the human or the clean-up skill removes them)
-- Nothing found or nothing differs: no line
-- Never silent: a file that cannot be read gives one line
+- Start and init look for `agent.conf` (repo top) and `~/.claude/auto-pipeline.conf`; the user file wins for permission_mode and auto_update (the old rule)
+- A value that differs from the default and is still unset in Configure is written with `claude plugin configure auto-pipeline@auto-pipeline --values-stdin`, once, before the start reads any setting
+- A value the human already set in Configure is never overwritten: `kept <key>=<now> in Configure, skipped <key>=<old> from <file>`
+- Lines: a `SETTINGS MOVED: <file> is not read any more ...` header, `moved <key>=<value> from <file> to Configure`, `fixed: <key>=<v> ... is now fixed at <c>` for a changed constant, `dropped: <key>=<v> ... is not a setting any more` for an unknown key
+- Once = marker `<config dir>/auto-pipeline-migrated.json` (real path -> sha256 of the text); the same text again prints nothing
+- The write fails: `SETTINGS MOVE FAILED: <why>. Run: <the exact command>`, no marker, tried again next start. Never silent
+- The old files are never changed or deleted by a script
 
 ## 5. `/auto-pipeline:settings`
 
@@ -86,9 +88,10 @@ Rules and examples:
 - One danger list: Configure `danger_paths` + the built-in danger paths (lockfiles, dependency lists, migrations, schema)
 - A file on that list is type D. The old level3 list (always C) is gone: C comes from logic detection only
 
-## 8. plugin-scope-sync
+## 8. plugin-scope-sync (owner answer Q2, 3A 2026-11-25)
 
 - `installed_plugins.json` holds one entry per scope: user, and a project entry per folder (each worktree folder gets its own)
-- At start and init: the scopes this folder uses (user, and the project or local entry whose path is this folder) are compared with the newest installed version
-- Older: one line per scope, `STALE SCOPE: <scope> <path> runs <old>, newest <new>: cd <path> && claude plugin update auto-pipeline@auto-pipeline --scope <scope>`
-- Entries of other repos and of folders that are gone are never touched
+- Start (every role) and init: the scopes this folder uses (user, and the project or local entries whose path is this folder or the main repo) older than the newest installed version are updated with `claude plugin update auto-pipeline@auto-pipeline --scope <s>`, run in that folder
+- One line per scope: `updated <scope> <path>: <old> -> <new>, restart to apply`
+- Failed, Auto update off, or another start holding the lock (`<config dir>/plugins/.auto-pipeline-update.lock`, fresh under 10 min): `STALE SCOPE: ... <why>: <the exact command>`
+- Entries of other repos and of folders that are gone are never touched; the script never writes `installed_plugins.json` itself
