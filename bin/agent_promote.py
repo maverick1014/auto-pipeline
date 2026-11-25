@@ -303,6 +303,8 @@ def gather(root, task):
     on another machine is skipped."""
     for path in task_worktrees(root, task):
         if not os.path.isdir(path):
+            remote = re.match(r"^[^/\s]+:", path) is not None          # host:/path = another machine
+            out("gather: skipped %s: %s" % (path, "on another machine" if remote else "missing"))
             continue
         try:
             subprocess.run([os.path.join(HERE, "agent-file.sh"), "checks", "gather", task, "--dir", path], cwd=root,
