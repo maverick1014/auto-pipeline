@@ -150,8 +150,7 @@ class TestNightly(NetCase):
         dev = self.git("rev-parse", "dev")
         self.put({"src/x.txt": "broken\n"})
         self.git("commit", "-qam", "main moves")
-        with open(os.path.join(self.repo.dir, "agent_repo.conf"), "a") as fh:
-            fh.write("working_branch=dev\n")
+        self.repo.set_conf("working_branch", "dev")                # a setting (owner 2026-11-25, section 28)
         self.nightly("--start", "--wait")
         st = self.status_file()
         self.assertEqual((st["commit"], st["result"]), (dev, "green"), st)
@@ -259,6 +258,30 @@ class TestNightly(NetCase):
         r = self.nightly("--start", "--wait", env=env)
         self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
         self.assertIn("ROOM: no:", r.stdout + r.stderr)
+
+    # -- section 28 (owner 2026-11-25): the full suite runs on the working branch after merges
+
+    def test_after_merge_runs_the_suite(self):
+        self.merge("feat-a", {"src/a.py": "x = 1\n"}, "Merge feat-a (W8)")
+        r = self.nightly("--after-merge", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual((st["result"], st["commit"]), ("green", self.git("rev-parse", "HEAD")))
+
+    def test_a_docs_only_merge_starts_nothing(self):
+        self.merge("feat-doc", {"docs/a.md": "x\n", "PRINCIPLES.md": "- a rule\n"}, "Merge feat-doc (W8)")
+        r = self.nightly("--after-merge", "--wait")
+        self.assertEqual(r.stdout.strip(), "after-merge: docs-only merge, nothing to run")
+        self.assertFalse(os.path.exists(os.path.join(self.gitdir(), "agent_nightly.json")))
+
+    def test_a_merge_during_a_run_is_covered_by_one_more_run(self):
+        with open(os.path.join(self.gitdir(), "agent_nightly.json"), "w") as fh:
+            json.dump({"started": "2026-11-25 15:00", "commit": self.git("rev-parse", "HEAD"), "finished": None,
+                       "result": "running", "failed": [], "pid": os.getpid()}, fh)
+        self.merge("feat-b", {"src/b.py": "y = 2\n"}, "Merge feat-b (W8)")
+        r = self.nightly("--after-merge")
+        self.assertEqual(r.stdout.strip(), "after-merge: a run is going, one more run when it ends")
+        self.assertTrue(self.status_file().get("pending"))
 
     def test_the_nightly_hour_is_a_constant(self):
         sys.path.insert(0, BIN)

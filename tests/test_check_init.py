@@ -101,9 +101,10 @@ class TestFresh(InitCase):
         self.init("--no-measure")
         keys = [l.split("=", 1)[0] for l in self.conf_text().splitlines() if "=" in l and not l.startswith("#")]
         order = ["version", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd", "test_config",
-                 "data_scripts", "real_data", "working_branch"]
+                 "data_scripts", "real_data"]
         self.assertEqual([k for k in keys if k in order], order)
-        self.assertGreater(keys.index("edge"), keys.index("working_branch"))
+        self.assertGreater(keys.index("edge"), keys.index("real_data"))
+        self.assertNotIn("working_branch", keys)   # a setting now (owner 2026-11-25, section 28)
 
     def test_it_is_meant_to_be_committed(self):
         self.init("--no-measure")
@@ -331,20 +332,37 @@ class TestReviewInit(InitCase):
 
 
 class TestWorkingBranch(InitCase):
-    """Owner 1A 2026-11-25 (section 17): the working branch is the one that does not reach users;
-    main when a release branch exists (users install release), else dev. Init asks nothing."""
+    """Owner 2026-11-25 (section 28): every repo keeps the working branch (setting "Flow: Working branch",
+    default ap-worktree) with its own git worktree, made by init from the production branch."""
 
-    def test_no_release_branch_is_dev(self):
-        self.init("--no-measure")
-        self.assertEqual(self.conf()["working_branch"], "dev")
+    def wt_path(self, branch="ap-worktree"):
+        return os.path.join(os.path.dirname(self.p), os.path.basename(self.p) + "-" + branch)
 
-    def test_a_release_branch_makes_main_the_working_branch(self):
-        self.git("branch", "release")
-        self.init("--no-measure")
-        self.assertEqual(self.conf()["working_branch"], "main")
+    def test_init_creates_the_branch_and_its_worktree(self):
+        prod = self.git("rev-parse", "--abbrev-ref", "HEAD").strip()
+        r = self.init("--no-measure")
+        lines = r.stdout.splitlines()
+        self.assertIn("working branch: created ap-worktree from %s" % prod, lines)
+        self.assertIn("working worktree: created %s" % self.wt_path(), lines)
+        self.assertEqual(self.git("rev-parse", "ap-worktree").strip(), self.git("rev-parse", prod).strip())
+        self.assertTrue(os.path.isdir(self.wt_path()))
+        self.assertEqual(subprocess.run(["git", "-C", self.wt_path(), "rev-parse", "--abbrev-ref", "HEAD"],
+                                        capture_output=True, text=True).stdout.strip(), "ap-worktree")
+        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD").strip(), prod, "the main checkout stays")
+        self.addCleanup(subprocess.run, ["git", "-C", self.p, "worktree", "remove", "--force", self.wt_path()],
+                        capture_output=True)
 
-    def test_an_existing_value_stays(self):
-        self.put({"agent_repo.conf": "working_branch=trunk\n"})
-        self.git("branch", "release")
+    def test_a_second_run_keeps_them(self):
         self.init("--no-measure")
-        self.assertEqual(self.conf()["working_branch"], "trunk")
+        self.addCleanup(subprocess.run, ["git", "-C", self.p, "worktree", "remove", "--force", self.wt_path()],
+                        capture_output=True)
+        r = self.init("--no-measure")
+        self.assertIn("working branch: kept ap-worktree", r.stdout.splitlines())
+        self.assertIn("working worktree: kept %s" % self.wt_path(), r.stdout.splitlines())
+
+    def test_the_setting_names_the_branch(self):
+        self.repo.set_conf("working_branch", "trunk")
+        r = self.init("--no-measure")
+        self.addCleanup(subprocess.run, ["git", "-C", self.p, "worktree", "remove", "--force", self.wt_path("trunk")],
+                        capture_output=True)
+        self.assertTrue(any(l.startswith("working branch: created trunk from ") for l in r.stdout.splitlines()))

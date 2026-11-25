@@ -95,6 +95,7 @@ COPY_BIN = [
     "agent_nightly.py",
     "agent-test-run.sh",     # check-blocks section 15: light or heavy by measured weight
     "agent-room.sh",         # check-blocks section 24: the memory gate and the reservation list
+    "agent-promote.sh",      # check-blocks section 28: production only on the owner's yes, from green
     "agent_state.py",        # state-trim: state add / state trim
     "agent-autoclear.sh",    # state-trim: the auto /clear waiter
     "agent-guard.sh",        # board-trust: the launch hook (bash prefilter)

@@ -113,6 +113,7 @@ ORDER = [
     ("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions"),   # owner order 2026-11-25
     ("auto_resume", "Permissions: Auto resume", "boolean", True),
     ("todo_before_agent", "Rules: Todo before agent", "boolean", True),
+    ("working_branch", "Flow: Working branch", "string", "ap-worktree"),   # owner 2026-11-25 (TELL 76bfcc8f): new
     ("watch_quiet_min", "Stuck: Consider stuck after (min)", "number", 15),
     ("housekeep_interval_min", "Stuck: Tidy every (min)", "number", 120),
     ("city_port", "City: City port", "number", 4777),
@@ -371,7 +372,7 @@ class TestGet(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         self.assertIn("max_usage_percent=400", lines[0])
         self.assertIn("1-100", lines[0])
-        self.assertIn("default 4", lines[0])
+        self.assertIn("default 80", lines[0])
 
     def test_bad_picker_value_gives_default(self):
         self.h.configure({"runtime": "docker", "permission_mode": "yolo"})

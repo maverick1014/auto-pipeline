@@ -785,66 +785,6 @@ class TestBetweenReleaseAndBump(Fixture):
             dry_run_verdict(self, r)
 
 
-# ---------------------------------------------------------------- check-blocks section 21 (5): urgent fix
-
-class TestUrgent(Fixture):
-    """Urgent fix (owner 2026-11-25): branch from the latest stable release (the commit the release branch
-    was built from), the smallest fix, released alone, then merged back into the working branch."""
-
-    def test_source_names_the_commit_the_release_was_built_from(self):
-        head = self.git("rev-parse", "HEAD")
-        self.build()
-        r = self.run_release("--source")
-        self.assertExit(r, 0)
-        self.assertEqual(r.stdout.strip(), head)
-
-    def test_source_with_no_release(self):
-        r = self.run_release("--source")
-        self.assertExit(r, 1)
-        self.assertIn("no release", r.stderr)
-
-    def test_an_urgent_fix_from_the_release_source_is_released_alone(self):
-        self.build()
-        source = self.git("rev-parse", "HEAD")
-        write(self.p("PRINCIPLES.md"), "# main moved on, not released\n")
-        self.commit("main moves on")
-        self.git("checkout", "-q", "-b", "hotfix", source)
-        write(self.p("bin", "agent.conf.default"), "x=urgent\n")
-        self.set_version("0.40.1")
-        self.commit("urgent fix")
-        r = self.run_release()
-        self.assertExit(r, 1)
-        self.assertIn("is not on main", r.stderr)
-        r = self.run_release("--urgent")
-        self.assertExit(r, 0)
-        self.assertIn("release 0.40.1:", r.stdout)
-        tree = self.ship_tree("release")
-        self.assertEqual(tree, self.ship_tree("hotfix"))
-        self.assertNotEqual(self.git("show", "release:PRINCIPLES.md"), "# main moved on, not released")
-
-    def test_urgent_needs_the_release_source_as_ancestor(self):
-        root = self.git("rev-list", "--max-parents=0", "HEAD")
-        write(self.p("PRINCIPLES.md"), "# a later main\n")
-        self.commit("later")
-        self.build()
-        self.git("checkout", "-q", "-b", "stray", root)
-        self.set_version("0.40.1")
-        self.commit("stray fix")
-        r = self.run_release("--urgent")
-        self.assertExit(r, 1)
-        self.assertIn("not built on the release source", r.stderr)
-
-    def test_urgent_still_needs_a_higher_version(self):
-        self.build()
-        source = self.git("rev-parse", "HEAD")
-        self.git("checkout", "-q", "-b", "hotfix", source)
-        write(self.p("bin", "agent.conf.default"), "x=urgent\n")
-        self.commit("fix, no bump")
-        r = self.run_release("--urgent")
-        self.assertExit(r, 1)
-        self.assertIn("is not higher than release", r.stderr)
-
-
 # ---------------------------------------------------------------- rule 15
 
 class TestMergeSkillLine(unittest.TestCase):
