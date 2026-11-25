@@ -432,3 +432,30 @@ Contract (task manager; replaces C13-C16 where they differ):
 - C17 `agent-nightly.sh --failures`: for the last red run, each failing test's file is run (related_cmd with its {tests}/{modules}) at each first-parent merge since the last green commit, oldest first, in a scratch worktree; the first merge where it fails introduced it. One row per failing test: `<test> | <merge short> <merge subject> | <task> | <requirements/<task>.md or ->` (task from a subject "Merge <task> ..."); no green run before: merge `-`. The selection-miss line uses the same merge.
 - C18 `agent-release.sh --source` prints the commit the release tip was built from (its message "release <v> from <short>"). `agent-release.sh --urgent [--from <ref>]`: build (and with --push, push) from a commit that is not on main, only when the release source commit is its ancestor; the version must still be higher; refused otherwise.
 - C19 Rule text: R8 head per (1)-(5); a bug a review or check finds gets a small test with its fix; the fixer report table (test | merge | task | label | cite or fix); no check deleted without a twin; urgent path per (5) with merge back into the working branch; check deputy; dispatch; merge skill; quiz Q38 (PR REVIEW) and Q39 (urgent: branch from the latest stable release, review, light tests, release alone, merge back).
+
+## 22. Rule text for section 21 (replaces section 20's draft; the rules worker puts it in as written)
+
+R8 head (right after "R8. Check blocks", before the owner's "only do the necessary thing" line):
+```
+- Owner 2026-11-25: "let other agents verify the outcome of the code instead of letting test cases do it"; tests only show old things still work and cost memory and time; an urgent fix must not wait for a test flow
+- PR REVIEW, the main check of every task: an agent that did not build it reads the diff against the approved requirement
+- It asks: does it do what was asked, nothing else; are the edge list lines covered; is no check deleted; no secret. Its cost follows the diff size, one more reason for small tasks
+- A run or browser check (FLOW CHECK, UI CHECK) comes on top only when what the user sees or does changed: only the approved items, a 15-minute time box (`verify_box_min`), extra finds go to the ideas file
+- Tests stay as a cheap guard: light related tests in every task; a bug that a review or check finds gets a small test with its fix (W3)
+- The full suite is the safety net only: the release run on the working branch and the nightly, never in a task; a heavy test never blocks a merge
+- URGENT FIX: branch from the latest stable release (`agent-release.sh --source`), the smallest fix, PR REVIEW, the light related tests; release it alone (`agent-release.sh --urgent`), then merge it back into the working branch
+```
+R8 body, after the RELEASE RUN lines:
+```
+- Release run failures: `agent-nightly.sh --failures` names, for each failing test, the merge that introduced it (it runs that test across the merges since the last green run)
+- The new fixer agent gets the test, the merge and that task's requirement, and labels each: "test out of date" (update it, cite the requirement line or commit that changed the behaviour on purpose) or "real break" (fix the code)
+- No check is deleted without a twin; the fixer's report is a table of these labels: test | merge | task | label | cite or fix
+```
+R8 body, other lines: "OUTCOME CHECK and UI CHECK pass only by ..." becomes "PR REVIEW, FLOW CHECK and UI CHECK pass only by someone who did not build the task: not the builder (...)"; the four-kinds "Urgent fix" line becomes "  - Urgent fix (production is broken): the URGENT FIX path above". Remove section 20's head lines ("The proof that a change is right", "runs the real thing once", "OUTCOME CHECK"). The table from `python3 bin/agent_blocks.py table`.
+W4: "Which tests run follows the blocks (R8): the light RELATED TESTS and GUARD TESTS per task; MODULE TESTS only when its trigger fires, light ones only; a heavy one goes to the release run or the nightly".
+W5: the check deputy drives the browser for FLOW CHECK, UI CHECK and RELEASE SMOKE, one at a time (keep "never verify their own work").
+W6: the check deputy runs PR REVIEW, FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE.
+skills/dispatch: every task gets its PR REVIEW (the tool plans it; the brief says what the owner approved); FLOW CHECK and UI CHECK only when what the user does or sees changes; an "URGENT FIX" paragraph: `agent-release.sh --source` names the latest stable release; a fast-lane deputy branches from it, makes the smallest fix; a check deputy does the PR REVIEW; the light related tests; release alone with `agent-release.sh --urgent`; then merge it back into the working branch.
+skills/merge: PR REVIEW, FLOW CHECK and UI CHECK go to a check-deputy; release step: `agent-nightly.sh --release-ok`, else `--start`; on a red release run `agent-nightly.sh --failures` and a new fixer agent (fast-lane deputy or task manager by size, never the builder) with the test, the merge and the requirement, labels "test out of date" or "real break"; URGENT FIX: `agent-release.sh --urgent`, then merge it back into the working branch.
+agents/check-deputy.md: PR REVIEW = read the diff against the approved requirement (asked, nothing else, edge list lines, no check deleted, no secret); FLOW CHECK and UI CHECK only the approved items, a 15-minute time box, extra finds go to `agent-file.sh idea add`.
+agents/fast-lane-deputy.md and agents/merge-deputy.md: PR REVIEW in place of DIFF READ; a bug found in review gets a small test with its fix.
