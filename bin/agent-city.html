@@ -1424,17 +1424,57 @@ function planOf(terr){
   planMemo.set(terr, p);
   return p;
 }
-/* what the sim reads of a plan: the manager desks and the assistant desks (item order) with the point and the way a
-   person sits there, and the 4 meeting chairs; cached by the plan */
+/* the walk grid of a list of pieces, cached by the pieces */
+function gridOfItems(items){
+  const key = JSON.stringify(items);
+  let g = gridCache.get(key);
+  if (!g) { if (gridCache.size > 40) gridCache.clear(); g = gridOfPlan(items); gridCache.set(key, g); }
+  return g;
+}
+/* the point itself when its cell is free on grid g, else the middle of the nearest free cell */
+function freePt(g, x, z){
+  const i = cellIx(x), j = cellIx(z);
+  if (!isBlocked(g, i, j)) return { x, z };
+  const c = nearestFreeCell(g, i, j);
+  return isBlocked(g, c[0], c[1]) ? { x, z } : { x:cellMid(c[0]), z:cellMid(c[1]) };
+}
+/* what the sim reads of a plan, cached by the plan:
+   tm, helper: the desks in item order, with the point and the way a person sits there;
+   meet: the meeting places: the 4 chairs, then 2 standing spots about 2.1 from the table on two sides that are free on this
+     plan (the nearest free cell otherwise), turned with the table, facing it;
+   stops: up to 3 places, free on this plan, where a designer at work stands (yaw: the way it looks) and puts its cones
+     (cx, cz, cyaw): 1.1 in front of each decor piece, then the default decor places when the plan has fewer than 3 pieces. */
 const planInfoMemo = new WeakMap();
 function planInfo(plan){
   let n = planInfoMemo.get(plan);
   if (n) return n;
-  n = { tm:[], helper:[], meet:[] };
+  n = { tm:[], helper:[], meet:[], stops:[] };
+  const g = gridOfItems(plan.items);
   for (const it of plan.items) {
     const st = PIECES[it.k].seat;
     if (st) { const s = planPt(it, st[0], st[1]); n[it.k].push({ x:it.x, z:it.z, sx:s.x, sz:s.z, yaw:Math.PI + planYaw(it) }); }
-    else if (it.k === 'meet' && !n.meet.length) n.meet = meetChairs(it);
+    else if (it.k === 'meet' && !n.meet.length) {
+      n.meet = meetChairs(it);
+      const used = new Set();
+      const stand = [[2.1, 0], [-2.1, 0], [0, 2.1], [0, -2.1]].map(q => planPt(it, q[0], q[1]));
+      const add = q => {
+        const key = cellIx(q.x) + ':' + cellIx(q.z);
+        if (used.has(key)) return false;
+        used.add(key); n.meet.push({ x:q.x, z:q.z, yaw:Math.atan2(it.x - q.x, it.z - q.z) }); return true;
+      };
+      for (const q of stand) { if (n.meet.length >= 6) break; if (!isBlocked(g, cellIx(q.x), cellIx(q.z))) add(q); }
+      for (const q of stand) { if (n.meet.length >= 6) break; add(freePt(g, q.x, q.z)); }
+    }
+  }
+  const spots = plan.items.filter(it => it.k === 'decor').slice(0, 3).map(it => ({ x:it.x, z:it.z, yaw:planYaw(it) }));
+  for (const d of DECOR_SPOTS) {
+    if (spots.length >= 3) break;
+    const q = freePt(g, d.x, d.z);
+    spots.push({ x:q.x, z:q.z, yaw:d.yaw });
+  }
+  for (const d of spots) {
+    const f = { x:Math.sin(d.yaw), z:Math.cos(d.yaw) }, q = freePt(g, d.x + f.x * 1.1, d.z + f.z * 1.1);
+    n.stops.push({ x:q.x, z:q.z, yaw:d.yaw + Math.PI, cx:q.x, cz:q.z, cyaw:d.yaw });
   }
   planInfoMemo.set(plan, n);
   return n;
@@ -1449,9 +1489,7 @@ const MEET = meetChairs(MEET_TABLE);
 function gridFor(terr){
   let g = gridMemo.get(terr);
   if (g) return g;
-  const items = planOf(terr).items, key = JSON.stringify(items);
-  g = gridCache.get(key);
-  if (!g) { if (gridCache.size > 40) gridCache.clear(); g = gridOfPlan(items); gridCache.set(key, g); }
+  g = gridOfItems(planOf(terr).items);
   gridMemo.set(terr, g);
   return g;
 }
@@ -1610,10 +1648,9 @@ function seatPlan(c){
   const info = planInfo(planOf(c.terr));
   const kind = (o) => list.filter(q => q.role === o.role).indexOf(o);
   const desk = d => spot({ x: d.sx, z: d.sz, yaw: d.yaw });
-  if (c.role === 'designer' && designerTours(c)) {   // at work: it walks the three decor slots, a few seconds at each
-    const d = DECOR_SPOTS[Math.floor(simT / DESIGNER_STOP_SEC) % DECOR_SPOTS.length], f = { x: Math.sin(d.yaw), z: Math.cos(d.yaw) };
-    const sp = spot({ x: d.x + f.x * 1.1, z: d.z + f.z * 1.1, yaw: d.yaw + Math.PI });
-    return sp;
+  if (c.role === 'designer' && designerTours(c)) {   // at work: it walks the floor's decor places (free on its plan), a few seconds at each
+    const d = info.stops[Math.floor(simT / DESIGNER_STOP_SEC) % info.stops.length];
+    return spot({ x: d.x, z: d.z, yaw: d.yaw });
   }
   if (c.role === 'helper' && kind(c) < info.helper.length) return desk(info.helper[kind(c)]);
   if (c.role === 'task-manager' && kind(c) < info.tm.length) return desk(info.tm[kind(c)]);
@@ -3952,10 +3989,10 @@ function placeDecor(G, th){
     const g = new THREE.Group(); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw; G.add(g); DECOR[k](g, th);
   });
 }
-/* while a designer of the floor is at work: cones and tape on the 3 slots */
-function placeCones(G){
-  SLOTS.forEach(s => {
-    const g = new THREE.Group(); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw; G.add(g);
+/* while a designer of the floor is at work: cones and tape at its stops (in front of the decor places, free on the floor's plan) */
+function placeCones(G, stops){
+  stops.forEach(s => {
+    const g = new THREE.Group(); g.position.set(s.cx, 0, s.cz); g.rotation.y = s.cyaw; G.add(g);
     [-.7, .7].forEach(x => { mesh(CONEG, mat('#FF8A3D'), .17, .46, .17, x, .23, .3, g); box(.2, .05, .2, '#FF8A3D', x, .025, .3, g); });
     box(1.4, .05, .02, '#FFD36E', 0, .38, .3, g); box(.9, .55, .45, '#C99A6B', 0, .275, -.1, g);
   });
@@ -4187,7 +4224,7 @@ function buildFloor(){
   /* the plan: desks, the meeting table, plants and decor, each where the floor's plan puts it (while a designer of
      the floor is at work its decor slots stand under cones instead) */
   plan.items.forEach((it, i) => drawItem(it, G, look, reno, i));
-  if (reno) placeCones(G);
+  if (reno) placeCones(G, planInfo(plan).stops);
   if (ed) drawFixedHatch(G);
   box(.06, 1.1, 3, C.whiteboard, 6.88, 1.45, 4, G); box(.08, 1.22, 3.1, C.frame, 6.93, 1.45, 4, G);
   ['#FFD36E', '#FF7593', '#6FD4A8', '#8DB8FF', '#FFD36E'].forEach((c, k) => box(.02, .22, .22, c, 6.84, 1.7 - (k % 2) * .4, 2.9 + k * .5, G, 'b'));
