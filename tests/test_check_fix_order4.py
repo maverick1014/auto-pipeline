@@ -171,7 +171,7 @@ class TestW1PromoteSeesTheTasksLines(tp.PromoteCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(os.path.join(self.repo.dir, "agent_worktree.txt"), "a") as fh:
             fh.write("%s | p1 | final | since %s\n" % (wt, _t.strftime("%Y-%m-%d %H:%M")))
-        tcr.main_launched(self.repo.dir, "p1", at=_t.strftime("%Y-%m-%d %H:%M", _t.localtime(_t.time() - 120)))
+        tcr.main_launched(self.repo.dir, "p1")                       # G8: within the task instance (now)
         head = subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         for block in ("PR REVIEW", "DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "CORE REVIEW",
                       "EXAMPLES TEST"):

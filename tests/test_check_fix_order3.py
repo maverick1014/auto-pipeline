@@ -456,7 +456,7 @@ class TestF11Removals(tcr.TestGate):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
 
     def test_a_verified_removal_is_subtracted_by_the_gate(self):
-        r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "drop the related tests")
+        r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "drop the related tests")   # G1: names it
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.passes("DIFF SCAN", "BUILD")
         self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")

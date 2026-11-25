@@ -61,7 +61,7 @@ for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do "$P/bin/agent-file.sh" check t 
 echo "-- F2: a PR REVIEW counts only when the main manager launched the reviewer (no record yet):"
 "$P/bin/agent-file.sh" checks gate t --dir "$R" --base base; echo "exit $?"
 echo "-- the guard's record of the main manager's reviewer launch (written by the guard hook in a real session):"
-printf '{"task": "t", "type": "reviewer", "by": "main", "at": "%s"}\n' "$(date -v-1M '+%Y-%m-%d %H:%M' 2>/dev/null || date -d '-1 min' '+%Y-%m-%d %H:%M')" \
+printf '{"task": "t", "type": "reviewer", "by": "main", "at": "%s"}\n' "$(date '+%Y-%m-%d %H:%M')" \
   >> "$(git -C "$R" rev-parse --path-format=absolute --git-common-dir)/agent_launches.jsonl"
 "$P/bin/agent-file.sh" check t "PR REVIEW" pass --by "t Review" --evidence "read the diff"
 "$P/bin/agent-file.sh" checks gate t --dir "$R" --base base; echo "exit $?"

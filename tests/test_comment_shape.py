@@ -246,7 +246,7 @@ class TestHashStrings(ShapeCase):
     def test_yaml_quoted_values(self):
         self.each(CODE, [("ci/a.yml", 'msg: "a\n  # b\n  c"\n', 'msg: "a\n  # d\n  c"\n')])
         self.fresh()
-        self.each(("A", "text change"), [
+        self.each(CODE, [   # check-blocks section 47 G7: a changed value in a config file is code
             ("ci/a.yml", 'a: ["x # y", 1]\n', 'a: ["x # z", 1]\n'),
             ("ci/a.yml", "b: 'x # y'\n", "b: 'x # z'\n"),
             # the apostrophe in a plain value opens no string, so the next quote still does
@@ -696,7 +696,7 @@ class TestReviewCore(ShapeCase):
         ])
 
     def test_f3_yaml_tags_and_anchors_before_a_quote(self):
-        self.each(("A", "text change"), [
+        self.each(CODE, [   # check-blocks section 47 G7: a changed value in a config file is code
             ("ci/a.yml", 'msg: !!str "a # b"\n', 'msg: !!str "a # c"\n'),
             ("ci/a.yml", 'msg: &m "a # b"\n', 'msg: &m "a # c"\n'),
         ])

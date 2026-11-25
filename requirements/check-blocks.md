@@ -845,3 +845,4 @@ Decided by the main manager (listed for the owner):
 - G7 In .tsx .jsx .vue .svelte a changed literal inside an expression (a comparison, a call argument, an assignment) is code; text shown between tags stays text. In .yml .yaml .json .toml a changed value is code unless the file is a locale or translation file (a path part locales, locale, i18n, translations, lang, or a file named like en.json, zh-CN.json).
 - G8 The gate takes a PR REVIEW, FLOW CHECK or UI CHECK pass only when its `by` is not the builder (the todo line's builder, the builder's LAUNCH records) and a main-manager launch of the matching type exists for this task instance (dated at or after the todo line's opened time).
 - tests/check_blocks_demo.sh shows G1-G4.
+- G2 (as applied, with F11): verified removals end at todo done and todo drop; the brief blocks ever planned end only at todo done, so a drop and a new add of the same name keeps them (F11) but loses its removals.

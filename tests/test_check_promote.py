@@ -79,7 +79,7 @@ class PromoteCase(ScriptCase):
         r = self.repo.run("agent-file.sh", "todo", "add", task, "small", "publish " + task, "10",
                           "--target", "production", "--owner-quote", quote)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        _tcr.main_launched(self.repo.dir, task, at=_t.strftime("%Y-%m-%d %H:%M", _t.localtime(_t.time() - 120)))
+        _tcr.main_launched(self.repo.dir, task)                      # G8: within the task instance (now)
         self.git("fetch", "-q", "origin")
         sha = self.git("rev-parse", "origin/" + branch)
         for block in ("PR REVIEW", "DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS",

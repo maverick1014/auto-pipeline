@@ -280,8 +280,10 @@ class TestCheckLine(Case):
 # ---------------------------------------------------------------- checks gate: the merge guard
 
 
-def main_launched(repo_dir, *tasks, at="2000-01-01 00:00"):
-    """Section 44 F2: the guard's durable records of a reviewer and a check deputy launched by the main manager."""
+def main_launched(repo_dir, *tasks, at=None):
+    """Section 44 F2: the guard's durable records of a reviewer and a check deputy launched by the main manager.
+    Section 47 G8: dated within the task instance (default: now)."""
+    at = at or time.strftime("%Y-%m-%d %H:%M")
     gd = subprocess.run(["git", "-C", repo_dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
                         capture_output=True, text=True, check=True).stdout.strip()
     with open(os.path.join(gd, "agent_launches.jsonl"), "a") as fh:
@@ -579,7 +581,7 @@ class TestGate(Case):
     def test_a_removed_brief_block_is_not_planned(self):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "checks", "t", "UI CHECK")
-        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "no ui check for this one")
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "skip the ui check for this one")   # G1
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         self.assertEqual(self.gate().returncode, 0)
 
