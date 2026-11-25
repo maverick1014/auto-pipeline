@@ -164,7 +164,7 @@ SUGGEST = (
     ("registered", "finish the task, then agent-file.sh worktree rm <path>"),
     ("uncommitted changes", "commit or discard the changes"),
     ("unpushed", "push the branch"),
-    ("unmerged", "merge it into main, or remove it by hand"),
+    ("unmerged", "merge it into the working branch, or remove it by hand"),
     ("no own commits", "commit work on it, or remove it by hand"),
     ("orca unreachable", "start Orca, then run the sweep again"),
     ("folder missing", "git worktree prune"),
@@ -282,7 +282,10 @@ class Sweep(object):
         if self._wb is None:
             wb, prefix = "", "ap-main-"
             try:
-                wb = agent_conf.working_branch(self.root) or ""
+                try:
+                    wb = agent_conf.working_branch(self.root, derive=False) or ""
+                except TypeError:
+                    wb = agent_conf.working_branch(self.root) or ""
                 setting = str(agent_conf.get("working_branch")).strip()
                 if "<name>" in setting:
                     prefix = setting.split("<name>")[0]
@@ -293,6 +296,21 @@ class Sweep(object):
             self._wb = (wb, prefix)
         wb, prefix = self._wb
         return branch == wb or bool(prefix and branch.startswith(prefix))
+
+    def wb_ref(self):
+        """refs/remotes/origin/<stored working branch> when it exists, else ''."""
+        self.leave_alone("x")
+        wb = self._wb[0]
+        if wb and self.git("rev-parse", "--verify", "-q", "refs/remotes/origin/%s^{commit}" % wb).ok:
+            return "refs/remotes/origin/" + wb
+        return ""
+
+    def in_base(self, head):
+        """The commit is in origin/main or in origin/<working branch>."""
+        if self.git("merge-base", "--is-ancestor", head, "refs/remotes/origin/main").ok:
+            return True
+        wbr = self.wb_ref()
+        return bool(wbr) and self.git("merge-base", "--is-ancestor", head, wbr).ok
 
     # ---- the base
 
@@ -333,6 +351,12 @@ class Sweep(object):
                           "refs/heads", "refs/remotes/origin")
         if merged.ok:
             self.merged = set(merged.out.split())
+            wbr = self.wb_ref()
+            if wbr:
+                more = self.git("for-each-ref", "--format=%(refname)", "--merged=" + wbr,
+                                "refs/heads", "refs/remotes/origin")
+                if more.ok:
+                    self.merged |= set(more.out.split())
         else:
             self.base_ok = False
             self.note("branch check failed: worktrees and branches not "
@@ -485,7 +509,9 @@ class Sweep(object):
             reasons.append("unpushed")
         anc = self.git("merge-base", "--is-ancestor", head,
                        "refs/remotes/origin/main")
-        if anc.rc != 0:
+        if anc.rc != 0 and self.in_base(head):
+            pass
+        elif anc.rc != 0:
             reasons.append("unmerged")
         else:
             fp = self.first_parent_set()
@@ -661,7 +687,7 @@ class Sweep(object):
                 refs.append("refs/remotes/origin/" + name)
             if not all(ref in self.merged for ref in refs):
                 self.keep("branch " + name, ", ".join(copies), "unmerged",
-                          "merge it into main, or delete it by hand")
+                          "merge it into the working branch, or remove it by hand")
                 continue
             hold = self.origin_hold(name) if "origin" in copies else None
             plan = [c for c in copies if not (c == "origin" and hold)]
@@ -792,8 +818,7 @@ class Sweep(object):
                 return True
         if has_line or not self.base_ok or not row.get("head"):
             return False
-        if not self.git("merge-base", "--is-ancestor", row["head"],
-                        "refs/remotes/origin/main").ok:
+        if not self.in_base(row["head"]):
             return False
         fp = self.first_parent_set()
         return fp is not False and row["head"] not in fp

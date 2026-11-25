@@ -80,6 +80,11 @@ class NetCase(ScriptCase):
 class TestNightly(NetCase):
     script = "agent-nightly.sh"
 
+    def setUp(self):
+        super().setUp()
+        # section 37 F10: init or the start stores the name once per clone; the nightly only reads it
+        self.git("config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
+
     def nightly(self, *args, env=None):
         return self.repo.run("agent-nightly.sh", *args, env=env, timeout=120)
 
@@ -150,7 +155,7 @@ class TestNightly(NetCase):
         dev = self.git("rev-parse", "dev")
         self.put({"src/x.txt": "broken\n"})
         self.git("commit", "-qam", "main moves")
-        self.repo.set_conf("working_branch", "dev")                # a setting (owner 2026-11-25, section 28)
+        self.git("config", "--local", "auto-pipeline.workingbranch", "dev")   # stored by init (section 37 F10)
         self.nightly("--start", "--wait")
         st = self.status_file()
         self.assertEqual((st["commit"], st["result"]), (dev, "green"), st)

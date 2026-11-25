@@ -42,6 +42,7 @@ class PromoteCase(ScriptCase):
         self.git("remote", "add", "origin", self.origin)
         self.git("push", "-q", "-u", "origin", "main")
         self.git("switch", "-q", "-c", self.wb)                 # section 29: the main checkout is on it
+        self.git("config", "--local", "auto-pipeline.workingbranch", self.wb)   # stored by init (section 37 F10)
         self.commit_wb({"src/a.py": "x = 2\n"}, "Merge feat-a (W8)")
         self.verified(True)
 

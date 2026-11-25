@@ -999,14 +999,29 @@ def start(cwd, wait):
     return 0
 
 
+NOT_STORED = "no working branch stored in this clone: run agent-init.sh or start the main manager here"
+
+
 def working_branch(root):
-    """The working branch of this clone: agent_conf.working_branch (per person, stored once, section 34)."""
-    return agent_conf.working_branch(root)
+    """The working branch stored in this clone (section 34, F10): None when nothing is stored; never derived here."""
+    try:
+        return agent_conf.working_branch(root, derive=False)
+    except TypeError:
+        return agent_conf.working_branch(root)
+
+
+def need_stored(root):
+    """The stored working branch, or print the one refusal line and return None."""
+    wb = working_branch(root)
+    if not wb:
+        print(NOT_STORED)
+    return wb
 
 
 def tip_of(root):
     """The tip of the working branch (local branch), else HEAD."""
-    return (git(root, "rev-parse", "--verify", "-q", "refs/heads/" + working_branch(root) + "^{commit}")
+    wb = working_branch(root)
+    return ((wb and git(root, "rev-parse", "--verify", "-q", "refs/heads/" + wb + "^{commit}"))
             or git(root, "rev-parse", "HEAD"))
 
 
@@ -1090,6 +1105,8 @@ def main(argv):
         return testrun(argv[1:])
     if argv and argv[0] in ("check", "reserve", "release", "list", "numbers", "relief", "measure-pane"):
         return room_main(argv, cwd)
+    if argv and argv[0] in ("run", "--start", "--release-ok", "--failures") and not need_stored(main_root(cwd)):
+        return 1
     if argv and argv[0] == "run":
         return do_run(cwd)
     if not argv or argv[0] == "--status":

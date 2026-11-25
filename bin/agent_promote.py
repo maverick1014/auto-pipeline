@@ -15,7 +15,7 @@ if HERE not in sys.path:
 import agent_conf  # noqa: E402
 import agent_nightly  # noqa: E402
 
-WT_NAME = "agent_promote_wt"
+WT_NAME = "agent_promote_wt_%d"
 
 
 def run(cwd, *args, timeout=300):
@@ -95,11 +95,15 @@ def fetch(root):
 
 
 def follow_local(root, prod, sha):
-    """The local production ref follows the pushed commit when it exists and is not checked out anywhere."""
+    """The local production ref follows the pushed commit: fast-forward only, never backward (P3); a ref checked out
+    in a worktree is left alone."""
     if run(root, "rev-parse", "--verify", "-q", "refs/heads/" + prod)[0] != 0:
         return
     rc, text, _ = run(root, "worktree", "list", "--porcelain")
     if "branch refs/heads/%s" % prod in text.splitlines():
+        return
+    if not is_ancestor(root, "refs/heads/" + prod, sha):
+        out("local %s not moved: not a fast-forward" % prod)
         return
     run(root, "update-ref", "refs/heads/" + prod, sha)
 
@@ -211,8 +215,13 @@ def direct(root, wb, prod, task, branch, quote, when):
         if run(root, "rev-parse", "--verify", "-q", "refs/remotes/%s^{commit}" % ref)[0] != 0:
             out("refused: %s does not exist (is the branch pushed?)" % ref)
             return 1
+    own = set(run(root, "rev-list", "origin/" + branch, "^origin/" + prod)[1].split())
+    shared = own & set(run(root, "rev-list", "refs/heads/" + wb, "^origin/" + prod)[1].split())
+    if shared:
+        out("%s carries commits of %s that are not in %s: branch it from %s" % (branch, wb, prod, prod))
+        return 1
     gitdir = agent_nightly.common_dir(root)
-    wt = os.path.join(gitdir, WT_NAME)
+    wt = os.path.join(gitdir, WT_NAME % os.getpid())
     if os.path.exists(wt):
         remove_worktree(root, wt)
     rc, _, se = run(root, "worktree", "add", "-q", "--detach", wt, "origin/" + prod)
@@ -232,10 +241,10 @@ def direct(root, wb, prod, task, branch, quote, when):
             out("refused: the push to origin/%s failed: %s" % (prod, last_line(se)))
             return 1
         out("promote: %s -> %s (%s)" % (task, prod, sha[:7]))
+        follow_local(root, prod, sha)
         code = release(wt)
     finally:
         remove_worktree(root, wt)
-    follow_local(root, prod, sha)
     # production merged back into the working branch, in the main checkout
     kind, info = merge_production_in(root, wb, prod)
     if kind in ("merged", "in"):
@@ -275,7 +284,9 @@ def main(argv):
         return 2
     cwd = os.getcwd()
     root = agent_nightly.main_root(cwd)
-    wb = agent_conf.working_branch(root)
+    wb = agent_nightly.need_stored(root)
+    if not wb:
+        return 1
     prod = production_branch(root)
     if opts.get("sync"):
         return sync(root, wb, prod)[0]
