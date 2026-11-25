@@ -400,6 +400,19 @@ def launch_records(folder):
     return [r for r in (parse_launch(l) for l in read_lines(os.path.join(folder, "agent_state.txt"))) if r]
 
 
+def finished_tasks(root):
+    """Task names in agent_completed.txt that are not open in agent_todo.txt (a task done after its agent's LAUNCH
+    line was left behind). A reopened name stays visible."""
+    def names(name, col):
+        out = set()
+        for line in read_lines(os.path.join(root, name)):
+            f = line.split(" | ")
+            if len(f) > col and f[col].strip():
+                out.add(f[col].strip())
+        return out
+    return names("agent_completed.txt", 1) - names("agent_todo.txt", 0)
+
+
 def launch_young(rec, now):
     age = minutes(parse_time(rec["since"]), now)
     return age is not None and age <= LAUNCH_STALE_MIN
@@ -899,11 +912,12 @@ class Board:
             parents.setdefault(row[1][0], row)
         words = KIND_WORD[self.lang]
         kids = {}
+        finished = finished_tasks(self.root)
         for folder, rec in self.records:
             if rec["is_pane"]:
                 if not pane_visible(rec, now, listed):
                     continue
-            elif not agent_visible(rec, now):
+            elif not agent_visible(rec, now) or rec["task"] in finished:
                 continue
             label = "%s %s" % (rec["task"], words[rec["word"]])
             if rec["num"] is not None:
@@ -1066,8 +1080,9 @@ def statusline_text(stdin_text):
     counts = {}
     if not guard_off(main):
         now = parse_time(args.now)
+        finished = finished_tasks(main)
         for r in launch_records(top):
-            if not r["is_pane"] and agent_visible(r, now):
+            if not r["is_pane"] and agent_visible(r, now) and r["task"] not in finished:
                 counts[r["task"]] = counts.get(r["task"], 0) + 1
 
     def tail(name):
