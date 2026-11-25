@@ -22,7 +22,7 @@ for p in (HERE, BIN):
 
 import agent_city as ac  # noqa: E402
 from test_agent_city_server import ServerCase, wait_for  # noqa: E402
-from test_agent_city_world import gline, make_repo, plans, world_of  # noqa: E402
+
 
 
 def kinds_of(**states):
