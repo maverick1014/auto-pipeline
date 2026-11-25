@@ -2040,9 +2040,6 @@ class TestCli(OfficeCase):
             self.assertRegex(fh.read(), r"floor\)\s*shift;.*agent_city\.py\"? floor \"\$@\"")
 
 
-SERVER_office_cleanup = os.path.join(BIN, "agent_city.py")
-
-
 class Case(unittest.TestCase):
     def setUp(self):
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="city_clean_"))
@@ -2105,7 +2102,7 @@ class TestDemoWorld(unittest.TestCase):
         self.assertTrue([f for f in w["floors"] if f not in w["designs"]], "one floor shows the base look")
 
     def test_cli_prints_it(self):
-        r = subprocess.run([sys.executable, SERVER_office_cleanup, "demo-world"], capture_output=True, text=True, timeout=60)
+        r = subprocess.run([sys.executable, SERVER_office, "demo-world"], capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout), ac.demo_world())
 

@@ -1485,13 +1485,13 @@ class TestStageConfKeys(unittest.TestCase):
                 self.assertEqual(str(agent_conf.CONSTANTS[key]), value)
 
 
-NOW_lv = "2026-11-20 10:00"
+NOW_NOV20_1000 = "2026-11-20 10:00"
 
 
 class TodoCase(ScriptCase):
     script = "agent-file.sh"
 
-    def af(self, *args, now=NOW_lv):
+    def af(self, *args, now=NOW_NOV20_1000):
         return self.repo.run("agent-file.sh", *args, env={"AGENT_FAKE_NOW": now, "AGENT_FAKE_HOST": "pc2"})
 
     def todo(self):
@@ -1514,26 +1514,26 @@ class TestTodoAddLevel(TodoCase):
 
     def test_after_the_guess(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "--guess", "35", "--level", "C"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level C | opened %s | by main\n" % NOW_lv)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level C | opened %s | by main\n" % NOW_NOV20_1000)
 
     def test_it_may_stand_anywhere(self):
         self.assertOk(self.af("todo", "add", "--level", "D", "t1", "big", "build it", "70"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level D | opened %s | by main\n" % NOW_lv)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level D | opened %s | by main\n" % NOW_NOV20_1000)
 
     def test_no_est(self):
         self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", "A"))
-        self.assertEqual(self.todo(), "t1 | small | fix it | level A | opened %s | by main\n" % NOW_lv)
+        self.assertEqual(self.todo(), "t1 | small | fix it | level A | opened %s | by main\n" % NOW_NOV20_1000)
 
     def test_no_level_is_as_before(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | opened %s | by main\n" % NOW_lv)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | opened %s | by main\n" % NOW_NOV20_1000)
 
     def test_an_old_number_is_stored_as_its_type(self):
         for old, typ in (("0", "A"), ("1", "B"), ("2", "C"), ("3", "C"), ("4", "D")):
             with self.subTest(old=old):
                 self.write_todo()
                 self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", old))
-                self.assertEqual(self.todo(), "t1 | small | fix it | level %s | opened %s | by main\n" % (typ, NOW_lv))
+                self.assertEqual(self.todo(), "t1 | small | fix it | level %s | opened %s | by main\n" % (typ, NOW_NOV20_1000))
 
     def test_a_bad_level_is_refused(self):
         for bad in (["--level", "5"], ["--level", "E"], ["--level", "-1"], ["--level", "x"], ["--level", ""], ["--level"]):
@@ -1640,7 +1640,7 @@ class TestTodoDoneLevel(TodoCase):
         self.assertEqual(rows[2][-1], "8")
 
 
-NOW_bw = "2026-11-20 12:31"
+NOW_NOV20_1231 = "2026-11-20 12:31"
 
 
 class TestTodoWaitCli(tb.WaitCase):
@@ -1649,30 +1649,30 @@ class TestTodoWaitCli(tb.WaitCase):
         self.add("x", "the task", 60, opened="2026-11-20 11:00", started=False)
 
     def test_4_1_mock_writes_no_who(self):
-        self.wait("x", "on", "mock", now=NOW_bw)
+        self.wait("x", "on", "mock", now=NOW_NOV20_1231)
         line = self.todo_line("x")
         self.assertTrue(line.endswith(" | waiting mock since 2026-11-20 12:31"), line)
         self.assertNotIn(" | who ", line)
 
     def test_4_2_who(self):
-        self.wait("x", "on", "review", "--who", "v4-Manager", now=NOW_bw)
+        self.wait("x", "on", "review", "--who", "v4-Manager", now=NOW_NOV20_1231)
         self.assertTrue(self.todo_line("x").endswith(" | waiting review since 2026-11-20 12:31 | who v4-Manager"),
                         self.todo_line("x"))
 
     def test_4_3_the_note_before_or_after_the_options(self):
         want = " | waiting hold since 2026-11-20 12:31: 回复插件更新和同步脚本 | who v4-Manager"
-        self.wait("x", "on", "hold", "回复插件更新和同步脚本", "--who", "v4-Manager", now=NOW_bw)
+        self.wait("x", "on", "hold", "回复插件更新和同步脚本", "--who", "v4-Manager", now=NOW_NOV20_1231)
         self.assertTrue(self.todo_line("x").endswith(want), self.todo_line("x"))
-        self.wait("x", "off", now=NOW_bw)
-        self.wait("x", "on", "hold", "--who", "v4-Manager", "回复插件更新和同步脚本", now=NOW_bw)
+        self.wait("x", "off", now=NOW_NOV20_1231)
+        self.wait("x", "on", "hold", "--who", "v4-Manager", "回复插件更新和同步脚本", now=NOW_NOV20_1231)
         self.assertTrue(self.todo_line("x").endswith(want), self.todo_line("x"))
 
     def test_a_who_with_a_space(self):
-        self.wait("x", "on", "hold", "--who", "v4-plus Manager", now=NOW_bw)
+        self.wait("x", "on", "hold", "--who", "v4-plus Manager", now=NOW_NOV20_1231)
         self.assertTrue(self.todo_line("x").endswith(" | who v4-plus Manager"), self.todo_line("x"))
 
     def test_4_4_after(self):
-        self.wait("x", "on", "queue", "--after", "state-trim", now=NOW_bw)
+        self.wait("x", "on", "queue", "--after", "state-trim", now=NOW_NOV20_1231)
         self.assertTrue(self.todo_line("x").endswith(" | waiting queue since 2026-11-20 12:31 | after state-trim"),
                         self.todo_line("x"))
         self.wait("x", "on", "queue", "slot", "--after", "state-trim", now="2026-11-20 12:40")
@@ -1681,7 +1681,7 @@ class TestTodoWaitCli(tb.WaitCase):
 
     def test_4_5_a_wait_over_an_open_wait(self):
         self.wait("x", "on", "review", "--who", "A", now="2026-11-20 12:00")
-        self.wait("x", "on", "hold", "n", now=NOW_bw)
+        self.wait("x", "on", "hold", "n", now=NOW_NOV20_1231)
         line = self.todo_line("x")
         self.assertIn(" | waiting hold since 2026-11-20 12:31: n | wait run since 2026-11-20 12:00", line)
         self.assertNotIn(" | who ", line)
@@ -1702,16 +1702,16 @@ class TestTodoWaitCli(tb.WaitCase):
         self.assertIn(" | waiting mock since 2026-11-20 12:21: 看规则表 v2 | wait run since 2026-11-20 12:00 | "
                       "waited 21m", line)
         self.assertNotIn("12:00:", line)
-        r = self.row(self.rows(now=NOW_bw), task="x")
+        r = self.row(self.rows(now=NOW_NOV20_1231), task="x")
         self.assertEqual(r["Status"], "等待 你 · 看规则表 v2 · 已等 31分钟")
         self.wait("x", "on", "hold", "下一个: 等 v4", "--who", "v4-Manager", now="2026-11-20 12:25")
         self.assertIn(" | who v4-Manager | wait run since 2026-11-20 12:00 | waited 25m", self.todo_line("x"))
-        self.wait("x", "off", now=NOW_bw)
+        self.wait("x", "off", now=NOW_NOV20_1231)
         self.assertIn(" | waited 31m", self.todo_line("x"))
 
     def test_4_5b_the_field_order(self):
         self.wait("x", "on", "queue", "--after", "a", now="2026-11-20 12:00")
-        self.wait("x", "on", "queue", "--after", "b", now=NOW_bw)
+        self.wait("x", "on", "queue", "--after", "b", now=NOW_NOV20_1231)
         line = self.todo_line("x")
         self.assertIn(" | waiting queue since 2026-11-20 12:31 | after b | wait run since 2026-11-20 12:00", line)
         self.assertNotIn("after a", line)
@@ -1719,7 +1719,7 @@ class TestTodoWaitCli(tb.WaitCase):
     def test_4_6_off_takes_the_fields_away(self):
         self.wait("x", "on", "review", "--who", "A", now="2026-11-20 12:00")
         self.wait("x", "on", "queue", "--after", "b", now="2026-11-20 12:10")
-        self.wait("x", "off", now=NOW_bw)
+        self.wait("x", "off", now=NOW_NOV20_1231)
         line = self.todo_line("x")
         for gone in ("waiting ", " | who ", " | after ", "wait run since"):
             self.assertNotIn(gone, line)
@@ -1748,11 +1748,11 @@ class TestTodoWaitCli(tb.WaitCase):
                      ("on", "hold", "a", "b"),
                      ("off", "--who", "a")):
             with self.subTest(args=args):
-                self.refused("todo", "wait", "x", *args, now=NOW_bw)
+                self.refused("todo", "wait", "x", *args, now=NOW_NOV20_1231)
 
 
 class TestTodoStageCli(tb.WaitCase):
-    def stage(self, name, *args, now=NOW_bw):
+    def stage(self, name, *args, now=NOW_NOV20_1231):
         self.af("todo", "stage", name, *args, now=now)
 
     def test_6_5_the_first_stage(self):
@@ -1799,12 +1799,12 @@ class TestTodoStageCli(tb.WaitCase):
 
     def test_6_9_an_old_line_with_a_stage_gets_no_started(self):
         self.put("old | big | w | est 60m | opened 2026-11-20 10:31 | by main | stage tests since 2026-11-20 12:00")
-        self.stage("old", "verify", now=NOW_bw)
+        self.stage("old", "verify", now=NOW_NOV20_1231)
         self.assertNotIn("started", self.todo_line("old"))
 
     def test_6_10_a_worktree_with_no_todo_line(self):
         alpha = self.task_worktree("alpha")
-        self.af("todo", "stage", "alpha", "brief", now=NOW_bw, cwd=alpha)
+        self.af("todo", "stage", "alpha", "brief", now=NOW_NOV20_1231, cwd=alpha)
         self.assertIn("STAGE alpha: brief | since 2026-11-20 12:31\n", self.state_text(alpha))
         self.assertNotIn("started", self.state_text(alpha))
 

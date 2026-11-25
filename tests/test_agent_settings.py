@@ -823,11 +823,8 @@ class TestQuietKeySettings(ScriptCase):
         self.assertEqual(self.repo.run("agent-settings.sh", "watch_quiet_min", "30").returncode, 1)
 
 
-ROOT_rf = os.path.dirname(HERE)
-
-
 def read(*parts):
-    with open(os.path.join(ROOT_rf, *parts)) as fh:
+    with open(os.path.join(ROOT, *parts)) as fh:
         return fh.read()
 
 
@@ -949,7 +946,7 @@ ORDER = [
     ("helper_model", "Models: Helper model", "string", "sonnet-5:medium"),
     # max_agents: gone (owner 2026-11-25, TELL bd4e87ee): no count caps, the memory rule admits a pane
     ("max_usage_percent", "Load: Max memory %", "number", 80),
-    # heavy_test_slots: gone (owner 2026-11-25, TELL 076c1faf): no slots, a memory gate (tests/test_check_net.py)
+    # heavy_test_slots: gone (owner 2026-11-25, TELL 076c1faf): no slots, a memory gate (tests/test_agent_room.py)
     ("permission_mode", "Permissions: Permission mode", "string", "bypassPermissions"),   # owner order 2026-11-25
     ("auto_resume", "Permissions: Auto resume", "boolean", True),
     ("todo_before_agent", "Rules: Todo before agent", "boolean", True),

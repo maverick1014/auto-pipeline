@@ -1116,11 +1116,6 @@ SKIP_KEY = '"skipDangerousModePermissionPrompt": true'
 WARN = "new panes stop on the bypass warning screen"
 
 
-def read_bm(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
-
-
 class SkipWarningCase(ScriptCase):
     def setUp(self):
         self.repo = ScriptRepo(init_project=False)
@@ -1225,7 +1220,7 @@ class TestSkipWarning(SkipWarningCase):
         self.assertNotIn("skipDangerousModePermissionPrompt", out)
 
     def test_the_script_never_writes_home_settings(self):
-        src = read_bm("bin", "agent-init.sh")
+        src = read("bin", "agent-init.sh")
         for bad in ("> \"$HOME/.claude", ">> \"$HOME/.claude", ">\"$HOME/.claude", "~/.claude/settings.json\" <<"):
             self.assertNotIn(bad, src)
 

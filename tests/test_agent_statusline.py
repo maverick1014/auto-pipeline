@@ -1,7 +1,7 @@
 """Failing tests for the progress-bar status line. Written by the task manager first.
 
 Owner, 2026-11-11: the progress of every running task shows in the Claude Code
-status line too (the board and the watch: tests/test_agent_progress.py, which
+status line too (the board and the watch: tests/test_agent_board.py, TestProgressColumn, which
 also holds the stages, weights, bar and done-by rules used here).
 
 CONTRACT
@@ -19,7 +19,7 @@ CONTRACT
             agent_state.txt; the stage from the line, else its STAGE line.
         One line per task (statusline-vertical, 2026-11-12): name, bar,
             percent, stage, done by; the columns, the 5-line limit and the
-            "+N" line: tests/test_statusline_vertical.py.
+            "+N" line: VerticalCase below.
         No task with a stage, no agent.conf, not a git repo -> nothing.
         Fast: it refreshes often; one run takes well under 2 seconds.
 
@@ -41,7 +41,7 @@ CONTRACT
              board-waiting scope add (2026-11-20): only when this root (or
              CLAUDE_PLUGIN_ROOT) is under <config dir>/plugins/cache/; any other
              root leaves it (requirements/board-waiting.md F,
-             tests/test_statusline_refresh.py)
+             RefreshCase below)
         A file that is not valid JSON: on and off refused (exit 1), refresh
         exit 0; the file stays the same.
     agent-start.sh, at a main manager start, runs the refresh: after a plugin
@@ -254,7 +254,7 @@ class TestInstall(InstallCase):
 
     def test_refresh(self):
         # board-waiting scope add (2026-11-20): this plugin copy is not under the plugin cache, so refresh leaves
-        # an ours statusLine as it is; the repoint from a cache root: tests/test_statusline_refresh.py
+        # an ours statusLine as it is; the repoint from a cache root: RefreshCase below
         self.write({"statusLine": {"type": "command", "command": OURS_OLD}, "theme": "dark"})
         before = self.raw()
         self.assertOk(self.run_settings("refresh"))
@@ -349,7 +349,7 @@ class TestInstallWords(InstallCase):
 class TestStartRefreshes(InstallCase):
     def test_a_main_manager_start_from_a_checkout_leaves_ours(self):
         # board-waiting scope add (2026-11-20): a start from a root that is not under the plugin cache never
-        # repoints; a start from a cache root does: tests/test_statusline_refresh.py
+        # repoints; a start from a cache root does: RefreshCase below
         self.write({"statusLine": {"type": "command", "command": OURS_OLD}, "theme": "dark"})
         self.assertOk(self.repo.run("agent-start.sh"))
         self.assertEqual(self.load()["statusLine"], {"type": "command", "command": OURS_OLD})
@@ -361,7 +361,7 @@ class TestStartRefreshes(InstallCase):
         self.assertEqual(self.raw(), before)
 
 
-NOW_bw = "2026-11-20 12:31"
+NOW_NOV20_1231 = "2026-11-20 12:31"
 
 
 BW = ("board-waiting | big | Board waiting status | est 39m | guess 40m | level 3 | opened 2026-11-20 11:35 | "
@@ -451,8 +451,8 @@ class TestStatusLineWait(WaitCase):
     def test_9_7_helpers_workers_owner_todo_parked_are_not_counted(self):
         self.put(BW)
         self.state("OWNER TODO: check the phone build\n")
-        self.af("park", "add", "which DB?", now=NOW_bw)
-        self.af("worker", "on", "1", "a slice", now=NOW_bw)
+        self.af("park", "add", "which DB?", now=NOW_NOV20_1231)
+        self.af("worker", "on", "1", "a slice", now=NOW_NOV20_1231)
         self.assertEqual(self.line(), name_col("board-waiting") + "排队 · 在 state-trim 之后")   # one-watcher K
 
     def test_owner_what_is_cut_to_24_columns(self):
@@ -473,9 +473,6 @@ class TestStatusLineWait(WaitCase):
         self.assertEqual(self.line(alpha), name_col("alpha") + "排队 · 在 state-trim 之后")   # one-watcher K6
 
 
-NOW_wb = "2026-11-02 15:00"
-
-
 ZH_WARN = "看板可能不准："
 
 
@@ -486,7 +483,7 @@ def status_file(repo):
     return repo.path(".git", "agent_watch.json")
 
 
-def write_watch(repo, pid=None, sweep=NOW_wb, interval=5, tasks=None, orphans=()):
+def write_watch(repo, pid=None, sweep=NOW, interval=5, tasks=None, orphans=()):
     data = {"pid": os.getpid() if pid is None else pid, "started": "2026-11-02 13:00", "sweep": sweep,
             "interval_min": interval, "tasks": tasks or {}, "orphans": list(orphans)}
     with open(status_file(repo), "w") as fh:
@@ -667,9 +664,6 @@ class TestStatusLineRowsEnglish(WaitCase):
 BIN = os.path.join(os.path.dirname(HERE), "bin")
 
 
-NOW_sw = "2026-11-20 12:31"
-
-
 def dw(text):
     import agent_board
     return agent_board.display_width(text)
@@ -697,7 +691,7 @@ NAMES8 = ["city-office-2", "settings-configure", "plugin-scope-sync", "dev-docs"
 
 
 class WideCase(WaitCase):
-    def line(self, width=None, folder=None, now=NOW_sw):
+    def line(self, width=None, folder=None, now=NOW_NOV20_1231):
         folder = folder or self.repo.dir
         stdin = json.dumps({"session_id": "s1", "cwd": folder,
                             "workspace": {"current_dir": folder, "project_dir": folder}})
@@ -886,7 +880,7 @@ class TestUnconfirmed(WideCase):
         a3 = self.repo.make_worktree("a3", as_repo=False)
         self.put(run("a1", 1), run("a2", 2), run("a3", 3))
         self.repo.set_worktree_lines([(a1, "a1", "working"), (a2, "a2", "working"), (a3, "a3", "working")])
-        write_watch(self.repo, sweep=NOW_sw, tasks={
+        write_watch(self.repo, sweep=NOW_NOV20_1231, tasks={
             "a1": task_entry(a1, watched=False, why="no pane"),
             "a2": task_entry(a2, watched=False, why="no pane"),
             "a3": task_entry(a3, changed="2026-11-20 12:30", confirmed="2026-11-20 12:30")})
@@ -901,7 +895,7 @@ class TestUnconfirmed(WideCase):
         a1 = self.repo.make_worktree("a1", as_repo=False)
         self.put(run("a1", 1))
         self.repo.set_worktree_lines([(a1, "a1", "working")])
-        write_watch(self.repo, sweep=NOW_sw, tasks={"a1": task_entry(a1, watched=False, why="no pane")})
+        write_watch(self.repo, sweep=NOW_NOV20_1231, tasks={"a1": task_entry(a1, watched=False, why="no pane")})
         self.assertEqual(self.line(200).split("\n")[1], "board may be wrong: not confirmed a1")
 
     def test_the_budget_stays_five_with_the_warning(self):
@@ -909,7 +903,7 @@ class TestUnconfirmed(WideCase):
         a1 = self.repo.make_worktree("a1", as_repo=False)
         self.put(run("a1", 1), *[q("q%02d" % i, "a1", "2026-11-20 11:%02d" % i) for i in range(12)])
         self.repo.set_worktree_lines([(a1, "a1", "working")])
-        write_watch(self.repo, sweep=NOW_sw, tasks={"a1": task_entry(a1, watched=False, why="no pane")})
+        write_watch(self.repo, sweep=NOW_NOV20_1231, tasks={"a1": task_entry(a1, watched=False, why="no pane")})
         lines = self.line(200).split("\n")
         self.assertEqual(len(lines), 5, lines)
         self.assertEqual(lines[1], "看板可能不准：未确认 a1")

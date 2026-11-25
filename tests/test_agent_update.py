@@ -473,7 +473,7 @@ def text(path):
         return fh.read()
 
 
-SETTINGS_five = {
+SETTINGS_ONLY_OURS = {
     "model": "opus",
     "extraKnownMarketplaces": {
         "auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"}},
@@ -481,7 +481,7 @@ SETTINGS_five = {
 }
 
 
-KNOWN_five = {"auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"},
+KNOWN_ONLY_OURS = {"auto-pipeline": {"source": {"source": "github", "repo": "maverick1014/auto-pipeline"},
                            "installLocation": "/x/auto-pipeline"}}
 
 
@@ -494,8 +494,8 @@ class TestFirstBackupIsKept(TmpCase):
         import agent_update
         self.u = agent_update
         self.cdir = os.path.join(self.base, "home", ".claude")
-        self.s = self.write(os.path.join(self.cdir, "settings.json"), SETTINGS_five)
-        self.k = self.write(os.path.join(self.cdir, "plugins", "known_marketplaces.json"), KNOWN_five)
+        self.s = self.write(os.path.join(self.cdir, "settings.json"), SETTINGS_ONLY_OURS)
+        self.k = self.write(os.path.join(self.cdir, "plugins", "known_marketplaces.json"), KNOWN_ONLY_OURS)
 
     def write(self, path, data):
         os.makedirs(os.path.dirname(path), exist_ok=True)

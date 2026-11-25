@@ -51,8 +51,8 @@ Read only: writes nothing, touches nothing. Prints one GitHub markdown table
 Columns, in the agent.conf language (zh, else en):
     zh  任务 | 内容 | 状态 | 进度 | 位置 | 检查 | 估时 | 已工作 | 已等待 | 预计完成
     en  Task | What | Status | Progress | Where | Checks | Est | Work | Wait | Done by
-    (检查 / Checks: check-blocks, the checks field; an old line "level <X>"; tests/test_check_rules.py)
-    (进度 / Progress: progress-bar, tests/test_agent_progress.py)
+    (检查 / Checks: check-blocks, the checks field; an old line "level <X>"; R8 text: tests/test_rules_text.py)
+    (进度 / Progress: progress-bar, TestProgressColumn below)
 
 Rows, whole repo:
     every todo line          task, what (field 3), status from its waiting field
@@ -75,7 +75,7 @@ Status (zh / en):
     OWNER TODO  你的待办       your to-do
     PARKED    搁置的问题       parked question
     a wait, a queue, a hold, a line not started: board-waiting (owner 2026-11-20),
-    requirements/board-waiting.md and tests/test_board_waiting.py:
+    requirements/board-waiting.md and TestWaitingRow below:
     waiting   等待 <who> · <what> · 已等 <n>     waiting <who> · <what> · waited <n>
     hold      暂缓 · <what> · 已等 <n>            hold · <what> · waited <n>
     queue     排队 · 在 <task> 之后               queue · after <task>
@@ -104,7 +104,7 @@ Cells:
               en "HH:MM tomorrow", later zh "YYYY-MM-DD HH:MM" /
               en "HH:MM on YYYY-MM-DD"; work >= est -> zh "超出 <n>m" /
               en "over by <n>m" (n = work - est, real units); with a stage
-              record: tests/test_agent_progress.py; no est -> "-"
+              record: TestProgressColumn below; no est -> "-"
     minutes   "45m", "1h", "1h 35m", "1d", "1d 1h" (a day or more: no minutes)
     unknown   "-"
 
@@ -135,10 +135,10 @@ import time  # noqa: E402
 
 NOW = "2026-11-02 15:00"
 HOST = "pc2"
-# 检查 / Checks: check-blocks (2026-11-25; was 级别 / Level), tests/test_check_rules.py
+# 检查 / Checks: check-blocks (2026-11-25; was 级别 / Level), R8 text: tests/test_rules_text.py
 HEAD = {"zh": ["任务", "内容", "状态", "进度", "位置", "检查", "估时", "已工作", "已等待", "预计完成"],
         "en": ["Task", "What", "Status", "Progress", "Where", "Checks", "Est", "Work", "Wait", "Done by"]}
-# board-waiting (2026-11-20): a wait's status is built from parts (tests/test_board_waiting.py)
+# board-waiting (2026-11-20): a wait's status is built from parts (TestWaitingRow below)
 STATUS = {
     "zh": {"running": "进行中", "hold": "暂缓", "queue": "排队", "owner": "你的待办",
            "parked": "搁置的问题", "not_started": "未开始"},
@@ -1040,7 +1040,7 @@ class TestF8TheBoardIsBuiltAtMostOnceAMinute(TestWarnHook):
             self.assertIn("checked", json.load(fh))
 
 
-NOW_bw = "2026-11-20 12:31"
+NOW_NOV20_1231 = "2026-11-20 12:31"
 
 
 P = "/x/orca/workspaces/auto-pipeline/state-trim"
@@ -1134,7 +1134,7 @@ class WaitCase(BoardCase):
     def setUp(self):
         super().setUp()
         # one-watcher (2026-11-24): a target row with no live watch gets " · 未确认 <n>m" and the status line a
-        # warning line (tests/test_watch_board.py); runtime plain has no watch, so these wait tests stay as they are
+        # warning line (tests/test_agent_watch.py); runtime plain has no watch, so these wait tests stay as they are
         self.repo.set_conf("runtime", "plain")
 
     def put(self, *lines):
@@ -1144,7 +1144,7 @@ class WaitCase(BoardCase):
     def one(self, fields, base=BASE):
         """The board row of the one line base + fields."""
         self.put(base + (" | " + fields if fields else ""))
-        return self.row(self.rows(now=NOW_bw), task="x")
+        return self.row(self.rows(now=NOW_NOV20_1231), task="x")
 
     def status(self, fields, base=BASE):
         return self.one(fields, base)["Status"]
@@ -1153,7 +1153,7 @@ class WaitCase(BoardCase):
         want = dict(DASH, Est=est)
         self.assertEqual({k: r[k] for k in want}, want, r)
 
-    def line(self, folder=None, now=NOW_bw):
+    def line(self, folder=None, now=NOW_NOV20_1231):
         folder = folder or self.repo.dir
         stdin = json.dumps({"session_id": "s1", "cwd": folder,
                             "workspace": {"current_dir": folder, "project_dir": folder}})
@@ -1177,7 +1177,7 @@ class TestWaitingRow(WaitCase):
 
     def test_1_3_review_default_what_keeps_where_and_level(self):
         self.put(ST_REVIEW)
-        r = self.row(self.rows(now=NOW_bw), task="state-trim")
+        r = self.row(self.rows(now=NOW_NOV20_1231), task="state-trim")
         self.assertEqual(r["Status"], "等待 你 · 合并前签字 · 已等 5分钟")
         self.assertDash(r)
         self.assertEqual((r["Where"], r["Checks"]), (WHERE_ST, "level D"))
@@ -1279,7 +1279,7 @@ class TestWaited(WaitCase):
 
     def test_5_0_pc2_plugin_update_as_the_simulation(self):
         self.put(PC2)
-        r = self.row(self.rows(now=NOW_bw), task="pc2-plugin-update")
+        r = self.row(self.rows(now=NOW_NOV20_1231), task="pc2-plugin-update")
         self.assertEqual(r["Status"], "等待 v4-Manager · pc2 空闲时更新 plugin · 已等 2天19小时")
         self.assertEqual(r["Where"], "maverick-pc2")
         self.assertDash(r)
@@ -1288,7 +1288,7 @@ class TestWaited(WaitCase):
 class TestWork(WaitCase):
     def test_6_1_state_trim(self):
         self.put(ST_RUN)
-        r = self.row(self.rows(now=NOW_bw), task="state-trim")
+        r = self.row(self.rows(now=NOW_NOV20_1231), task="state-trim")
         self.assertEqual([r[k] for k in HEAD["en"]],
                          ["state-trim", "State file trim + auto clear at compact_clear_at", "进行中",
                           "██░░░░░░░░  20%", WHERE_ST, "level D", "1h 10m", "29m", "38m", "13:12"])
@@ -1313,7 +1313,7 @@ class TestWork(WaitCase):
 
     def test_6_3_not_started(self):
         self.put(OR)
-        r = self.row(self.rows(now=NOW_bw), task="owner-relay")
+        r = self.row(self.rows(now=NOW_NOV20_1231), task="owner-relay")
         self.assertEqual(r["Status"], "未开始")
         self.assertDash(r, est="42m")
         self.assertEqual((r["Where"], r["Checks"]), ("-", "level C"))
@@ -1340,12 +1340,12 @@ class TestWork(WaitCase):
 class TestWaitEnds(WaitCase):
     def test_7_1_back_to_a_running_row(self):
         self.put(ST_REVIEW)
-        self.wait("state-trim", "off", now=NOW_bw)
+        self.wait("state-trim", "off", now=NOW_NOV20_1231)
         line = self.todo_line("state-trim")
         self.assertIn(" | waited 43m", line)
         self.assertIn(" | waited in stage 5m", line)
         self.assertNotIn("waiting ", line)
-        r = self.row(self.rows(now=NOW_bw), task="state-trim")
+        r = self.row(self.rows(now=NOW_NOV20_1231), task="state-trim")
         self.assertEqual([r[k] for k in HEAD["en"][2:]],
                          ["进行中", "████████░░  80%", WHERE_ST, "level D", "1h 10m", "24m", "43m", "13:17"])
 
@@ -1367,7 +1367,7 @@ class TestWaitSort(WaitCase):
         )
         self.state("OWNER TODO: check the phone build\n")
         self.af("park", "add", "which DB for reports?", now="2026-11-20 12:00")
-        got = [r["Task"] for r in self.rows(now=NOW_bw)]
+        got = [r["Task"] for r in self.rows(now=NOW_NOV20_1231)]
         self.assertEqual(got, ["om-q", "om-h", "om-m", "run-a", "run-b", "oth-2", "oth-1",
                                "ns-1", "q-1", "h-1", "-", "project"])
 
@@ -1378,7 +1378,7 @@ class TestSimulation(WaitCase):
 
     def test_the_board(self):
         self.put(*FIXTURE_F)
-        rows = self.rows(now=NOW_bw)
+        rows = self.rows(now=NOW_NOV20_1231)
         self.assertEqual([r["Task"] for r in rows], self.ORDER)
         got = {r["Task"]: r for r in rows}
         self.assertEqual(got["v4plus-followups"]["Status"], "等待 v4-Manager · 回复插件更新和同步脚本 · 已等 3天20小时")
@@ -1405,7 +1405,7 @@ class TestSimulation(WaitCase):
 
     def test_the_owner_moment(self):
         self.put(*[ST_REVIEW if l is ST_RUN else l for l in FIXTURE_F])
-        rows = self.rows(now=NOW_bw)
+        rows = self.rows(now=NOW_NOV20_1231)
         top = rows[0]
         self.assertEqual([top[k] for k in HEAD["en"][:1] + HEAD["en"][2:]],
                          ["state-trim", "等待 你 · 合并前签字 · 已等 5分钟", "-", WHERE_ST, "level D", "-", "-", "-", "-"])
@@ -1422,7 +1422,7 @@ class TestSimulationEnglish(WaitCase):
 
     def test_the_words(self):
         self.put(*FIXTURE_F)
-        got = {r["Task"]: r["Status"] for r in self.rows(now=NOW_bw)}
+        got = {r["Task"]: r["Status"] for r in self.rows(now=NOW_NOV20_1231)}
         self.assertEqual(got, {
             "state-trim": "running",
             "v4plus-followups": "waiting v4-Manager · 回复插件更新和同步脚本 · waited 3d 20h",
@@ -1459,7 +1459,7 @@ class TestSimulationEnglish(WaitCase):
 class TestOldLines(WaitCase):
     def test_10_pc2_real_lines_render(self):
         self.put(*REAL)
-        result = self.af("board", now=NOW_bw)
+        result = self.af("board", now=NOW_NOV20_1231)
         self.assertNotIn("Traceback", result.stderr)
         got = {r["Task"]: r["Status"] for r in self.table(result.stdout)}
         self.assertEqual(got, {
@@ -1483,7 +1483,7 @@ class TestOldLines(WaitCase):
                  "u | big | w | waiting queue since 2026-11-20 12:01 | after",
                  "s | big | w | started 2026-13-40 99:99 after xm waited | stage tests since 2026-11-20 12:00",
                  "r | big | w | waiting hold since 2026-11-20 12:01 | wait run since not-a-date")
-        result = self.af("board", now=NOW_bw)
+        result = self.af("board", now=NOW_NOV20_1231)
         self.assertNotIn("Traceback", result.stderr)
         self.assertEqual(len(self.table(result.stdout)), 6)
         self.line()
@@ -1493,7 +1493,7 @@ class TestOldLines(WaitCase):
         # the row keeps its kind and leaves the waited part out
         self.put("a | big | w | opened 2026-11-20 10:00 | by main | waiting hold since 2026-13-40 99:99: x",
                  "c | big | w | opened 2026-11-20 10:00 | by main | waiting review since 2026-02-30 10:00 | who v4-Manager")
-        result = self.af("board", now=NOW_bw)
+        result = self.af("board", now=NOW_NOV20_1231)
         self.assertNotIn("Traceback", result.stderr)
         got = {r["Task"]: r["Status"] for r in self.table(result.stdout)}
         self.assertEqual(got, {"a": "暂缓 · x", "c": "等待 v4-Manager · 合并前签字"})

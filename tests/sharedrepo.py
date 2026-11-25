@@ -235,7 +235,8 @@ def shared_fixture(guard=None, remember=(), remember_repo=False):
 
         def refuse(sub, **kwargs):
             raise TypeError("%s: a subclass of a @shared_fixture class (%s) would reuse its "
-                            "parent's fixture; give it its own shared_fixture or a plain setUp"
+                            "parent's fixture; copy what it needs into a new class (with its own "
+                            "@shared_fixture) or use a plain setUp"
                             % (sub.__name__, cls.__name__))
 
         cls.__init_subclass__ = classmethod(refuse)
