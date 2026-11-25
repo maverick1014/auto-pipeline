@@ -229,10 +229,7 @@ def ensure_working_branch(root, conf_text, out):
     that already uses the plugin gets the start's WORKING BRANCH line instead. No worktree."""
     try:
         import agent_conf
-        try:
-            name = agent_conf.working_branch(root, derive=True)
-        except TypeError:
-            name = agent_conf.working_branch(root)
+        name = agent_conf.working_branch(root, derive=True)
     except Exception:
         return
     prod = production_branch(root, conf_text)
