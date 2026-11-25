@@ -261,6 +261,8 @@ W15. Watch
 - Verify every launch within 2 min
 - One `agent-watch.sh --all` in the background (Bash run_in_background) watches every task manager, local and on another machine: its pane and its worktree `agent_state.txt` (a report goes under `=== REPORT ===`); restart it after each wake
 - A task manager's HEARTBEAT, ACK, report and question go into `agent_state.txt` only, never SendMessage; only DONE PASS, DONE FAIL, QUESTION:, MOCK READY, CLOSE CASE and the watch's STALL and LOST wake the main manager
+- The watch carries a task's stage to the main repo from the newest STAGE line or HEARTBEAT step (0-7 = brief to report); the heartbeat's work minutes and text go to the board's progress cell
+- A manager at its idle prompt while its own background run goes (pane shows shells or monitors, or its newest state line says started, for watch_quiet_min) is not a stall
 - Long text to a task manager: `agent-file.sh tell <task> "<msg>"` (the block goes into its file, one pointer line to its pane, receipt checked)
 - Start and resume print the `agent-watch.sh --all` command when no watch runs
 - The board says `not confirmed <n>m` when a task is not watched or has been quiet

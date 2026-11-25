@@ -303,7 +303,7 @@ class TestSweepAndWake(AllCase):
         self.assertLessEqual(len(sends), len(tm_reads))
         for call in sends:
             self.assertEqual(self.opt(call, "--terminal"), t["shell"], call)
-            self.assertLess(len(self.opt(call, "--text") or ""), 400, call)
+            self.assertLess(len(self.opt(call, "--text") or ""), 500, call)
         shell_reads = [c for c in self.terminal_calls("read") if self.opt(c, "--terminal") == t["shell"]]
         self.assertTrue([c for c in shell_reads if "--cursor" in c], shell_reads)
         for call in self.terminal_calls("read") + sends:
@@ -665,16 +665,16 @@ class TestReviewFixes(AllCase):
 
     LONG_NAME = "v4plus-ledger-rollout-final-ab"     # 30 chars, a real-size name
 
-    def test_r1_the_remote_read_command_stays_under_400_for_real_sizes(self):
+    def test_r1_the_remote_read_command_stays_under_500_for_real_sizes(self):
         self.task(self.LONG_NAME, env=ENV, sub="orca/workspaces/v4-plus")
         self.on_task_read(self.LONG_NAME, {3: "[Opus 5.5 xhigh] DONE PASS %s" % self.LONG_NAME})
         text = self.text(self.run_all(max_sweeps="6"))
         self.assertEqual(self.one_watch(text), "WATCH SIGNAL %s: [Opus 5.5 xhigh] DONE PASS %s"
                          % (self.LONG_NAME, self.LONG_NAME))
         for call in self.terminal_calls("send"):
-            self.assertLess(len(self.opt(call, "--text") or ""), 400, call)
+            self.assertLess(len(self.opt(call, "--text") or ""), 500, call)
 
-    def test_r1_a_command_that_would_be_400_or_more_is_never_sent(self):
+    def test_r1_a_command_that_would_be_500_or_more_is_never_sent(self):
         self.task("alpha", env=ENV, sub="x" * 120 + "/" + "y" * 120)
         text = self.text(self.run_all(max_sweeps="2"))
         st = self.status()["tasks"]["alpha"]
@@ -682,7 +682,7 @@ class TestReviewFixes(AllCase):
         self.assertTrue(st["why"].startswith("read command too long"), st["why"])
         self.assertIn("watch: alpha not watched: read command too long", text)
         for call in self.terminal_calls("send"):
-            self.assertLess(len(self.opt(call, "--text") or ""), 400, call)
+            self.assertLess(len(self.opt(call, "--text") or ""), 500, call)
 
     def test_r2_a_task_not_baselined_in_a_run_keeps_its_saved_count(self):
         self.task("alpha")

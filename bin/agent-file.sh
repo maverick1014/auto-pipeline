@@ -29,6 +29,7 @@
 #   agent-file.sh todo wait "<name>" on <mock|question|review|hold|queue> ["<note>"] [--who <name>] [--after <task>]  -> the todo line starts a wait
 #   agent-file.sh todo wait "<name>" off                      -> the wait closes; its minutes join "waited <m>m"; who, after, wait run since go
 #   agent-file.sh todo where "<name>" <machine> ["<worktree path>"]   -> the todo line says where it runs
+#   agent-file.sh todo beat "<name>" "<work>m <text>"        -> the todo line carries the last heartbeat (the watch writes it; shown in the progress cell)
 #   agent-file.sh park add "<question>" ["<task>"] [--sub "<line>"] [--why "<text>"] [--evidence "<text>"]
 #                 [--fact "<key>: <value>"]... [--options "A text|B text"] [--rec <letter or option text>]
 #                                                             -> agent_state.txt: PARKED: <question> | <task> | since <date> | sub .. | fact .. | option A: .. | rec A
@@ -155,6 +156,9 @@
 #   any other kind; --who or --after with no value, an empty value, " | " or a line break in it, or given twice; an unknown
 #   option starting with "--"; two notes; anything after off.
 #
+# todo beat <name> "<work>m <text>": the field " | beat <work>m <text>" of the todo line (one atomic write, replaced in place, added at
+#   the end when new; the same text again: nothing is written). A new stage name (todo stage) drops it. Refused (one line on stderr,
+#   exit 1, nothing written): no todo line of that name, an empty text, " | " or a line break in it, too many arguments.
 # todo stage <name> <stage> [<i>/<m>]: (first stage: a line with no stage and no started field also gets " | started <date>[ after <n>m waited]"
 #   right before the stage field; n = closed waited <m>m + an open wait up to now, no " after " when 0; never added or changed later.)
 #   The stage field of the todo line, " | stage <stage>[ <i>/<m>] since <date>" (one atomic
@@ -780,6 +784,27 @@ todo_cross() {
 
 # --- park, worker (agent_state.txt of the folder this session is in)
 STATE_FILE="$STATE_DIR/agent_state.txt"
+# todo_beat <name> "<work>m <text>"
+todo_beat() {
+  local name="${1:-}" text="${2:-}" line cur
+  [ -n "$name" ] || refuse "todo beat: needs a todo name"
+  [ $# -le 2 ] || refuse "todo beat: too many arguments; quote the text"
+  line=$(first "$TODO" "$name")
+  [ -n "$line" ] || refuse "no todo line named: $name"
+  state_text "todo beat" "$text"
+  cur=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^beat /) { print substr($i, 6); exit } }')
+  if [ "$cur" != "$text" ]; then
+    NEW="beat $text" awk -F' \\| ' -v OFS=' | ' -v k="$name" '
+      $1 == k && !hit {
+        hit = 1; wi = 0
+        for (i = 4; i <= NF; i++) if (!wi && $i ~ /^beat /) wi = i
+        if (wi) $wi = ENVIRON["NEW"]; else $(NF + 1) = ENVIRON["NEW"]
+      }
+      { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
+  fi
+  echo "todo beat: $name -> $text"
+}
+
 # todo_stage <name> <stage> [<i>/<m>]
 STAGE_WORDS="brief register mock tests workers verify push report e2e merge"
 todo_stage() {
@@ -827,7 +852,7 @@ todo_stage() {
           else { if (ENVIRON["STARTED"] != "") $(NF + 1) = ENVIRON["STARTED"]; $(NF + 1) = ENVIRON["NEW"] }
           if (!keep) {
             n = 0
-            for (i = 1; i <= NF; i++) if (!(i >= 4 && $i ~ /^waited in stage [0-9]+m$/)) out[++n] = $i
+            for (i = 1; i <= NF; i++) if (!(i >= 4 && ($i ~ /^waited in stage [0-9]+m$/ || $i ~ /^beat /))) out[++n] = $i
             s = out[1]
             for (i = 2; i <= n; i++) s = s OFS out[i]
             print s; next
@@ -1094,6 +1119,8 @@ case "${1:-}:${2:-}" in
     shift 2; todo_level "$@";;
   todo:stage)
     shift 2; todo_stage "$@";;
+  todo:beat)
+    shift 2; todo_beat "$@";;
   park:*)
     shift; park_run "$@";;
   worker:*)
