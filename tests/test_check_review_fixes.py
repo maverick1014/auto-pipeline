@@ -178,9 +178,11 @@ class TestF10DerivedOnlyByInitAndTheStart(unittest.TestCase):
         c.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")
         subprocess.run(["git", "-C", c.repo.dir, "config", "--local", "--unset", "auto-pipeline.workingbranch"],
                        capture_output=True)
-        r = c.gate()
+        r = c.af("checks", "gate", "t", "--dir", c.repo.dir)       # no --base: the default base is worked out
         self.assertIn("note: no working branch stored in this clone: give --base origin/<working branch> "
                       "(the brief names it)", r.stdout.splitlines())
+        r = c.gate()                                                    # --base given (the brief named it): no note
+        self.assertNotIn("no working branch stored", r.stdout)
 
     def test_promote_with_nothing_stored_is_refused(self):
         r = self.repo.run("agent-promote.sh", "--sync")

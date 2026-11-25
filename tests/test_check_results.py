@@ -533,6 +533,7 @@ class TestGate(Case):
         # owner 1A (section 17): a task merges into the working branch; there is no origin/main here
         self.git("push", "-q", "origin", "base:refs/heads/trunk")
         self.repo.set_conf("working_branch", "trunk")             # a setting (owner 2026-11-25, section 28)
+        self.git("config", "--local", "auto-pipeline.workingbranch", "trunk")   # section 37 F10: stored by init or the start
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         r = self.af("checks", "gate", "t", "--dir", self.repo.dir)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
