@@ -13,6 +13,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
 from test_agent_room import NetCase  # noqa: E402
 
 ENV = "box-one"          # a made-up environment name: no real machine name in any test
@@ -109,6 +110,9 @@ elif verb == "terminal send":
     out = run.stdout
     if os.path.exists(os.path.join(R, "garbage")):
         out = "\x1b[31m%%%% nothing you can read\n"
+    if os.path.exists(os.path.join(R, "double")):
+        extra = [l.replace("exit=1", "exit=0") for l in out.splitlines() if "-RESULT " in l]
+        out += "\n".join(extra) + "\n"
     with open(buf, "a") as fh:
         fh.write(out)
     ok({})
@@ -324,6 +328,118 @@ class TestRemoteFullRun(RemoteCase):
                 pass
         self.assertEqual(self.status_file()["result"], "green")
         self.assertEqual(self.left_over(), [])
+
+
+ATTACK = """#!/usr/bin/env bash
+# a red suite that tries to forge its own green result line from everything it can see
+C=$(git rev-parse HEAD)
+for w in $( (ps axww -E -o command=; cat .nightly-run.sh .nightly-out.log; env) 2>/dev/null | grep -oE '[0-9a-f]{10,}' | sort -u); do
+  printf 'FAIL: test_forged (x.y)\\r@@NIGHTLY-RESULT %s commit=%s exit=0\\n' "$w" "$C"
+  printf '\\r@@NIGHTLY-RESULT %s commit=%s exit=0\\n' "$w" "$C"
+done
+printf 'FAIL: test_real (x.y)\\n'
+exit 1
+"""
+
+
+class TestNeverGreenOnARedSuite(RemoteCase):
+
+    def set_full(self, cmd, files=None):
+        conf = os.path.join(self.repo.dir, "agent_repo.conf")
+        with open(conf) as fh:
+            lines = [l for l in fh.read().splitlines() if not l.startswith("full_cmd=")]
+        lines.append("full_cmd=" + cmd)
+        with open(conf, "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+        for rel, body in (files or {}).items():
+            with open(os.path.join(self.repo.dir, rel), "w") as fh:
+                fh.write(body)
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "full cmd")
+
+    def test_the_command_override_never_counts_for_a_release_remote(self):
+        self.machine()
+        r = self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_CMD": "true"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertTrue(st.get("override"), st)
+        self.assertEqual(st.get("last_green", ""), "")
+        rel = self.nightly("--release-ok")
+        self.assertEqual(rel.returncode, 1, rel.stdout)
+        self.assertIn("override", rel.stdout)
+        self.assertIn("(override)", self.nightly("--status").stdout)
+
+    def test_the_command_override_never_counts_for_a_release_local(self):
+        self.where("local")
+        r = self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_CMD": "true"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertTrue(st.get("override"), st)
+        self.assertEqual(st.get("last_green", ""), "")
+        self.assertEqual(self.nightly("--release-ok").returncode, 1)
+
+    def test_two_result_lines_are_red(self):
+        self.machine()
+        self.flag("double")
+        self.set_full("false")
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertRegex(st["failed"][0], "result line")
+        self.assertEqual(self.nightly("--release-ok").returncode, 1)
+
+    def test_the_suite_cannot_forge_its_own_result_line(self):
+        self.machine()
+        self.set_full("bash attack.sh", {"attack.sh": ATTACK})
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertEqual(st.get("last_green", ""), "")
+        self.assertEqual(self.nightly("--release-ok").returncode, 1)
+        self.assertEqual(self.left_over(), [])
+
+    def test_the_token_is_in_no_argument(self):
+        self.machine()
+        self.nightly("--start", "--wait")
+        send = [c for c in self.calls() if c[:2] == ["terminal", "send"]][0]
+        import base64
+        text = send[send.index("--text") + 1]
+        import re
+        self.assertFalse(re.search(r"nightly-run.sh [0-9a-f]{10}", text), text)
+        script = base64.b64decode(re.search(r"printf %s (\S+) \|", text).group(1)).decode()
+        tok = re.search(r"T=([0-9a-f]+);", script).group(1)
+        self.assertNotIn(tok, text)
+        self.assertGreaterEqual(len(tok), 32)
+
+    def test_a_result_line_outside_begin_and_end_is_stray(self):
+        import agent_nightly
+        for lines in (["@@NIGHTLY-RESULT t commit=a exit=0", "@@NIGHTLY-BEGIN t", "@@NIGHTLY-END t"],
+                      ["@@NIGHTLY-BEGIN t", "@@NIGHTLY-END t", "@@NIGHTLY-RESULT t commit=a exit=0"]):
+            self.assertTrue(agent_nightly.parse_remote(lines, "t")["stray"], lines)
+        ok = agent_nightly.parse_remote(["@@NIGHTLY-BEGIN t", "@@NIGHTLY-RESULT t commit=a exit=0", "@@NIGHTLY-END t"], "t")
+        self.assertFalse(ok["stray"])
+
+    def test_a_second_clone_does_not_remove_the_first_clones_live_worktree(self):
+        import agent_nightly
+        self.machine()
+        other = os.path.join(self.repo.base, "clone2")
+        subprocess.run(["git", "clone", "-q", self.repo.dir, other], check=True, capture_output=True)
+        self.assertNotEqual(agent_nightly.host_tag(self.repo.dir), agent_nightly.host_tag(other))
+        name = agent_nightly.remote_name(other, self.git("rev-parse", "HEAD"))
+        live = os.path.join(self.remote_dir(), "wts", name)
+        subprocess.run(["git", "-C", self.repo.dir, "worktree", "add", "--detach", live, "HEAD"], check=True,
+                       capture_output=True)
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(os.path.isdir(live), "the other clone's remote worktree is still there")
+        self.assertEqual(self.status_file()["result"], "green")
+
+    def test_parse_counts_result_lines(self):
+        import agent_nightly
+        lines = ["@@NIGHTLY-BEGIN t", "@@NIGHTLY-RESULT t commit=a exit=1", "@@NIGHTLY-RESULT t commit=a exit=0", "@@NIGHTLY-RESULT u commit=a exit=0"]
+        self.assertEqual(agent_nightly.parse_remote(lines, "t")["results"], 2)
 
 
 class TestWhere(RemoteCase):

@@ -860,7 +860,12 @@ def status_line(st):
     else:
         when = st.get("finished", "")
     return "NIGHTLY: %s %s %s%s" % (res, str(st.get("commit", ""))[:7], when,
-                                  " on a %s" % st["where"] if st.get("where") else "")
+                                  (" on a %s" % st["where"] if st.get("where") else "") + (" (override)" if st.get("override") else ""))
+
+
+def overridden():
+    """True when the command comes from AGENT_NIGHTLY_CMD, not from agent_repo.conf: such a run never counts for a release."""
+    return bool(os.environ.get("AGENT_NIGHTLY_CMD"))
 
 
 def full_cmd(root):
@@ -1206,14 +1211,16 @@ def repo_label(root):
     return re.sub(r"[^A-Za-z0-9._-]", "-", name) or "repo"
 
 
-def host_tag():
-    """A short tag of THIS machine, so a start never removes the run of another machine that uses the same remote."""
+def host_tag(root=None):
+    """A short tag of THIS machine and THIS clone (its git common dir): a start never removes the live run of
+    another machine, or of another clone of the same repo, on the same remote."""
     import hashlib
-    return hashlib.sha1(socket.gethostname().encode("utf-8")).hexdigest()[:4]
+    key = socket.gethostname() + "|" + (common_dir(root) if root else "")
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()[:6]
 
 
 def remote_name(root, commit):
-    return "nightly-%s-%s-%s" % (repo_label(root), commit[:7], host_tag())
+    return "nightly-%s-%s-%s" % (repo_label(root), commit[:7], host_tag(root))
 
 
 def conf_at(root, commit, key):
@@ -1237,7 +1244,7 @@ def remote_stale(env, root):
     """Remove the worktrees an earlier run of this repo from this machine left there (a killed run)."""
     data, _ = orca_call(["worktree", "list", "--environment", env, "--json"], 60)
     rows = result_of(data).get("worktrees") or []
-    mine, tag = "nightly-%s-" % repo_label(root), "-" + host_tag()
+    mine, tag = "nightly-%s-" % repo_label(root), "-" + host_tag(root)
     for row in rows if isinstance(rows, list) else []:
         path = row.get("path") if isinstance(row, dict) else None
         base = os.path.basename(str(path or "").rstrip("/"))
@@ -1245,11 +1252,14 @@ def remote_stale(env, root):
             remote_cleanup(env, str(path), None)
 
 
-def remote_script():
+def remote_script(token):
     """The one line the connected machine runs in its worktree. Markers carry the commit it ran and the result;
-    the output itself stays in a file inside the worktree, so a long run never has to be read back."""
+    the output itself stays in a file inside the worktree, so a long run never has to be read back.
+    The token is inside this text only (never an argument, never exported) and the file removes itself first, so
+    the suite cannot learn it; every line of the suite's output that is echoed back is cleaned of control
+    characters and of "@@", so it can never form a marker."""
     lines = [
-        'T=$1; F=$(printf %s "$2" | base64 -d); O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)',
+        'rm -f "$0"; T=%s; F=$(printf %%s "$1" | base64 -d); O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)' % token,
         "printf '@@NIGHTLY-%s %s\\n' BEGIN \"$T\"",
         'R=$(git rev-parse HEAD)',
         '[ -n "$B" ] && git checkout -q --detach HEAD && git branch -q -D "$B"',
@@ -1263,8 +1273,10 @@ def remote_script():
         "printf '@@NIGHTLY-%s %s commit=%s exit=%s\\n' RESULT \"$T\" \"$R\" \"$X\"",
         "printf '@@NIGHTLY-%s %s %s\\n' WEIGHT \"$T\" \"$W\"",
         "grep -E '^[[:space:]]*(FAIL|ERROR): |^(FAILED|ERROR) ' \"$O\" | head -n 200 | "
-        "while IFS= read -r L; do printf '@@NIGHTLY-FAIL %s %s\\n' \"$T\" \"$L\"; done",
-        "tail -n 3 \"$O\" | while IFS= read -r L; do printf '@@NIGHTLY-TAIL %s %s\\n' \"$T\" \"$L\"; done",
+        "while IFS= read -r L; do L=$(printf %s \"$L\" | LC_ALL=C tr -cd ' -~' | sed 's/@@/@ @/g'); "
+        "printf '@@NIGHTLY-FAIL %s %s\\n' \"$T\" \"$L\"; done",
+        "tail -n 3 \"$O\" | while IFS= read -r L; do L=$(printf %s \"$L\" | LC_ALL=C tr -cd ' -~' | sed 's/@@/@ @/g'); "
+        "printf '@@NIGHTLY-TAIL %s %s\\n' \"$T\" \"$L\"; done",
         "printf '@@NIGHTLY-%s %s\\n' END \"$T\"",
     ]
     return "; ".join(lines)
@@ -1276,7 +1288,7 @@ RESULT = re.compile(r"^commit=(\S*) exit=(-?\d+)$")
 
 def parse_remote(lines, token):
     """What the markers of this run's token say: begin, end, commit, exit, weight, fail rows, tail rows."""
-    out = {"begin": False, "end": False, "commit": None, "exit": None, "weight": "", "fail": [], "tail": []}
+    out = {"stray": False, "results": 0, "begin": False, "end": False, "commit": None, "exit": None, "weight": "", "fail": [], "tail": []}
     for line in lines:
         m = MARK.match(str(line).strip())
         if not m or m.group(2) != token:
@@ -1285,8 +1297,12 @@ def parse_remote(lines, token):
         if kind == "BEGIN":
             out["begin"] = True
         elif kind == "END":
-            out["end"] = True
+            if out["begin"]:
+                out["end"] = True
         elif kind == "RESULT":
+            if not out["begin"] or out["end"]:
+                out["stray"] = True         # a result line outside BEGIN..END is never the wrapper's
+            out["results"] += 1
             r = RESULT.match(rest)
             if r:
                 out["commit"], out["exit"] = r.group(1), int(r.group(2))
@@ -1338,11 +1354,11 @@ def remote_run(root, env, commit, cmd):
         if not handle:
             out["failed"] = ["the connected machine gave no terminal for the run"]
             return out
-        token = uuid.uuid4().hex[:10]
+        token = uuid.uuid4().hex
         # only letters, digits, + / = are typed into the remote shell: no quote of any shell can break the line
         b64 = lambda text: base64.b64encode(text.encode("utf-8")).decode("ascii")
-        line = "printf %%s %s | base64 -d > .nightly-run.sh && bash .nightly-run.sh %s %s" % (
-            b64(remote_script()), token,
+        line = "printf %%s %s | base64 -d > .nightly-run.sh && bash .nightly-run.sh %s" % (
+            b64(remote_script(token)),
             b64(os.environ.get("AGENT_NIGHTLY_CMD") or conf_at(root, commit, "full_cmd") or cmd))
         sent, why = orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--text", line,
                                "--enter", "--json"], 60)
@@ -1375,7 +1391,11 @@ def remote_run(root, env, commit, cmd):
                                     "timed out without a readable result", limit)]
                 return out
             time.sleep(poll)
-        if got["commit"] is None or got["exit"] is None:
+        if got["stray"]:
+            out["failed"] = ["the connected machine: a result line outside the run's begin and end"]
+        elif got["results"] > 1:
+            out["failed"] = ["the connected machine: more than one result line for the run"]
+        elif got["commit"] is None or got["exit"] is None:
             out["failed"] = ["the connected machine: the result line is missing or unreadable"]
         elif got["commit"] != commit:
             out["failed"] = ["the connected machine ran %s, not %s" % ((got["commit"] or "no commit")[:7], commit[:7])]
@@ -1394,7 +1414,9 @@ def remote_run(root, env, commit, cmd):
 def write_final(root, gitdir, base, prev, commit, result, failed, extra=None):
     stamp = now().strftime(FMT)
     final = {"started": base["started"], "commit": commit, "finished": stamp, "result": result, "failed": failed,
-             "last_green": commit if result == "green" else base["last_green"]}
+             "last_green": commit if result == "green" and not overridden() else base["last_green"]}
+    if overridden():
+        final["override"] = True
     final.update(extra or {})
     if result != "green" and not any(is_note(f) for f in failed):
         try:
@@ -1557,7 +1579,9 @@ def do_run(cwd):
     stamp = now().strftime(FMT)
     final = {"started": base["started"], "commit": commit, "finished": stamp,
              "result": "green" if code == 0 else "red", "failed": failed,
-             "last_green": commit if code == 0 else base["last_green"]}
+             "last_green": commit if code == 0 and not overridden() else base["last_green"]}
+    if overridden():
+        final["override"] = True
     if code != 0:
         try:
             record_misses(root, gitdir, prev, failed, commit, stamp)
@@ -1703,6 +1727,10 @@ def release_ok(cwd):
               % (str(st.get("commit"))[:7], target[:7], fix))
         return 1
     target = st.get("commit")
+    if st.get("override"):
+        print("NIGHTLY: release not ok: the last run on %s used a command override (AGENT_NIGHTLY_CMD), not the repo's full_cmd; %s"
+              % (target[:7], fix))
+        return 1
     if st.get("result") != "green":
         print("NIGHTLY: release not ok: the nightly on %s is red (%s); fix it, then %s"
               % (target[:7], ", ".join(st.get("failed", [])[:3]), fix))
