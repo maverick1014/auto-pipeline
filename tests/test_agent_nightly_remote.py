@@ -404,6 +404,16 @@ class TestNeverGreenOnARedSuite(RemoteCase):
         self.assertEqual(failed[-1], "... and 70 more failing rows")
         self.assertIn("... and 70 more failing rows", self.nightly("--failures").stdout)
 
+    def test_a_cut_list_still_records_its_misses(self):
+        self.machine()
+        self.set_full("true")
+        self.nightly("--start", "--wait")
+        self.assertEqual(self.status_file()["result"], "green")
+        many = "import sys\nfor i in range(120):\n    print('FAIL: test_%d (m.C)' % i)\nsys.exit(1)\n"
+        self.set_full("python3 many.py", {"many.py": many})
+        self.nightly("--start", "--wait")
+        self.assertIn("misses: 50 since", self.nightly("--misses").stdout)
+
     def test_a_nul_in_the_output_does_not_lose_the_test_names(self):
         self.machine()
         nul = "import sys\nsys.stdout.buffer.write(b'x\\0y\\n')\nprint('FAIL: test_named (m.C)')\nsys.exit(1)\n"

@@ -1431,9 +1431,10 @@ def write_final(root, gitdir, base, prev, commit, result, failed, extra=None):
     if overridden():
         final.update(result="override", outcome=result, override=True)   # neither green nor red: older readers see no finished run
     final.update(extra or {})
-    if result != "green" and not any(is_note(f) for f in failed):
+    names = [f for f in failed if not f.startswith("... and ")]     # the count line of a cut list is no test
+    if result != "green" and not any(is_note(f) for f in names):
         try:
-            record_misses(root, gitdir, prev, failed, commit, stamp)
+            record_misses(root, gitdir, prev, names, commit, stamp)
         except Exception:
             pass
     atomic_write(status_path(gitdir), json.dumps(final))
