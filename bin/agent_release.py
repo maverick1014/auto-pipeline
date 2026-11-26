@@ -13,7 +13,8 @@ import subprocess
 import sys
 
 NAME = "agent-release.sh"
-SHIP = [".claude-plugin", "hooks", "bin", "skills", "agents", "PRINCIPLES.md"]
+SHIP = [".claude-plugin", "hooks", "bin", "skills", "agents", "PRINCIPLES.md",
+        "rules", "GLOSSARY.md", "NOTICE.md"]
 VERSION_FILE = ".claude-plugin/plugin.json"
 VERSION_RE = re.compile(r"^[0-9]+(\.[0-9]+)*$")
 

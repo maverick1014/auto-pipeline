@@ -51,8 +51,9 @@ LINE_FILES = {"I": "agent_ideas.txt", "T": "agent_todo.txt",
 
 DOC_EXTS = (".md", ".markdown", ".mdx", ".rst", ".adoc", ".asciidoc", ".org",
             ".pdf", ".doc", ".docx", ".rtf", ".odt")
-TOP_KEEP_FILES = ("README.md", "PRINCIPLES.md", "CLAUDE.md", "AGENTS.md")
-TOP_KEEP_DIRS = (".claude-plugin", "agents", "skills", "hooks", "bin")
+TOP_KEEP_FILES = ("README.md", "PRINCIPLES.md", "GLOSSARY.md", "CLAUDE.md",
+                  "AGENTS.md")
+TOP_KEEP_DIRS = (".claude-plugin", "agents", "skills", "hooks", "bin", "rules")
 LICENSE_PREFIXES = ("license", "licence", "copying", "notice")
 
 STATE_STAMP = re.compile(r"^agent_state\.(\d{4}-\d\d-\d\d)-\d{6}\.txt$")

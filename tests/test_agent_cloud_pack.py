@@ -872,7 +872,7 @@ class TestOneSentenceInstall(PackCase):
         self.assertFalse(os.path.exists(self.t("agent.conf")))
         self.assertIn(POINTER, read_text(self.t("CLAUDE.md")))
         cmds = session_start_commands(self.settings())
-        self.assertEqual([c for c in cmds if "agent-start.sh" in c], [HOOK_CMD])
+        self.assertEqual([c for c in cmds if "agent-start.sh" in c], [HOOK_CMD, RULES_CMD])
 
     def test_the_packed_hook_then_runs(self):
         self.assertOk(self.result)
