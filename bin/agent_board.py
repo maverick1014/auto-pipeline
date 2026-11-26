@@ -74,6 +74,22 @@ def load_conf():
         sys.dont_write_bytecode = old
 
 
+def load_forecast():
+    """The sibling module agent_forecast (the Monte Carlo end time), None when it cannot be loaded."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    old = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agent_forecast
+        return agent_forecast
+    except Exception:
+        return None
+    finally:
+        sys.dont_write_bytecode = old
+
+
 def conf_get(key, default):
     """One setting or constant from agent_conf; DEFAULT when agent_conf cannot be loaded or read."""
     try:
@@ -312,16 +328,25 @@ def clock_text(lang, now, when):
     return ("%s %s" % (stamp, clock)) if lang == "zh" else ("%s on %s" % (clock, stamp))
 
 
+def done_by_ahead(est, work, p, min_pct=0):
+    """Minutes from now to the done-by time of today's rule; None when there is none (no work, or over with no pace)."""
+    if work is None:
+        return None
+    if est is not None and work < est:
+        return est - work
+    if p is not None and p > 0 and p * 100 >= min_pct:
+        return math.ceil(Fraction(work) * (1 - p) / p)
+    return None
+
+
 def done_by_text(lang, now, est, work, p, min_pct=0):
     """Done by: est / work in minutes (None = unknown), p = Fraction of progress or None.
 
     Far enough = a stage, p > 0 and 100 p >= min_pct (progress_eta_min_pct)."""
     if work is None:
         return "-"
-    if est is not None and work < est:
-        return clock_text(lang, now, now + datetime.timedelta(minutes=est - work))
-    if p is not None and p > 0 and p * 100 >= min_pct:
-        ahead = math.ceil(Fraction(work) * (1 - p) / p)
+    ahead = done_by_ahead(est, work, p, min_pct)
+    if ahead is not None:
         return clock_text(lang, now, now + datetime.timedelta(minutes=ahead))
     if est is None:
         return "-"
@@ -474,6 +499,7 @@ class Board:
         self.words = STATUS[self.lang]
         self.weights = read_weights(self.root)
         self.eta_min_pct = read_eta_min_pct(self.root)
+        self.hist = None        # the clean history rows for the forecast, read once
         self.rows = []
         self.notes = []
         self.seq = 0
@@ -560,6 +586,48 @@ class Board:
         return stage_progress(self.weights, t["stage"], t["est"], parse_time(t["since"]) if t["since"] else None,
                               self.now, t["wis"], wsince)
 
+    # -- the end time (agent_forecast): the board cell and `eta` use these two
+
+    def history_rows(self):
+        if self.hist is None:
+            mod = load_forecast()
+            try:
+                self.hist = mod.history(self.root) if mod else []
+            except Exception:
+                self.hist = []
+        return self.hist
+
+    def forecast_of(self, t, work, p):
+        """(p50, p85) minutes still to go of a running todo line, or None (no est, no work, too little history)."""
+        mod = load_forecast()
+        if mod is None or t["est"] is None or work is None:
+            return None
+        built_work = None
+        for word in ("report", "e2e"):
+            at = [m for w, m in t["slog"] if w == word]
+            if at:
+                built_work = at[0]
+                break
+        task = {"est": t["est"], "work": work, "stage": t["stage"], "p": None if p is None else float(p),
+                "lane": "full", "built_work": built_work}
+        try:
+            return mod.forecast(task, self.history_rows())
+        except Exception:
+            return None
+
+    def work_of(self, t):
+        """(work, wait): the work minutes as the board counts them, and the wait minutes (open wait included)."""
+        opened = parse_time(t["opened"]) if t["opened"] else None
+        started = parse_time(t["started"]) if t["started"] else None
+        wsince = parse_time(t["wsince"]) if t["wsince"] else None
+        wait = t["waited"]
+        if wsince is not None:
+            wait += minutes(wsince, self.now)
+        if started is not None:
+            return max(0, minutes(started, self.now) - (wait - t["swaited"])), wait
+        clock = minutes(opened, self.now)
+        return (None if clock is None else max(0, clock - wait)), wait
+
     # -- rows
 
     def add(self, group, when, task, what, status, where, est="-", work="-", wait="-", done="-", progress="-",
@@ -578,7 +646,7 @@ class Board:
         t = {"name": f[0].strip(), "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
              "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None, "checks": None,
-             "who": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": ""}
+             "who": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": "", "slog": []}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
             if m and t["est"] is None:
@@ -591,6 +659,13 @@ class Board:
             m = re.match(r"waiting (\S+) since (%s)(?:: (.*))?$" % DATE, x)
             if m and t["wkind"] is None:
                 t["wkind"], t["wsince"], t["wnote"] = m.group(1), m.group(2), m.group(3) or ""
+                continue
+            m = re.match(r"stage log (.+)$", x)
+            if m:
+                for e in m.group(1).split(", "):
+                    em = re.match(r"^(\w+)(?: \d+/\d+)? (\d+)$", e.strip())
+                    if em:
+                        t["slog"].append((em.group(1), int(em.group(2))))
                 continue
             m = re.match(r"stage (\S+(?: \d+/\d+)?) since (%s)" % DATE, x)
             if m and t["stage"] is None:
@@ -727,13 +802,13 @@ class Board:
             if dash:
                 est = "-"
         else:
-            if started is not None:
-                work = max(0, minutes(started, self.now) - (wait - t["swaited"]))
-            else:
-                clock = minutes(opened, self.now)
-                work = None if clock is None else max(0, clock - wait)
+            work = self.work_of(t)[0]
             p = self.progress_of(t)
             done = done_by_text(self.lang, self.now, t["est"], work, p, self.eta_min_pct)
+            fc = self.forecast_of(t, work, p)
+            if fc is not None:
+                done = " / ".join(clock_text(self.lang, self.now, self.now + datetime.timedelta(minutes=x))
+                                  for x in fc)
             work = fmt_min(work)
             wait_cell = fmt_min(wait)
             progress = "-" if p is None else bar_text(p)
@@ -986,6 +1061,77 @@ def build(args, now=None, records=True):
     if records:
         board.add_launches()
     return board
+
+
+def todo_line_of(root, name):
+    """The parsed-ready todo line of a task (first field = name), None when there is none."""
+    for line in read_lines(os.path.join(root, "agent_todo.txt")):
+        if line.split(" | ")[0].strip() == name:
+            return line
+    return None
+
+
+def work_mode(args, name):
+    """--work-of <name>: prints the work minutes as the board counts them; prints nothing (exit 0) when unknown."""
+    line = todo_line_of(os.path.normpath(args.root), name)
+    if line is None:
+        return 0
+    board = Board(args)
+    t = board.parse_todo(line)
+    if t["since"] is None and t["started"] is None:
+        return 0
+    work = board.work_of(t)[0]
+    if work is not None:
+        print(work)
+    return 0
+
+
+def eta_mode(args, name, wait):
+    """--eta <name> [--wait <m>]: the eta line from the same numbers as the "Done by" cell."""
+    line = todo_line_of(os.path.normpath(args.root), name)
+    if line is None:
+        sys.stderr.write("no todo line named: %s\n" % name)
+        return 1
+    board = Board(args)
+    now = board.now
+    t = board.parse_todo(line)
+    if t["est"] is None:
+        sys.stderr.write("eta: no estimate on the todo line: %s\n" % name)
+        return 1
+    work = board.work_of(t)[0]
+    if work is None:
+        sys.stderr.write("eta: cannot count the work of %s (no opened or started time); use --step\n" % name)
+        return 1
+    p = board.progress_of(t)
+    fc = board.forecast_of(t, work, p)
+    if fc is None:
+        left = done_by_ahead(t["est"], work, p, board.eta_min_pct)
+        if left is None:
+            sys.stderr.write("eta: %s is over its estimate and no pace is known; give --step <1-7> and --work-so-far\n" % name)
+            return 1
+        p85 = None
+    else:
+        left, p85 = fc
+
+    def at(m):
+        return clock_text("en", now, now + datetime.timedelta(minutes=m))
+
+    msg = "about %d min of work left" % left
+    if wait > 0:
+        msg += " and %d min of waiting" % wait
+    if p85 is not None:
+        msg += " (85%%: %d min)" % p85
+    msg += ", done around " + at(left + wait)
+    if p85 is not None:
+        msg += " (85%%: %s)" % at(p85 + wait)
+    what = (t["what"] or "").lower()
+    mock = "no mock" not in what and "mock" in what and (t["stage"] is None or t["stage"][0] in ("brief", "register", "mock"))
+    if mock:
+        who, when = "mock ready", at(-(-left * 3 // 7))
+    else:
+        who, when = "review", at(left + wait)
+    print("%s; owner needed next: %s about %s" % (msg, who, when))
+    return 0
 
 
 def clock_now():
@@ -1331,7 +1477,14 @@ def main():
     p.add_argument("--host", default="-")
     p.add_argument("--self", dest="self_mode", action="store_true")
     p.add_argument("--watch", type=int, default=None, metavar="SEC")
+    p.add_argument("--eta", default=None, metavar="NAME")
+    p.add_argument("--wait", type=int, default=0, metavar="MIN")
+    p.add_argument("--work-of", default=None, metavar="NAME")
     args = p.parse_args()
+    if args.work_of is not None:
+        sys.exit(work_mode(args, args.work_of))
+    if args.eta is not None:
+        sys.exit(eta_mode(args, args.eta, max(0, args.wait)))
     if args.watch is not None:
         if args.watch < 1:
             p.error("--watch takes a whole number of seconds from 1")

@@ -1009,8 +1009,16 @@ class TestEta(_TestEtaFixture, SharedDataCase):
     """One repo for the class: these tests only read (tests/sharedrepo.py)."""
 
     def test_no_numbers_given_the_whole_estimate_is_left(self):
-        self.assertEqual(self.parts("plain"),
+        # estimate-improve C10: with no --step and no --work-so-far eta reads the line like the board
+        # (tests/test_agent_forecast.py); --work-so-far 0 keeps today's math for these formatting tests
+        self.assertEqual(self.parts("plain", "--work-so-far", "0"),
                          (70, "21:10", "", "review", "21:10", ""))
+
+    def test_no_numbers_reads_the_line_like_the_board(self):
+        # opened 18:00, now 20:00, no stage: 120 minutes of work on a 70 minute estimate, no pace to go by
+        r = self.eta("plain")
+        self.assertEqual(r.returncode, 1, (r.stdout, r.stderr))
+        self.assertIn("--step", r.stderr)
 
     def test_the_step_says_how_much_is_done(self):
         # step 3 of 7: 30 of 70 done, 40 left
@@ -1055,8 +1063,8 @@ class TestEta(_TestEtaFixture, SharedDataCase):
                          (50, "20:50", "", "mock ready", "20:10", ""))
 
     def test_a_mock_task_with_no_step_given(self):
-        # 70 left; the mock is ready after 70 x 3/7 = 30 min
-        self.assertEqual(self.parts("paged"),
+        # 70 left; the mock is ready after 70 x 3/7 = 30 min (today's math: --work-so-far 0, see above)
+        self.assertEqual(self.parts("paged", "--work-so-far", "0"),
                          (70, "21:10", "", "mock ready", "20:30", ""))
 
     def test_after_the_mock_gate_the_owner_is_needed_at_the_review(self):
@@ -1072,12 +1080,12 @@ class TestEta(_TestEtaFixture, SharedDataCase):
                          (50, "21:20", "", "mock ready", "20:10", ""))
 
     def test_past_midnight_says_tomorrow(self):
-        self.assertEqual(self.parts("plain", now="2026-10-01 23:40"),
+        self.assertEqual(self.parts("plain", "--work-so-far", "0", now="2026-10-01 23:40"),
                          (70, "00:50", "tomorrow", "review", "00:50", "tomorrow"))
 
     def test_later_than_tomorrow_says_the_date(self):
         # 3000 min = 50 h after 2026-10-01 20:00
-        self.assertEqual(self.parts("long"),
+        self.assertEqual(self.parts("long", "--work-so-far", "0"),
                          (3000, "22:00", "on 2026-10-03", "review", "22:00",
                           "on 2026-10-03"))
 
@@ -1112,7 +1120,7 @@ class TestEta(_TestEtaFixture, SharedDataCase):
                           self.read("agent_completed.txt")), before)
 
     def test_the_machine_clock_is_used_when_no_fake_clock_is_set(self):
-        out = self.assertOk(self.repo.run("agent-file.sh", "eta", "plain",
+        out = self.assertOk(self.repo.run("agent-file.sh", "eta", "plain", "--work-so-far", "0",
                                           env={"AGENT_FAKE_NOW": ""}))
         self.assertRegex(out.strip(), ETA_LINE)
 
@@ -1447,8 +1455,10 @@ class TestStageInWorktree(StageCase):
         self.stage("alpha", "tests", now="2026-11-02 14:10", cwd=self.alpha)
         self.state("a line after\n", folder=self.alpha)
         self.stage("alpha", "verify", now="2026-11-02 14:50", cwd=self.alpha)
+        # estimate-improve C11: the first stage also writes the WORK START line, once, right before it
         self.assertEqual(self.state_text(self.alpha),
                          "brief line one\nHEARTBEAT alpha: step 3 of 7\n"
+                         "WORK START alpha | 2026-11-02 14:10\n"
                          "STAGE alpha: verify | since 2026-11-02 14:50\n"
                          "a line after\n")
         self.stage("alpha", "verify", now="2026-11-02 14:55", cwd=self.alpha)

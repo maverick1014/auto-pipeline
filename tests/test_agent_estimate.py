@@ -519,14 +519,15 @@ class TestRetrainCheck(EstimateCase):
         self.assertEqual((c["tasks"], c["new"], c["current"], c["kept"]), (40, 10, 1, 1))
         self.assertEqual(c["current_error"], 0.0)
 
-    def test_the_next_check_is_7_days_later(self):
+    def test_the_next_check_is_10_tasks_later(self):
+        # estimate-improve D12 (2026-11-26): every 10 finished tasks, the week no longer counts
         self.completed(steady(40))
         self.model(versions=[version(k=3, text=0, type=0.5)])
         self.assertOk(self.af("retrain"))
         self.assertEqual(self.model_json()["checked_date"], TODAY)
         self.completed(steady(45))
         out = self.assertOk(self.af("retrain"))
-        self.assertEqual(self.lines(out), ["estimate retrain: not due (45 tasks, next check on 2026-10-12)"])
+        self.assertEqual(self.lines(out), ["estimate retrain: not due (45 tasks, next check at 50)"])
 
     def test_the_target_line_follows_the_table_and_the_verdict(self):
         # estimate-blend (owner brief 2026-11-13): the target is a within 30% share, the 5m line goes
@@ -540,32 +541,32 @@ class TestRetrainCheck(EstimateCase):
         self.assertRegex(rows[rows.index([r for r in rows if r.startswith("winner: ")][0]) + 1], tgt)
         self.assertRegex(self.lines(self.assertOk(self.af("backtest")))[-1], tgt)
 
-    def test_6_days_is_not_due(self):
+    def test_5_new_tasks_a_week_later_are_not_due(self):
+        # estimate-improve D12: the week rule went; 5 new tasks are not 10
         self.completed(steady(35))
-        self.model(date="2026-09-29")
+        self.model(date="2026-09-20")
         before = self.model_text()
         out = self.assertOk(self.af("retrain"))
-        self.assertEqual(self.lines(out), ["estimate retrain: not due (35 tasks, next check on 2026-10-06)"])
+        self.assertEqual(self.lines(out), ["estimate retrain: not due (35 tasks, next check at 40)"])
         self.assertEqual(self.model_text(), before)
 
-    def test_7_days_and_1_new_task_is_due(self):
-        self.completed(steady(31))
-        self.model(date="2026-09-28")
+    def test_10_new_tasks_the_same_day_are_due(self):
+        self.completed(steady(40))
+        self.model(date=TODAY)
         out = self.assertOk(self.af("retrain"))
         v = self.verdicts(out)
         self.assertTrue(v[0].startswith("estimate retrain: kept v"), out)
         data = self.model_json()
-        self.assertEqual((data["checked_tasks"], data["checked_date"]), (31, TODAY))
-        self.assertEqual(data["checks"][0]["new"], 1)
+        self.assertEqual((data["checked_tasks"], data["checked_date"]), (40, TODAY))
+        self.assertEqual(data["checks"][0]["new"], 10)
 
-    def test_7_days_and_no_new_task_is_not_due(self):
+    def test_no_new_task_is_not_due(self):
         self.completed(steady(30))
         self.model(date="2026-09-28")
         before = self.model_text()
         out = self.assertOk(self.af("retrain"))
         v = self.verdicts(out)
-        self.assertEqual(len(v), 1, out)
-        self.assertTrue(v[0].startswith("estimate retrain: not due (30 tasks, next check on %s" % TODAY), v[0])
+        self.assertEqual(v, ["estimate retrain: not due (30 tasks, next check at 40)"], out)
         self.assertEqual(self.model_text(), before)
 
     def test_force_checks_when_not_due(self):
@@ -603,11 +604,14 @@ class TestTodoDoneRetrains(EstimateCase):
     def test_not_due_says_nothing(self):
         self.completed(steady(30))
         self.model()
-        before = self.model_text()
+        before = json.loads(self.model_text())
         self.todo()
         out = self.done()
         self.assertEqual(self.verdicts(out), [])
-        self.assertEqual(self.model_text(), before)
+        # estimate-improve D12: the only change is one more entry in "measures"
+        after = self.model_json()
+        self.assertEqual(len(after.pop("measures")), 1)
+        self.assertEqual(after, dict(before, checks=before.get("checks", [])))
 
     def test_the_10th_new_task_checks_an_undated_file(self):
         self.completed(steady(39))

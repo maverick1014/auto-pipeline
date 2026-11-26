@@ -39,7 +39,7 @@
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
 #   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
 #                                                             -> an older plugin than installed: one line "retrain skipped: <running> is older than installed <newest>", nothing changes
-#   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next
+#   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next; with neither --step nor --work-so-far the numbers are the board's "Done by" cell (p50 and p85 from the history, agent_forecast.py); with one of them, the old rule
 #   agent-file.sh todo wait "<name>" on <mock|question|review|hold|queue> ["<note>"] [--who <name>] [--after <task>]  -> the todo line starts a wait
 #   agent-file.sh todo wait "<name>" off                      -> the wait closes; its minutes join "waited <m>m"; who, after, wait run since go
 #   agent-file.sh todo where "<name>" <machine> ["<worktree path>"]   -> the todo line says where it runs
@@ -59,7 +59,7 @@
 #   agent-file.sh board [--self]                              -> the table of everything open (/auto-pipeline:todo); --self: this session's task only
 #   agent-file.sh state add "<line>"                          -> agent_state.txt of this folder gets "<line> | <date time>" (one line, " | " inside is fine)
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
-#   agent-file.sh heartbeat "<task>" <step 0-7> <work min> "<what runs now>"  -> agent_state.txt: "HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date time>" (bad step, minutes or empty text: refused)
+#   agent-file.sh heartbeat "<task>" <step 0-7> "<what runs now>"  -> agent_state.txt: "HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date time>"; the work is computed (the todo line as the board counts it, else the WORK START line of this folder's agent_state.txt; neither: refused). The form with typed minutes (<step> <work min> "<text>") still works: a known start wins (a note on stderr when they differ by more than 5)
 #   agent-file.sh helper-join "<task>"                        -> a human-direct Helper becomes a normal agent: its worktree line becomes "<path> | <task> | working | since .. | pane .. | session .."
 #   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working (production needs --owner-quote "<words>" [--time <t>], verified at once) and --batch <name>
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
@@ -665,6 +665,12 @@ eta_run() {
   est=$(old_num "$line" est)
   [ -n "$est" ] || refuse "eta: no estimate on the todo line: $name"
   est=$((10#$est)); s=${step:-0}
+  if [ -z "$step" ] && [ -z "$wsf" ]; then   # no old option: the board's numbers (agent_forecast), one answer
+    command -v python3 >/dev/null 2>&1 || refuse "eta: python3 is needed and was not found"
+    python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+      --now "$NOW" --lang en --eta "$name" --wait "$wt" || exit $?
+    return 0
+  fi
   if [ -z "$wsf" ]; then left=$(( (est * (7 - s) + 6) / 7 ))
   elif [ "$wsf" -lt "$est" ]; then left=$((est - wsf))
   elif [ "$s" -ge 1 ]; then left=$(( (wsf * (7 - s) + s - 1) / s ))
@@ -1003,6 +1009,7 @@ todo_stage() {
       csince=$(awk -v p="STAGE $name: " 'index($0, p) == 1 { s = $0; if (sub(/^.* \| since /, "", s)) print s; exit }' "$STATE_FILE")
     fi
     if [ "$cur" != "$val" ]; then
+      if ! grep -qF "WORK START $name | " "$STATE_FILE" 2>/dev/null; then state_append "WORK START $name | $NOW"; fi   # the start of the work, once (heartbeat counts from it)
       local src="$STATE_FILE" ssn=$NOW; [ -f "$src" ] || src=/dev/null
       if [ -n "$cur" ] && [ "${cur%% *}" = "$stage" ] && [ -n "$csince" ]; then ssn=$csince; fi
       NEW="STAGE $name: $val | since $ssn" awk -v p="STAGE $name: " '
@@ -1439,16 +1446,39 @@ case "${1:-}:${2:-}" in
       printf '%-30s %8s %8s %8s %8s %8s\n' "$name" "$est" "$work" "$wt" "$clock" "$ratio"
     done < "$DONE";;
   heartbeat:*)
-    # heartbeat "<task>" <step 0-7> <work minutes> "<what runs now>": the one right form (C51)
-    [ $# -eq 5 ] || refuse "heartbeat: usage: heartbeat \"<task>\" <step 0-7> <work minutes> \"<what runs now>\""
+    # heartbeat "<task>" <step 0-7> "<what runs now>": the work is computed (the todo line, else WORK START);
+    # the five-word form (typed minutes) still works; with a known start the computed minutes win
+    hb_typed=
+    case $# in
+      4) hb_raw=$4;;
+      5) hb_typed=$4; hb_raw=$5;;
+      *) refuse "heartbeat: usage: heartbeat \"<task>\" <step 0-7> \"<what runs now>\" (or with typed minutes: heartbeat \"<task>\" <step 0-7> <work minutes> \"<what runs now>\")";;
+    esac
     case "$2" in ''|*[[:space:]:]*) refuse "heartbeat: the task name must be one word without a colon";; esac
     case "$3" in [0-7]) ;; *) refuse "heartbeat: the step is a whole number from 0 to 7 (got: $3)";; esac
-    is_num "$4" && [ "${#4}" -le 9 ] || refuse "heartbeat: the work minutes are a whole number (got: $4)"
-    hb_text=$(printf '%s' "$5" | tr '\r\n' '  ' | sed 's/^ *//; s/ *$//')
+    if [ $# -eq 5 ]; then is_num "$hb_typed" && [ "${#hb_typed}" -le 9 ] || refuse "heartbeat: the work minutes are a whole number (got: $hb_typed)"; fi
+    hb_text=$(printf '%s' "$hb_raw" | tr '\r\n' '  ' | sed 's/^ *//; s/ *$//')
     [ -n "$hb_text" ] || refuse "heartbeat: say what runs now (the text is empty)"
+    hb_work=
+    if [ -f "$TODO" ] && [ -n "$(first "$TODO" "$2")" ] && command -v python3 >/dev/null 2>&1; then
+      hb_work=$(python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+        --now "$NOW" --lang en --work-of "$2" 2>/dev/null) || hb_work=
+      is_num "$hb_work" || hb_work=
+    fi
+    if [ -z "$hb_work" ] && [ -f "$STATE_FILE" ]; then
+      hb_start=$(awk -v p="WORK START $2 | " 'index($0, p) == 1 { print substr($0, length(p) + 1); exit }' "$STATE_FILE")
+      if [ -n "$hb_start" ] && [ -n "$(to_epoch "$hb_start")" ]; then hb_work=$(minutes_between "$hb_start" "$NOW"); hb_work=${hb_work:-0}; fi
+    fi
+    if [ -z "$hb_work" ]; then
+      [ $# -eq 5 ] || refuse "heartbeat: no start is known for $2 (no todo line, no WORK START line); give the minutes: heartbeat \"$2\" $3 <work minutes> \"<what runs now>\""
+      hb_work=$((10#$hb_typed))
+    elif [ $# -eq 5 ]; then
+      hb_d=$((hb_work - 10#$hb_typed)); [ "$hb_d" -ge 0 ] || hb_d=$((-hb_d))
+      if [ "$hb_d" -gt 5 ]; then echo "heartbeat: work ${hb_work}m from the start, not the typed $((10#$hb_typed))m" >&2; fi
+    fi
     mkdir -p "$STATE_DIR" 2>/dev/null
     if [ -s "$STATE_FILE" ] && [ -n "$(tail -c 1 "$STATE_FILE")" ]; then printf '\n' >> "$STATE_FILE"; fi
-    append "$STATE_FILE" "HEARTBEAT $2: step $3 of 7, work $((10#$4))m, $hb_text | $NOW"
+    append "$STATE_FILE" "HEARTBEAT $2: step $3 of 7, work $((10#$hb_work))m, $hb_text | $NOW"
     echo "heartbeat: $2 step $3 of 7";;
   tell:*)
     need 3 "$@"; [ $# -eq 3 ] || usage

@@ -20,6 +20,8 @@ import re
 import statistics
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 MIN_TASKS = 30        # tasks needed for the first version
 RETRAIN_DAYS = 7      # days between two checks (and at least 1 new task)
 OLD_EVERY = 10        # a file with no check date: due after this many new tasks, once
@@ -83,6 +85,12 @@ def read_tasks(stream):
         raw = f[16] if len(f) > 16 else "-"
         own = int(raw) if re.fullmatch(r"[0-9]+", raw) and int(raw) >= 1 else None
         built = whole(f[19]) if len(f) > 19 else None
+        est0 = whole(f[17]) if len(f) > 17 else None
+        stages = {}
+        for part in (f[20].split(",") if len(f) > 20 and f[20] != "-" else []):
+            sn, _, sm = part.partition(":")
+            if sn and whole(sm) is not None:
+                stages[sn] = int(sm)
         rawwork, wait, clock = int(f[7]), whole(f[8]), whole(f[9])
         words = {}
         for w in WORD.findall((f[1] + " " + what).lower()):
@@ -92,6 +100,7 @@ def read_tasks(stream):
             "lane": "fast" if f[4] == "fast" else "full",
             "mock": "yes" if f[5] == "yes" else "no",
             "est": est, "work": rawwork if built is None else built, "rawwork": rawwork,
+            "est0": est0, "built": built, "stages": stages,
             "wait": wait, "clock": clock, "words": words, "repo": f[0],
             "clean": wait is not None and clock is not None and rawwork <= clock and clock <= MAX_CLOCK,
             "guess": own if own is not None else (est if est is not None and est >= 1 else None),      # its guess, else its todo est
@@ -544,7 +553,53 @@ def measure_lines(tasks, bt):
             measure_text("measure work est < %dm" % big, small_q),
             measure_text("measure work est >= %dm" % big, big_q),
             measure_text("measure end", end_q),
-            "measure p85: n %d holds %s" % (counted, "%d%%" % percent(held, counted) if counted else "-")]
+            "measure p85: n %d holds %s" % (counted, "%d%%" % percent(held, counted) if counted else "-")] \
+        + live_lines(tasks, rows)
+
+
+def live_pairs(tasks, t):
+    """[(est, |p50 - actual|)] of one row with a stage log: the forecast asked at each stage, from the rows before it."""
+    import agent_forecast as fc
+    est = t["est0"] if t["est0"] is not None else t["est"]
+    if not t["stages"] or est is None:
+        return []
+    weights = fc.stage_weights()
+    total_w = sum(weights.values())
+    hist = []
+    for p in tasks[:t["pos"]]:
+        pe = p["est0"] if p["est0"] is not None else p["est"]
+        built = p["built"]
+        hist.append({"est": pe, "label": p["work"], "lane": p["lane"], "built": built,
+                     "tail": max(0, p["rawwork"] - built) if built is not None
+                     else max(0, p["clock"] - p["wait"] - p["rawwork"])})
+    out = []
+    done = 0
+    before = 0
+    for name, m in t["stages"].items():
+        pace = before / float(total_w) if total_w > 0 else None
+        got = fc.forecast({"est": est, "work": done, "stage": (name, None, None), "p": pace,
+                           "lane": t["lane"], "built_work": t["built"]}, hist)
+        if got is not None:
+            out.append((est, abs(got[0] - (t["rawwork"] - done))))
+        done += m
+        before += weights.get(name, 0)
+    return out
+
+
+def live_lines(tasks, rows):
+    """The two "measure live" lines: the median error in minutes of the live forecast, est <= 60m and est > 60m."""
+    small, big, small2, big2 = [], [], [], []
+    for r in rows:
+        pairs = live_pairs(tasks, r["task"])
+        for k, (e, err) in enumerate(pairs):
+            (small if e <= 60 else big).append(err)
+            if k >= len(pairs) - 2:
+                (small2 if e <= 60 else big2).append(err)
+
+    def med(v):
+        return "%dm" % half_up(statistics.median(v)) if v else "-"
+    return ["measure live est <= 60m: n %d error %s, last two %s" % (len(small), med(small), med(small2)),
+            "measure live est > 60m: n %d error %s, last two %s" % (len(big), med(big), med(big2))]
 
 
 def backtest_lines(tasks, bt, with_tasks, goal=TARGET_PCT, total=None, measure=False):
