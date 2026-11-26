@@ -714,6 +714,21 @@ class TestFloorSignCount(unittest.TestCase):
                 self.assertIn(bit, note)
         self.assertIn("min-width:0", re.sub(r"\s+", "", rule(".floorsign .frn")))
 
+    def test_the_note_keeps_its_separator(self):
+        # the look before this round: '还没装修 · 5 人'; the ' ·' goes with the note, so it leaves with the note on a phone
+        src = (script_function_source("renderFloorSign") or "").replace("function renderFloorSign(", "function signCopy(", 1)
+        self.assertIn("$('#floorSign')", src)
+        src = src.replace("$('#floorSign')", "__el")
+        out = sim("var __el = { innerHTML: '', title: '' };\n" + src + r"""
+officeState(__payload.view); view = 'inside'; cur = __payload.t1;
+signCopy();
+__out = __el.innerHTML;
+""", {"view": view(), "t1": T1}, required=("renderFloorSign", "officeState"))
+        m = re.search(r'<span class="frs">([^<]*)</span>', out)
+        self.assertTrue(m, out)
+        self.assertTrue(m.group(1).endswith(" ·"), "the note ends with its separator: %r" % m.group(1))
+        self.assertRegex(out, r'<span class="fpc">\d+ ', "the count stays in its own element")
+
     def test_narrow_screens_keep_the_count(self):
         m = re.sub(r"\s+", "", media_block("(max-width:720px)"))
         self.assertNotRegex(m, r"\.floorsign\.fpc\{[^}]*display:none")
