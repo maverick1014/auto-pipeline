@@ -831,6 +831,36 @@ __out = res;
                     self.assertEqual([b for b in bx for q in out[w]["panels"] if overlapping([b, tuple(q)])], [])
 
 
+class TestPlateGap(unittest.TestCase):
+    """Fix round 3 (my live check at 500x713: a full plate and a chip ended edge to edge, 0.6 px into each other, because
+    the page measured whole-pixel widths of fractional plates). Two plates keep a gap of at least 2 px (panels: no gap
+    needed); the page measures a plate's width as drawn (getBoundingClientRect, not offsetWidth)."""
+
+    def test_plates_one_px_apart_are_too_close(self):
+        items = [{"x": 100, "y": 100, "w": 100, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": 201, "y": 100, "w": 100, "wChip": 32, "h": 22, "pri": 0}]
+        self.assertEqual(layout(items), ["full", "chip"], "1 px apart: the second keeps its chip")
+
+    def test_plates_three_px_apart_are_fine(self):
+        items = [{"x": 100, "y": 100, "w": 100, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": 203, "y": 100, "w": 100, "wChip": 32, "h": 22, "pri": 0}]
+        self.assertEqual(layout(items), ["full", "full"])
+
+    def test_the_selected_and_the_hovered_keep_the_gap(self):
+        items = [{"x": 300, "y": 300, "w": 160, "wChip": 32, "h": 22, "pri": 3},
+                 {"x": 461, "y": 300, "w": 160, "wChip": 32, "h": 22, "pri": 2}]
+        out = sim("const items = __payload.items; __out = { modes: plateLayout(items, { bounds: { l: 0, t: 0, r: 1440, b: 713 }, blocks: [] }), items };",
+                  {"items": items}, required=("plateLayout",))
+        self.assertEqual(out["modes"], ["full", "full"])
+        b = boxes_of(out["items"], out["modes"])
+        gap = max(b[1][0] - b[0][2], b[0][0] - b[1][2], b[1][1] - b[0][3], b[0][1] - b[1][3])
+        self.assertGreaterEqual(gap, 2 - 1e-6, "the hovered one moved at least 2 px clear: %s" % b)
+
+    def test_widths_are_measured_as_drawn(self):
+        src = (script_function_source("pinOv") or "") + (script_function_source("syncFigs") or "")
+        self.assertIn("getBoundingClientRect", src)
+
+
 class TestHoveredChipKeepsItsSpot(unittest.TestCase):
     """Fix round 3, item 3 (PR REVIEW pass 3): a chip nudged aside or a row up jumped back over its head when hovered, out
     from under a still pointer, so the hover ended at once (flicker). An item may carry px, py: where its plate was laid
