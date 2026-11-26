@@ -108,6 +108,13 @@ Over the 60-line aim: rules/map.md (63, the script list and commands copied from
 - Old 624: `--language zh` removed from the cloud-pack command, stale, fixed by code evidence (bin/agent-cloud-pack.sh:39 "--language is gone: given, it exits 2"; skills/cloud-pack "takes no --language").
 - The decided lines above (1, 2, 5, 6, 7, 9).
 - Old 560: the compaction line gets "then re-read the rules file of your current step" (before, the hook re-printed every rule; now only the core), and the start script must print rules/output.md (phase 2) to keep section E always shown.
+- No old source, kept by the main manager's decision (re-check 2, item 3): the line "The skill /auto-pipeline:<name> carries this out; where the two differ, this file wins." on the Read-when line of rules/routing.md, rules/close-case.md and rules/questions.md.
+
+## Changes made in phase 2 (the build, md-slim-principles-2)
+- GLOSSARY.md, Connected machine (requirement section 2 item 9; fix order 7841e72f B): "**Connected machine**: another machine paired in Orca that can take jobs; placement tries it first (inferred: the old text says both "connected machine" and "paired Orca machine" and never equates them; the owner decides)." -> "**Connected machine**: another machine paired in Orca that can take jobs; placement tries it first." Why: the requirement removes the "inferred" mark.
+- rules/board.md W14 (line 15), carried from the task statusline-topdown, which changed the old PRINCIPLES.md line after the draft: "rest `+N queued/held`" -> "rest `+N tasks`". Not a reword of this task.
+- The start (B 6, the main manager's answer bd1ecc18): rules/output.md is printed from its line "E1. Shape" (its title and Read-when line are not printed), so the rules block stays under 9,700 characters at a 200-character plugin path. The file itself is unchanged.
+- The main manager's reading list (B 7) also names rules/files.md (fix order 7841e72f E): its quiz has 30 questions; the task manager 15, a human-direct session 17; Q4 (the mock rule) is asked at no start.
 
 ## Terms unified (GLOSSARY.md `_Avoid_` lines)
 connected machine (avoid: paired machine, remote machine), the net (avoid: safety net), the sweep (avoid: cleanup sweep), the housekeep pass (avoid: tidy), the gate (avoid: merge guard), check block (avoid: level), production branch (avoid: main as a role name, target branch), working branch (avoid: bare ap-main), decision maker (avoid: decider), Helper = a human-direct session only (the "Helper model" setting is the model of workers and deputies), fast-lane deputy (avoid: deputy subagent). Moved lines keep their old words; replacing the avoided words in rules/, skills and script output is phase 2.
