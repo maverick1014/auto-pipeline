@@ -766,7 +766,8 @@ class TestSelf(BoardCase):
         self.af("worker", "on", "1", "hook script", now="2026-11-02 14:30", cwd=self.alpha)
         self.af("park", "add", "keep the old API?", now="2026-11-02 14:40", cwd=self.alpha)
         rows = self.rows("--self", cwd=self.alpha)
-        self.assertEqual(sorted(r["Task"] for r in rows), ["alpha", "alpha", "alpha 工人 1"])
+        # the todo row's Task cell carries its owner bracket (scope add 2026-11-26; the test repo's git name is t)
+        self.assertEqual(sorted(r["Task"] for r in rows), ["alpha", "alpha [t]", "alpha 工人 1"])
         r = self.row(rows, task="alpha", what="the login form")
         self.assertEqual((r["Status"], r["Where"], r["Work"], r["Done by"]),
                          (self.st("running"), "pc2, " + self.alpha, "1h", "超出 0m"))
@@ -820,7 +821,7 @@ class TestBoardLevel(BoardCase):
         self.assertEqual(self.row(rows, task="ck")["Checks"], "PR REVIEW, UI CHECK")
         self.assertEqual(self.row(rows, task="nolv")["Checks"], "-")
         for r in rows:
-            if r["Task"] not in ("lv", "ck", "nolv"):
+            if re.sub(r" \[[^\]]*\]$", "", r["Task"]) not in ("lv", "ck", "nolv"):   # the owner bracket (scope add)
                 self.assertEqual(r["Checks"], "-", r)
 
     def test_an_old_number_line_shows_its_type(self):
@@ -1863,7 +1864,7 @@ class TestWatch(StageCase):
         self.assertEqual(frames[0], "", "the output starts with the clear")
         self.assertGreaterEqual(len(frames) - 1, 2, out)
         first = frames[1]
-        self.assertIn("| alpha | the login form | 进行中 | ██████░░░░  66% |", first)
+        self.assertIn("| alpha [t] | the login form | 进行中 | ██████░░░░  66% |", first)   # the owner bracket
         self.assertIn("每 1 秒刷新 · Ctrl-C 停止", first.strip().splitlines()[-1])
 
     def test_the_default_is_the_fixed_60(self):
@@ -1879,8 +1880,8 @@ class TestWatch(StageCase):
         self.add("beta", "bank recon match", 60)
         code, out, err = self.ctrl_c(self.popen("--self", "--watch", "1", cwd=alpha), 1.5)
         self.assertEqual(code, 0, err)
-        self.assertIn("| alpha |", out)
-        self.assertNotIn("| beta |", out)
+        self.assertIn("| alpha [t] |", out)          # the owner bracket (scope add 2026-11-26)
+        self.assertNotIn("| beta", out)
 
     def test_refusals(self):
         for args in (("--watch", "0"), ("--watch", "-3"), ("--watch", "abc"),

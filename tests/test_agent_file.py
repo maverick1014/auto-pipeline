@@ -130,7 +130,8 @@ KEYS = ["repo", "type", "lane", "mock", "est", "work", "wait", "clock",
         "level",   # test-levels (2026-11-20): the risk level of the todo line
         # estimate-improve (2026-11-26): typed work, the first estimate, added minutes, builder done, stage and
         # slice minutes (tests/test_agent_estimate_inputs.py holds the contract)
-        "typed", "est0", "added", "built", "stages", "slices"]
+        "typed", "est0", "added", "built", "stages", "slices",
+        "by"]   # scope add (owner 2026-11-26): the name of the clone that ran todo done; backfill writes "-"
 
 
 TYPES = ["page", "server", "script", "docs", "cloud", "app", "data", "mixed"]
@@ -326,7 +327,7 @@ class TestTodoDoneData(DataCase):
             "2026-10-01 | t1 | build the thing | " + block(
                 repo="project", type="script", lane="full", mock="no",
                 est=90, work=105, wait=45, clock=150, bounces=1, workers=3,
-                tests=38, adds=2, typed=85, est0=90)])     # estimate-improve A1: work = clock 150 - wait 45
+                tests=38, adds=2, typed=85, est0=90, by="t")])     # estimate-improve A1: work = clock 150 - wait 45
         self.assertNotIn("t1 |", self.read("agent_todo.txt"))
 
     def test_the_old_call_still_works_and_knows_what_it_can(self):
@@ -334,33 +335,33 @@ class TestTodoDoneData(DataCase):
         self.assertIn("todo done: t1", out)
         self.assertEqual(self.completed_lines(), [      # estimate-improve A1: the work is measured
             "2026-10-01 | t1 | build the thing | "
-            + block(repo="project", est=90, work=150, wait=0, clock=150, est0=90)])
+            + block(repo="project", est=90, work=150, wait=0, clock=150, est0=90, by="t")])
 
     def test_the_old_call_with_a_result_text_still_works(self):
         self.assertOk(self.af("todo", "done", "t1", "merged abc123, 38 tests OK"))
         self.assertEqual(self.completed_lines(), [
             "2026-10-01 | t1 | build the thing | "
-            + block(repo="project", est=90, work=150, wait=0, clock=150, est0=90)])
+            + block(repo="project", est=90, work=150, wait=0, clock=150, est0=90, by="t")])
 
     def test_facts_after_a_result_text(self):
         self.assertOk(self.af("todo", "done", "t1", "merged abc123",
                               "--work", "85", "--lane", "full"))
         self.assertEqual(self.completed_lines(), [
             "2026-10-01 | t1 | build the thing | "
-            + block(repo="project", lane="full", est=90, work=150, wait=0, clock=150, typed=85, est0=90)])
+            + block(repo="project", lane="full", est=90, work=150, wait=0, clock=150, typed=85, est0=90, by="t")])
 
     def test_zero_is_a_number(self):
         self.assertOk(self.af("todo", "done", "t1", "--work", "12",
                               "--wait", "0", "--bounces", "0", "--adds", "0"))
         self.assertIn(block(repo="project", est=90, work=150, wait=0,
-                            clock=150, bounces=0, adds=0, typed=12, est0=90),
+                            clock=150, bounces=0, adds=0, typed=12, est0=90, by="t"),
                       self.completed_lines()[0])
 
     def test_no_estimate_and_no_opened_time_are_a_dash(self):
         self.todo("t2 | small | a thing | by main")
         self.assertOk(self.af("todo", "done", "t2", "--work", "5"))
         self.assertEqual(self.completed_lines(), [
-            "2026-10-01 | t2 | a thing | " + block(repo="project", work=5, typed=5)])
+            "2026-10-01 | t2 | a thing | " + block(repo="project", work=5, typed=5, by="t")])
 
     def test_the_other_todo_lines_stay(self):
         self.todo(T1, "keep | big | stays | est 10m | opened 2026-10-01 19:00 | by main")
@@ -1538,26 +1539,26 @@ class TestTodoAddLevel(TodoCase):
 
     def test_after_the_guess(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "--guess", "35", "--level", "C"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level C | opened %s | by main\n" % NOW_NOV20_1000)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level C | opened %s | by main | owner t\n" % NOW_NOV20_1000)
 
     def test_it_may_stand_anywhere(self):
         self.assertOk(self.af("todo", "add", "--level", "D", "t1", "big", "build it", "70"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level D | opened %s | by main\n" % NOW_NOV20_1000)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level D | opened %s | by main | owner t\n" % NOW_NOV20_1000)
 
     def test_no_est(self):
         self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", "A"))
-        self.assertEqual(self.todo(), "t1 | small | fix it | level A | opened %s | by main\n" % NOW_NOV20_1000)
+        self.assertEqual(self.todo(), "t1 | small | fix it | level A | opened %s | by main | owner t\n" % NOW_NOV20_1000)
 
     def test_no_level_is_as_before(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | opened %s | by main\n" % NOW_NOV20_1000)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | opened %s | by main | owner t\n" % NOW_NOV20_1000)
 
     def test_an_old_number_is_stored_as_its_type(self):
         for old, typ in (("0", "A"), ("1", "B"), ("2", "C"), ("3", "C"), ("4", "D")):
             with self.subTest(old=old):
                 self.write_todo()
                 self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", old))
-                self.assertEqual(self.todo(), "t1 | small | fix it | level %s | opened %s | by main\n" % (typ, NOW_NOV20_1000))
+                self.assertEqual(self.todo(), "t1 | small | fix it | level %s | opened %s | by main | owner t\n" % (typ, NOW_NOV20_1000))
 
     def test_a_bad_level_is_refused(self):
         for bad in (["--level", "5"], ["--level", "E"], ["--level", "-1"], ["--level", "x"], ["--level", ""], ["--level"]):

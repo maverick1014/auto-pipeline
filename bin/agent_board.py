@@ -503,6 +503,7 @@ class Board:
         self.rows = []
         self.notes = []
         self.seq = 0
+        self.plain = {}
         self.records = []       # (folder, record) of every LAUNCH line read
         self.hand_workers = {}  # label -> row of a hand WORKER line
         self.unconfirmed = 0    # target rows that got the "not confirmed" warning
@@ -644,12 +645,14 @@ class Board:
     # -- rows
 
     def add(self, group, when, task, what, status, where, est="-", work="-", wait="-", done="-", progress="-",
-            info=None, level="-"):
+            info=None, level="-", plain=None):
         """when: "YYYY-MM-DD HH:MM" or None (no date sorts last, file order)."""
         self.seq += 1
         key = (group, 0 if when else 1, when or "", self.seq)
         cells = [cell(task), cell(cut_what(what)), cell(status), progress.replace("|", "\\|"), cell(where), cell(level), cell(est),
                  cell(work), cell(wait), cell(done)]
+        if plain is not None:
+            self.plain[self.seq] = plain
         self.rows.append((key, cells, info))
 
     # -- the todo lines
@@ -851,7 +854,7 @@ class Board:
                 where = self.where_here(own_dir) if own_dir else "-"
         self.add(group, when, t["name"] + (" [%s]" % t["owner"] if t["owner"] else ""), t["what"] or "-", status, where,
                  est=est, work=work, wait=wait_cell, done=done, progress=progress,
-                 level=checks_cell(t), info=info)
+                 level=checks_cell(t), info=info, plain=t["name"])
 
     def helper_row(self, f):
         what = "-"
@@ -1221,8 +1224,8 @@ def board_warnings(root, plugin, now):
         return ["WARN watch not running -> start it now: %s/bin/agent-watch.sh --all (Bash run_in_background)"
                 % plugin]
     out, said = [], set()
-    for _, cells, _info in sorted(board.rows, key=lambda r: r[0]):
-        name = cells[0]
+    for key, cells, _info in sorted(board.rows, key=lambda r: r[0]):
+        name = board.plain.get(key[3], cells[0])
         if name in board.warned and name not in said:
             said.add(name)
             n = board.warned[name]
