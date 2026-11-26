@@ -895,7 +895,8 @@ class TestPlateFollowsItsHead(unittest.TestCase):
     """Fix round 4, item 2 (PR REVIEW pass 4, blocker): a selected or hovered plate froze at last frame's screen spot and
     no longer followed its person (the camera easing onto a selected person, a walk, an orbit or a zoom). Behaviour, frame
     by frame in the node harness: a selected head moves 300 px over 60 frames and its plate ends over it; a hovered chip
-    under a still pointer keeps its spot while its head stays still; and moves with the head once it moves."""
+    under a still pointer keeps its spot while its head stays still; and moves with the head once it moves. Fix round 5:
+    the kept spot moves by exactly the head's motion each frame (px + head - hx0, py + head - hy0), however slow."""
 
     OPTS = {"bounds": {"l": 0, "t": 0, "r": 1440, "b": 713}, "blocks": []}
 
@@ -909,6 +910,33 @@ __out = tr.map(t => [t.heads[0], t.spots[0], t.modes[0]]);
             with self.subTest(frame=f):
                 self.assertEqual(mode, "full")
                 self.assertLess(abs(spot[0] - head[0]) + abs(spot[1] - head[1]), 1.0, "over its head at frame %d: %s %s" % (f, head, spot))
+
+    def run_head(self, steps, js_head):
+        return sim(FRAMES_JS + r"""
+const base = [{ w: 160, wChip: 32, h: 22, pri: 3 }];
+const tr = frames(%d, (f, i) => %s, base, __payload.opts);
+__out = tr.map(t => [t.heads[0], t.spots[0], t.modes[0]]);
+""" % (steps, js_head), {"opts": self.OPTS}, required=("plateLayout",))
+
+    def assert_over_head(self, out, label):
+        worst = max(abs(s_[0] - h[0]) + abs(s_[1] - h[1]) for h, s_, m in out)
+        self.assertTrue(all(m == "full" for _, _, m in out))
+        self.assertLess(worst, 1.0, "%s: the plate drifted %.1f px from its head" % (label, worst))
+
+    def test_slow_walks_keep_the_plate_on_the_head(self):
+        # fix round 5 (PR REVIEW pass 5): under 1 px a frame counted as 'still' every frame and the gap grew without limit
+        for frames_n in (360, 600):
+            with self.subTest(frames=frames_n):
+                out = self.run_head(frames_n, "[300 + 300 * f / %d, 300]" % (frames_n - 1))
+                self.assert_over_head(out, "300 px over %d frames" % frames_n)
+
+    def test_the_camera_ease_keeps_the_plate_on_the_head(self):
+        # the follow camera eases with k = 1 - exp(-6 dt): its tail is sub-pixel steps, at 60 and at 120 frames a second
+        for fps in (60, 120):
+            with self.subTest(fps=fps):
+                js = "(() => { const k = 1 - Math.exp(-6 / %d); return [600 - 300 * Math.pow(1 - k, f), 420 - 120 * Math.pow(1 - k, f)]; })()" % fps
+                out = self.run_head(fps * 4, js)
+                self.assert_over_head(out, "the camera ease at %d fps" % fps)
 
     def test_a_hovered_chip_keeps_its_spot_while_still_then_follows(self):
         out = sim(FRAMES_JS + r"""
