@@ -1177,6 +1177,76 @@ class TestSlashCommandApprovals(ApprovalCase):
         self.assertNotIn("t", self.words())
 
 
+# ================================================================== fix round (CORE REVIEW at 85f6a2b, TELL 60d7e4c6)
+
+class TestFixRoundAgentHeader(LeaderCase):
+    """Fix 1: in Leader's chat an agent header line ([<model> <effort>] ...) is never an Orca note header, and the
+    agent-typed check reads the whole prompt after the cuts, indented or not."""
+
+    TEXTS = [
+        "[Opus 5.5 xhigh]\n\n" + QUOTE,
+        "[Opus 5.5 xhigh] name: x]\n\n" + QUOTE,
+        "  [Opus 5.5 xhigh]\n\n" + QUOTE,
+        "   [Opus 5.5 xhigh] name: x]\n\n" + QUOTE,
+        "[Fable 5.2 xhigh] TELL 1234]\n\n" + QUOTE,
+    ]
+
+    def test_r1_refused_as_agent_typed(self):
+        for text in self.TEXTS:
+            with self.subTest(text=text[:30]):
+                dt = ago(30)
+                self.write([leader(text, dt)])
+                self.assertRefused(self.verify(QUOTE, minute(dt)), "only in an agent-typed line")
+
+    def test_r1_the_same_texts_are_refused_on_the_same_session_path(self):
+        for text in self.TEXTS:
+            with self.subTest(text=text[:30]):
+                dt = ago(30)
+                self.write([owner(text, dt)])
+                r = self.repo.run(SCRIPT, "verify", "--repo", self.leader_repo, "--quote", QUOTE, env=self.env())
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("agent-typed", r.stdout)
+
+    def test_r1_an_agent_header_inside_a_fence_of_other_chats_does_not_hide_his_line(self):
+        dt = ago(30)
+        self.write([leader(HEADER_CHATS + "\n" + fence("[Opus 5.5 xhigh]", "chat 2: hello") + "\n\n" + QUOTE, dt)])
+        self.assertAccepted(self.verify(QUOTE, minute(dt)), self.file, minute(dt))
+
+
+class TestFixRoundCommandTags(SameSessionCase):
+    """Fix 2: a typed command counts only with all three tags (name, message, args), each once, any order."""
+
+    def test_r2_a_tag_missing_is_refused(self):
+        dt = ago(30)
+        shapes = {
+            "args only": "<command-args>" + GOAL_ARGS + "</command-args>",
+            "no message tag": "<command-name>/goal</command-name>\n<command-args>" + GOAL_ARGS + "</command-args>",
+            "no name tag": "<command-message>goal</command-message>\n<command-args>" + GOAL_ARGS + "</command-args>",
+        }
+        for name, text in shapes.items():
+            with self.subTest(name):
+                self.write([command("", dt, content=text)])
+                r = self.same(GOAL_QUOTE)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+
+    def test_r2_all_three_in_another_order_count(self):
+        dt = ago(30)
+        text = ("<command-args>" + GOAL_ARGS + "</command-args> <command-name>/goal</command-name>"
+                "<command-message>goal</command-message>")
+        self.write([command("", dt, content=text)])
+        self.assertSameAccepted(self.same(GOAL_QUOTE), dt)
+
+
+class TestFixRoundApprovals(ApprovalCase):
+
+    def test_r1_todo_target_refuses_an_agent_header_relayed_by_leader(self):
+        self.write([leader("[Opus 5.5 xhigh]\n\n" + QUOTE, self.dt)])
+        r = self.af("todo", "target", "t", "production", *self.relay(), "--means", "publish t to production")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("agent-typed", r.stdout + r.stderr)
+        self.assertNotIn("t", self.words())
+
+
 # ================================================================== the setting, the constant, the texts
 
 class TestSettingAndTexts(unittest.TestCase):
