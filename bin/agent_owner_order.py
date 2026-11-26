@@ -240,16 +240,41 @@ def plain(text):
     return normalise(MARKS.sub("", HEADING.sub("", text)))
 
 
+BULLET = re.compile(r"^[ \t]*[-*][ \t]+")
+SENTENCE_END = re.compile(r"[.?!](?=\s|$)")
+KEY_TOKEN = re.compile(r"(?:\d+|[A-Za-z])[.)]")
+
+
+def message_units(before):
+    """Whole units of an assistant message: each line, and each whole sentence inside a line."""
+    units = set()
+    for raw in before.splitlines():
+        line = plain(BULLET.sub("", raw))
+        if not line:
+            continue
+        units.add(line)
+        start = 0
+        for m in SENTENCE_END.finditer(line):
+            piece = line[start:m.end()].strip()
+            if KEY_TOKEN.fullmatch(piece):
+                continue
+            units.add(piece)
+            start = m.end()
+    return units
+
+
 def question_stands(question, before):
-    """True when the question (or its numbered key line) is in the assistant text before the prompt."""
+    """True when the question (or its numbered key line) is a whole line or sentence of the assistant text before the prompt."""
     q = plain(question)
-    b = plain(before)
-    if q and q in b:
+    if not q:
+        return False
+    units = message_units(before)
+    if q in units:
         return True
     if NUMBER_KEY.match(q):
         end = q.find("?")
         key = q[:end + 1] if end >= 0 else q
-        return key in b
+        return key in units
     return False
 
 
