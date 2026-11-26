@@ -10,7 +10,9 @@ events.jsonl in the exact shape bin/agent-city-hook.sh writes them.
     python3 tests/citydesks_demo.py work   --base DIR [--seconds S]   tool lines for every live agent every 2 s
     python3 tests/citydesks_demo.py stop-one --base DIR   worker 1 of the team stops (SubagentStop)
     python3 tests/citydesks_demo.py end    --base DIR    the team's session ends (SessionEnd): its agents leave too
-    python3 tests/citydesks_demo.py stop   --base DIR    stop the server, delete DIR
+    python3 tests/citydesks_demo.py phone  --base DIR [--port P]   a page that frames the city at 390x844 (phone width)
+                                                          inside a normal browser window; prints PHONE URLs (city, #demo)
+    python3 tests/citydesks_demo.py stop   --base DIR    stop the servers, delete DIR
 
 DIR is a fresh temp folder (e.g. $(mktemp -d)); it holds city/ (AGENT_CITY_DIR), home/ (AGENT_CITY_HOME) and repos/.
 """
@@ -194,7 +196,82 @@ def cmd_end(p):
     print("team session ended" if s else "the team session was not running")
 
 
+PHONE_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>city at %(w)dx%(h)d</title>
+<style>
+html,body{margin:0;height:100%%;background:#2a2b45;overflow:hidden}
+#wrap{position:absolute;left:50%%;top:8px;transform-origin:top center}
+#cap{font:600 12px/18px system-ui,sans-serif;color:#fff;text-align:center}
+iframe{display:block;width:%(w)dpx;height:%(h)dpx;border:0;background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.4)}
+</style></head><body>
+<div id="wrap"><div id="cap">%(w)d x %(h)d (shown at <span id="pct">100</span>%%)</div><iframe id="city" src="%(src)s" title="city"></iframe></div>
+<script>
+// the city lays itself out at exactly %(w)dx%(h)d CSS px inside the frame; the frame is only scaled to fit this window
+function fit(){ const s = Math.min(1, (innerHeight - 16) / (%(h)d + 18), (innerWidth - 16) / %(w)d), w = document.getElementById('wrap');
+  w.style.transform = 'translateX(-50%%) scale(' + s + ')'; document.getElementById('pct').textContent = Math.round(s * 100); }
+addEventListener('resize', fit); fit();
+</script></body></html>
+"""
+
+
+def cmd_phone(p, port):
+    try:
+        with open(os.path.join(p["city"], "on"), encoding="utf-8") as fh:
+            city_port = int(fh.read().split()[1])
+    except (OSError, ValueError, IndexError):
+        sys.exit("start the city first (citydesks_demo.py start)")
+    port = port or free_port()
+    proc = subprocess.Popen([sys.executable, os.path.abspath(__file__), "_phone", "--base", p["base"], "--port", str(port)],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    with open(os.path.join(p["base"], "phone.pid"), "w") as fh:
+        fh.write(str(proc.pid))
+    for _ in range(50):
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+            break
+        except OSError:
+            time.sleep(0.1)
+    print("PHONE: http://127.0.0.1:%d/            (the city at 390x844, city port %d)" % (port, city_port))
+    print("PHONE: http://127.0.0.1:%d/?hash=demo  (#demo at 390x844)" % port)
+
+
+def serve_phone(p, port):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import parse_qs, urlsplit
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            q = parse_qs(urlsplit(self.path).query)
+            try:
+                with open(os.path.join(p["city"], "on"), encoding="utf-8") as fh:
+                    city_port = int(fh.read().split()[1])
+            except (OSError, ValueError, IndexError):
+                self.send_error(503, "the city is not running")
+                return
+            num = lambda k, d: int(q[k][0]) if q.get(k, [""])[0].isdigit() else d
+            tag = q.get("hash", [""])[0]
+            src = "http://127.0.0.1:%d/%s" % (city_port, ("#" + tag) if tag.isalnum() else "")
+            body = (PHONE_PAGE % {"w": num("w", 390), "h": num("h", 844), "src": src}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
+
+
 def cmd_stop(p):
+    try:
+        with open(os.path.join(p["base"], "phone.pid"), encoding="utf-8") as fh:
+            os.kill(int(fh.read().strip()), signal.SIGTERM)
+        print("stopped the phone page")
+    except (OSError, ValueError):
+        pass
     on = os.path.join(p["city"], "on")
     try:
         with open(on, encoding="utf-8") as fh:
@@ -216,7 +293,7 @@ def cmd_stop(p):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["start", "team", "crowd", "work", "stop-one", "end", "stop"])
+    ap.add_argument("cmd", choices=["start", "team", "crowd", "work", "stop-one", "end", "phone", "stop", "_phone"])
     ap.add_argument("--base", required=True)
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--lang", default="zh", choices=["zh", "en"])
@@ -236,6 +313,10 @@ def main():
         cmd_stop_one(p)
     elif a.cmd == "end":
         cmd_end(p)
+    elif a.cmd == "phone":
+        cmd_phone(p, a.port)
+    elif a.cmd == "_phone":
+        serve_phone(p, a.port)
     else:
         cmd_stop(p)
 
