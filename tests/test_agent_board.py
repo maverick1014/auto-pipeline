@@ -483,8 +483,8 @@ class TestPark(BoardCase):
         self.af("park", "add", "which DB for reports?", now="2026-11-02 14:00")
         self.af("park", "add", "keep the old API?", "alpha", now="2026-11-02 14:30")
         text = self.state_text()
-        self.assertIn("PARKED: which DB for reports? | project | since 2026-11-02 14:00\n", text)
-        self.assertIn("PARKED: keep the old API? | alpha | since 2026-11-02 14:30\n", text)
+        self.assertIn("PARKED: which DB for reports? | project | since 2026-11-02 14:00 | by t\n", text)
+        self.assertIn("PARKED: keep the old API? | alpha | since 2026-11-02 14:30 | by t\n", text)
         listed = self.af("park", "list").stdout
         self.assertRegex(listed, r"(?m)^1\. .*which DB for reports\?")
         self.assertRegex(listed, r"(?m)^2\. .*keep the old API\?")

@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 
 DATE = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}"
@@ -198,8 +199,12 @@ class Collector:
             if rest and not rest[0].startswith("since "):
                 task = rest[0].strip() or default_task
                 rest = rest[1:]
-            since, sub, facts, options, rec = "", "", [], [], ""
+            since, sub, facts, options, rec, by = "", "", [], [], "", None
             for x in rest:
+                m = re.match(r"by (.+)$", x)
+                if m and by is None and m.group(1).strip():
+                    by = m.group(1).strip()
+                    continue
                 m = re.match(r"since (%s)" % DATE, x)
                 if m and not since:
                     since = m.group(1)
@@ -223,7 +228,7 @@ class Collector:
                 o["rec"] = o["letter"] == rec
             out.append({"id": "p-" + sha10("%s\n%s\n%s" % (task, question, since)), "source": "parked",
                         "kind": "", "task": task, "title": question, "sub": sub, "facts": facts,
-                        "options": options, "since": since, "file": path, "_line": i})
+                        "options": options, "since": since, "file": path, "_line": i, "by": by})
         return out
 
     # -- the two views
@@ -317,7 +322,19 @@ PUBLIC = ("n", "id", "source", "kind", "task", "title", "sub", "facts", "options
 
 
 def public(q, with_file=True):
-    return {k: q[k] for k in PUBLIC if with_file or k != "file"}
+    d = {k: q[k] for k in PUBLIC if with_file or k != "file"}
+    if q.get("by"):
+        d["by"] = q["by"]
+    return d
+
+
+def user_name(root):
+    """git config user.name of the project root, trimmed; "" for none."""
+    try:
+        r = subprocess.run(["git", "-C", root, "config", "user.name"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
 
 
 def render_text(data, lang):
@@ -329,7 +346,7 @@ def render_text(data, lang):
         head = "%d. [%s] %s · %s" % (q["n"], q["id"], q["task"], kind)
         if q["since"]:
             head += " · since " + q["since"]
-        b = [head, "   " + q["title"]]
+        b = [head, "   " + q["title"] + (" [%s]" % q["by"] if q.get("by") else "")]
         if q["sub"]:
             b.append("   — " + q["sub"])
         for k, v in q["facts"]:
@@ -585,6 +602,9 @@ def cmd_park_add(c, args):
         fields.append("option %s: %s" % (LETTERS[j], o))
     if rec:
         fields.append("rec " + rec)
+    name = user_name(c.root)
+    if name and " | " not in name and "\n" not in name:
+        fields.append("by " + name)
     line = "PARKED: " + " | ".join(fields)
     state = os.path.join(c.state_dir, "agent_state.txt")
     text = read_text(state) or ""
