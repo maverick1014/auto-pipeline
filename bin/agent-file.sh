@@ -242,7 +242,7 @@ t = os.path.realpath(tempfile.gettempdir()); r = os.path.realpath(sys.argv[1])
 sys.exit(0 if r == t or r.startswith(t.rstrip("/") + "/") else 1)' "$ROOT" 2>/dev/null
 }
 if fake_clock_ok; then NOW=$AGENT_FAKE_NOW; else NOW=$(date '+%Y-%m-%d %H:%M'); fi; WHO=${AGENT_ROLE:-main}
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -625,6 +625,58 @@ retrain_auto() {
   elif [ -n "$out" ]; then printf '%s\n' "$out"
   fi
   est_py measure >/dev/null 2>&1 || true     # one entry of the list "measures"; a failure never stops todo done
+  return 0
+}
+
+# --- the estimator after todo done runs in the background (fix order 2B): a queue file, one detached runner
+# est_gitdir: the absolute git common dir of the project root; fails when there is none
+est_gitdir() {
+  local d
+  d=$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null) || return 1
+  case "$d" in /*) ;; *) d="$ROOT/$d";; esac
+  (cd "$d" 2>/dev/null && pwd -P)
+}
+# est_lock <git dir>: takes the lock dir (a dead pid's lock is taken over); returns 1 when a live runner holds it
+est_lock() {
+  local lock="$1/agent_estimate.lock" pid try
+  for try in 1 2; do
+    if mkdir "$lock" 2>/dev/null; then return 0; fi
+    pid=$(cat "$lock/pid" 2>/dev/null) || pid=
+    if [ -z "$pid" ] || kill -0 "$pid" 2>/dev/null; then return 1; fi
+    rm -rf "$lock"
+  done
+  return 1
+}
+# est_runner: oldest queue file first: the retrain when due, then one measures entry; every line goes to the log
+est_runner() {
+  local gd q lock f
+  gd=$(est_gitdir) || return 0
+  q="$gd/agent_estimate.queue"; lock="$gd/agent_estimate.lock"
+  mkdir -p "$q" "$lock" 2>/dev/null || true
+  printf '%s\n' "$$" > "$lock/pid"
+  while :; do
+    while f=$(ls "$q" 2>/dev/null | sort | head -n 1) && [ -n "$f" ]; do
+      rm -f "$q/$f"
+      retrain_auto || true
+    done
+    rm -rf "$lock"
+    [ -n "$(ls "$q" 2>/dev/null | head -n 1)" ] || break
+    est_lock "$gd" || break
+    printf '%s\n' "$$" > "$lock/pid"
+  done
+  return 0
+}
+# est_after_done: queue one run and start the runner unless one lives; AGENT_ESTIMATE_WAIT=1 runs it here, verdict printed
+est_after_done() {
+  local gd q
+  if [ "${AGENT_ESTIMATE_WAIT:-}" = 1 ]; then retrain_auto; return 0; fi
+  gd=$(est_gitdir) || return 0
+  q="$gd/agent_estimate.queue"
+  mkdir -p "$q" 2>/dev/null || return 0
+  printf '%s\n' "$NOW" > "$q/$(date +%s)-$$-$RANDOM" 2>/dev/null || return 0
+  est_lock "$gd" || return 0
+  ( trap '' HUP; exec "$0" estimate-runner </dev/null >>"$gd/agent_estimate.log" 2>&1 ) </dev/null >/dev/null 2>&1 &
+  printf '%s\n' "$!" > "$gd/agent_estimate.lock/pid" 2>/dev/null || true
   return 0
 }
 
@@ -1376,7 +1428,7 @@ case "${1:-}:${2:-}" in
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
     # the finished task no longer counts as open: trim the state file (silent unless lines moved; a refusal is a warning)
     if command -v python3 >/dev/null 2>&1; then python3 "$(dirname "$0")/agent_state.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" trim --auto || true; fi
-    retrain_auto
+    est_after_done || true
     sweep_after_last_task;;
   todo:wait)
     shift 2; todo_wait "$@";;
@@ -1537,6 +1589,8 @@ case "${1:-}:${2:-}" in
     shift; data_run "$@";;
   repos:*)
     repos_list;;
+  estimate-runner:*)
+    est_runner;;
   estimate:*|backtest:*|retrain:*)
     cmd="$1"; shift
     if [ "$cmd" = retrain ] && stale_skip; then exit 0; fi
