@@ -83,7 +83,7 @@ The board (rules/board.md W14) reads these. Write each as it happens, never late
 
 ## Time question from the human
 
-The human asks how long a task takes or when it is done (a time question) → run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh eta "<name>" [--wait <m>]`: it prints the board's Done by numbers (p50 and p85, waits never inside). For a task with no todo line, `--step <n>` and `--work-so-far <m>` (from the last HEARTBEAT) give the old rule; `--wait` = known waiting still ahead.
+The human asks how long a task takes or when it is done (a time question) → run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh eta "<name>" [--wait <m>]`: it prints the board's Done by numbers (p50 and p85, waits never inside); with `--step <n>` / `--work-so-far <m>` (from the last HEARTBEAT) it uses the old rule instead; `--wait` = known waiting still ahead.
 Answer with its line: a duration AND a clock time, and when he is needed next. Never "soon".
 
 ## Task manager brief (fill the <>)
