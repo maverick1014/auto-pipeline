@@ -822,7 +822,7 @@ class TestTodoGuess(BlendCase):
     def test_todo_add_keeps_the_guess_after_est(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "--guess", "35"))
         self.assertEqual(self.todo_text(),
-                         "t1 | big | build it | est 70m | guess 35m | opened %s | by main\n" % NOW)
+                         "t1 | big | build it | est 70m | guess 35m | opened %s | by main | owner t\n" % NOW)
 
     def test_the_guess_may_stand_anywhere(self):
         for args in (("--guess", "35", "t1", "big", "build it", "70"),
@@ -832,24 +832,24 @@ class TestTodoGuess(BlendCase):
                 self.write("agent_todo.txt", "")
                 self.assertOk(self.af("todo", "add", *args))
                 self.assertEqual(self.todo_text(),
-                                 "t1 | big | build it | est 70m | guess 35m | opened %s | by main\n" % NOW)
+                                 "t1 | big | build it | est 70m | guess 35m | opened %s | by main | owner t\n" % NOW)
 
     def test_by_still_works(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "laptop", "--guess", "35"))
         self.assertEqual(self.todo_text(),
-                         "t1 | big | build it | est 70m | guess 35m | opened %s | by laptop\n" % NOW)
+                         "t1 | big | build it | est 70m | guess 35m | opened %s | by laptop | owner t\n" % NOW)
 
     def test_a_guess_with_no_est(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "--guess", "35"))
         self.assertEqual(self.todo_text(),
-                         "t1 | big | build it | guess 35m | opened %s | by main\n" % NOW)
+                         "t1 | big | build it | guess 35m | opened %s | by main | owner t\n" % NOW)
 
     def test_no_guess_is_the_line_as_before(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70"))
-        self.assertEqual(self.todo_text(), "t1 | big | build it | est 70m | opened %s | by main\n" % NOW)
+        self.assertEqual(self.todo_text(), "t1 | big | build it | est 70m | opened %s | by main | owner t\n" % NOW)
 
     def test_a_bad_guess_is_refused(self):
-        self.write("agent_todo.txt", "keep | big | x | est 5m | opened %s | by main\n" % NOW)
+        self.write("agent_todo.txt", "keep | big | x | est 5m | opened %s | by main | owner t\n" % NOW)
         before = self.todo_text()
         for bad in (("--guess", "0"), ("--guess", "abc"), ("--guess", "-3"), ("--guess", "1.5"),
                     ("--guess",)):
@@ -867,22 +867,22 @@ class TestTodoGuess(BlendCase):
         return rows[0]
 
     def test_todo_done_writes_the_guess_last(self):
-        self.write("agent_todo.txt", "t1 | big | build it | est 70m | guess 35m | opened 2026-10-05 15:00 | by main\n")
+        self.write("agent_todo.txt", "t1 | big | build it | est 70m | guess 35m | opened 2026-10-05 15:00 | by main | owner t\n")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
         # test-levels (2026-11-20): level= follows guess=; estimate-improve (2026-11-26): six keys follow level,
         # and the work is measured (wait 0, clock 60), the typed 60 kept as typed=
         self.assertEqual(self.done_line(), "%s | t1 | build it | %s level=- typed=60 est0=70 added=- built=- "
-                         "stages=- slices=-" % (TODAY, gblock(
+                         "stages=- slices=- by=t" % (TODAY, gblock(
                              repo="project", type="script", lane="full", est=70, work=60, wait=0, clock=60,
                              guess=35)))
 
     def test_todo_done_with_no_guess_writes_a_dash(self):
-        self.write("agent_todo.txt", "t1 | big | build it | est 70m | opened 2026-10-05 15:00 | by main\n")
+        self.write("agent_todo.txt", "t1 | big | build it | est 70m | opened 2026-10-05 15:00 | by main | owner t\n")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
         self.assertIn(" adds=- guess=- level=- typed=", self.done_line())
 
     def test_a_guess_word_in_the_what_is_not_the_guess(self):
-        self.write("agent_todo.txt", "t1 | big | guess 99m is a word here | est 70m | opened 2026-10-05 15:00 | by main\n")
+        self.write("agent_todo.txt", "t1 | big | guess 99m is a word here | est 70m | opened 2026-10-05 15:00 | by main | owner t\n")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
         self.assertIn(" guess=- level=- typed=", self.done_line())
 
@@ -892,7 +892,7 @@ class TestTodoGuess(BlendCase):
                            (("--type", "script"), "todo done: warning: no --lane" + WARN_TAIL),
                            ((), "todo done: warning: no --type --lane" + WARN_TAIL)):
             with self.subTest(opts=opts):
-                self.write("agent_todo.txt", "t1 | big | build it | est 70m | opened 2026-10-05 15:00 | by main\n")
+                self.write("agent_todo.txt", "t1 | big | build it | est 70m | opened 2026-10-05 15:00 | by main | owner t\n")
                 self.write("agent_completed.txt", "")
                 r = self.af("todo", "done", "t1", "--work", "60", *opts)
                 self.assertOk(r)

@@ -79,7 +79,8 @@ import test_agent_board as tb  # noqa: E402  (helpers only)
 from test_agent_estimate import EstimateCase, steady, day, version  # noqa: E402
 
 KEYS = ["repo", "type", "lane", "mock", "est", "work", "wait", "clock", "bounces", "workers", "files",
-        "lines", "tests", "adds", "guess", "level", "typed", "est0", "added", "built", "stages", "slices"]
+        "lines", "tests", "adds", "guess", "level", "typed", "est0", "added", "built", "stages", "slices",
+        "by"]   # the scope add of 2026-11-26: the name of the clone that ran todo done (tests/test_agent_owner_name.py)
 NOW = "2026-10-01 20:30"
 
 
@@ -168,7 +169,7 @@ class TestDoneWorkIsMeasured(InputCase):
         self.af("todo", "done", "t", "--work", "12", "--lane", "fast", "--type", "page", "--mock", "no", now=NOW)
         self.assertEqual(self.done_line("t"), "2026-10-01 | t | fix the label | " + block(
             repo="project", type="page", lane="fast", mock="no", est=10, work=30, wait=0, clock=30,
-            typed=12, est0=10))
+            typed=12, est0=10, by="t"))
 
 
 # ---------------------------------------------------------------- A2 the stage log

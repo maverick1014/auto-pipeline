@@ -226,7 +226,7 @@
 set -eu
 TIME_DATA_GOAL=30
 DATA_TYPES="page server script docs cloud app data mixed"
-DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess level typed est0 added built stages slices"
+DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess level typed est0 added built stages slices by"
 OPT_CMD="todo done"   # the prefix of a refusal from done_opts; backfill sets it to "backfill"
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
@@ -269,13 +269,13 @@ minutes_between() {
 dreset() {
   d_repo=-; d_type=-; d_lane=-; d_mock=-; d_est=-; d_work=-; d_wait=-; d_clock=-
   d_bounces=-; d_workers=-; d_files=-; d_lines=-; d_tests=-; d_adds=-; d_guess=-; d_level=-
-  d_typed=-; d_est0=-; d_added=-; d_built=-; d_stages=-; d_slices=-
+  d_typed=-; d_est0=-; d_added=-; d_built=-; d_stages=-; d_slices=-; d_by=-
 }
 dblock() {
-  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s guess=%s level=%s typed=%s est0=%s added=%s built=%s stages=%s slices=%s' \
+  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s guess=%s level=%s typed=%s est0=%s added=%s built=%s stages=%s slices=%s by=%s' \
     "$d_repo" "$d_type" "$d_lane" "$d_mock" "$d_est" "$d_work" "$d_wait" "$d_clock" \
     "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds" "$d_guess" "$d_level" \
-    "$d_typed" "$d_est0" "$d_added" "$d_built" "$d_stages" "$d_slices"
+    "$d_typed" "$d_est0" "$d_added" "$d_built" "$d_stages" "$d_slices" "$d_by"
 }
 # todo_times "<todo line>" [<typed wait>]: t_clock, t_wait (W), t_work from the times on the line ("-" when unknown). Like the board:
 # work = minutes(started, now) - max(0, W - n), else clock - W (opened); W = closed waits + the open wait up to now, or the typed wait when larger.
@@ -616,6 +616,7 @@ retrain_auto() {
   if [ "$rc" -ne 0 ]; then echo "estimate retrain: failed"
   elif [ -n "$out" ]; then printf '%s\n' "$out"
   fi
+  est_py measure >/dev/null 2>&1 || true     # one entry of the list "measures"; a failure never stops todo done
   return 0
 }
 
@@ -1000,6 +1001,25 @@ todo_stage() {
           }
         }
         { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
+      # the slip flag: the board's p50 clock of this line, kept as " | p50 <time> at <now>" (no forecast: the line stays)
+      if [ -z "$wt_here" ] && command -v python3 >/dev/null 2>&1; then
+        local p50
+        p50=$(python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+          --now "$NOW" --lang en --p50-of "$name" 2>/dev/null) || p50=
+        case "$p50" in
+          [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\ [0-9][0-9]:[0-9][0-9])
+            NEW="p50 $p50 at $NOW" awk -F' \\| ' -v OFS=' | ' -v k="$name" '
+              $1 == k && !hit {
+                hit = 1; n = 0
+                for (i = 1; i <= NF; i++) if (!(i >= 4 && $i ~ /^p50 [0-9-]+ [0-9:]+ at /)) out[++n] = $i
+                out[++n] = ENVIRON["NEW"]
+                s = out[1]
+                for (i = 2; i <= n; i++) s = s OFS out[i]
+                print s; next
+              }
+              { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO";;
+        esac
+      fi
     fi
   fi
   if [ -n "$wt_here" ]; then
@@ -1301,7 +1321,8 @@ case "${1:-}:${2:-}" in
     [ -z "$target" ] || what="$what | target $target"
     [ -z "$batch" ] || what="$what | batch $batch"
     by="${7:-$WHO}"
-    append "$TODO" "$3 | $4 | $what | opened $NOW | by $by"
+    owner=$(PYTHONPATH="$(dirname "$0")" python3 -c 'import sys, agent_conf; print(agent_conf.user_name(sys.argv[1]))' "$PWD" 2>/dev/null) || owner=user
+    append "$TODO" "$3 | $4 | $what | opened $NOW | by $by | owner ${owner:-user}"
     echo "todo added: $3";;
   todo:done)
     need 3 "$@"; name="$3"; line=$(first "$TODO" "$name")
@@ -1335,6 +1356,8 @@ case "${1:-}:${2:-}" in
     d_guess=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^guess [0-9]+m$/) {v = $i; sub(/^guess /, "", v); sub(/m$/, "", v); print v; exit}}')
     d_guess=${d_guess:--}
     d_level=$(todo_line_level "$line"); d_level=${d_level:--}
+    d_by=$(PYTHONPATH="$(dirname "$0")" python3 -c 'import sys, agent_conf; print(agent_conf.user_name(sys.argv[1]))' "$PWD" 2>/dev/null) || d_by=user
+    d_by=${d_by:-user}
     date="${NOW%% *}"
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
     checks_py task-end done "$name" || true     # its removals, stored owner words and planned blocks end (G2, G4)
@@ -1424,7 +1447,15 @@ case "${1:-}:${2:-}" in
     need 3 "$@"; drop "$WT" "$3"; echo "worktree removed: $3";;
   show:*)
     for f in "$TODO" "$DONE" "$IDEAS" "$WT"; do
-      echo "=== $(basename "$f") ==="; [ -s "$f" ] && cat "$f" || echo "(empty)"; echo
+      echo "=== $(basename "$f") ==="
+      if [ -s "$f" ]; then
+        case "$f" in
+          "$TODO") sed -E 's/^(.* \| owner ([^ |]+)( \|.*)?)$/\1 [\2]/' "$f";;
+          "$DONE") sed -E '/ data .* by=-$/!s/^(.* data .* by=([^ ]+))$/\1 [\2]/' "$f";;
+          *) cat "$f";;
+        esac
+      else echo "(empty)"; fi
+      echo
     done;;
   time:)
     printf '%-30s %8s %8s %8s %8s %8s\n' "name" "est" "work" "wait" "clock" "ratio"

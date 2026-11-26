@@ -609,11 +609,24 @@ class Board:
                 built_work = at[0]
                 break
         task = {"est": t["est"], "work": work, "stage": t["stage"], "p": None if p is None else float(p),
-                "lane": "full", "built_work": built_work}
+                "lane": "fast" if t["size"] == "small" else "full", "built_work": built_work}
         try:
             return mod.forecast(task, self.history_rows())
         except Exception:
             return None
+
+    def slip_text(self, t, fc):
+        """" · p50 +<X>m in <T>m" when the p50 moved later by more minutes than the time since it was asked."""
+        if not t["p50"] :
+            return ""
+        was, asked = parse_time(t["p50"][0]), parse_time(t["p50"][1])
+        if was is None or asked is None:
+            return ""
+        x = minutes(was, self.now + datetime.timedelta(minutes=fc[0]))
+        span = minutes(asked, self.now)
+        if x is None or span is None or x <= span:
+            return ""
+        return " · p50 +%dm in %dm" % (x, span)
 
     def work_of(self, t):
         """(work, wait): the work minutes as the board counts them, and the wait minutes (open wait included)."""
@@ -643,10 +656,10 @@ class Board:
 
     def parse_todo(self, line):
         f = line.split(" | ")
-        t = {"name": f[0].strip(), "what": f[2] if len(f) > 2 else "", "est": None,
+        t = {"name": f[0].strip(), "size": f[1].strip() if len(f) > 1 else "", "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
              "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None, "checks": None,
-             "who": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": "", "slog": []}
+             "who": None, "owner": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": "", "slog": [], "p50": None}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
             if m and t["est"] is None:
@@ -677,6 +690,10 @@ class Board:
                 if m.group(1).strip():
                     t["who"] = m.group(1).strip()
                 continue
+            m = re.match(r"owner (\S+)$", x.strip())
+            if m and t["owner"] is None:
+                t["owner"] = m.group(1)
+                continue
             m = re.match(r"after (.*)$", x)
             if m and t["after"] is None:
                 if m.group(1).strip():
@@ -699,6 +716,10 @@ class Board:
             m = re.match(r"checks (.+)$", x)
             if m and t["checks"] is None:
                 t["checks"] = ", ".join(c.strip() for c in m.group(1).split(",") if c.strip()) or None
+                continue
+            m = re.match(r"p50 (%s) at (%s)$" % (DATE, DATE), x.strip())
+            if m and t["p50"] is None:
+                t["p50"] = (m.group(1), m.group(2))
                 continue
             m = re.match(r"beat (.+)$", x)
             if m and not t["beat"]:
@@ -772,6 +793,7 @@ class Board:
         owner = bool(kind in OWNER_KINDS and not who) or bool(who and who.lower() in OWNER_WHO)
         info = None
         dash = False
+        slip = ""
         est = fmt_min(t["est"])
         work, done, progress = "-", "-", "-"
         if kind == "queue":
@@ -807,6 +829,7 @@ class Board:
             done = done_by_text(self.lang, self.now, t["est"], work, p, self.eta_min_pct)
             fc = self.forecast_of(t, work, p)
             if fc is not None:
+                slip = self.slip_text(t, fc)
                 done = " / ".join(clock_text(self.lang, self.now, self.now + datetime.timedelta(minutes=x))
                                   for x in fc)
             work = fmt_min(work)
@@ -819,13 +842,14 @@ class Board:
         if info is not None:
             info["group"], info["notstarted"] = group, bool(t["since"] is None and started is None and not kind)
         status += self.watch_warn(t, group)
+        status += slip
         if t["machine"]:
             where = t["machine"] + (", " + short_path(t["path"], self.home) if t["path"] else "")
         else:
             where = self.worktree_where(t["name"], wt_lines)
             if where is None:
                 where = self.where_here(own_dir) if own_dir else "-"
-        self.add(group, when, t["name"], t["what"] or "-", status, where,
+        self.add(group, when, t["name"] + (" [%s]" % t["owner"] if t["owner"] else ""), t["what"] or "-", status, where,
                  est=est, work=work, wait=wait_cell, done=done, progress=progress,
                  level=checks_cell(t), info=info)
 
@@ -1083,6 +1107,22 @@ def work_mode(args, name):
     work = board.work_of(t)[0]
     if work is not None:
         print(work)
+    return 0
+
+
+def p50_mode(args, name):
+    """--p50-of <name>: prints "YYYY-MM-DD HH:MM", the p50 clock of the line's forecast; nothing when there is none."""
+    line = todo_line_of(os.path.normpath(args.root), name)
+    if line is None:
+        return 0
+    board = Board(args)
+    t = board.parse_todo(line)
+    if t["since"] is None and t["started"] is None:
+        return 0
+    work = board.work_of(t)[0]
+    fc = board.forecast_of(t, work, board.progress_of(t))
+    if fc is not None:
+        print((board.now + datetime.timedelta(minutes=fc[0])).strftime("%Y-%m-%d %H:%M"))
     return 0
 
 
@@ -1480,7 +1520,10 @@ def main():
     p.add_argument("--eta", default=None, metavar="NAME")
     p.add_argument("--wait", type=int, default=0, metavar="MIN")
     p.add_argument("--work-of", default=None, metavar="NAME")
+    p.add_argument("--p50-of", default=None, metavar="NAME")
     args = p.parse_args()
+    if args.p50_of is not None:
+        sys.exit(p50_mode(args, args.p50_of))
     if args.work_of is not None:
         sys.exit(work_mode(args, args.work_of))
     if args.eta is not None:

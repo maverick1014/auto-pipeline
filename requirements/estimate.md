@@ -68,3 +68,10 @@
 - `todo done` without `--type` or `--lane`: one warning line names the missing facts (tasks with type or lane "-" were the worst, error 55m); it is never refused, old callers keep working.
 - Defaults chosen by the task manager (2026-11-13, logged in agent_state.txt): the guess is used only by a blend version, so after this release the laptop needs one retrain (weekly, or `retrain --force`) before `--guess` changes a number.
 
+
+## v4: estimate-improve (owner 2026-11-26)
+- Where this section and the sections above differ, this section wins. The requirement: requirements/estimate-improve.md. The exact contracts: the docstrings of tests/test_agent_estimate_inputs.py (A: the inputs, the measure), tests/test_agent_estimate_fit.py (B: the fit, p50/p85), tests/test_agent_forecast.py (C: the end time; bin/agent_forecast.py), tests/test_agent_estimate_learn.py (D: retrain every 10 tasks, the measures, the slip flag).
+- The label is measured: `todo done` counts the work from the line's times (a typed `--work` is kept as `typed=`); the data block also holds est0, added, built, stages, slices. Only clean rows are learned (clock and wait known, work <= clock <= one day).
+- The measure of section 4 of the requirement (bias and spread of ln(actual/estimate), the p85 hit rate, the live forecast error) is printed by `backtest`; the winner may be a ridge log fit, only when it beats the blend on spread.
+- `estimate` prints `p50 <m>m, p85 <m>m`; the board's "Done by" and `eta` show the p50 and p85 clock times of one Monte Carlo forecast (work left + the tail), when 10 or more clean past tasks exist; else today's cell.
+- Retrain is due every 10 new clean tasks (the week rule went); each `todo done` appends the measures to `agent_estimate.txt` ("measures").

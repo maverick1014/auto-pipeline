@@ -23,8 +23,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 MIN_TASKS = 30        # tasks needed for the first version
-RETRAIN_DAYS = 7      # days between two checks (and at least 1 new task)
-OLD_EVERY = 10        # a file with no check date: due after this many new tasks, once
+RETRAIN_EVERY = 10    # finished clean tasks between two checks
 TARGET_PCT = 50       # owner target: share of tasks within 30% of the work (estimate_target_pct)
 BIAS_MIN = 5          # tasks of one repo needed for its bias (estimate_bias_min)
 BIG_MIN = 120         # work minutes from which a task is big (estimate_big_min)
@@ -683,6 +682,8 @@ def save_model(path, data):
     """Atomic: a temp file beside it, then os.replace."""
     out = {"current": data["current"], "checked_tasks": data["checked_tasks"],
            "versions": data["versions"], "checks": data["checks"]}
+    if isinstance(data.get("measures"), list):
+        out["measures"] = data["measures"]
     if data.get("checked_date"):
         out["checked_date"] = data["checked_date"]
     tmp = "%s.%d.tmp" % (path, os.getpid())
@@ -830,6 +831,45 @@ def cmd_backtest(tasks, args):
     return 0
 
 
+def measure_entry(tasks, bt, today):
+    """One entry of the list "measures": the numbers of the backtest's measure lines, as they print."""
+    lines = measure_lines(tasks, bt)
+
+    def line(prefix):
+        return [l for l in lines if l.startswith(prefix)][0]
+
+    def num(text):
+        return None if text == "-" else float(text)
+    w = re.match(r"^measure work: n (\d+) bias (\S+) spread (\S+)$", line("measure work: ")).groups()
+    e = re.match(r"^measure end: n (\d+) bias (\S+) spread (\S+)$", line("measure end: ")).groups()
+    p = re.match(r"^measure p85: n (\d+) holds (\S+)$", line("measure p85: ")).groups()
+    ls = re.match(r"^measure live est <= \d+m: n \d+ error (\S+?)(?:,|$)", line("measure live est <=")).group(1)
+    lb = re.match(r"^measure live est > \d+m: n \d+ error (\S+?)(?:,|$)", line("measure live est >")).group(1)
+
+    def minutes(text):
+        return None if text == "-" else int(text.rstrip("m"))
+    return {"date": today, "tasks": len(tasks), "n": int(w[0]), "winner": bt["winner"],
+            "work_bias": num(w[1]), "work_spread": num(w[2]), "end_bias": num(e[1]), "end_spread": num(e[2]),
+            "p85": None if p[1] == "-" else int(p[1].rstrip("%")), "live_small": minutes(ls), "live_big": minutes(lb)}
+
+
+def cmd_measure(tasks, model_path, today):
+    """Appends one measures entry to a model file that reads; no file, no entry."""
+    model = read_model(model_path)
+    if model is None:
+        return 0
+    data = model[0]
+    if "measures" in data and not isinstance(data["measures"], list):
+        return 0
+    bt = backtest(tasks, env_int("AGENT_ESTIMATE_BIAS_MIN", BIAS_MIN, 1, 1000),
+                  env_int("AGENT_ESTIMATE_BIG_MIN", BIG_MIN, 1, 10000))
+    if bt is None or not bt["rows"]:
+        return 0
+    data.setdefault("measures", []).append(measure_entry(tasks, bt, today))
+    save_model(model_path, data)
+    return 0
+
+
 def cmd_retrain(tasks, model_path, today, args):
     force = auto = False
     for a in args:
@@ -846,24 +886,11 @@ def cmd_retrain(tasks, model_path, today, args):
             print("estimate retrain: not yet (%d of %d tasks)" % (n, MIN_TASKS))
         return 0
     if model is not None and not force:
-        last, now = day(model[0].get("checked_date")), day(today)
-        new_tasks = n - model[0]["checked_tasks"]
-        if last is None or now is None:
-            due_at = model[0]["checked_tasks"] + OLD_EVERY     # no date yet: the old task rule, once
-            if n < due_at:
-                if not auto:
-                    print("estimate retrain: not due (%d tasks, next check at %d)" % (n, due_at))
-                return 0
-        else:
-            next_day = last + datetime.timedelta(days=RETRAIN_DAYS)
-            if now < next_day or new_tasks < 1:
-                if not auto:
-                    if now < next_day:
-                        print("estimate retrain: not due (%d tasks, next check on %s)" % (n, next_day.isoformat()))
-                    else:
-                        print("estimate retrain: not due (%d tasks, next check on %s or later, needs 1 new task)"
-                              % (n, now.isoformat()))
-                return 0
+        due_at = model[0]["checked_tasks"] + RETRAIN_EVERY
+        if n < due_at:
+            if not auto:
+                print("estimate retrain: not due (%d tasks, next check at %d)" % (n, due_at))
+            return 0
 
     bias_min = env_int("AGENT_ESTIMATE_BIAS_MIN", BIAS_MIN, 1, 1000)
     goal = env_int("AGENT_ESTIMATE_TARGET_PCT", TARGET_PCT, 1, 100)
@@ -1020,7 +1047,7 @@ def current_estimate(tasks, p, cur, rows=None):
 
 
 def main(argv):
-    if len(argv) < 4 or argv[1] not in ("estimate", "backtest", "retrain"):
+    if len(argv) < 4 or argv[1] not in ("estimate", "backtest", "retrain", "measure"):
         sys.stderr.write("usage: agent_estimate.py <estimate|backtest|retrain> <model file> <today> [options] < rows\n")
         return 2
     cmd, model_path, today, args = argv[1], argv[2], argv[3], argv[4:]
@@ -1030,6 +1057,8 @@ def main(argv):
     tasks = learnable(tasks)
     if cmd == "estimate":
         return cmd_estimate(tasks, model_path, args)
+    if cmd == "measure":
+        return cmd_measure(tasks, model_path, today)
     return cmd_retrain(tasks, model_path, today, args)
 
 

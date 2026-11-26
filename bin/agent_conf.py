@@ -919,6 +919,26 @@ def production_branch(repo):
     return git("symbolic-ref", "--short", "-q", "HEAD") or "main"
 
 
+def user_name(repo):
+    """The name of this clone's user: git user.name cleaned (lower case, every run of other characters one "-",
+    none at the ends); empty: the login name cleaned the same way; still empty: "user"."""
+    def clean(text):
+        return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    try:
+        r = subprocess.run(["git", "-C", repo, "config", "user.name"], stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, timeout=30)
+        who = clean(r.stdout.decode(errors="replace").strip())
+    except (OSError, subprocess.SubprocessError):
+        who = ""
+    if not who:
+        try:
+            import getpass
+            who = clean(getpass.getuser())
+        except Exception:
+            who = ""
+    return who or "user"
+
+
 def working_branch(repo, derive=False):
     """The working branch of this clone. Without derive: the stored git config auto-pipeline.workingbranch, or
     None when nothing is stored (nothing is stored by a read). With derive=True (init and the start only): the
@@ -932,17 +952,7 @@ def working_branch(repo, derive=False):
         except (OSError, subprocess.SubprocessError):
             return ""
     def named(form):
-        if "<name>" not in form:
-            return form
-        who = re.sub(r"[^a-z0-9]+", "-", cfg("config", "user.name").lower()).strip("-")
-        if not who:
-            try:
-                import getpass
-                login = getpass.getuser()
-            except Exception:
-                login = ""
-            who = re.sub(r"[^a-z0-9-]+", "-", login.lower()).strip("-") or "user"
-        return form.replace("<name>", who)
+        return form.replace("<name>", user_name(repo)) if "<name>" in form else form
     stored = cfg("config", "--local", "--get", "auto-pipeline.workingbranch")
     if stored:
         if stored != production_branch(repo):
