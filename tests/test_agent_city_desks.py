@@ -1195,6 +1195,88 @@ class TestSelectedFindsAFreeSpot(unittest.TestCase):
         self.assertEqual(overlapping(bx + [tuple(sheet)]), [])
 
 
+def listeners_src():
+    """The page's hover listeners as source: the plate layer's pointerover and pointerout, the canvas' pointermove and
+    pointerleave (all of each, one statement per call)."""
+    from citypage import listener_block
+    parts = [listener_block(r"ovRoot", "pointerover"), listener_block(r"ovRoot", "pointerout"),
+             listener_block(r"canvas", "pointermove"), listener_block(r"canvas", "pointerleave")]
+    if not all(parts):
+        raise AssertionError("a hover listener is missing: %s" % [bool(x) for x in parts])
+    return ";\n".join(x.replace("\ncanvas.addEventListener", ";\ncanvas.addEventListener").replace("\novRoot.addEventListener", ";\novRoot.addEventListener")
+                       for x in parts)
+
+
+LISTEN_JS = r"""
+// wire the page's own hover listeners to stand-ins (the plate layer, the canvas), then drive them with plain events
+const L = {}, on = k => (t, fn) => { (L[k + t] = L[k + t] || []).push(fn); };
+const fakeOv = { addEventListener: on('ov:'), contains: x => !!(x && x.inOv) };
+const fakeCv = { addEventListener: on('cv:'), getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }) };
+new Function('ovRoot', 'canvas', 'requestAnimationFrame', 'pointers', 'view', __payload.src)(fakeOv, fakeCv, fn => fn(), new Map(), 'inside');
+const fire = (k, e) => (L[k] || []).forEach(fn => fn(e));
+const plate = { dataset: { pickT: 'c', pickId: 'w1' }, inOv: true, contains: x => x === plate };
+const onPlate = { target: { closest: () => plate } };
+const state = () => [!!hovered, hoverKeep];
+const res = {};
+fire('ov:pointerover', onPlate); res.over = state();
+fire('cv:pointermove', { buttons: 0, movementX: 0, movementY: 0, clientX: 10, clientY: 10, pointerId: 1 }); res.stillMove = state();
+fire('cv:pointermove', { buttons: 0, movementX: 4, movementY: 1, clientX: 14, clientY: 11, pointerId: 1 }); res.realMove = state();
+fire('ov:pointerover', onPlate); fire('cv:pointerleave', {}); res.leave = state();
+fire('ov:pointerover', onPlate); fire('ov:pointerout', Object.assign({ relatedTarget: canvasStandIn() }, onPlate)); res.outToCanvas = state();
+fire('ov:pointerover', onPlate); fire('ov:pointerout', Object.assign({ relatedTarget: { inOv: true } }, onPlate)); res.outToPlate = state();
+fire('ov:pointerover', onPlate); fire('ov:pointerout', Object.assign({ relatedTarget: { id: 'lift' } }, onPlate)); res.outToPanel = state();
+fire('ov:pointerover', onPlate); fire('ov:pointerout', Object.assign({ relatedTarget: null }, onPlate)); res.outOffPageOrTouchEnd = state();
+function canvasStandIn(){ return fakeCv; }
+__out = res;
+"""
+
+
+class TestKeepIsGuarded(unittest.TestCase):
+    """Fix round 7 (PR REVIEW pass 7): nothing guarded 'keep' -- with it gone every test stayed green and the UI CHECK 3
+    hover flicker came back. Behaviour guards, in the node harness: syncFigs gives keep only to the hovered person (pri 2,
+    not also selected) while hoverKeep is on; the page's own hover listeners set and clear hoverKeep: pointing at a plate
+    sets it, a canvas pointermove with real movement clears it (a zero-movement one does not), canvas pointerleave clears
+    it, a plate's pointerout towards a panel or with no target (off the page, or a touch ending: browsers send pointerout
+    and pointerleave with no relatedTarget when a finger lifts) clears hover and keep; towards the canvas or another plate
+    both stay. Each guard goes red when its line is removed (checked by mutation, see the fix round 7 report)."""
+
+    def test_the_listeners_set_and_clear_keep(self):
+        out = sim(LISTEN_JS, {"src": listeners_src()}, required=("hoverKeep",))
+        self.assertEqual(out["over"], [True, True], "pointing at a plate: hovered and keep")
+        self.assertEqual(out["stillMove"], [True, True], "a pointermove with no movement (the page moved) changes nothing")
+        self.assertFalse(out["realMove"][1], "a real pointer move ends keep")
+        self.assertEqual(out["leave"], [False, False], "pointerleave of the canvas ends hover and keep")
+        self.assertEqual(out["outToCanvas"], [True, True], "a plate moving away from a still pointer: both stay")
+        self.assertEqual(out["outToPlate"], [True, True], "on to another plate: its own pointerover takes over")
+        self.assertEqual(out["outToPanel"], [False, False], "towards a panel: hover and keep end")
+        self.assertEqual(out["outOffPageOrTouchEnd"], [False, False], "off the page or a touch ending: hover and keep end")
+
+    def test_sync_figs_gives_keep_only_to_the_hovered_one(self):
+        src = script_function_source("syncFigs") or ""
+        self.assertTrue(src)
+        out = sim(r"""
+const mk = (id, role) => ({ id, role, terr: 'T', at: 'T', gone: false });
+const A = mk('s:a', 'task-manager'), Bw = mk('w1', 'worker');
+const tagOf = x => ({ hidden: false, _px: x, _py: 300, classList: { toggle(){}, add(){}, remove(){}, contains(){ return false; } }, style: {} });
+const figsMap = new Map([['c:s:a', { key: 'c:s:a', c: A, o: { tag: tagOf(200), doing: tagOf(0), wFull: 120, wChip: 40, hTag: 22 } }],
+                         ['c:w1', { key: 'c:w1', c: Bw, o: { tag: tagOf(500), doing: tagOf(0), wFull: 120, wChip: 40, hTag: 22 } }]]);
+let seen = null;
+const spy = (items) => { seen = items.map(it => !!it.keep); return items.map(() => 'full'); };
+const run = new Function('view', 'cur', 'terrOf', 'figs', 'citizens', 'govFigsHere', 'dropFig', 'plateLayout', 'panelBlocks', 'W', 'H', 'pin', 'clearFigs',
+  __payload.src + '\nreturn syncFigs;')('inside', 'T', () => ({ cx: 0, cz: 0 }), figsMap, [], () => [], () => {}, spy, () => [], 1440, 713, () => {}, () => {});
+const res = {};
+hovered = { t: 'c', id: 'w1' }; selected = null; hoverKeep = true; run(0.016); res.hovered = seen;
+selected = { t: 'c', id: 'w1' }; run(0.016); res.hoveredAndSelected = seen;
+selected = { t: 'c', id: 's:a' }; run(0.016); res.otherSelected = seen;
+hoverKeep = false; selected = null; run(0.016); res.noKeep = seen;
+__out = res;
+""", {"src": src}, required=("hoverKeep", "platePri"))
+        self.assertEqual(out["hovered"], [False, True], "only the hovered person keeps")
+        self.assertEqual(out["hoveredAndSelected"], [False, False], "hovered and also selected (pri 3): no keep")
+        self.assertEqual(out["otherSelected"], [False, True], "another one selected: the hovered one still keeps")
+        self.assertEqual(out["noKeep"], [False, False], "hoverKeep off: nobody keeps")
+
+
 class TestAgentOnItsParentsFloor(unittest.TestCase):
     """Fix round 3, item 5 (main manager's decision): an agent sits near its parent, so an agent whose own repo is another
     floor (its lines carry its own repo) is drawn on its parent's floor: at a desk there, counted there, not on its own."""
