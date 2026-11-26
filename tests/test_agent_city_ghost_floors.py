@@ -175,8 +175,6 @@ class TestGhostFloors(GhostCase):
         self.assertEqual(st.sweep_gone_floors(1061.0), 1)
 
     def test_G8_a_folder_that_cannot_be_looked_at_is_not_gone(self):
-        if os.geteuid() == 0:
-            self.skipTest("root can look anywhere")
         a, b = self.repo("a"), self.repo("b")
         self.write_world([a, b])
         parent = os.path.join(self.base, "repos")   # the folder's parent cannot be looked into
