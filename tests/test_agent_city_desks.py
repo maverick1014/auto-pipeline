@@ -360,6 +360,36 @@ __out = rows;
         self.assertTrue(any(n >= 2 and d >= 2 for _, n, d in out), "a demo manager with two agents at desks: %s" % out)
 
 
+class TestDemoKeepsItsAgents(unittest.TestCase):
+    """#demo keeps showing workers and deputies at desks: its fake agents finish and leave like real ones, so the demo
+    spawner (spawner -> demoCrew) gives each demo manager up to two live agents again, one per call."""
+
+    def test_each_manager_gets_two_agents_back(self):
+        out = sim(r"""
+snap(__payload.view, [__payload.a, __payload.b, __payload.h]);
+settle(2);
+const crew = id => live().filter(c => (c.up || c.lead) === id && !c.doneFlag && isDrawn(c));
+for (let i = 0; i < 6; i++) { demoCrew(); settle(.5); }
+const first = ['s:a', 's:b'].map(id => crew(id).length);
+const roles = [...new Set(live().filter(c => isSub(c)).map(c => c.role))].sort();
+const one = crew('s:a')[0].id;
+apply({ type: 'done', id: one });
+settle(40);
+const afterLeave = crew('s:a').length;
+demoCrew(); settle(.5);
+__out = { first, roles, afterLeave, back: crew('s:a').length, helperCrew: crew('s:h').length };
+""", {"view": view(), "a": agent("s:a", "task-manager", up=GOV), "b": agent("s:b", "task-manager", up=GOV),
+          "h": agent("s:h", "helper", up=GOV)}, required=REQUIRED + ("demoCrew", "isSub"))
+        self.assertEqual(out["first"], [2, 2], "two agents for each manager, no more")
+        self.assertTrue(set(out["roles"]) <= {"worker", "fast-lane-deputy", "merge-deputy"}, out["roles"])
+        self.assertEqual(out["afterLeave"], 1, "a finished one walked out")
+        self.assertEqual(out["back"], 2, "the next call brings the crew back to two")
+        self.assertEqual(out["helperCrew"], 0, "only managers get a crew")
+
+    def test_the_spawner_calls_it(self):
+        self.assertIn("demoCrew(", script_function_source("spawner") or "")
+
+
 class TestUnknownSession(unittest.TestCase):
     """A subagent event for a session the city does not know: as today (no character, no error)."""
 
