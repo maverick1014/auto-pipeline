@@ -582,6 +582,93 @@ __out = { plain, picked, govSel: G() };
         self.assertEqual(out["govSel"], 3)
 
 
+class TestPlateOffScreen(unittest.TestCase):
+    """Fix round (my zoom check): with opts.bounds, an item whose own point (x, y: the head) lies outside the bounds is a
+    person off screen: 'none', and it is not moved (before, its plate was clamped to the screen edge)."""
+
+    def test_off_screen_heads_get_no_plate(self):
+        items = [{"x": -50, "y": 300, "w": 160, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": -9999, "y": -9999, "w": 160, "wChip": 32, "h": 22, "pri": 3},
+                 {"x": 200, "y": 900, "w": 160, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": 10, "y": 300, "w": 160, "wChip": 32, "h": 22, "pri": 0}]
+        out = sim("const items = __payload.items; __out = { modes: plateLayout(items, { bounds: { l: 0, t: 0, r: 390, b: 844 }, blocks: [] }), items };",
+                  {"items": items}, required=("plateLayout",))
+        self.assertEqual(out["modes"], ["none", "none", "none", "full"])
+        self.assertEqual([i["x"] for i in out["items"][:3]], [-50, -9999, 200], "not moved")
+        self.assertEqual(round(out["items"][3]["x"]), 80, "a head on screen near the edge: its plate moves in")
+
+
+class TestSeatCache(unittest.TestCase):
+    """Fix round (main manager's decision 6): agentSeatsOf(terr) keeps its seats object until the people on the floor or
+    the floor plan change: ticks with no change reuse the same object; a join, a leave or a new design rebuilds it."""
+
+    def test_reused_until_something_changes(self):
+        agents = [agent("s:t", "task-manager", up=GOV)] + [agent("w%d" % i, "worker", up="s:t") for i in range(1, 5)]
+        out = sim(r"""
+snap(__payload.view, __payload.agents);
+settle(40);
+const a = agentSeatsOf(__payload.t1); update(.05); const b = agentSeatsOf(__payload.t1); update(.05); const b2 = agentSeatsOf(__payload.t1);
+apply({ type: 'spawn', id: 'w5', role: 'worker', label: 'worker', task: 'city-x Worker 5: new', terr: __payload.t1, up: 's:t' });
+update(.05);
+const c = agentSeatsOf(__payload.t1);
+apply({ type: 'done', id: 'w1' });
+settle(40);
+const d = agentSeatsOf(__payload.t1);
+apply({ type: 'world', world: __payload.view2, change: { kind: 'design', terr: __payload.t1, by: 'designer' } });
+update(.05);
+const e = agentSeatsOf(__payload.t1);
+__out = { same: a === b && b === b2, joined: c !== b2 && c.has('w5'), left: d !== c && !d.has('w1') && !byId('w1'),
+          plan: e !== d, n: [a.size, c.size, d.size, e.size] };
+""", {"view": view(), "view2": view({T1: four_desk_design()}), "t1": T1, "agents": agents},
+            required=REQUIRED + ("agentSeatsOf",))
+        self.assertTrue(out["same"], "no change: the same seats object")
+        self.assertTrue(out["joined"], "a join rebuilds")
+        self.assertTrue(out["left"], "a leave rebuilds")
+        self.assertTrue(out["plan"], "a new design rebuilds")
+        self.assertEqual(out["n"], [4, 5, 4, 4])
+
+
+class TestPlateName(unittest.TestCase):
+    """Fix round (main manager's decision 7): the plate's name does not repeat the type the role chip already says
+    ('审查员 reviewer · city-x PR REVIEW' -> '审查员 · city-x PR REVIEW'); an unknown type keeps its type word as the chip.
+    plateName(c): a session -> nameOf(c); an agent -> its description (the same short form nameOf gives a task, e.g.
+    'Worker 1 · seats'), '' when its description is only its type; two agents of one floor with the same name get the
+    '#<id>' ending nameOf uses."""
+
+    def test_names(self):
+        agents = [agent("s:t", "task-manager", up=GOV, label="city-x Task Manager", task="city-x"),
+                  agent("r1", "other", up=GOV, label="reviewer", task="city-x PR REVIEW"),
+                  agent("m1", "merge-deputy", up=GOV, label="merge-deputy", task="city-x merge"),
+                  agent("w1", "worker", up="s:t", label="worker", task="city-x Worker 1: seats"),
+                  agent("e1", "other", up="s:t", label="Explore", task="find the hook"),
+                  agent("a1", "worker", up="s:t", label="worker", task="worker"),
+                  agent("c1", "other", up=GOV, label="check-deputy", task="city-y UI CHECK"),
+                  agent("c2", "other", up=GOV, label="check-deputy", task="city-y UI CHECK")]
+        out = sim(r"""
+snap(__payload.view, __payload.agents);
+settle(2);
+const ids = ['s:t', 'r1', 'm1', 'w1', 'e1', 'a1', 'c1', 'c2'];
+__out = { names: ids.map(id => plateName(byId(id))), words: ids.map(id => plateWord(byId(id))), tm: nameOf(byId('s:t')) };
+""", {"view": view(), "agents": agents}, required=REQUIRED + ("plateName",))
+        n = dict(zip(["s:t", "r1", "m1", "w1", "e1", "a1", "c1", "c2"], out["names"]))
+        w = dict(zip(["s:t", "r1", "m1", "w1", "e1", "a1", "c1", "c2"], out["words"]))
+        self.assertEqual(n["s:t"], out["tm"], "a session: as before")
+        self.assertEqual((w["r1"], n["r1"]), ("审查员", "city-x PR REVIEW"))
+        self.assertEqual((w["m1"], n["m1"]), ("合并副手", "city-x merge"))
+        self.assertEqual((w["w1"], n["w1"]), ("工人", "Worker 1 · seats"))
+        self.assertEqual((w["e1"], n["e1"]), ("Explore", "find the hook"))
+        self.assertEqual(n["a1"], "", "a description that is only the type: the chip alone")
+        self.assertNotEqual(n["c1"], n["c2"])
+        self.assertTrue(n["c1"].startswith("city-y UI CHECK") and n["c2"].startswith("city-y UI CHECK"), (n["c1"], n["c2"]))
+        labels = {a["id"]: a["label"] for a in agents}
+        for k, v in n.items():
+            if k != "s:t":
+                self.assertFalse(v.startswith(labels[k] + " "), "%s repeats its type: %s" % (k, v))
+
+    def test_the_plate_uses_it(self):
+        self.assertIn("plateName(", script_function_source("pinOv") or "")
+
+
 PROJECT_JS = r"""
 // the page's default floor view (resetView + fitDist + FOV), projected the way three.js does it
 function project(W, H, pts){

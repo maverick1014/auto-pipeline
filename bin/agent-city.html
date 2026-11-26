@@ -1652,16 +1652,23 @@ function subBadge(rowId){
   for (const c of subsOf(rowId)) { if (/deputy$/.test(c.role)) d++; else w++; }
   return [w ? 'worker ×' + w : '', d ? 'deputy ×' + d : ''].filter(Boolean).join(' · ');
 }
-/* plateLayout(items) -> 'full' | 'chip' | 'none' per item, in input order. An item is a name plate on screen { x, y (its
-   bottom centre, px), w (the full plate), wChip (the role chip alone), h, pri }. Higher pri first; equal pri: the larger y
-   (nearer the viewer) first, then input order. The first is always 'full'; each next one is 'full' when its full box meets
-   no box already shown, else 'chip' when its chip box meets none, else 'none'. No two shown boxes overlap. */
-function plateLayout(items){
-  const n = items.length, order = [], out = new Array(n), shown = [];
+/* plateLayout(items, opts) -> 'full' | 'chip' | 'none' per item, in input order. An item is a name plate on screen { x, y (its
+   bottom centre, px), w (the full plate), wChip (the role chip alone), h, pri }. opts.bounds { l, t, r, b }: first each item
+   is moved (x and y changed in place) the least that keeps its full box inside; opts.blocks [[l, t, r, b], ...]: boxes
+   already taken (panels): no shown plate meets one, the first included. Higher pri first; equal pri: the larger y (nearer
+   the viewer) first, then input order. The first is always 'full' (unless a block is in the way); each next one is 'full'
+   when its full box meets no box shown, else 'chip' when its chip box meets none, else 'none'. */
+function plateLayout(items, opts){
+  const n = items.length, order = [], out = new Array(n), blocks = (opts && opts.blocks) || [], bd = opts && opts.bounds, shown = [];
+  if (bd) for (const it of items) {
+    it.x = Math.max(bd.l + it.w / 2, Math.min(bd.r - it.w / 2, it.x));
+    it.y = Math.max(bd.t + it.h, Math.min(bd.b, it.y));
+  }
   for (let i = 0; i < n; i++) order.push(i);
   order.sort((a, b) => ((items[b].pri || 0) - (items[a].pri || 0)) || (items[b].y - items[a].y) || (a - b));
   const box = (it, w) => [it.x - w / 2, it.y - it.h, it.x + w / 2, it.y];
-  const meets = b => { for (const q of shown) if (Math.min(q[2], b[2]) > Math.max(q[0], b[0]) && Math.min(q[3], b[3]) > Math.max(q[1], b[1])) return true; return false; };
+  const hit = (q, b) => Math.min(q[2], b[2]) > Math.max(q[0], b[0]) && Math.min(q[3], b[3]) > Math.max(q[1], b[1]);
+  const meets = b => { for (const q of shown) if (hit(q, b)) return true; for (const q of blocks) if (hit(q, b)) return true; return false; };
   for (const i of order) {
     const it = items[i], full = box(it, it.w), chip = box(it, it.wChip);
     if (!meets(full)) { shown.push(full); out[i] = 'full'; }
@@ -1669,6 +1676,14 @@ function plateLayout(items){
     else out[i] = 'none';
   }
   return out;
+}
+/* platePri(f) -> how early a head tag is laid out: the selected one 3, the one under the pointer 2, a session or an area
+   manager 1, an agent 0. f is a figure: { c } a person, { gv: { terr } } an area manager. */
+function platePri(f){
+  const c = f.c, terr = f.gv ? f.gv.terr : '';
+  if (selected && ((selected.t === 'c' && c && selected.id === c.id) || (selected.t === 'gov' && f.gv && (selected.terr || govTerr) === terr))) return 3;
+  if (hovered && ((hovered.t === 'c' && c && hovered.id === c.id) || (hovered.t === 'gov' && f.gv && hovered.terr === terr))) return 2;
+  return c && isSub(c) ? 0 : 1;
 }
 /* the area manager's chair, and the spot a visitor stands at across his desk (sim ground of territory t) */
 function hallStand(t){ const s = toSim(t, MGR_SEAT); s.yaw = MGR_SEAT.yaw; return s; }
@@ -4574,6 +4589,20 @@ function pinOv(f, st){
 function govFigsHere(){
   return governorFigures().filter(g => g.at === cur && !g.inLift);
 }
+/* panelBlocks() -> the boxes of the panels over the floor view, in the overlay's coordinates; read at most 4 times a second */
+let panelBox = { at:-1e9, list:[] };
+function panelBlocks(){
+  const now = performance.now();
+  if (now - panelBox.at < 250) return panelBox.list;
+  const r0 = ovRoot.getBoundingClientRect(), list = [];
+  for (const el of document.querySelectorAll('#floorSign, #rail, #rail-tab, #follow, #proto, #lift, .cam button')) {
+    if (el.hidden) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) list.push([r.left - r0.left, r.top - r0.top, r.right - r0.left, r.bottom - r0.top]);
+  }
+  panelBox = { at:now, list };
+  return list;
+}
 function syncFigs(dt){
   const t = view === 'inside' && cur ? terrOf(cur) : null;
   if (!t) { if (figs.size) clearFigs(); return; }
@@ -4610,22 +4639,22 @@ function syncFigs(dt){
     pinOv(f, st);
   }
 
-  // the head tags never overlap (plateLayout, once per frame): the selected person's first, then the one under the pointer
+  // the head tags never overlap, stay on the stage and off the panels (plateLayout, once per frame): the selected person's
+  // first, then the one under the pointer, then sessions and area managers, then agents
   const items = [], ovs = [];
   for (const f of figs.values()) {
     const o = f.o;
     if (!o || o.tag.hidden || !(o.wFull > 0)) continue;
-    const c = f.c, terr = f.gv ? f.gv.terr : '';
-    const isSel = !!(selected && ((selected.t === 'c' && c && selected.id === c.id) || (selected.t === 'gov' && f.gv && (selected.terr || govTerr) === terr)));
-    const isHov = !!(hovered && ((hovered.t === 'c' && c && hovered.id === c.id) || (hovered.t === 'gov' && f.gv && hovered.terr === terr)));
-    items.push({ x:o.tag._px, y:o.tag._py, w:o.wFull, wChip:o.wChip, h:o.hTag || 22, pri:isSel ? 2 : isHov ? 1 : 0 });
+    items.push({ x:o.tag._px, y:o.tag._py, w:o.wFull, wChip:o.wChip, h:o.hTag || 22, pri:platePri(f) });
     ovs.push(o);
   }
-  const modes = plateLayout(items);
+  const bounds = { l:4, t:4, r:W - 4, b:H - 4 }, blocks = panelBlocks();
+  const modes = plateLayout(items, { bounds, blocks });
   for (let i = 0; i < ovs.length; i++) {
     const t = ovs[i].tag;
     t.classList.toggle('chip', modes[i] === 'chip');
     if (modes[i] === 'none') t.hidden = true;
+    else pin(t, items[i].x, items[i].y, true);
   }
 }
 const DEMO_WORLD = {"v": 2, "repos": [{"id": "4d5d7e95", "name": "auto-pipeline", "here": true, "n": 0}, {"id": "8329562e", "name": "v4-plus", "here": true, "n": 1}, {"id": "7b94683e", "name": "v4-office", "here": true, "n": 2}, {"id": "0a8b5440", "name": "v3", "here": true, "n": 3}], "floors": ["4d5d7e95", "8329562e", "7b94683e"], "designs": {"8329562e": {"v": 1, "name": "\u6536\u94f6\u53f0\u98ce\u683c", "why": "POS \u6536\u94f6\u7684 repo", "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0", "desk": "#EFDAB5", "desk_leg": "#BBA27C", "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"}, "decor": ["cashier", "none", "goods"]}, "7b94683e": {"v": 2, "name": "\u6e05\u723d\u84dd\u767d", "why": "\u540e\u53f0\u529e\u516c\uff0c\u5e72\u51c0\u660e\u4eae", "colors": {"accent": "#3B82C4", "carpet": "#DDD6C7", "manager_floor": "#C9B79A", "pantry_floor": "#E3DED2", "desk": "#F4F7FB", "desk_leg": "#9FB3C8", "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"}, "materials": {"carpet": "wood", "manager_floor": "herringbone", "pantry_floor": "checker"}, "layout": {"items": [{"k": "tm", "x": -5.4, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -3.0, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -5.4, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -3.0, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -0.6, "z": 0.2, "yaw": 90}, {"k": "helper", "x": 3.4, "z": -1.2, "yaw": 0}, {"k": "helper", "x": 5.4, "z": -1.2, "yaw": 0}, {"k": "meet", "x": 3.8, "z": 3.6, "yaw": 0}, {"k": "plant", "x": -1.2, "z": -3.8, "yaw": 0, "s": 1}, {"k": "plant", "x": -0.8, "z": 5.4, "yaw": 0, "s": 0.8}, {"k": "decor", "id": "bookshelf", "x": -5.2, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "plants", "x": -1.6, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "clock", "x": 6.45, "z": 0.8, "yaw": 270}]}}}, "asked": ["8329562e", "7b94683e"]};
