@@ -49,6 +49,7 @@ A green top-up is recorded on the tip together with the full run it stands on ("
   - 3. The top-up also runs every tests/test_*.py whose source names a changed text file (its path, its base name, `<folder>/*<ext>`, `<parent>/*/<base name>`); plain text search, and the record check needs this set too.
 - Decision (c) on the speed (2026-11-26):
   - One run in parallel: after the per-file probe, the top-up runs every planned file in ONE `related_cmd` call, each path one quoted word; the exit code decides, the failing tests are read from the output.
+  - This repo's `related_cmd` is the parallel runner (`python3 tests/run2.py {tests}`), the same one the full run uses; the failing tests are read from its indented FAIL/ERROR lines.
   - Never slower than the full run: with `tests/timings.txt`, planned seconds above half (`TOPUP_MAX_SHARE`) of the summed seconds of every file: no top-up, "the full run is needed: the top-up would not be faster (<n> of <m> s)"; no timing data: no such check.
 
 ## Examples (the failing tests come from these)

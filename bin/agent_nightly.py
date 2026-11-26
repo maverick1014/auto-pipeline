@@ -911,7 +911,7 @@ def due(cwd):
 
 # ------------------------------------------------------------------ the run
 
-UNITTEST = re.compile(r"^(?:FAIL|ERROR): (\S.*)$")
+UNITTEST = re.compile(r"^\s*(?:FAIL|ERROR): (\S.*)$")     # run2.py prints them indented
 PYTEST = re.compile(r"^(?:FAILED|ERROR) (\S*(?:::|\.py)\S*)")
 
 

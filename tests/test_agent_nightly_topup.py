@@ -528,6 +528,23 @@ class TestOneRunNeverSlower(TopUpCase):
         self.assertEqual(calls, [["tests/test_a.py", "tests/test_p.py", "tests/test_q.py"]])
         self.assertIn("test_x_red", self.nightly("--failures", env=self.env()).stdout)
 
+    def test_a_through_run2_a_failing_file_is_red_and_named(self):
+        # this repo's related_cmd is `python3 tests/run2.py {tests}`: run2 prints its failures indented
+        with open(os.path.join(HERE, "run2.py")) as fh:
+            runner = fh.read()
+        self.commit({"agent_repo.conf": CONF % "python3 tests/run2.py {tests}", "tests/run2.py": runner}, "run2")
+        self.full_green()
+        self.commit({"tests/test_p.py": PASSING, "tests/test_q.py": FAILING}, "two tests")
+        st = self.start()
+        self.assertEqual((st["kind"], st["result"]), ("top-up", "red"), st)
+        self.assertTrue(any("test_x_red" in f for f in st["failed"]), st)
+        self.assertIn("test_x_red", self.nightly("--failures", env=self.env()).stdout)
+
+    def test_a_this_repo_runs_related_tests_through_run2(self):
+        with open(os.path.join(HERE, "..", "agent_repo.conf")) as fh:
+            line = [l for l in fh.read().splitlines() if l.startswith("related_cmd=")][-1]
+        self.assertEqual(line, "related_cmd=python3 tests/run2.py {tests}")
+
     def timed(self, a, x, mark):
         self.commit({"tests/timings.txt": "# seconds\ttests\tfile\n%s\t1\ttest_a\n%s\t1\ttest_x\n%s\t1\ttest_mark\n"
                                           % (a, x, mark)}, "timings")
