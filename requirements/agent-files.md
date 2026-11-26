@@ -27,8 +27,13 @@ Owner, 2026-11-26, his words:
 
 - The choice is one fact of the repo, the same for everyone in it, so it lives in the committed `agent_repo.conf`: `task_files = local` (default), `ideas`, or `ideas,todo`.
 - A cloud repo must share both: the cloud pack sets `task_files = ideas,todo`.
-- "Local" = git-ignored and untracked: no worktree gets a copy, no merge touches it, a reset cannot wipe it.
-- "In git" = the script that writes the file also commits that change (that file only, one small commit). A file in git is never left changed and uncommitted.
+- No agent file is tracked on a code branch (cloud is the one exception, below). In the main checkout every agent file is git-ignored and untracked: no worktree gets a copy, no merge touches it, a reset cannot wipe it.
+- "Local" = it stays only there.
+- "In git" = the script that writes the file also commits it to the DATA BRANCH `ap-data` of the repo and pushes it at once. The data branch holds only agent files; it is written with git plumbing (as `bin/agent_release.py` writes the release branch), never checked out, never merged into a code branch, so it causes no merge conflict with code, no deploy and no stale copy. `git log ap-data` is the history: who finished, added, took or assigned what.
+- Why not the code branch: each person works on his own working branch (`ap-main-<name>`), so a todo committed there is seen by the others only after a publish; and a commit on the production branch starts a deploy. The owner's case 3 needs the status the moment a task is taken.
+- A push that fails (offline, refused) never blocks the work: the commit stays, the next write pushes it; the command says so in one line.
+- Before a file in git is read for a decision (offer a task, take, assign, start, the board in a shared repo) the data branch is fetched and merged into the local file: finished records and ideas by union (no line is lost), todo lines by task name (the newest change of a task wins; a finished task is dropped).
+- Cloud: a cloud session can push only its own branch, so there the pack keeps the task files tracked in the tree and committed with the work, as today.
 
 ## 3. A name on every record
 
@@ -60,7 +65,7 @@ One more fact in `agent_repo.conf`: `task_take = owner` (default) or `anyone`.
 
 ## 5. Moving an existing repo
 
-- One command, run in the main checkout, takes a repo from "tracked and changed" to its mode: files that become local are taken out of git with their content kept (a copy goes into the git folder first); files that stay in git are committed. It prints what it did per file. Run twice, the second run changes nothing.
+- One command, run in the main checkout, takes a repo from "tracked and changed" to its mode: every agent file is taken out of the code branch with its content kept (a copy goes into the git folder first), the ignore lines are written, and the files that are in git by section 2 go onto the data branch (created when missing, pushed). It prints what it did per file. Run twice, the second run changes nothing.
 - In another clone of that repo the same command settles the pull: a local file removed upstream keeps its content there too.
 - Setup in a new repo writes the ignore lines for the local files and the default facts.
 - THIS repo is moved by the main manager in the main checkout after the merge. The task branch must not delete, untrack or commit this repo's own `agent_*.txt` files: a merge into a checkout that has changed them would be refused.
@@ -74,8 +79,9 @@ One more fact in `agent_repo.conf`: `task_take = owner` (default) or `anyone`.
 
 - Setup in a new repo: `git status` does not list `agent_todo.txt`, `agent_ideas.txt`, `agent_worktree.txt`; `git check-ignore` names them. `agent_completed.txt` is not ignored.
 - A repo that tracks `agent_todo.txt` with 3 uncommitted lines: after the move command the file still has those lines, `git ls-files agent_todo.txt` is empty, and a new worktree has no `agent_todo.txt`.
-- `todo done` in a default repo: `agent_completed.txt` has the new record and `git status` shows it clean (the script committed it); the commit holds that file only.
-- `task_files = ideas`: `idea add` commits `agent_ideas.txt`; `todo add` commits nothing.
+- `todo done` in a default repo: `agent_completed.txt` has the new record, `git status` of the code branch is clean, and the tip of `ap-data` holds the same file content; HEAD and the index of the checkout did not move.
+- `task_files = ideas`: `idea add` puts a new commit on `ap-data`; `todo add` puts none.
+- The remote refuses the push of `ap-data`: `todo done` still succeeds and prints one line; the next write pushes both commits.
 - The cloud pack leaves `task_files = ideas,todo`.
 - Todo in git, `task_take = owner`: Maverick adds task t. In King Lun's clone a dispatch of t is refused and the line names Maverick. After Maverick runs `todo assign t "King Lun"` and King Lun pulls, it is allowed.
 - King Lun runs `todo assign t x` on Maverick's task: refused.
