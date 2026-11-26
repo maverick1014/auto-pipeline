@@ -1667,7 +1667,7 @@ function subBadge(rowId){
    outside the bounds is 'none' and not moved. opts.blocks [[l, t, r, b], ...]: the panels, never covered. Order: higher
    pri first; equal pri: the larger y (nearer the viewer) first, then input order. Three steps:
    1. pri >= 2: 'full' first, starting from where its plate was laid out last frame (px, py) when given; a panel or an
-      earlier selected / hovered plate in the way moves it the least way out (down, left or right) inside the bounds.
+      earlier selected / hovered plate in the way: it takes the nearest free spot in any direction inside the bounds.
    2. everyone else: a chip over its head; else nudged left or right by 0.6 chip widths, else one row up (h + 2); the first
       spot that meets no panel and no box laid out before; none fits: 'none'.
    3. in order, a chip becomes 'full' when its full box (with its doing line) over its head meets no panel and no other box.
@@ -1699,19 +1699,19 @@ function plateLayout(items, opts){
     // it starts where its plate was laid out last frame (px, py), so a hovered chip stays under the pointer
     let p = clampTo(ew, eh, it.px != null ? it.px : heads[i].x, it.py != null ? it.py : heads[i].y);
     const taken = c => blocks.some(q => hit(q, fullBox(it, c.x, c.y))) || boxes.some(q => q && hit(q, fullBox(it, c.x, c.y), GAP));   // the panels, and the selected / hovered laid out before (GAP apart)
-    for (let k = 0; k < 12; k++) {
-      const me = fullBox(it, p.x, p.y);
-      let blk = blocks.find(q => hit(q, me)), g = 0;
-      if (!blk) { blk = boxes.find(q => q && hit(q, me, GAP)); g = GAP; }
-      if (!blk) break;
+    if (!inside(ew, eh, p) || taken(p)) {   // the nearest free spot, in any direction: candidates aligned with the edges of the panels and plates, and of the bounds
+      const E = 1e-6, xs = [p.x], ys = [p.y];
+      if (bd) { xs.push(bd.l + ew / 2, bd.r - ew / 2); ys.push(bd.t + eh, bd.b); }
+      for (const q of blocks) { xs.push(q[0] - ew / 2 - E, q[2] + ew / 2 + E); ys.push(q[1] - E, q[3] + eh + E); }
+      for (const q of boxes) if (q) { xs.push(q[0] - ew / 2 - GAP - E, q[2] + ew / 2 + GAP + E); ys.push(q[1] - GAP - E, q[3] + eh + GAP + E); }
       let best = null, bd2 = 1e18;
-      for (const c of [{ x:p.x, y:blk[3] + eh + g }, { x:blk[0] - ew / 2 - g, y:p.y }, { x:blk[2] + ew / 2 + g, y:p.y }]) {
-        if (!inside(ew, eh, c) || taken(c)) continue;
-        const d = (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y);
-        if (d < bd2) { bd2 = d; best = c; }
+      for (const x of xs) for (const y of ys) {
+        const d = (x - p.x) * (x - p.x) + (y - p.y) * (y - p.y);
+        if (d >= bd2) continue;
+        const c = { x, y };
+        if (inside(ew, eh, c) && !taken(c)) { bd2 = d; best = c; }
       }
-      if (!best) break;
-      p = best;
+      if (best) p = best;
     }
     it.x = p.x; it.y = p.y; out[i] = 'full'; boxes[i] = fullBox(it, p.x, p.y);
   }
