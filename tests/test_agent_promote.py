@@ -647,6 +647,53 @@ class TestApprovalPublish(PromoteCase):
         self.assertIn('| question: "%s"' % q, r.stdout)
 
 
+class TestPublishRecord(PromoteCase):
+    """FIX ORDER 1 R4 (TELL cdacc0c5): the words that moved production stay on record in agent_state.txt."""
+
+    def state(self):
+        path = os.path.join(self.repo.dir, "agent_state.txt")
+        return open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+
+    def test_r4_the_working_branch_publish_is_stored(self):
+        self.green()
+        r = self.promote()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        want = ('OWNER WORDS publish %s -> main %s: "yes ship it to production" (typed 2026-11-26 08:40) read as: '
+                'publish the working branch to production | ' % (self.wb, self.tip[:7]))
+        self.assertTrue(any(l.startswith(want) for l in self.state().splitlines()), self.state())
+
+    def test_r4_a_refused_publish_stores_nothing(self):
+        self.green(result="red")
+        self.assertEqual(self.promote().returncode, 1)
+        self.assertNotIn("OWNER WORDS", self.state())
+
+    def test_r4_a_direct_publish_is_stored_too(self):
+        # the task's own record ends at todo done; this line stays
+        b = TestF1DirectPath.branch_from_main(self, "feat-r")
+        self.ready_direct(b, b)
+        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.git("fetch", "-q", "origin")
+        sha = self.git("rev-parse", "origin/main")[:7]
+        want = 'OWNER WORDS publish %s -> main %s: "%s can go live straight after done" (typed 2026-11-26 08:40) ' \
+               'read as: publish %s to production | ' % (b, sha, b, b)
+        self.assertTrue(any(l.startswith(want) for l in self.state().splitlines()), self.state())
+
+    def test_r3_a_relayed_publish_is_verified_in_the_sender_repo(self):
+        log = os.path.join(self.repo.base, "verify.log")
+        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\n"
+                                   "echo 'OWNER ORDER verified ~/.claude/projects/-r/s1.jsonl 2026-11-26 08:40'\n" % log)
+        sender = os.path.join(self.repo.base, "sender-repo")
+        os.makedirs(sender)
+        self.green()
+        r = self.promote("--relayed-from", sender)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(log) as fh:
+            args = fh.read().split("\n")
+        self.assertEqual(args[args.index("--repo") + 1], sender)
+        self.assertIn("| relayed from %s" % sender, r.stdout)
+
+
 class TestG15Gather(PromoteCase):
     def test_a_missing_worktree_is_named(self):
         self.git("fetch", "-q", "origin")

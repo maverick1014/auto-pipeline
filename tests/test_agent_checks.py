@@ -1396,3 +1396,108 @@ class TestApprovalPrinted(ApprovalCase):
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("OWNER SIGN: pass not verified, not accepted", r.stdout.splitlines())
+
+
+# ---------------------------------------------------------------- FIX ORDER 1 (TELL cdacc0c5) R2, R3
+
+@only_own
+class TestTodoTarget(ApprovalCase):
+    """R2: a yes that comes after the task was added: `todo target <task> production` keeps the task instance."""
+
+    def target(self, *extra):
+        return self.af("todo", "target", "t", "production", *extra)
+
+    def test_r2_the_line_keeps_its_instance(self):
+        self.ok("todo", "stage", "t", "workers")
+        self.ok("check", "t", "BUILD", "pass", "--by", "tm", "--evidence", "ok")
+        before = self.fields("t")
+        r = self.target("--owner-quote", "the footer one can go live", "--means", "publish t (the footer fix) to production")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        after = self.fields("t")
+        self.assertEqual([f for f in after if not f.startswith("target ")], [f for f in before if not f.startswith("target ")])
+        self.assertIn("target production", after)
+        rec = self.words()["t"]["publish"]
+        self.assertEqual((rec["quote"], rec["means"]), ("the footer one can go live", "publish t (the footer fix) to production"))
+
+    def test_r2_a_working_target_becomes_production(self):
+        self.ok("todo", "add", "w", "small", "the footer", "10", "--target", "working")
+        self.ok("todo", "target", "w", "production", "--owner-quote", "the footer one can go live",
+                "--means", "publish w to production")
+        f = self.fields("w")
+        self.assertIn("target production", f)
+        self.assertNotIn("target working", f)
+
+    def test_r2_the_check_lines_still_count(self):
+        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
+            self.ok("check", "t", b, "pass", "--by", "tm", "--evidence", "ok")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Review", "--evidence", "read it")
+        self.ok("todo", "target", "t", "production", "--owner-quote", "2. need to publish direct after done",
+                "--means", "publish task 2 (t) to production")
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn('OWNER WORDS publish: "2. need to publish direct after done" (typed 2026-11-26 08:40) read as: '
+                      'publish task 2 (t) to production', r.stdout.splitlines())
+
+    def test_r2_refusals_change_nothing(self):
+        before = self.todo()
+        for args in (("todo", "target", "t", "production", "--owner-quote", "the footer one can go live"),   # no --means
+                     ("todo", "target", "nope", "production", "--owner-quote", "x can go live", "--means", "publish x"),
+                     ("todo", "target", "t", "staging", "--owner-quote", "the footer one can go live", "--means", "m"),
+                     ("todo", "target", "t", "production")):
+            with self.subTest(args=args):
+                r = self.af(*args)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho 'not found'\nexit 1\n")
+        r = self.target("--owner-quote", "the footer one can go live", "--means", "publish t to production")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(self.todo(), before)
+        self.assertNotIn("t", self.words())
+
+
+@only_own
+class TestRelayedFrom(ApprovalCase):
+    """R3: a relayed owner order is verified where he typed it (the sender's repo) and the record says so."""
+
+    def setUp(self):
+        super().setUp()
+        self.sender = os.path.join(self.repo.base, "sender-repo")
+        os.makedirs(self.sender)
+
+    def repo_arg(self, args):
+        return args[args.index("--repo") + 1]
+
+    def test_r3_todo_add_verifies_in_the_sender_repo(self):
+        r = self.add_p("--owner-quote", "merge the export fix to main after done", "--means", "publish p to production",
+                       "--relayed-from", self.sender)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.repo_arg(self.calls()[-1]), self.sender)
+        self.assertEqual(self.words()["p"]["publish"]["relayed_from"], self.sender)
+
+    def test_r3_the_gate_prints_where_he_typed_it(self):
+        self.ok("todo", "checks", "t", "UI CHECK,OWNER SIGN")
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "skip the ui check for t please",
+                "--means", "leave out UI CHECK for t", "--relayed-from", self.sender)
+        self.assertEqual(self.repo_arg(self.calls()[-1]), self.sender)
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes, the new roles are fine",
+                "--means", "sign the new roles of t", "--relayed-from", self.sender)
+        self.assertIn("| relayed from: %s |" % self.sender, self.state().strip().splitlines()[-1])
+        n = len(self.calls())
+        r = self.gate()
+        self.assertIn('OWNER WORDS skip UI CHECK: "skip the ui check for t please" (typed 2026-11-26 08:40) read as: '
+                      'leave out UI CHECK for t | relayed from %s' % self.sender, r.stdout.splitlines())
+        self.assertIn('OWNER WORDS OWNER SIGN: "yes, the new roles are fine" (typed 2026-11-26 08:40) read as: '
+                      'sign the new roles of t | relayed from %s' % self.sender, r.stdout.splitlines())
+        self.assertTrue(any(self.repo_arg(c) == self.sender for c in self.calls()[n:]), "the sign is verified again there")
+
+    def test_r3_todo_target_takes_it_too(self):
+        self.ok("todo", "target", "t", "production", "--owner-quote", "the footer one can go live", "--means",
+                "publish t to production", "--relayed-from", self.sender)
+        self.assertEqual(self.repo_arg(self.calls()[-1]), self.sender)
+
+    def test_r3_bad_uses_are_refused(self):
+        for extra in (("--owner-quote", "merge the export fix to main", "--means", "publish p", "--relayed-from", "rel/path"),
+                      ("--means", "publish p", "--relayed-from", self.sender)):
+            with self.subTest(extra=extra):
+                r = self.add_p(*extra)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertNotIn("p | ", self.todo())

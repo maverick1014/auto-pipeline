@@ -1812,6 +1812,12 @@ class TestThisRepo(unittest.TestCase):
         self.assertEqual(c["version"], "1")
         self.assertEqual(c["related_cmd"], "python3 -m unittest {modules}")
         self.assertEqual(c["full_cmd"], "python3 tests/run2.py")   # approval-design F: 7.6 min, not 47
+        # FIX ORDER 1 R5: the full run is heavy by a seeded weight, so MODULE TESTS of a deps change goes to the net
+        sys.path.insert(0, os.path.join(ROOT, "bin"))
+        import agent_level
+        m = agent_level.WEIGHT_RE.match(c.get("weight.full", ""))
+        self.assertTrue(m, c.get("weight.full"))
+        self.assertTrue(agent_level.is_heavy((int(m.group(1)), int(m.group(2)))))
         self.assertTrue(c["build_cmd"].startswith("python3 -m compileall -q"))
         # test-slim-2: the plugin layout pins (TestPluginFolders, TestPluginManifest, ...) live in test_rules_text.py
         self.assertIn("tests/test_rules_text.py", c["guard_tests"].split(","))
@@ -3728,3 +3734,48 @@ class TestH3ToH5(unittest.TestCase):
 
     def test_h5_the_local_branch_before_minus_d(self):
         self.assertIn("git merge-base --is-ancestor <branch> origin/<production branch>", read("agents", "merge-deputy.md"))
+
+
+class TestFixOrder1Texts(unittest.TestCase):
+    """FIX ORDER 1 (TELL cdacc0c5) R2, R3, R6: the rule text of the late yes, the relayed order and the wording."""
+
+    def r8(self):
+        return principles_between("R8. ", "## B. Work")
+
+    def test_r2_the_late_yes_case(self):
+        r8 = self.r8()
+        for phrase in ("todo target <task> production", "rebase --onto", "PR REVIEW runs again at the new head",
+                       "depends on other unreleased work"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, r8)
+        self.assertIn("todo target", read(*DISPATCH))
+
+    def test_r3_the_relayed_order(self):
+        self.assertIn("--relayed-from", principles_between("W12. ", "W13. "))
+        self.assertIn("--relayed-from", self.r8())
+
+    def test_r6_no_words_that_name_the_publish(self):
+        for parts in (DISPATCH, MERGE, ("PRINCIPLES.md",)):
+            with self.subTest(file="/".join(parts)):
+                self.assertNotIn("name the publish", read(*parts))
+
+    def test_r6_the_others_wait_on_the_working_branch(self):
+        self.assertIn("the others merge into the working branch and wait there for his review", self.r8())
+
+    def test_r6_publish_next_week_is_parked(self):
+        line = next(l for l in self.r8().splitlines() if "publish next week" in l)
+        self.assertIn("OWNER TODO", line)
+
+    def test_r6_a_hook_points_to_a_skill_or_a_rule(self):
+        text = read("PRINCIPLES.md")
+        self.assertIn("only points to a skill or a rule", text)
+        line = next(l for l in text.splitlines() if "bin/agent-keyword.sh" in l and "UserPromptSubmit" in l)
+        self.assertIn("skill or rule", line)
+
+    def test_r6_the_check_usage_names_the_approval_options(self):
+        head = read("bin", "agent-file.sh").split("\nset ")[0]
+        line = next(l for l in head.splitlines() if "agent-file.sh check " in l)
+        for opt in ("--owner-quote", "--means", "--question"):
+            with self.subTest(opt=opt):
+                self.assertIn(opt, line)
+

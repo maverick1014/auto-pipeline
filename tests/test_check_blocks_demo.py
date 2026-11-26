@@ -22,6 +22,7 @@ WALKS = ("===== 1 text only: one locale value =====",
          "===== walk 3: an urgent small production task",
          "===== walk 4: the owner's real state",
          "===== walk 5: the working branch published on his words =====",
+         "===== walk 6: his yes comes after the task was added (a task of the working branch moves to production) =====",
          "===== 10 FIX ORDERS 6 and 10",
          "===== done: everything above ran in ")
 
@@ -32,7 +33,10 @@ OWNER_WORDS = ('OWNER WORDS publish: "2. need to publish direct after done" (typ
                'OWNER WORDS skip RELATED TESTS: "skip the related tests for g" (typed ',
                'OWNER WORDS skip BUILD: "1A" (typed ',
                '| question: "1. Leave out BUILD for g (a text-only change)? A. yes, leave it out B. no, run it"',
-               'OWNER WORDS OWNER SIGN: "yes, drop the column legacy_note" (typed ')
+               'OWNER WORDS OWNER SIGN: "yes, drop the column legacy_note" (typed ',
+               'OWNER WORDS publish ap-main-demo -> main ',
+               'OWNER WORDS publish: "the footer one can go live straight after it is done" (typed ',
+               'production has the footer and not the other task: footer = 2 / other-not-there')
 
 
 class TestTheDemoRuns(unittest.TestCase):

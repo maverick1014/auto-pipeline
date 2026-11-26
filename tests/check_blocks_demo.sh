@@ -130,10 +130,11 @@ launch() {   # launch <task> <subagent type> <description>: the main manager's A
     "$M" "$1$RANDOM" "$3" "$2" | (cd "$M" && env -u AGENT_ROLE CLAUDE_PID=$$ "$P/bin/agent-guard.sh" >/dev/null 2>&1)   # the main manager's session has no AGENT_ROLE
 }
 CFG="$T/claude-home"; mkdir -p "$CFG"; export CLAUDE_CONFIG_DIR="$CFG"   # the owner's transcripts live here (G13)
-owner_said() {   # owner_said <words>: the owner types <words> in a session of repo $M (the real verify reads it)
-  python3 - "$CFG" "$M" "$1" <<'PY'
+owner_said() {   # owner_said <words> [assistant]: the owner types <words> in a session of repo $M (the real verify
+  # reads it); with "assistant" the main manager's reply line instead (a question it asked him)
+  python3 - "$CFG" "$M" "$1" "${2:-owner}" <<'PY'
 import json, os, re, sys, time, uuid
-cfg, repo, words = sys.argv[1:4]
+cfg, repo, words, who = sys.argv[1:5]
 for path in {repo, os.path.realpath(repo)}:
     d = os.path.join(cfg, "projects", re.sub(r"[^A-Za-z0-9]", "-", path))
     os.makedirs(d, exist_ok=True)
@@ -141,6 +142,10 @@ for path in {repo, os.path.realpath(repo)}:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()), "userType": "external",
             "sessionId": "demo-owner", "version": "2.1.331", "message": {"role": "user", "content": words},
             "origin": {"kind": "human"}, "promptSource": "typed", "turnOrigin": "human"}
+    if who == "assistant":
+        line = {"parentUuid": None, "isSidechain": False, "type": "assistant", "uuid": str(uuid.uuid4()),
+                "timestamp": line["timestamp"], "sessionId": "demo-owner", "version": "2.1.331",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": words}]}}
     with open(os.path.join(d, "demo-owner.jsonl"), "a") as fh:
         fh.write(json.dumps(line) + "\n")
 PY
@@ -267,12 +272,38 @@ expect 1 "$P/bin/agent-promote.sh" --owner-quote "ship the whole working branch 
 echo "-- his words and what the main manager read from them: published, and the pair is printed"
 expect 0 "$P/bin/agent-promote.sh" --owner-quote "publish everything to production now" --means "publish the working branch ap-main-demo to production"
 echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
+echo "-- FIX ORDER 1 R4: the words that moved production stay in agent_state.txt:"
+grep -o 'OWNER WORDS publish ap-main-demo -> main [0-9a-f]*: .*' "$M/agent_state.txt" || FAILS="$FAILS | walk 5 no stored publish line"
+cd "$T"
+
+say "walk 6: his yes comes after the task was added (a task of the working branch moves to production)"
+flowrepo walk6; cd "$M"
+echo "-- another task's merge sits on the working branch, not released yet"
+printf 'z = 1\n' > "$M/other.py"; git -C "$M" add other.py; git -C "$M" commit -qm "other task, not released"; git -C "$M" push -q origin ap-main-demo
+"$P/bin/agent-file.sh" todo add f1 small "fix the footer" 10 --checks "PR REVIEW" --builder "f1 Deputy" >/dev/null
+W="$T/walk6-f1"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b f1 "$W" origin/ap-main-demo   # base: the working branch
+printf 'footer = 2\n' > "$W/footer.py"; git -C "$W" add footer.py; git -C "$W" commit -qm "fix the footer"; git -C "$W" push -q -u origin f1
+owner_said "the footer one can go live straight after it is done"
+echo "-- the late yes: todo target keeps the task instance and stores his words"
+expect 1 "$P/bin/agent-file.sh" todo target f1 production --owner-quote "the footer one can go live straight after it is done"
+expect 0 "$P/bin/agent-file.sh" todo target f1 production --owner-quote "the footer one can go live straight after it is done" --means "publish f1 (the footer fix) to production"
+echo "-- cut from the working branch: promote refuses it as it is"
+expect 1 "$P/bin/agent-promote.sh" --task f1 --branch f1
+echo "-- only its own commits on top of the working-branch base: the builder moves it onto production, pushes, and every block runs again at the new head"
+git -C "$W" rebase -q --onto origin/main origin/ap-main-demo f1 && git -C "$W" push -q --force-with-lease origin f1
+for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P/bin/agent-file.sh" check f1 "$b" pass --by "f1 Deputy" --evidence demo >/dev/null); done
+launch f1 auto-pipeline:reviewer "f1 Review"
+"$P/bin/agent-file.sh" check f1 "PR REVIEW" pass --by "f1 Review" --commit "$(git -C "$W" rev-parse HEAD)" --evidence "read the diff at the new head" >/dev/null
+if "$P/bin/agent-file.sh" checks gate f1 --dir "$W" --branch f1 --base origin/main | grep -E "GATE|OWNER WORDS"; then
+  expect 0 "$P/bin/agent-promote.sh" --task f1 --branch f1
+else echo "-- GATE REFUSED: no promote"; FAILS="$FAILS | walk 6 gate refused"; fi
+echo "production has the footer and not the other task: $(git -C "$M" show origin/main:footer.py 2>/dev/null | tr -d '\n') / $(git -C "$M" show origin/main:other.py >/dev/null 2>&1 && echo other-there || echo other-not-there)"
 cd "$T"
 
 say "10 FIX ORDERS 6 and 10: G1-G3, H1, and the approval rule of section 53 (the owner's words verified for real against his made transcript)"
 flowrepo order6; cd "$M"
 "$P/bin/agent-file.sh" todo add g small "small fix" 10 --checks "PR REVIEW" >/dev/null
-owner_said "skip the related tests for g, it is only a typo"; owner_said "1A"
+owner_said "skip the related tests for g, it is only a typo"
 echo "-- G1: PR REVIEW is never removed, whatever he typed:"
 expect 1 "$P/bin/agent-file.sh" todo checks g --remove "PR REVIEW" --owner-quote "skip the related tests for g" --means "leave out PR REVIEW for g"
 echo "-- section 53: words he never typed are refused:"
@@ -283,6 +314,10 @@ echo "-- section 53: his words (no fixed sentence) and what the main manager rea
 expect 0 "$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "skip the related tests for g" --means "leave out RELATED TESTS for g"
 echo "-- section 53: a short answer counts only with the question it answered, and only as his whole prompt:"
 expect 1 "$P/bin/agent-file.sh" todo checks g --remove "BUILD" --owner-quote "1A" --means "leave out BUILD for g"
+echo "-- FIX ORDER 1 R1: and only when that question stands in the main manager's message right before his answer:"
+owner_said "1B"
+expect 1 "$P/bin/agent-file.sh" todo checks g --remove "BUILD" --owner-quote "1B" --question "1. Leave out BUILD for g (a text-only change)? A. yes, leave it out B. no, run it" --means "leave out BUILD for g"
+owner_said "1. Leave out BUILD for g (a text-only change)? A. yes, leave it out B. no, run it" assistant; owner_said "1A"
 expect 0 "$P/bin/agent-file.sh" todo checks g --remove "BUILD" --owner-quote "1A" --question "1. Leave out BUILD for g (a text-only change)? A. yes, leave it out B. no, run it" --means "leave out BUILD for g"
 echo "-- the gate prints every stored pair, so he sees which words were taken as his yes:"
 "$P/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo | grep -E "OWNER WORDS|GATE"

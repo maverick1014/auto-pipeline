@@ -204,6 +204,15 @@ class TestFullRunMark(unittest.TestCase):
         self.assertEqual(self.seen("test_seen"), "")
         self.assertEqual(self.seen("test_seen", "test_small"), "")
 
+    def test_r5_a_named_run_clears_an_inherited_mark(self):
+        # FIX ORDER 1 R5: a task's named run inside a full run (or a shell that kept the mark) never runs heavy tests
+        env = dict(os.environ, AGENT_FULL_RUN="1")
+        out = subprocess.run([sys.executable, RUN2, "--root", self.root, "-j", "1", "test_seen"],
+                             capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        with open(os.path.join(self.tests, "seen.txt")) as fh:
+            self.assertEqual(fh.read(), "")
+
 
 class TestCountCheck(unittest.TestCase):
     def test_a_difference_prints_the_line(self):
