@@ -1927,5 +1927,144 @@ class TestAddedWork(BoardCase):
         self.assertGreaterEqual(pct, int(re.search(r"(\d+)%", before).group(1)) // 2)
 
 
+class TestOneRowPerTask(BoardCase):
+    """board-one-row (owner, 2026-11-26: "why deputy also appear at there. deputy no need to show ya, if not
+    confusing"): an agent or pane launched under a task that has a todo row is no row of its own; its task's row
+    says it: status running + " · N 代理", work and place filled in when the task has none."""
+    lang = "zh"
+    ONE = " · 1 代理"
+    TWO = " · 2 代理"
+
+    def launch(self, kind, task, since="2026-11-02 14:30", pid=None, agent="a1", pane=None, key=None, folder=None):
+        line = "LAUNCH %s: %s | task %s | title of %s | since %s | pid %d | by main" % (
+            key or "k_%s_%s_%s" % (kind.replace(" ", ""), task, since[-5:].replace(":", "")), kind, task, kind,
+            since, pid or os.getpid())
+        if agent:
+            line += " | agent " + agent
+        if pane:
+            line += " | pane " + pane
+        self.state(line, folder=folder)
+
+    def mark(self, n):
+        if self.lang == "zh":
+            return " · %d 代理" % n
+        return " · %d agent%s" % (n, "" if n == 1 else "s")
+
+    def test_a_deputy_and_no_stage_is_one_running_row(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("deputy", "t", since="2026-11-02 14:30")
+        rows = self.rows()
+        self.assertEqual([r["Task"] for r in rows], ["t [t]"], rows)
+        r = rows[0]
+        self.assertEqual(r["Status"], self.st("running") + self.mark(1))
+        self.assertEqual(r["Work"], "30m")                       # the deputy's minutes: 14:30 -> 15:00
+        self.assertEqual(r["Where"], "pc2, " + self.repo.dir)    # the deputy's place
+        self.assertEqual(r["Est"], "20m")
+
+    def test_a_task_manager_pane_and_two_workers_is_one_row_and_two_agents(self):
+        self.add("t", "the task", 60, opened="2026-11-02 14:00")           # started: its own work is 1h
+        self.launch("tm-pane", "t", since="2026-11-02 14:59", agent=None)  # a pane: not counted, no row
+        self.launch("worker 1", "t", since="2026-11-02 14:20")
+        self.launch("worker 2", "t", since="2026-11-02 14:40")
+        rows = self.rows()
+        self.assertEqual([r["Task"] for r in rows], ["t [t]"], rows)
+        self.assertEqual(rows[0]["Status"], self.st("running") + self.mark(2))
+        self.assertEqual(rows[0]["Work"], "1h")                  # the task's own work, not a worker's
+
+    def test_a_merge_deputy_and_a_reviewer_at_once_are_two_agents_on_one_row(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("merge", "t", since="2026-11-02 14:50")
+        self.launch("reviewer", "t", since="2026-11-02 14:40")
+        rows = self.rows()
+        self.assertEqual([r["Task"] for r in rows], ["t [t]"], rows)
+        self.assertEqual(rows[0]["Status"], self.st("running") + self.mark(2))
+        self.assertEqual(rows[0]["Work"], "20m")                 # the oldest live agent: 14:40
+
+    def test_every_agent_kind_and_a_pane_kind_is_folded(self):
+        self.add("t", "the task", 20, started=False)
+        kinds = ("deputy", "merge", "reviewer", "explore", "plan", "guide", "agent")
+        for i, kind in enumerate(kinds):
+            self.launch(kind, "t", since="2026-11-02 14:5%d" % i)
+        for kind in ("shell-pane", "pane", "helper-pane"):
+            self.launch(kind, "t", since="2026-11-02 14:59", agent=None, key="k_" + kind)
+        rows = self.rows()
+        self.assertEqual([r["Task"] for r in rows], ["t [t]"], rows)
+        self.assertEqual(rows[0]["Status"], self.st("running") + self.mark(len(kinds)))
+
+    def test_a_finished_agent_adds_nothing(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("deputy", "t", pid=dead_pid())
+        rows = self.rows()
+        self.assertEqual(len(rows), 1, rows)
+        self.assertEqual((rows[0]["Status"], rows[0]["Work"], rows[0]["Where"]),
+                         (self.st("not_started"), "-", "-"))
+
+    def test_a_live_and_a_finished_agent_count_one(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("deputy", "t", pid=dead_pid(), key="k_dead")
+        self.launch("reviewer", "t", since="2026-11-02 14:45")
+        rows = self.rows()
+        self.assertEqual((len(rows), rows[0]["Status"], rows[0]["Work"]),
+                         (1, self.st("running") + self.mark(1), "15m"))
+
+    def test_an_agent_without_a_todo_row_keeps_its_own_row(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("deputy", "ghost", since="2026-11-02 14:30")
+        self.launch("tm-pane", "ghost", since="2026-11-02 14:59", agent=None)
+        rows = self.rows()
+        tasks = sorted(r["Task"] for r in rows)
+        word = {"zh": ("副手", "窗格"), "en": ("deputy", "pane")}[self.lang]
+        self.assertEqual(tasks, sorted(["t [t]", "ghost " + word[0], "ghost " + word[1]]), rows)
+        self.assertEqual(self.row(rows, task="t")["Status"], self.st("not_started"))
+        self.assertEqual(self.row(rows, task="ghost " + word[0])["Work"], "30m")
+
+    def test_a_task_with_no_agent_is_unchanged(self):
+        self.add("t", "the task", 20, started=False)
+        r = self.rows()[0]
+        self.assertEqual((r["Status"], r["Work"], r["Where"]), (self.st("not_started"), "-", "-"))
+
+    def test_its_own_place_and_work_win(self):
+        self.add("t", "the task", 60, opened="2026-11-02 14:00")
+        self.af("todo", "where", "t", "box9", "/srv/t")
+        self.launch("deputy", "t", since="2026-11-02 14:50")
+        r = self.rows()[0]
+        self.assertEqual((r["Work"], r["Where"]), ("1h", "box9, /srv/t"))
+
+    def test_a_wait_keeps_its_status_and_gets_the_mark(self):
+        self.add("t", "the task", 20, started=False)
+        self.wait("t", "on", "review")
+        self.launch("reviewer", "t", since="2026-11-02 14:45")
+        rows = self.rows()
+        self.assertEqual(len(rows), 1, rows)
+        self.assertTrue(rows[0]["Status"].endswith(self.mark(1)), rows)
+        self.assertNotIn(self.st("running"), rows[0]["Status"])
+
+    def test_the_order_of_the_rows_holds(self):
+        self.add("a", "first", 20, opened="2026-11-02 13:00", started=False)
+        self.add("b", "second", 20, opened="2026-11-02 13:10")
+        self.launch("deputy", "a", since="2026-11-02 14:30")
+        self.state("OWNER TODO: check the phone build\n")
+        names = [re.sub(r" \[[^\]]*\]$", "", r["Task"]) for r in self.rows()]
+        self.assertEqual(names, ["a", "b", "-"])
+
+    def test_self_view_folds_the_workers_too(self):
+        alpha = self.task_worktree("alpha")
+        self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
+        self.worktree_lines((alpha, "alpha", "working"))
+        self.launch("worker 1", "alpha", since="2026-11-02 14:20", folder=alpha)
+        self.launch("tm-pane", "alpha", since="2026-11-02 14:59", agent=None, folder=alpha)
+        rows = self.rows("--self", cwd=alpha)
+        self.assertEqual([r["Task"] for r in rows], ["alpha [t]"], rows)
+        # the watch's "not confirmed" warning of a task worktree may sit before the mark; the mark ends the cell
+        self.assertTrue(rows[0]["Status"].startswith(self.st("running")), rows)
+        self.assertTrue(rows[0]["Status"].endswith(self.mark(1)), rows)
+
+
+class TestOneRowPerTaskEnglish(TestOneRowPerTask):
+    lang = "en"
+    ONE = " · 1 agent"
+    TWO = " · 2 agents"
+
+
 if __name__ == "__main__":
     unittest.main()
