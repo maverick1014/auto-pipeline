@@ -62,6 +62,15 @@ class GuardCase(tb.BoardCase):
         with open(self.repo.path("agent_todo.txt"), "w") as fh:
             fh.write("".join(todo(n) + "\n" for n in names))
 
+    def put_unstarted(self, *names):
+        """Todo lines with no stage: a live agent or pane under one makes the task running (board-one-row)."""
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("".join(todo(n, stage=False) + "\n" for n in names))
+
+    def status_of(self, rows, task):
+        """The Status cell of the task's row (an agent or pane under it shows there, never as a row: board-one-row)."""
+        return rows[self.index(rows, task)]["Status"]
+
     def make_main(self, pid=LIVE):
         """This session holds the main lock."""
         gd = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--path-format=absolute",
@@ -196,14 +205,11 @@ class TestMainManager(GuardCase):
         self.assertAllowed(self.post_agent(r.tid, "a038d8ee18e4ea335"))
         self.assertEqual(self.one_launch()["agent"], "a038d8ee18e4ea335")
         rows = self.rows(now="2026-11-20 16:53")
-        child = self.index(rows, "state-trim 合并")
-        self.assertEqual(child, self.index(rows, "state-trim") + 1)
-        c = rows[child]
-        self.assertEqual((c["What"], c["Status"], c["Work"], c["Checks"], c["Est"]),
-                         ("state-trim Merge", "进行中", "3m", "-", "-"))
+        self.assertNotIn("state-trim 合并", [x["Task"] for x in rows])      # board-one-row: no row of its own
+        self.assertTrue(self.status_of(rows, "state-trim").endswith(" · 1 代理"), rows)
         self.assertAllowed(self.sub("SubagentStop", "a038d8ee18e4ea335", "auto-pipeline:merge-deputy"))
         self.assertEqual(self.launches(), [])
-        self.assertNotIn("state-trim 合并", [x["Task"] for x in self.rows()])
+        self.assertNotIn("代理", self.status_of(self.rows(), "state-trim"))
 
     def test_2_merge_after_todo_done_is_blocked(self):
         self.put_todo("board-trust")
@@ -238,7 +244,7 @@ class TestMainManager(GuardCase):
         self.assertEqual((f["kind"], f["task"], f["title"]), ("reviewer", "board-trust", "hook logic vs rules table"))
 
     def test_8_shell_pane_recorded_with_handle_shown_removed_at_close(self):
-        self.put_todo("board-waiting")
+        self.put_unstarted("board-waiting")
         cmd = ('orca terminal create --worktree path:/w/board-waiting --title "%s" --environment pc2 '
                '--command "zsh" --json' % SHELL_TITLE)
         r = self.pre_bash(cmd)
@@ -252,10 +258,9 @@ class TestMainManager(GuardCase):
         self.repo.set_orca_answer("terminals.json", {"ok": True, "result": {"terminals": [
             {"handle": "term_bc68aaf3-5722-4519-b334-5b19d9d2661e", "title": SHELL_TITLE}]}}, env="pc2")
         rows = self.rows()
-        i = self.index(rows, "board-waiting 窗格")
-        self.assertEqual(i, self.index(rows, "board-waiting") + 1)
-        # the board cuts every What cell at 60 characters (WHAT_MAX), the record keeps the whole title
-        self.assertEqual(rows[i]["What"], "[auto-pipeline] board-waiting pc2 shell · LIVE - do not…")
+        # board-one-row: a live pane alone makes its task running, no count, no row of its own
+        self.assertNotIn("board-waiting 窗格", [x["Task"] for x in rows])
+        self.assertEqual(self.status_of(rows, "board-waiting"), "进行中")
         close = "orca terminal close --terminal term_bc68aaf3-5722-4519-b334-5b19d9d2661e --environment pc2 --json"
         c = self.pre_bash(close)
         self.assertAllowed(c)
@@ -263,14 +268,15 @@ class TestMainManager(GuardCase):
         self.assertEqual(self.launches(), [])
 
     def test_8_pane_gone_from_orca_list_is_not_shown_orca_down_is_shown(self):
-        self.put_todo("board-waiting")
+        self.put_unstarted("board-waiting")
         self.put_launch("LAUNCH toolu_x: shell-pane | task board-waiting | %s | since 2026-11-20 16:40 | pid %d | "
                         "by main | pane term_gone | env pc2 | worktree /w/board-waiting" % (SHELL_TITLE, LIVE))
         self.repo.set_orca_answer("terminals.json", {"ok": True, "result": {"terminals": [{"handle": "term_other"}]}},
                                   env="pc2")
-        self.assertNotIn("board-waiting 窗格", [x["Task"] for x in self.rows()])
+        # board-one-row: a pane that is shown makes its task running; one gone from the list leaves it not started
+        self.assertTrue(self.status_of(self.rows(), "board-waiting").startswith("未开始"))
         self.repo.set_orca_env_state("pc2", "down")
-        self.assertIn("board-waiting 窗格", [x["Task"] for x in self.rows()])
+        self.assertEqual(self.status_of(self.rows(), "board-waiting"), "进行中")
 
     def test_8_orca_worktree_rm_removes_its_panes(self):
         self.put_todo("board-waiting")
@@ -355,14 +361,14 @@ class TestMainManager(GuardCase):
     def test_17_never_linked_hidden_after_two_minutes(self):
         self.put_launch("LAUNCH toolu_n: worker 1 | task state-trim | trim engine | since 2026-11-20 16:47 | "
                         "pid %d | by main | type auto-pipeline:worker" % LIVE)
-        self.assertNotIn("state-trim 工人 1", [x["Task"] for x in self.rows(now=NOW)])
-        self.assertIn("state-trim 工人 1", [x["Task"] for x in self.rows(now="2026-11-20 16:48")])
+        self.assertNotIn("代理", self.status_of(self.rows(now=NOW), "state-trim"))
+        self.assertTrue(self.status_of(self.rows(now="2026-11-20 16:48"), "state-trim").endswith(" · 1 代理"))
 
     def test_17_subagent_start_links_a_foreground_launch(self):
         r = self.pre_agent("state-trim Worker 1: trim engine", bg=False)
         self.assertAllowed(self.sub("SubagentStart", "afg1", "auto-pipeline:worker"))
         self.assertEqual(self.one_launch()["agent"], "afg1")
-        self.assertIn("state-trim 工人 1", [x["Task"] for x in self.rows(now="2026-11-20 16:59")])
+        self.assertTrue(self.status_of(self.rows(now="2026-11-20 16:59"), "state-trim").endswith(" · 1 代理"))
         self.assertAllowed(self.post_agent(r.tid, "afg1", status="completed"))
         self.assertEqual(self.launches(), [])
 
@@ -372,8 +378,11 @@ class TestMainManager(GuardCase):
         self.af("worker", "on", "1", "trim engine", cwd=wt, now="2026-11-20 16:40")
         self.put_launch("LAUNCH toolu_w: worker 1 | task state-trim | trim engine | since 2026-11-20 16:40 | "
                         "pid %d | by tm | type auto-pipeline:worker | agent a1" % LIVE, folder=wt)
-        tasks = [x["Task"] for x in self.rows()]
-        self.assertEqual(tasks.count("state-trim 工人 1"), 1, tasks)
+        rows = self.rows()
+        tasks = [x["Task"] for x in rows]
+        # board-one-row: the hand line goes, the record adds no row; the task's row counts the one worker
+        self.assertEqual(tasks.count("state-trim 工人 1"), 0, tasks)
+        self.assertTrue(self.status_of(rows, "state-trim").endswith(" · 1 代理"), rows)
 
     def test_title_has_no_field_break(self):
         self.assertAllowed(self.pre_agent("state-trim Worker 3: a | b\nc"))
@@ -457,9 +466,9 @@ class TestTaskManager(GuardCase):
         for args, cwd in ((("--self",), self.wt), ((), self.repo.dir)):
             with self.subTest(view=args):
                 rows = self.rows(*args, cwd=cwd)
-                i = self.index(rows, "board-waiting 工人 1")
-                self.assertEqual(i, self.index(rows, "board-waiting") + 1)
-                self.assertEqual(rows[i]["What"], "board rows")
+                # board-one-row: no row of its own; the task's row carries the count
+                self.assertEqual([r["Task"] for r in rows].count("board-waiting 工人 1"), 0, rows)
+                self.assertTrue(rows[self.index(rows, "board-waiting")]["Status"].endswith(" · 1 代理"), rows)
 
     def test_4_a_worker_for_another_task_is_recorded_under_that_task(self):
         # rule 4 changed 2026-11-23 after the dry-run: 150 of 519 real v4-plus task manager launches name another
@@ -814,7 +823,8 @@ class TestReviewFixes(GuardCase):
         self.assertEqual(self.one_launch()["kind"], "worker")
         self.assertAllowed(self.post_agent(r.tid, "aw1"))
         rows = self.rows(now="2026-11-20 16:52")
-        self.assertEqual(self.index(rows, "state-trim 工人"), self.index(rows, "state-trim") + 1)
+        self.assertNotIn("state-trim 工人", [x["Task"] for x in rows])     # board-one-row: counted on its task's row
+        self.assertTrue(self.status_of(rows, "state-trim").endswith(" · 1 代理"), rows)
 
     def test_r2_a_last_line_without_newline_is_kept_whole(self):
         for stale in (True, False):
@@ -845,18 +855,22 @@ class TestReviewFixes(GuardCase):
         self.assertIn(young, rows)
 
     def test_r4_orca_down_falls_back_to_the_session_pid(self):
-        for key, pid in (("live", LIVE), ("dead", dead_pid())):
+        self.put_unstarted("board-waiting")
+        self.repo.set_orca_env_state("pc2", "down")
+        for key, pid, running in (("dead", dead_pid(), False), ("live", LIVE, True)):
             self.put_launch("LAUNCH toolu_%s: shell-pane | task board-waiting | %s | since 2026-11-20 16:40 | pid %d | "
                             "by main | pane term_%s | env pc2" % (key, key, pid, key))
-        self.repo.set_orca_env_state("pc2", "down")
-        self.assertEqual([r["What"] for r in self.rows(now=NOW) if r["Task"] == "board-waiting 窗格"], ["live"])
+            # board-one-row: a pane that shows makes its task running; a dead session's pane does not
+            status = self.status_of(self.rows(now=NOW), "board-waiting")
+            self.assertEqual(status == "进行中", running, (key, status))
 
     def test_r14_a_cut_orca_list_shows_the_pane(self):
+        self.put_unstarted("board-waiting")
         self.put_launch("LAUNCH toolu_x: shell-pane | task board-waiting | t | since 2026-11-20 16:40 | pid %d | "
                         "by main | pane term_far | env pc2" % LIVE)
         self.repo.set_orca_answer("terminals.json", {"ok": True, "result": {
             "terminals": [{"handle": "term_other"}], "truncated": True, "totalCount": 300}}, env="pc2")
-        self.assertIn("board-waiting 窗格", [x["Task"] for x in self.rows(now=NOW)])
+        self.assertEqual(self.status_of(self.rows(now=NOW), "board-waiting"), "进行中")   # board-one-row
 
     def test_r5_two_foreground_agents_of_one_type_keep_their_ids(self):
         a = self.pre_agent("state-trim Worker 1: slice a", bg=False)
@@ -893,9 +907,10 @@ class TestReviewFixes(GuardCase):
                         "type auto-pipeline:fast-lane-deputy | agent agNEW" % LIVE)
         with open(self.repo.path("agent_completed.txt"), "a") as fh:
             fh.write("2026-11-20 | old-one | x | est 10m actual 10m\n2026-11-19 | state-trim | x | est 10m actual 10m\n")
-        tasks = [x["Task"] for x in self.rows(now=NOW)]
-        self.assertNotIn("old-one 副手", tasks)
-        self.assertIn("state-trim 副手", tasks)  # a reopened name (open in agent_todo.txt) stays shown
+        rows = self.rows(now=NOW)
+        self.assertNotIn("old-one 副手", [x["Task"] for x in rows])
+        # a reopened name (open in agent_todo.txt) stays shown: counted on its task's row (board-one-row)
+        self.assertTrue(self.status_of(rows, "state-trim").endswith(" · 1 代理"), rows)
 
     def test_r11_an_unknown_launch_status_keeps_the_record(self):
         r = self.pre_agent("state-trim Worker 1: x")
@@ -1005,7 +1020,7 @@ class TestBoardEnglish(BoardOnly):
     lang = "en"
 
     def test_kind_words(self):
-        self.put_todo("t")
+        self.put_todo()      # board-one-row: only an agent of a task with no todo row keeps its own row, named by its kind word
         words = {"worker 1": "t worker 1", "worker": "t worker", "deputy": "t deputy", "merge": "t merge", "reviewer": "t reviewer",
                  "explore": "t explore", "plan": "t plan", "guide": "t guide", "agent": "t agent",
                  "tm-pane": "t pane", "shell-pane": "t pane", "pane": "t pane"}
@@ -1022,7 +1037,7 @@ class TestBoardEnglish(BoardOnly):
     def test_zh_kind_words(self):
         self.repo.set_conf("language", "zh")
         self.lang = "zh"
-        self.put_todo("t")
+        self.put_todo()      # no todo row: the kind words label the agents' own rows
         words = {"worker 1": "t 工人 1", "worker": "t 工人", "deputy": "t 副手", "merge": "t 合并", "reviewer": "t 审查",
                  "explore": "t 探查", "plan": "t 规划", "guide": "t 指南", "agent": "t 代理", "pane": "t 窗格"}
         for i, kind in enumerate(words):

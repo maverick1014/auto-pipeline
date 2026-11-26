@@ -110,10 +110,10 @@ HEAD = {
 STATUS = {
     "zh": {"running": "进行中", "owner": "你的待办", "parked": "搁置的问题", "waiting": "等待", "hold": "暂缓",
            "queue": "排队", "notstarted": "未开始", "after": "在 %s 之后", "waited": "已等 %s", "you": "你",
-           "fold": "+%d 个任务", "fold_one": "+%d 个任务"},
+           "fold": "+%d 个任务", "fold_one": "+%d 个任务", "idle": "闲置 %s"},
     "en": {"running": "running", "owner": "your to-do", "parked": "parked question", "waiting": "waiting",
            "hold": "hold", "queue": "queue", "notstarted": "not started", "after": "after %s",
-           "waited": "waited %s", "you": "you", "fold": "+%d tasks", "fold_one": "+%d task"},
+           "waited": "waited %s", "you": "you", "fold": "+%d tasks", "fold_one": "+%d task", "idle": "idle %s"},
 }
 DEFAULT_WHAT = {
     "zh": {"mock": "确认样稿或规则表", "question": "回答问题", "review": "合并前签字"},
@@ -363,6 +363,8 @@ KIND_WORD = {
            "plan": "plan", "guide": "guide", "agent": "agent", "pane": "pane"},
 }
 LAUNCH_STALE_MIN = 2
+IDLE_AFTER_MIN = 10          # a task added and not started for this long is idle (idle-task-flag)
+IDLE_BACKLOG_MIN = 24 * 60   # a task not started and older than this is backlog, never idle
 ORCA_TIMEOUT = 5
 
 
@@ -505,6 +507,7 @@ class Board:
         self.plain = {}
         self.records = []       # (folder, record) of every LAUNCH line read
         self.hand_workers = {}  # label -> row of a hand WORKER line
+        self.idle = {}          # task name -> idle minutes of each not started task that is idle
         self.todo_rows = {}     # task name -> its todo row (the agents under it show on it, never as rows)
         self.unconfirmed = 0    # target rows that got the "not confirmed" warning
         self.warned = {}        # task name -> minutes (None: unknown) of each "not confirmed" row
@@ -776,6 +779,30 @@ class Board:
             parts.append(w["waited"] % fmt_waited(self.lang, n))
         return " · ".join(parts)
 
+    def idle_minutes(self, t):
+        """Minutes a not started task (no stage, no wait) has sat idle, None when it is not idle: the minutes since it
+        was added minus the waits it has closed are 10 or more and under 24 hours. No added time: never idle."""
+        opened = parse_time(t["opened"]) if t["opened"] else None
+        age = minutes(opened, self.now)
+        if age is None:
+            return None
+        n = max(0, age - (t["waited"] or 0))      # the 24 hour cutoff counts these same minutes
+        return n if IDLE_AFTER_MIN <= n < IDLE_BACKLOG_MIN else None
+
+    def idle_mark(self, n):
+        return " · " + self.word("idle") % fmt_waited(self.lang, n)
+
+    def mark_idle(self):
+        """The Status cell of a todo row still not started after the agents are folded in ends with the idle mark."""
+        for task, n in self.idle.items():
+            row = self.todo_rows.get(task)
+            plain = cell(self.word("notstarted"))
+            if row is None or row not in self.rows or not (row[1][2] == plain or row[1][2].startswith(plain + " · ")):
+                continue
+            cells = list(row[1])
+            cells[2] = plain + self.idle_mark(n) + cells[2][len(plain):]      # before the not confirmed mark
+            self.rows[self.rows.index(row)] = (row[0], cells, row[2])
+
     def queue_text(self, t):
         w = self.words
         task = t["after"]
@@ -818,6 +845,10 @@ class Board:
             status = self.word("notstarted")
             wait = None
             info = {"type": "short", "name": t["name"], "text": status}
+            idle = self.idle_minutes(t)
+            if idle is not None:
+                info["idle"] = idle
+                self.idle[t["name"]] = idle
         else:
             group, when = G_RUNNING, t["opened"]
             status = self.word("running")
@@ -1107,6 +1138,7 @@ def build(args, now=None, records=True):
         board.whole_repo()
     if records:
         board.add_launches()
+        board.mark_idle()
     return board
 
 
@@ -1232,17 +1264,19 @@ WATCH_LINE = {
 
 def board_warnings(root, plugin, now):
     """The board's warnings as the WARN lines of `agent-file.sh next` and the warn hook: watch not running
-    (alone: every target is then unconfirmed), else each not confirmed task in board order, then each pane
-    without a task line. No orca call. [] for none (no watch runs here, no targets)."""
+    (alone: every target is then unconfirmed), else each not confirmed task in board order, then each idle task
+    (idle_warnings, also when no watch runs), then each pane without a task line. No orca call.
+    [] for none (no watch runs here, no targets, no idle task)."""
     args = argparse.Namespace(root=root, state_dir=root, cwd=root, now=now, lang="en", host="-", self_mode=False)
     board = build(args, records=False)
+    idle = idle_warnings(board)
     if not board.w_on:
-        return []
+        return idle
     if not board.w_live:
         if not board.w_target_count:
-            return []
+            return idle
         return ["WARN watch not running -> start it now: %s/bin/agent-watch.sh --all (Bash run_in_background)"
-                % plugin]
+                % plugin] + idle
     out, said = [], set()
     for key, cells, _info in sorted(board.rows, key=lambda r: r[0]):
         name = board.plain.get(key[3], cells[0])
@@ -1251,9 +1285,23 @@ def board_warnings(root, plugin, now):
             n = board.warned[name]
             out.append("WARN not confirmed %s%s -> read its pane or its newest state line, then fix the record or "
                        "the agent" % (name, "" if n is None else " (%dm)" % n))
+    out += idle
     for path in board.w_orphans:
         out.append("WARN pane without a task line %s -> add the todo line or close the pane" % path)
     return out
+
+
+def idle_warnings(board):
+    """One WARN line per idle task (not started 10 minutes or more, no live agent, no live task manager pane),
+    the longest idle first. The hook that prints them repeats a set only when it changes (agent-board-warn.sh),
+    the same limit as the not confirmed kind."""
+    if not board.idle:
+        return []
+    recs = [r for _, r in board.records]
+    busy = set(agent_counts(recs, board.now, finished_tasks(board.root))) | live_panes(recs)
+    names = sorted((n for n in board.idle if n not in busy), key=lambda n: (-board.idle[n], n))
+    return ['WARN idle %s (%dm) -> start it now, or record why it waits: agent-file.sh todo wait "%s" on queue '
+            '--after <other task> | on hold "<why>"' % (n, board.idle[n], n) for n in names]
 
 
 def watch_status_line(board):
@@ -1360,8 +1408,11 @@ def read_running(board, records, main):
     too: only its text changes, never its place or rank."""
     busy = set(agent_counts(records, board.now, finished_tasks(main))) | live_panes(records)
     for _, _, info in board.rows:
-        if info is not None and info["type"] == "short" and info["notstarted"] and info["name"] in busy:
-            info["text"] = board.word("running")
+        if info is not None and info["type"] == "short" and info["notstarted"]:
+            if info["name"] in busy:
+                info["text"] = board.word("running")
+            elif info.get("idle") is not None:
+                info["text"] += board.idle_mark(info["idle"])
 
 
 def agent_mark(lang, n):

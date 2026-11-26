@@ -14,7 +14,7 @@ R8 (branches, the net, release)
 - A failure the nightly finds that the causing task's own RELATED or MODULE run did not find is a selection miss: one line, the test and the merge (`agent-nightly.sh --misses`)
 - After two weeks the owner reads the selection miss count and decides whether the nightly goes too
 - The watch's housekeep pass starts it once a day after 22:00 (`nightly_hour`) when no heavy test runs; no watch alive: the next session start, when the last run is older than 24 hours
-- A release needs a green full run on the working branch: the last nightly on that commit, or one background run; no other pre-release run
+- A release needs a green full run on the tip of the working branch (or on its parent when the tip only bumps the plugin version): the last nightly on that commit, or one background run; no other pre-release run
 - `agent-nightly.sh --start` runs the full suite in the background; `agent-nightly.sh --release-ok` only checks that a green run covers the commit
 - The working branch (setting "Flow: Working branch", default `ap-main-<name>`) is only a branch
 - Everything merged or pushed lands there first, never on the production branch by accident: the main checkout is switched to the working branch
