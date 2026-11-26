@@ -43,6 +43,7 @@ TASK_PLACE_VALUES = ("data", "tree")
 FALLBACK = "auto-pipeline"
 MOVED = re.compile(r"\[rejected\].*\((?:non-fast-forward|fetch first)\)|^hint: .*fetch first", re.M)
 ROUNDS = 4
+DIR = ".ap-data/"          # where the files in git live on a branch that holds code (never at the root)
 
 
 DEFAULT_BRANCH = "ap-data"
@@ -229,7 +230,16 @@ def facts(root):
 
 
 _BRANCH = {}
+_KIND = {}
 _SAID = set()
+REMOTE_NS = "refs/auto-pipeline/remote/"
+BASE_NS = "refs/auto-pipeline/data-base/"
+PENDING_NS = "refs/auto-pipeline/data-pending/"
+
+
+def reset_cache():
+    _BRANCH.clear()
+    _KIND.clear()
 
 
 def wanted_branch(root):
@@ -253,7 +263,7 @@ def holds_code(root, b):
     names.add(run(root, "symbolic-ref", "--short", "-q", "HEAD").out.strip())
     if b in names:
         return True
-    for ref in ("refs/heads/" + b, "refs/remotes/origin/" + b):
+    for ref in ("refs/heads/" + b, "refs/remotes/origin/" + b, REMOTE_NS + b):
         if not run(root, "rev-parse", "-q", "--verify", ref + "^{commit}").ok:
             continue
         listing = run(root, "ls-tree", "-r", "--name-only", "-z", ref).out
@@ -268,8 +278,9 @@ def refusal(root, b):
         return ""
     if b.startswith("-") or b == "HEAD" or "@{" in b or not run(root, "check-ref-format", "--branch", b).ok:
         return "data branch %s is not a branch name: refused for now, the files in git stay on %s" % (b, DEFAULT_BRANCH)
-    if holds_code(root, b):
-        return "data branch %s holds code: refused for now, the files in git stay on %s" % (b, DEFAULT_BRANCH)
+    if holds_code(root, b) and not has_origin(root):
+        return "data branch %s holds code and needs an origin: refused for now, the files in git stay on %s" % (
+            b, DEFAULT_BRANCH)
     return ""
 
 
@@ -280,7 +291,14 @@ def data_branch(root):
         wanted = wanted_branch(root)
         why = refusal(root, wanted)
         _BRANCH[root] = (DEFAULT_BRANCH, why) if why else (wanted, "")
+        code = not why and wanted != DEFAULT_BRANCH and is_repo(root) and holds_code(root, wanted)
+        _KIND[root] = "code" if code else "own"
     return _BRANCH[root]
+
+
+def on_code_branch(root):
+    """True when the files in git live under .ap-data/ of a branch that holds code (place says so)."""
+    return place(root)[0] == "data" and _KIND.get(root) == "code" and is_repo(root)
 
 
 def branch(root):
@@ -432,10 +450,109 @@ def publish(root):
         return
 
 
+def code_cycle(root, message, force=()):
+    """A write or a sync on a branch that holds code. The remote tip is fetched (refs/auto-pipeline/remote/<b>);
+    theirs = its .ap-data/ files, base = the data of the last remote commit this clone synced with or pushed
+    (refs/auto-pipeline/data-base/<b>), ours = the working copies. The merge goes into the working copies; when it
+    differs from the remote's data ONE commit is built on the remote tip (its whole tree, only .ap-data/ entries
+    replaced, a temporary index) and pushed to refs/heads/<b>. refs/heads/<b>, HEAD and every index stay where they
+    are. True when new finished-task lines came in."""
+    b = branch(root)
+    new_done = False
+    if not has_origin(root):
+        return False
+    rref, bref, pref = REMOTE_NS + b, BASE_NS + b, PENDING_NS + b
+    for turn in range(ROUNDS):
+        fetch_code(root)
+        remote = tip(root, rref)
+        if not remote:
+            say("%s: not pushed (origin has no %s yet); the next write pushes it" % (b, b))
+            return new_done
+        base = tip(root, bref)
+        t_remote, t_base = commit_time(root, remote), commit_time(root, base)
+        now = int(datetime.datetime.now().timestamp())
+        ents_r = tree_entries(root, remote + ":" + DIR.rstrip("/"))
+        replace = {}
+        for n in in_git_files(root):
+            work = read_file(root, n)
+            r_text, b_text = blob(root, remote, DIR + n), blob(root, base, DIR + n)
+            ours_time = now if (work or "") != (b_text or "") else t_base
+            result = merge_file(n, b_text, work, r_text, ours_time, t_remote)
+            if result != (work or "") and not (work is None and result == ""):
+                write_file(os.path.join(root, n), result)
+                if n == "agent_completed.txt" and set(lines_of(result)) - set(lines_of(work)):
+                    new_done = True
+            if result != "" or n in ents_r or n in force:
+                sha = put_blob(root, result)
+                if sha and ents_r.get(n) != sha:
+                    replace[n] = sha
+        if not replace:
+            run(root, "update-ref", bref, remote)
+            run(root, "update-ref", "-d", pref)
+            return new_done
+        made = build_code_commit(root, remote, replace, message)
+        if not made:
+            say("%s: not pushed (the commit could not be built); the next write pushes it" % b)
+            return new_done
+        run(root, "update-ref", pref, made)
+        r = run(root, "push", "-q", "origin", "%s:refs/heads/%s" % (made, b), timeout=timeout_s())
+        if r.ok:
+            run(root, "update-ref", bref, made)
+            run(root, "update-ref", rref, made)
+            run(root, "update-ref", "-d", pref)
+            return new_done
+        fetch_code(root)
+        moved = tip(root, rref)
+        if moved and moved != remote and turn < ROUNDS - 1:
+            continue
+        say("%s: not pushed (%s); the next write pushes it" % (b, why_text(r)))
+        return new_done
+    return new_done
+
+
+def fetch_code(root):
+    b = branch(root)
+    return run(root, "fetch", "-q", "origin", "+refs/heads/%s:%s%s" % (b, REMOTE_NS, b), timeout=timeout_s()).ok
+
+
+def build_code_commit(root, parent, replace, message):
+    """The tree of PARENT with only the .ap-data/ entries in REPLACE ({file: blob}) replaced, one commit on it."""
+    tmp = os.path.join(common_dir(root), "ap-data-index.%d" % os.getpid())
+    env = ident_env(root)
+    env["GIT_INDEX_FILE"] = tmp
+    try:
+        if not run(root, "read-tree", parent, env=env).ok:
+            return ""
+        for n, sha in replace.items():
+            if not run(root, "update-index", "--add", "--cacheinfo", "100644,%s,%s%s" % (sha, DIR, n), env=env).ok:
+                return ""
+        t = run(root, "write-tree", env=env)
+        if not t.ok:
+            return ""
+        c = run(root, "commit-tree", t.out.strip(), "-p", parent, "-m", message, env=env)
+        return c.out.strip() if c.ok else ""
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+def data_entries(root):
+    """The in-git files as the data branch holds them now: name -> blob."""
+    if on_code_branch(root):
+        r = tip(root, REMOTE_NS + branch(root))
+        return tree_entries(root, r + ":" + DIR.rstrip("/")) if r else {}
+    return tree_entries(root, tip(root))
+
+
 def commit(root, message):
     if not active(root):
         return
     announce(root)
+    if on_code_branch(root):
+        code_cycle(root, message)
+        return
     if commit_core(root, message):
         publish(root)
 
@@ -589,14 +706,17 @@ def retrain(root):
         pass
 
 
-def sync(root, message="files sync", train=True):
+def sync(root, message="files sync", train=True, force=()):
     if not active(root):
         return
     announce(root)
-    new_done = sync_core(root, message)
-    local = tip(root)
-    if local and has_origin(root) and local != tip(root, remote_ref(root)):
-        publish(root)
+    if on_code_branch(root):
+        new_done = code_cycle(root, message, force)
+    else:
+        new_done = sync_core(root, message)
+        local = tip(root)
+        if local and has_origin(root) and local != tip(root, remote_ref(root)):
+            publish(root)
     if new_done and train:
         retrain(root)
 
@@ -651,7 +771,7 @@ def put_fact(root, key, value):
     """The line in agent_repo.conf: replaced in place, else appended. True when the file changed."""
     path = os.path.join(root, CONF)
     old = read_file(root, CONF)
-    _BRANCH.clear()
+    reset_cache()
     pat = re.compile(r"^\s*%s\s*=.*$" % re.escape(key))
     new_line = "%s=%s" % (key, value)
     if old is None:
@@ -690,7 +810,7 @@ def commit_conf(root, message):
 def restore_conf(root, old):
     """Put agent_repo.conf back as it was (a commit was refused)."""
     path = os.path.join(root, CONF)
-    _BRANCH.clear()
+    reset_cache()
     if old is None:
         try:
             os.remove(path)
@@ -750,6 +870,8 @@ def cmd_set(root, args):
         restore_conf(root, old)
         return 1
     say("files set: %s=%s" % (key, value))
+    if key == "data_branch" and is_repo(root) and value == production_branch(root):
+        say("files set: %s is the production branch of this repo: a commit on it can start a deploy" % value)
     if wrote and wrote != "task_files=%s" % value:
         say(team_line(wrote, "the repo had no value"))
     if moves:
@@ -758,6 +880,14 @@ def cmd_set(root, args):
 
 
 # ------------------------------------------------------------------ move
+
+
+def production_branch(root):
+    try:
+        import agent_conf
+        return agent_conf.production_branch(root)
+    except Exception:
+        return ""
 
 
 def in_main_checkout(root):
@@ -909,10 +1039,12 @@ def move(root):
             changed.add("agent_todo.txt")
 
     # (4) the in-git files onto ap-data, synced with origin's, created when missing, pushed
-    before = tree_entries(root, tip(root))
-    sync(root, "files move")
-    add_empty_task_files(root, shared)
-    after = tree_entries(root, tip(root))
+    before = data_entries(root)
+    force = [n for n in ("agent_ideas.txt", "agent_todo.txt") if n in shared and read_file(root, n) == ""]
+    sync(root, "files move", force=force)
+    if not on_code_branch(root):
+        add_empty_task_files(root, shared)
+    after = data_entries(root)
     for n in shared:
         if before.get(n) != after.get(n):
             changed.add(n)
