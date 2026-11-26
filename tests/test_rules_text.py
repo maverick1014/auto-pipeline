@@ -313,7 +313,7 @@ class TestPrinciplesW13CloseCase(unittest.TestCase):
     def test_the_quiz_still_has_twenty_nine_questions(self):
         text = read("bin", "agent-start.sh")
         # test-levels (2026-11-20): Q38 and Q39 (R8); approval-design: Q40-Q44
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 45)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 34)   # S5: the quiz tidied
 
 
 class TestCloseCaseSkill(unittest.TestCase):
@@ -1680,7 +1680,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
     def test_the_map_names_the_new_pieces(self):
         f = self.text().split("## F. Map")[1]
         for phrase in ("bin/agent_blocks.py", "bin/agent-level.sh", "Check deputy", "agent_repo.conf",
-                       "45-question quiz", "agent-file.sh next", "checks gate"):
+                       "34-question quiz", "agent-file.sh next", "checks gate"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, f)
 
@@ -3794,7 +3794,9 @@ class TestFixOrder2Texts(unittest.TestCase):
         dep = read("agents", "fast-lane-deputy.md")
         for phrase in ("cherry-pick", "git switch -c <new branch> origin/<production branch>",
                        "git rev-list --reverse --no-merges origin/<working branch>..origin/<branch>",
-                       "<task>-publish", "conflict"):
+                       "<task>-publish", "conflict",
+                       # an already merged task: its own commits are the second parent side of its merge commit
+                       "git rev-list --reverse --no-merges <merge commit>^1..<merge commit>^2"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, dep)
         self.assertNotIn("rebase", dep)

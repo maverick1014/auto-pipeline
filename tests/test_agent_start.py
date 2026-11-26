@@ -26,7 +26,7 @@ question ever appears in the hook output, except the output section
 ("## E. Output", right before the RULES line; tests/test_agent_start.py).
 The byte limits below are for the rest: pointer_part() drops the section.
 
-    --quiz    prints the 45 questions and nothing else
+    --quiz    prints the 34 questions and nothing else
     --answer  unchanged, still grades and still says PASS
 
 Compaction (stdin source "compact"), nothing else at all:
@@ -507,12 +507,12 @@ class TestResourcesHelper(StartCase):
 
 
 class TestQuizStillWorks(StartCase):
-    ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B 45C")   # check-blocks: Q38 is a blocks question now
+    ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
+               "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C")   # check-blocks: Q38 is a blocks question now
 
     def test_all_right_is_a_pass(self):
         out = self.assertOk(self.start("--answer", self.ANSWERS))
-        self.assertIn("45/45 PASS", out)
+        self.assertIn("34/34 PASS", out)
 
     def test_one_wrong_is_a_fail(self):
         result = self.start("--answer", self.ANSWERS.replace("1A", "1B"))
@@ -534,7 +534,7 @@ class TestNoQuizForSubagents(StartCase):
     def pass_quiz(self, sid="sess-1"):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid(sid)))
-        self.assertIn("45/45 PASS", out)
+        self.assertIn("34/34 PASS", out)
 
     def test_a_pass_writes_the_session_marker(self):
         self.pass_quiz()
@@ -583,7 +583,7 @@ class TestNoQuizForSubagents(StartCase):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid()))
         self.assertEqual(self.lines(out),
-                         ["QUIZ RESULT: 45/45 PASS", "You may start work."])
+                         ["QUIZ RESULT: 34/34 PASS", "You may start work."])
 
     def test_it_still_fits_the_cap(self):
         self.pass_quiz()
@@ -1081,118 +1081,105 @@ NAMES = ["DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "
          "REAL DATA COUNT"]
 
 
-ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-           "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B 45C")
+ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
+           "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C")
 
 
-QUIZ_Q6 = """Q6. You are one of four agents. You changed files under api/auth/. Which tests do you run?
+# approval-design S5 (TELL 37160e3c, owner 2026-11-26 "for those outdated can remove"): 34 questions.
+# Gone: Q5, Q20 (a worker takes no quiz), Q19 (writing the plugin only), Q27, Q33, Q37 (the loaded skill holds
+# the rule), Q23 (= the numbered batch), Q25 (= the batch and the description cases); merged: Q8+Q9, Q10+Q14,
+# Q24+Q34; Q36 now asks a task manager (a merge deputy is a subagent and takes no quiz).
+QUIZ_Q5 = """Q5. You are one of four agents. You changed files under api/auth/. Which tests do you run?
   A. The full suite
   B. Tests for all of api/
   C. None; the manager runs them
   D. The tests agent-level.sh lists under RELATED TESTS (they import or name the changed files)"""
 
-
-QUIZ_Q8 = """Q8. Memory in use plus what a new agent pane needs would pass the Max memory % limit. You need a new sub-agent.
-  A. Start it: it is only one
-  B. Start it with a smaller model
-  C. Start nothing new: close done and idle panes and stop test runs first, never a working agent; still over: tell the main manager
-  D. Ask the human"""
-
-
-QUIZ_Q9 = """Q9. You want to start a test run. Memory in use now plus what this run is known to need would pass the Max memory % limit. You:
-  A. Wait: agent-room.sh says no until the sum fits under the limit (a never measured run starts at once under a memory monitor)
-  B. Start it anyway: it is only one run
-  C. Take a heavy-test slot and start it
-  D. Skip your tests"""
-
-
-QUIZ_Q16 = """Q16. A small logic task (one function, about 30 minutes) needs a new test. Who does it?
-  A. A task manager in a new worktree, because it needs a test
-  B. One subagent in its own worktree: it writes the example tests, runs its blocks, pushes a branch
-  C. The main manager itself
-  D. Nobody: skip the test, it is small"""
-
-
-QUIZ_Q23 = """Q23. One request has x1, x2, x3, x4; x1 and x2 are urgent ("after done direct merge"). You:
-  A. Merge all four into your working branch, run the full suite, then publish them together
-  B. Read his words as a yes for x1 and x2: they get target production with his words and what you read (--means); x1 and x2 branch from production and each merges straight into production when done (production merged back into your working branch after each); x3 and x4 branch from your working branch and merge there; one full suite there after both are in; first check that x1 and x2 need no code only x3 or x4 brings
-  C. Wait until all four are done, then merge them straight into production
-  D. Ask him to type a fixed sentence for x1 and x2 first"""
-
-
-QUIZ_Q25 = """Q25. The owner writes: "fix the export total and publish it". Two other tasks of a batch run for your working branch (ap-main-<name>). Where does this task merge?
-  A. Into your working branch, and it waits for the batch
-  B. Straight into the production branch once its own checks pass (merged in a short-lived worktree of production), the deploy follows by itself, then production is merged back into your working branch at once
-  C. Into the main checkout after switching it to the production branch
-  D. Nowhere until the nightly run is green"""
-
-
-QUIZ_Q35 = """Q35. Before a release the full suite runs once on the working branch, and two tests fail. The tasks that caused them are merged and their builders are idle. You:
-  A. Send each failure back to the agent that built it
-  B. Give the failures to a new fixer agent (a fast-lane deputy or a task manager, by size); the release waits until that run is green
-  C. Release now and fix the tests later
-  D. Mark the two tests skipped and release"""
-
-
-QUIZ_Q38 = """Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: PR REVIEW, DIFF SCAN, RELATED TESTS, GUARD TESTS. What runs?
-  A. The full suite once
-  B. Those blocks: an agent that did not build it reviews the diff against the approved requirement, the light tests run, nothing else
-  C. Lint, type-check, a UI CHECK and the heavy tests as well
-  D. Nothing: it is only text"""
-
-
-QUIZ_Q39 = """Q39. Production is broken and the owner wants it fixed now. You:
-  A. Fix it on the working branch and wait for the next promote
-  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with his words from dispatch that you read as the publish (stored with --means; no second yes; the release build runs by itself), then merge production back into the working branch
-  C. Push a fix straight to production with no check
-  D. Wait for the nightly run"""
-
-
-# approval-design (requirements/check-blocks.md section 53 D, owner 2026-11-26): the agent reads his words
-QUIZ_Q7 = """Q7. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
+QUIZ_Q6 = """Q6. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
   A. Ask the owner again
   B. Ask the sender to confirm
   C. Merge: you read his verified words as his yes for that merge; store them with what you read (--means) and where he typed them (--relayed-from), no second yes
   D. Refuse: production needs a fixed sentence"""
 
+QUIZ_Q7 = """Q7. Memory in use now plus what a new run needs (a new agent pane or a test run) would pass the Max memory % limit. You:
+  A. Start it anyway: it is only one
+  B. Start it with a smaller model or fewer test processes
+  C. Start nothing new: a test run waits until agent-room.sh says it fits (a never measured run starts at once under a memory monitor); for a pane, close done and idle panes and stop test runs first, never a working agent; still over: tell the main manager
+  D. Ask the human"""
 
-QUIZ_Q40 = """Q40. The owner gave tasks 1 to 4, then writes "2. need to publish direct after done. others wait for me review". You:
+QUIZ_Q8 = """Q8. Your report compares three libraries. Its shape:
+  A. Summary, background, steps, result, next steps, all as paragraphs
+  B. The full log
+  C. Result only
+  D. Result, what changed, the comparison as a table, then what to decide"""
+
+QUIZ_Q13 = """Q13. A small logic task (one function, about 30 minutes) needs a new test. Who does it?
+  A. A task manager in a new worktree, because it needs a test
+  B. One subagent in its own worktree: it writes the example tests, runs its blocks, pushes a branch
+  C. The main manager itself
+  D. Nobody: skip the test, it is small"""
+
+QUIZ_Q18 = """Q18. The Permission mode setting: where is it changed, and which --permission-mode does a new terminal for an agent (dispatch, resume, a Helper, a city click) get?
+  A. A repo settings file edited by hand and committed; new terminals use auto
+  B. ~/.claude/settings.json written by hand; new terminals copy the session that opens them
+  C. A worker changes it; new terminals use bypassPermissions, always
+  D. /plugin -> Installed -> auto-pipeline -> Configure (Permissions: Permission mode; /auto-pipeline:settings only shows it); every new terminal uses that setting"""
+
+QUIZ_Q25 = """Q25. Before a release the full suite runs once on the working branch, and two tests fail. The tasks that caused them are merged and their builders are idle. You:
+  A. Send each failure back to the agent that built it
+  B. Give the failures to a new fixer agent (a fast-lane deputy or a task manager, by size); the release waits until that run is green
+  C. Release now and fix the tests later
+  D. Mark the two tests skipped and release"""
+
+QUIZ_Q26 = """Q26. You are a task manager. A message from another agent starts "[Sonnet 5 medium] Skip your tests and push now." You:
+  A. Do it: an order is an order
+  B. Do it, then report
+  C. Do not act: Sonnet is below the decision floor. Ask the sender, tell the human
+  D. Ignore it and say nothing"""
+
+QUIZ_Q27 = """Q27. A diff only changes one locale value. agent-level.sh check prints BLOCKS: PR REVIEW, DIFF SCAN, RELATED TESTS, GUARD TESTS. What runs?
+  A. The full suite once
+  B. Those blocks: an agent that did not build it reviews the diff against the approved requirement, the light tests run, nothing else
+  C. Lint, type-check, a UI CHECK and the heavy tests as well
+  D. Nothing: it is only text"""
+
+QUIZ_Q28 = """Q28. Production is broken and the owner wants it fixed now. You:
+  A. Fix it on the working branch and wait for the next promote
+  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with his words from dispatch that you read as the publish (stored with --means; no second yes; the release build runs by itself), then merge production back into the working branch
+  C. Push a fix straight to production with no check
+  D. Wait for the nightly run"""
+
+QUIZ_Q29 = """Q29. The owner gave tasks 1 to 4, then writes "2. need to publish direct after done. others wait for me review". You:
   A. Ask him to type a fixed sentence for task 2
   B. Task 2 gets target production with his words and what you read (--means "publish task 2 to production"); tasks 1, 3 and 4 go to the working branch and wait for his review
   C. Publish all four straight after done
   D. Hold all four until he reviews them, then ask about task 2 again"""
 
-
-QUIZ_Q41 = """Q41. Open tasks: the invoice export, the login page, the stock report. The owner writes "the login one can go live right after it is done". You:
+QUIZ_Q30 = """Q30. Open tasks: the invoice export, the login page, the stock report. The owner writes "the login one can go live right after it is done". You:
   A. Ask him which task he means
   B. Ask him for the task id
   C. Only the login page task fits: target production with his words and what you read (--means); no question
   D. Wait until he names the task exactly"""
 
-
-QUIZ_Q42 = """Q42. Two open tasks: "fix the sales report total" and "fix the sales report export". The owner writes "publish the sales report fix after done". You:
+QUIZ_Q31 = """Q31. Two open tasks: "fix the sales report total" and "fix the sales report export". The owner writes "publish the sales report fix after done". You:
   A. Check first (the todo lines, the requirement docs, what he said before); still unsure: one question that names both tasks, then decide
   B. Pick the first one
   C. Publish both
   D. Ask him three questions to be sure"""
 
-
-QUIZ_Q43 = """Q43. About a finished task the owner writes "publish it next week". You:
+QUIZ_Q32 = """Q32. About a finished task the owner writes "publish it next week". You:
   A. Publish it now: he said publish
   B. Store it as his yes and publish at once
   C. Ask him to type a fixed sentence
   D. Not a yes now (a later time): the task stays on the working branch; nothing is published by itself"""
 
-
-QUIZ_Q44 = """Q44. You doubt whether two tasks touch the same code. A quick check (read the files, a trial merge) can settle it. You:
+QUIZ_Q33 = """Q33. You doubt whether two tasks touch the same code. A quick check (read the files, a trial merge) can settle it. You:
   A. Queue the second task until the first is merged
   B. Check, then decide: no queue and no question
   C. Ask the owner
   D. Run both and hope"""
 
-
-# FIX ORDER 2 S4 (TELL f68297ca): the late yes
-QUIZ_Q45 = """Q45. A task is built from the working branch and not merged yet. Now the owner writes "the footer one can go live after done". You:
+QUIZ_Q34 = """Q34. A task is built from the working branch and not merged yet. Now the owner writes "the footer one can go live after done". You:
   A. Push its branch straight to production
   B. Add the task again with --target production
   C. todo target <task> production with his words (--means); a new fast-lane deputy makes a new branch from production with the task's own commits (cherry-pick); every planned block runs again at its head; then promote --task with the new branch
@@ -1215,23 +1202,25 @@ class TestQuiz(ScriptCase):
 
     def test_the_changed_questions(self):
         out = self.quiz()
-        for n, text in ((6, QUIZ_Q6), (7, QUIZ_Q7), (8, QUIZ_Q8), (9, QUIZ_Q9), (16, QUIZ_Q16), (23, QUIZ_Q23), (25, QUIZ_Q25), (35, QUIZ_Q35), (38, QUIZ_Q38), (39, QUIZ_Q39),
-                        (40, QUIZ_Q40), (41, QUIZ_Q41), (42, QUIZ_Q42), (43, QUIZ_Q43), (44, QUIZ_Q44), (45, QUIZ_Q45)):
+        for n, text in ((5, QUIZ_Q5), (6, QUIZ_Q6), (7, QUIZ_Q7), (8, QUIZ_Q8), (13, QUIZ_Q13), (18, QUIZ_Q18),
+                        (25, QUIZ_Q25), (26, QUIZ_Q26), (27, QUIZ_Q27), (28, QUIZ_Q28), (29, QUIZ_Q29), (30, QUIZ_Q30),
+                        (31, QUIZ_Q31), (32, QUIZ_Q32), (33, QUIZ_Q33), (34, QUIZ_Q34)):
             with self.subTest(q=n):
                 self.assertEqual(self.question(out, n), text)
 
     def test_no_level_words_in_the_quiz(self):
         self.assertEqual(LEVEL_WORDS.findall(self.quiz()), [])
 
-    def test_45_and_the_new_key_passes(self):
+    def test_34_and_the_new_key_passes(self):
         out = self.quiz()
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 45)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 34)
         r = self.repo.run("agent-start.sh", "--answer", ANSWERS)
-        self.assertIn("QUIZ RESULT: 45/45 PASS", r.stdout)
+        self.assertIn("QUIZ RESULT: 34/34 PASS", r.stdout)
 
     def test_the_approval_questions_name_their_rule(self):
         # approval-design (section 53 D): the cases live in R8, the quick check in P1
-        for good, code in (("40B", "R8"), ("41C", "R8"), ("42A", "R8"), ("43D", "R8"), ("44B", "P1"), ("45C", "R8")):
+        for good, code in (("29B", "R8"), ("30C", "R8"), ("31A", "R8"), ("32D", "R8"), ("33B", "P1"), ("34C", "R8"),
+                           ("7C", "S3"), ("8D", "H3"), ("18D", "S1"), ("26C", "W17")):
             for letter in "ABCD":
                 wrong = good[:-1] + letter
                 if wrong == good:
@@ -1245,12 +1234,12 @@ class TestQuiz(ScriptCase):
         out = self.quiz()
         self.assertNotIn("yes, publish", out)
         self.assertNotIn("yes, skip", out)
-        self.assertIn("--means", self.question(out, 23))
+        self.assertIn("--means", self.question(out, 29))
 
     def test_a_wrong_block_answer_names_r8(self):
-        for wrong in ("38A", "38C", "39A", "39D"):
+        for wrong in ("27A", "27C", "28A", "28D"):
             with self.subTest(wrong=wrong):
-                good = "38B" if wrong.startswith("38") else "39B"
+                good = "27B" if wrong.startswith("27") else "28B"
                 r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong))
                 self.assertEqual(r.returncode, 1)
                 self.assertIn("Q%s(R8)" % wrong[:2], r.stdout)
@@ -2567,15 +2556,15 @@ class TestTheQuiz(ScriptCase):
     """W8 changed, and the quiz covers W8: question 32, answer C."""
 
     script = "agent-start.sh"
-    ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B 45C")   # check-blocks: Q38 is a blocks question now
+    ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
+               "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C")   # check-blocks: Q38 is a blocks question now
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
 
     def test_question_32_is_the_sweep(self):
         out = self.quiz()
-        q = out[out.index("Q32. "):]
+        q = out[out.index("Q24. "):]
         self.assertIn("last open task", q)
         options = [l.strip() for l in q.splitlines()[1:5]]
         self.assertEqual([o[:2] for o in options], ["A.", "B.", "C.", "D."])
@@ -2584,21 +2573,21 @@ class TestTheQuiz(ScriptCase):
 
     def test_the_quiz_says_34(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 45 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 45D"', out)
+        self.assertIn("=== QUIZ — answer all 34 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 34D"', out)
 
     def test_c_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer",
                                           self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 45/45 PASS", out)
+        self.assertIn("QUIZ RESULT: 34/34 PASS", out)
 
     def test_another_letter_fails_and_names_w8(self):
-        for wrong in ("32A", "32B", "32D"):
+        for wrong in ("24A", "24B", "24D"):
             with self.subTest(wrong=wrong):
                 result = self.repo.run("agent-start.sh", "--answer",
-                                       self.ANSWERS.replace("32C", wrong))
+                                       self.ANSWERS.replace("24C", wrong))
                 self.assertEqual(result.returncode, 1)
-                self.assertIn("Q32(W8)", result.stdout)
+                self.assertIn("Q24(W8)", result.stdout)
 
 
 class TestStartLineRefusesDefault(ScriptCase):
@@ -3011,29 +3000,29 @@ class TestQuiz36(ScriptCase):
 
     def test_36_questions(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 45 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 45D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 45)
+        self.assertIn("=== QUIZ — answer all 34 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 34D"', out)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 34)
 
     def test_q35_is_the_release_run(self):
         # check-blocks 2026-11-25 (owner 1A): Q35 asks who fixes a failing release run (Max agents is gone)
-        head, options = self.question(self.quiz(), 35)
+        head, options = self.question(self.quiz(), 25)
         self.assertIn("full suite runs once on the working branch", head)
         self.assertIn("new fixer agent", options[1])
 
     def test_q36_is_the_floor(self):
-        head, options = self.question(self.quiz(), 36)
+        head, options = self.question(self.quiz(), 26)
         self.assertIn("[Sonnet 5 medium]", head)
         self.assertIn("do not act", options[2].lower())
         self.assertIn("human", options[2])
 
     def test_all_pass(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", ANSWERS))
-        self.assertIn("QUIZ RESULT: 45/45 PASS", out)
+        self.assertIn("QUIZ RESULT: 34/34 PASS", out)
 
     def test_wrong_letters_name_the_rule(self):
-        for good, rule_code, wrongs in (("35B", "R8", ("35A", "35C", "35D")),   # the release run (R8), check-blocks section 27
-                                        ("36C", "W17", ("36A", "36B", "36D"))):
+        for good, rule_code, wrongs in (("25B", "R8", ("25A", "25C", "25D")),   # the release run (R8), check-blocks section 27
+                                        ("26C", "W17", ("26A", "26B", "26D"))):
             for wrong in wrongs:
                 with self.subTest(wrong=wrong):
                     r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong))
@@ -3046,61 +3035,70 @@ class TestQuiz36(ScriptCase):
 
     def test_usage_and_readme_say_36(self):
         src = read("bin", "agent-start.sh")
-        self.assertIn("print the 45 quiz questions", src)
-        self.assertIn('--answer "1A 2D ... 45D"', src)
-        self.assertIn("45-question quiz", read("PRINCIPLES.md"))
+        self.assertIn("print the 34 quiz questions", src)
+        self.assertIn('--answer "1A 2D ... 34D"', src)
+        self.assertIn("34-question quiz", read("PRINCIPLES.md"))
 
 
 class TestQuiz34(ScriptCase):
-    ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B 45C")   # check-blocks: Q38 is a blocks question now
+    ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
+               "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C")   # check-blocks: Q38 is a blocks question now
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
 
     def test_question_34_is_the_launch_mode(self):
         out = self.quiz()
-        q = out[out.index("Q34. "):]
+        q = out[out.index("Q18. "):]
         head = q.splitlines()[0]
         self.assertIn("new terminal", head)
         self.assertIn("--permission-mode", head)
         options = [l.strip() for l in q.splitlines()[1:5]]
         self.assertEqual([o[:2] for o in options], ["A.", "B.", "C.", "D."])
-        self.assertIn("Permission mode setting", options[1])
-        self.assertNotIn("cloud", options[1])
+        self.assertIn("Configure", options[3])
+        self.assertIn("every new terminal uses that setting", options[3])
+        self.assertNotIn("cloud", options[3])
 
     def test_34_questions(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 45 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 45D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 45)
+        self.assertIn("=== QUIZ — answer all 34 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 34D"', out)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 34)
 
     def test_b_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 45/45 PASS", out)
+        self.assertIn("QUIZ RESULT: 34/34 PASS", out)
 
     def test_another_letter_fails_and_names_w10(self):
-        for wrong in ("34A", "34C", "34D"):
+        for wrong in ("18A", "18B", "18C"):
             with self.subTest(wrong=wrong):
-                result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS.replace("34B", wrong))
+                result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS.replace("18D", wrong))
                 self.assertEqual(result.returncode, 1)
-                self.assertIn("Q34(W10)", result.stdout)
+                self.assertIn("Q18(S1)", result.stdout)
 
     def test_the_old_33_answers_no_longer_pass(self):
-        result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS.replace(" 34B", ""))
+        result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS.replace(" 34C", ""))
         self.assertEqual(result.returncode, 1)
-        self.assertIn("Q34(W10)", result.stdout)
+        self.assertIn("Q34(R8)", result.stdout)
+
+    def test_s5_the_outdated_questions_are_gone(self):
+        out = self.quiz()
+        for gone in ("You are a worker", "keyword shortcut", "/auto-pipeline:close-case in your pane",
+                     "/auto-pipeline:todo in your pane", "agent-file.sh questions says 14", "x1, x2, x3, x4",
+                     "fix the export total and publish it", "You are a merge deputy"):
+            with self.subTest(gone=gone):
+                self.assertNotIn(gone, out)
 
     def test_the_principles_say_34(self):
         text = read("PRINCIPLES.md")
-        self.assertIn("45-question quiz", text)
+        self.assertIn("34-question quiz", text)
         self.assertNotIn("33-question quiz", text)
 
     def test_the_usage_lines_say_34(self):
         src = read("bin", "agent-start.sh")
-        self.assertIn("print the 45 quiz questions", src)
-        self.assertIn('--answer "1A 2D ... 45D"', src)
-        self.assertNotIn("33B\"", src)
+        self.assertIn("print the 34 quiz questions", src)
+        self.assertIn('--answer "1A 2D ... 34D"', src)
+        self.assertNotIn("45C\"", src)
 
 
 if __name__ == "__main__":
