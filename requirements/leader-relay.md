@@ -68,7 +68,7 @@ Fix round (CORE REVIEW at 85f6a2b, TELL 60d7e4c6):
 
 - R1. In Leader's chat a line that matches the agent header (`[<model> <effort>] ...`) is never an Orca note header, and the agent-typed check reads the whole prompt after the cuts (indented or not), besides his last paragraph: "[Opus 5.5 xhigh]\n\n<quote>" is refused as agent-typed, as on the same-session path.
 - R2. A typed command counts only with all three tags present (command-name, command-message, command-args), each once, in any order: args alone, or args with only one of the other two tags, is refused.
-- R3. Leader case a (no note: the whole prompt is his) cannot be told from a `claude -p` session started with the Leader folder as its working folder: on pc2 such prompts carry entrypoint sdk-cli, promptSource sdk, turnOrigin sdk and no origin, and Leader's prompts (laptop shapes) carry the same promptSource and turnOrigin; no field is known that tells them apart, so no code change. The folder rule is the guard: only a file directly in the owner's Leader folder is read.
+- R3. Leader case a (no note: the whole prompt is his) cannot be told from a `claude -p` session started with the Leader folder as its working folder: on the connected machine such prompts carry entrypoint sdk-cli, promptSource sdk, turnOrigin sdk and no origin, and Leader's prompts (laptop shapes) carry the same promptSource and turnOrigin; no field is known that tells them apart, so no code change. The folder rule is the guard: only a file directly in the owner's Leader folder is read.
 
 Known limits:
 - One verified quote can be used again for another action (as with `--owner-quote` today); a follow-up task, not now.
