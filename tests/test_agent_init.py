@@ -71,6 +71,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ScriptCase, ScriptRepo
+from sharedrepo import REPO_BASE, shared_fixture
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import getpass  # noqa: E402
@@ -121,6 +122,7 @@ class InitCase(ScriptCase):
         return [line.strip() for line in self.read(".gitignore").splitlines()]
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
 class TestCreatesTheFiles(InitCase):
     def test_every_file_is_made(self):
         self.assertOk(self.init())
@@ -153,6 +155,7 @@ class TestCreatesTheFiles(InitCase):
             sorted(MADE_FILES + [".secrets", ".gitignore", "seed.txt", "stubbin"]))
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
 class TestAgentsMd(InitCase):
     def test_it_points_at_this_plugin_by_absolute_path(self):
         self.assertOk(self.init())
@@ -164,6 +167,7 @@ class TestAgentsMd(InitCase):
         self.assertOk(self.init())
         self.assertEqual(len(self.read("AGENTS.md").strip().splitlines()), 1)
 
+class TestAgentsMdKeepsItsOwnText(InitCase):
     def test_an_existing_agents_md_keeps_its_own_text(self):
         with open(os.path.join(self.project, "AGENTS.md"), "w") as fh:
             fh.write("House rules: never force push.\n")
@@ -196,6 +200,7 @@ class TestAgentsMdForAPackedPlugin(InitCase):
             "No work until the quiz says PASS.")
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
 class TestGitignore(InitCase):
     def test_all_four_lines_are_added(self):
         self.assertOk(self.init())
@@ -203,6 +208,8 @@ class TestGitignore(InitCase):
             with self.subTest(line=line):
                 self.assertIn(line, self.gitignore_lines())
 
+
+class TestGitignoreWriters(InitCase):
     def test_an_existing_gitignore_keeps_its_lines(self):
         with open(os.path.join(self.project, ".gitignore"), "w") as fh:
             fh.write("node_modules/\n.secrets/\n")
@@ -283,6 +290,7 @@ class TestWhereItRuns(InitCase):
         self.assertTrue((result.stderr + result.stdout).strip())
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
 class TestPermissionBlock(InitCase):
     def block(self):
         out = self.assertOk(self.init())
@@ -310,6 +318,7 @@ class TestPermissionBlock(InitCase):
         self.assertIn(".claude/settings.json", out)
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
 class TestUsage(InitCase):
     def test_help_exits_zero(self):
         result = self.init("-h")
@@ -322,6 +331,7 @@ class TestUsage(InitCase):
 
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
 class TestCloudBlock(InitCase):
     """A cloud session needs a headless browser, and only its Setup script
     can install one. A plugin cannot reach that field."""
@@ -373,6 +383,7 @@ class TestCloudBlock(InitCase):
 
 
 
+@shared_fixture(guard=REPO_BASE, remember_repo=True)
 class TestEndLines(InitCase):
     def test_it_ends_with_how_to_change_and_the_main_commands(self):
         out = self.assertOk(self.init())
@@ -585,8 +596,29 @@ class WorkingInitCase(ScriptCase):
         self.git("add", "-A")
         self.git("commit", "-q", "--allow-empty", "-m", msg)
 
+    # test-slim: the repo scan and the working branch step are Python (agent_repo_init.py); the tests that check
+    # them run it in this process, with what the wrapper hands over (root, --no-measure, the cap, the
+    # resources file). The wrapper's own steps (files, .gitignore, blocks) have their classes above and keep the
+    # real command line, and so do the classes and tests named in INIT_REAL.
+    INIT_REAL_CLASSES = ("TestFresh", "TestExisting", "TestMeasure", "TestF3NoStandingPushToProduction",
+                         "TestG2NoBranchStoresNothing")
+    INIT_REAL_TESTS = {
+        "TestDetect.test_real_data_names_a_read_only_secret",
+        "TestWorkingBranch.test_init_creates_the_branch_and_switches_the_checkout",
+        "TestF6RemoteWorkingBranch.test_tracks_the_remote_branch",
+        "TestF4AlreadyUsesThePlugin.test_a_new_repo_with_a_local_state_file_is_switched",
+        "TestP4P5P8Init.test_p8_a_failed_push_says_so",
+    }
+
     def init(self, *args, env=None):
-        r = self.repo.run("agent-init.sh", *args, env=env)
+        name = type(self).__name__
+        if (env is None and args in (("--no-measure",), ("--no-measure", "--no-branch"))
+                and name not in self.INIT_REAL_CLASSES
+                and "%s.%s" % (name, self._testMethodName) not in self.INIT_REAL_TESTS):
+            r = self.repo.run_py("agent_repo_init", self.p, *args, "--cap", "80",
+                                 "--resources", os.path.join(self.repo.plugin_bin, "agent-resources.sh"))
+        else:
+            r = self.repo.run("agent-init.sh", *args, env=env)
         self.assertEqual(r.returncode, 0, "exit %d\n%s\n%s" % (r.returncode, r.stdout, r.stderr))
         return r
 
