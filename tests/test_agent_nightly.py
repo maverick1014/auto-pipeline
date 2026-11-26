@@ -43,7 +43,8 @@ class TestNightly(NetCase):
     def test_none_yet(self):
         r = self.nightly("--status")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.strip(), "NIGHTLY: none")
+        self.assertEqual(r.stdout.splitlines()[0], "NIGHTLY: none")
+        self.assertIn("NEEDED: the full run is needed", r.stdout)
 
     def test_a_green_run(self):
         r = self.nightly("--start", "--wait")
@@ -52,8 +53,8 @@ class TestNightly(NetCase):
         self.assertEqual(st["result"], "green")
         self.assertEqual(st["commit"], self.git("rev-parse", "HEAD"))
         self.assertEqual(st["failed"], [])
-        out = self.nightly("--status").stdout.strip()
-        self.assertRegex(out, r"^NIGHTLY: green [0-9a-f]{7,} \d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+        out = self.nightly("--status").stdout.splitlines()[0]
+        self.assertRegex(out, r"^NIGHTLY: green [0-9a-f]{7,} \d{4}-\d{2}-\d{2} \d{2}:\d{2} full run$")
 
     def test_a_red_run_gates_nothing_and_says_which_test(self):
         self.put({"src/x.txt": "broken\n"})

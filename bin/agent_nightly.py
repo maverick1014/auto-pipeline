@@ -857,7 +857,21 @@ def status_line(st):
             return "NIGHTLY: none"
     else:
         when = st.get("finished", "")
-    return "NIGHTLY: %s %s %s" % (res, str(st.get("commit", ""))[:7], when)
+    kind = ""
+    if st.get("kind") == "top-up":
+        kind = " top-up over %s" % str(st.get("full_green", ""))[:7]
+    elif st.get("kind") == "full":
+        kind = " full run"
+    return "NIGHTLY: %s %s %s%s" % (res, str(st.get("commit", ""))[:7], when, kind)
+
+
+def needed_line(root, st):
+    """The second --status line: which kind of run the tip needs now, and why."""
+    if running(st):
+        return "NEEDED: wait for the run going on"
+    if st and st.get("result") == "green" and not invalid(root, st) and st.get("commit") in released_commits(root):
+        return "NEEDED: nothing: green on the tip (%s)" % kind_of(st)
+    return "NEEDED: " + need_line(plan(root, st))
 
 
 def full_cmd(root):
@@ -1040,7 +1054,7 @@ def record_misses(root, gitdir, prev, failed, commit, stamp):
     old = set((prev or {}).get("failed", [])) if (prev or {}).get("result") == "red" else set()
     lines = []
     for test in failed:
-        if test in old or test.startswith("full_cmd exit"):
+        if test in old or test.startswith(("full_cmd exit", "top-up exit")):
             continue
         short, subject = find_merge(root, test, green, commit, gitdir)
         lines.append("%s | %s | %s %s" % (stamp, test, short, subject))
@@ -1135,10 +1149,19 @@ def do_run(cwd):
     st = read_status(gitdir) or {}
     prev = st.get("prev") if st.get("result") == "running" else st
     commit = tip_of(root)
+    p = plan(root, prev, commit)                       # full or top-up: from git and the last record alone
+    carry = p["base"] if p["kind"] == "top-up" else full_base(prev)[0]
     base = {"started": now().strftime(FMT), "commit": commit, "finished": "", "result": "running", "failed": [],
-            "last_green": (prev or {}).get("last_green", ""), "pid": os.getpid(), "prev": prev}
+            "last_green": (prev or {}).get("last_green", ""), "pid": os.getpid(), "prev": prev,
+            "kind": p["kind"], "full_green": carry}
+    if p["kind"] == "top-up":
+        base["tests"] = p["tests"]
+        cmd = fill(conf_at(root, commit).get("related_cmd", ""), p["tests"])
+    print("NIGHTLY: %s on %s: %s" % ("top-up" if p["kind"] == "top-up" else "full run", commit[:7], p["why"]))
+    sys.stdout.flush()
     atomic_write(status_path(gitdir), json.dumps(base))
-    weight, measured = weight_of(gitdir, os.path.join(root, "agent_repo.conf"), "nightly")
+    wkey = "topup" if p["kind"] == "top-up" else "nightly"
+    weight, measured = weight_of(gitdir, os.path.join(root, "agent_repo.conf"), wkey)
     me = os.getpid()
     wt = os.path.join(gitdir, SCRATCH)
     log = os.path.join(gitdir, "agent_nightly.log")
@@ -1153,7 +1176,8 @@ def do_run(cwd):
         drop_reservation(me, blocking=False)
         atomic_write(status_path(gitdir), json.dumps({"started": base["started"], "commit": commit,
                                                       "finished": now().strftime(FMT), "result": "stopped",
-                                                      "failed": [], "last_green": base["last_green"]}))
+                                                      "failed": [], "last_green": base["last_green"],
+                                                      "kind": base["kind"], "full_green": carry}))
         os._exit(128 + signum)
 
     for sig in STOP_SIGNALS:
@@ -1188,7 +1212,7 @@ def do_run(cwd):
                                                        stdout=out_fh, stderr=subprocess.STDOUT)
                     try:
                         with locked():
-                            write_weight(gitdir, "nightly", int(round(time.time() - began)), mb)
+                            write_weight(gitdir, wkey, int(round(time.time() - began)), mb)
                     except OSError:
                         pass
                     with open(log, encoding="utf-8", errors="replace") as fh:
@@ -1211,11 +1235,16 @@ def do_run(cwd):
             fh.write(output[-200000:])
     except OSError:
         pass
-    failed = [] if code == 0 else (failed_tests(output) or ["full_cmd exit %d" % code])
+    exit_name = "top-up exit %d" if p["kind"] == "top-up" else "full_cmd exit %d"
+    failed = [] if code == 0 else (failed_tests(output) or [exit_name % code])
     stamp = now().strftime(FMT)
     final = {"started": base["started"], "commit": commit, "finished": stamp,
              "result": "green" if code == 0 else "red", "failed": failed,
-             "last_green": commit if code == 0 else base["last_green"]}
+             "last_green": commit if code == 0 else base["last_green"], "kind": p["kind"]}
+    if p["kind"] == "top-up":
+        final.update(full_green=p["base"], tests=p["tests"])  # a red top-up still stands on the green full run
+    else:
+        final["full_green"] = commit if code == 0 else ""     # a red full run ends the chain
     if code != 0:
         try:
             record_misses(root, gitdir, prev, failed, commit, stamp)
@@ -1237,7 +1266,8 @@ def start(cwd, wait):
         return 0
     subprocess.Popen([sys.executable, os.path.abspath(__file__), "run"], cwd=cwd, stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    print("NIGHTLY: started in the background")
+    p = plan(root, read_status(gitdir))
+    print("NIGHTLY: started in the background (%s: %s)" % ("top-up" if p["kind"] == "top-up" else "full run", p["why"]))
     return 0
 
 
@@ -1324,6 +1354,232 @@ def released_commits(root):
     return [tip]
 
 
+# ------------------------------------------------------------------ the top-up (requirements/release-check-loosen.md)
+# After a green FULL run on G, the commits G..tip are small when every file they change is text (.md), a mock page
+# (mock/), a test file (tests/test_*.py) or the version line of .claude-plugin/plugin.json. Decided from git alone:
+# no option, no environment variable, no caller can make a change small. Anything not named is code.
+
+SHA = re.compile(r"^[0-9a-f]{40}$")
+TEST_FILE = re.compile(r"^tests/test_[^/]+\.py$")
+PLUGIN_JSON = ".claude-plugin/plugin.json"
+NO_FILE = "0" * 6
+
+
+def git_rc(root, *args):
+    """(ok, stdout) of one git call; ok is False on any failure (never read as "no change")."""
+    try:
+        res = subprocess.run(["git", "-C", root] + list(args), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return False, ""
+    return res.returncode == 0, res.stdout.decode("utf-8", "surrogateescape")
+
+
+def is_commit(root, sha):
+    return isinstance(sha, str) and bool(SHA.match(sha)) and git_rc(root, "cat-file", "-e", sha + "^{commit}")[0]
+
+
+def is_ancestor(root, a, b):
+    return git_rc(root, "merge-base", "--is-ancestor", a, b)[0]
+
+
+def raw_diff(root, a, b):
+    """[(old mode, new mode, old blob, new blob, status, path)] of a..b, renames split into a delete and an add;
+    None when git cannot compare them."""
+    ok, out = git_rc(root, "diff", "--raw", "-z", "--no-renames", "--no-abbrev", "--no-ext-diff", a, b)
+    if not ok:
+        return None
+    parts, found, i = out.split("\0"), [], 0
+    while i + 1 < len(parts):
+        head = parts[i].lstrip(":").split()
+        if len(head) != 5:
+            return None
+        found.append(tuple(head) + (parts[i + 1],))
+        i += 2
+    return found
+
+
+def version_only(root, old_blob, new_blob):
+    """True when two plugin.json blobs differ only in the "version" value (the JSON and every changed line)."""
+    texts = []
+    for blob in (old_blob, new_blob):
+        ok, body = git_rc(root, "cat-file", "blob", blob)
+        if not ok:
+            return False
+        texts.append(body)
+    try:
+        old, new = json.loads(texts[0]), json.loads(texts[1])
+    except ValueError:
+        return False
+    if not (isinstance(old, dict) and isinstance(new, dict)
+            and isinstance(old.pop("version", None), str) and isinstance(new.pop("version", None), str)):
+        return False
+    import difflib
+    changed = [l for l in difflib.ndiff(texts[0].splitlines(), texts[1].splitlines()) if l[:2] in ("- ", "+ ")]
+    return old == new and all('"version"' in l for l in changed)
+
+
+def not_small(root, change):
+    """"" when one changed file is small, else why it is code."""
+    old_mode, new_mode, old_blob, new_blob, status, path = change
+    modes = {old_mode, new_mode} - {NO_FILE}
+    if status not in ("A", "M", "D"):
+        return "%s is code (git status %s)" % (path, status)
+    if modes != {"100644"}:
+        if "120000" in modes:
+            return "%s is a symlink (code)" % path
+        if "160000" in modes:
+            return "%s is a submodule (code)" % path
+        return "%s has a file mode change (%s -> %s, code)" % (path, old_mode, new_mode)
+    if path.endswith(".md") or path.startswith("mock/"):
+        return ""
+    if TEST_FILE.match(path):
+        return "%s was deleted (a check went away)" % path if status == "D" else ""
+    if path == PLUGIN_JSON:
+        if status == "M" and version_only(root, old_blob, new_blob):
+            return ""
+        return "%s changes more than the version line (code)" % path
+    return "%s is code" % path
+
+
+def small_since(root, base, tip):
+    """(small, why, changed test files) for the commits base..tip: the files base..tip bring (a merge counts by
+    these), and every non-merge commit between, one by one. why names the first code file."""
+    if not (is_commit(root, base) and is_commit(root, tip)):
+        return False, "no green full run to stand on", []
+    if not is_ancestor(root, base, tip):
+        return False, "the green full run %s is not an ancestor of %s" % (base[:7], tip[:7]), []
+    net = raw_diff(root, base, tip)
+    if net is None:
+        return False, "git cannot compare %s with %s" % (base[:7], tip[:7]), []
+    for change in net:
+        why = not_small(root, change)
+        if why:
+            return False, why, []
+    ok, out = git_rc(root, "rev-list", "--reverse", "--parents", "%s..%s" % (base, tip))
+    if not ok:
+        return False, "git cannot list the commits %s..%s" % (base[:7], tip[:7]), []
+    for line in out.splitlines():
+        shas = line.split()
+        if len(shas) > 2:
+            continue                                        # a merge: counted by the files base..tip bring
+        if len(shas) < 2:
+            return False, "the commit %s has no parent (code)" % shas[0][:7], []
+        each = raw_diff(root, shas[1], shas[0])
+        if each is None:
+            return False, "git cannot read the commit %s" % shas[0][:7], []
+        for change in each:
+            why = not_small(root, change)
+            if why:
+                return False, "%s in the commit %s" % (why, shas[0][:7]), []
+    tests = sorted(c[5] for c in net if c[4] in ("A", "M") and TEST_FILE.match(c[5]))
+    return True, "", tests
+
+
+def conf_at(root, commit):
+    """The key=value lines of agent_repo.conf as committed at commit (the last value of a key wins)."""
+    ok, body = git_rc(root, "show", "%s:agent_repo.conf" % commit)
+    found = {}
+    for line in body.splitlines() if ok else []:
+        if "=" in line and not line.strip().startswith("#"):
+            key, value = line.split("=", 1)
+            found[key.strip()] = value.strip()
+    return found
+
+
+def guard_tests(conf):
+    return [g.strip() for g in conf.get("guard_tests", "").split(",") if g.strip()]
+
+
+def full_base(st):
+    """(G, why): the green FULL run the next top-up may stand on, from the last record; "" and why when none."""
+    if st and st.get("result") == "running":
+        st = st.get("prev") if isinstance(st.get("prev"), dict) else None
+    none = "no green full run to stand on (the last full run was red, or none ran)"
+    if not st:
+        return "", none
+    if "kind" not in st and "full_green" not in st:           # a record from before the top-up: a full run
+        commit = st.get("commit")
+        return (commit, "") if st.get("result") == "green" and isinstance(commit, str) and SHA.match(commit) \
+            else ("", none)
+    g = st.get("full_green")
+    if not g:
+        return "", none
+    if not isinstance(g, str) or not SHA.match(g):
+        return "", "the status file is not valid (full_green %r)" % (g,)
+    return g, ""
+
+
+def invalid(root, st):
+    """"" when a finished record holds together, else why not. A forged or half-written record is refused."""
+    commit = st.get("commit")
+    if not is_commit(root, commit):
+        return "the commit %r is not a full commit of this repo" % (commit,)
+    kind = st.get("kind")
+    if kind is None and "full_green" not in st:
+        return ""                                            # a record from before the top-up: a full run
+    if kind == "full":
+        if st.get("result") == "green" and st.get("full_green") != commit:
+            return "a green full run stands on its own commit, not %r" % (st.get("full_green"),)
+        return ""
+    if kind != "top-up":
+        return "unknown kind %r" % (kind,)
+    g = st.get("full_green")
+    if not is_commit(root, g):
+        return "the top-up names no green full run (%r)" % (g,)
+    if g == commit:
+        return "the top-up stands on itself"
+    ok, why, tests = small_since(root, g, commit)
+    if not ok:
+        return "the top-up on %s stands on %s, but %s" % (commit[:7], g[:7], why)
+    need = sorted(set(guard_tests(conf_at(root, commit)) + tests))
+    ran = st.get("tests")
+    if not isinstance(ran, list) or sorted(set(ran)) != need:
+        return "the top-up ran %s, the rule needs %s" % (ran, need)
+    return ""
+
+
+def plan(root, st, tip=None):
+    """{"kind": "full"|"top-up", "base": G, "tests": [...], "why": ...} for the tip of the working branch."""
+    tip = tip or tip_of(root)
+    rec = st.get("prev") if st and st.get("result") == "running" else st
+    if isinstance(rec, dict) and rec.get("result") in ("green", "red"):
+        bad = invalid(root, rec)
+        if bad:
+            return {"kind": "full", "base": "", "tests": [], "why": "the status file is not valid: " + bad}
+    g, why = full_base(st)
+    if not g:
+        return {"kind": "full", "base": "", "tests": [], "why": why}
+    if g == tip:
+        return {"kind": "full", "base": "", "tests": [], "why": "nothing changed since the green full run on %s" % g[:7]}
+    conf = conf_at(root, tip)
+    if not conf.get("related_cmd"):
+        return {"kind": "full", "base": "", "tests": [], "why": "no related_cmd in agent_repo.conf to run a top-up"}
+    ok, why, tests = small_since(root, g, tip)
+    if not ok:
+        return {"kind": "full", "base": "", "tests": [], "why": why}
+    run = []
+    for t in guard_tests(conf) + tests:
+        if t not in run:
+            run.append(t)
+    if not run:
+        return {"kind": "full", "base": "", "tests": [], "why": "no guard tests and no changed test file to run"}
+    return {"kind": "top-up", "base": g, "tests": run,
+            "why": "only text, mock pages or tests changed since the green full run on %s" % g[:7]}
+
+
+def need_line(p):
+    if p["kind"] == "top-up":
+        return "a top-up is enough (%s): it runs %s" % (p["why"], ", ".join(p["tests"]))
+    return "the full run is needed: %s" % p["why"]
+
+
+def kind_of(st):
+    if st.get("kind") == "top-up":
+        return "top-up over %s" % str(st.get("full_green"))[:7]
+    return "full run"
+
+
 def release_ok(cwd):
     root, gitdir = main_root(cwd), common_dir(cwd)
     fix = "run %s/agent-nightly.sh --start" % HERE
@@ -1334,18 +1590,22 @@ def release_ok(cwd):
         print("NIGHTLY: release not ok: no commit to release; %s" % fix)
         return 1
     if not st or st.get("result") not in ("green", "red"):
-        print("NIGHTLY: release not ok: no finished nightly; %s" % fix)
+        print("NIGHTLY: release not ok: no finished nightly; %s; %s" % (need_line(plan(root, st)), fix))
+        return 1
+    bad = invalid(root, st)
+    if bad:
+        print("NIGHTLY: release not ok: the status file is not valid: %s; the full run is needed; %s" % (bad, fix))
         return 1
     if st.get("commit") not in accept:
-        print("NIGHTLY: release not ok: the last nightly ran on %s, the commit released is %s; %s"
-              % (str(st.get("commit"))[:7], target[:7], fix))
+        print("NIGHTLY: release not ok: the last nightly ran on %s, the commit released is %s; %s; %s"
+              % (str(st.get("commit"))[:7], target[:7], need_line(plan(root, st)), fix))
         return 1
     target = st.get("commit")
     if st.get("result") != "green":
-        print("NIGHTLY: release not ok: the nightly on %s is red (%s); fix it, then %s"
-              % (target[:7], ", ".join(st.get("failed", [])[:3]), fix))
+        print("NIGHTLY: release not ok: the nightly on %s is red (%s, %s); fix it, then %s"
+              % (target[:7], kind_of(st), ", ".join(st.get("failed", [])[:3]), fix))
         return 1
-    print("NIGHTLY: release ok: green on the commit released %s" % target[:7])
+    print("NIGHTLY: release ok: green on the commit released %s (%s)" % (target[:7], kind_of(st)))
     return 0
 
 
@@ -1373,7 +1633,7 @@ def failures(cwd):
     green, head = st.get("last_green", ""), st.get("commit", "")
     for test in st.get("failed", []):
         merge, task, req = "-", "-", "-"
-        if green and green != head and not test.startswith("full_cmd exit"):
+        if green and green != head and not test.startswith(("full_cmd exit", "top-up exit")):
             short, subject = find_merge(root, test, green, head, gitdir)
             merge = ("%s %s" % (short, subject)).strip()
             m = re.match(r"^Merge (?:branch |pull request )?'?([^\s']+)", subject)
@@ -1412,9 +1672,11 @@ def main(argv):
     if argv and argv[0] == "run":
         return do_run(cwd)
     if not argv or argv[0] == "--status":
-        print(status_line(read_status(common_dir(cwd))))
+        st = read_status(common_dir(cwd))
+        print(status_line(st))
+        print(needed_line(main_root(cwd), st))
         return 0
-    if argv[0] == "--start":
+    if argv[0] == "--start" and all(a == "--wait" for a in argv[1:]):     # no option chooses the kind of run
         return start(cwd, "--wait" in argv[1:])
     if argv[0] == "--due":
         return 0 if due(cwd) else 1
