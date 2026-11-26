@@ -510,9 +510,76 @@ class TestPlateLayout(unittest.TestCase):
 
     def test_the_figure_pass_uses_it(self):
         src = script_function_source("syncFigs") or ""
-        for bit in ("plateLayout(", "hovered", "selected"):
+        for bit in ("plateLayout(", "platePri(", "bounds", "blocks"):
             with self.subTest(bit=bit):
-                self.assertIn(bit, src, "syncFigs lays the plates out once per frame, the selected and hovered first")
+                self.assertIn(bit, src, "syncFigs lays the plates out once per frame: priorities, the stage's bounds, the panels")
+        pri = script_function_source("platePri") or ""
+        for bit in ("selected", "hovered"):
+            with self.subTest(bit=bit):
+                self.assertIn(bit, pri)
+
+
+class TestPlateBoundsAndPanels(unittest.TestCase):
+    """Fix round 2 (my headless check at 390x844): plates ran off the screen edge and over the page's panels.
+    plateLayout(items, opts): opts.bounds {l, t, r, b} -- before the layout each item is moved (its x and y changed in
+    place) the least that keeps its full box inside the bounds (x into [l + w/2, r - w/2], y into [t + h, b]); opts.blocks
+    [[l, t, r, b], ...] -- boxes already taken (the panels over the floor view): no shown plate meets one, the first item
+    included. Without opts it works as before."""
+
+    def run_layout(self, items, opts):
+        return sim("const items = __payload.items; __out = { modes: plateLayout(items, __payload.opts), items };",
+                   {"items": items, "opts": opts}, required=("plateLayout",))
+
+    def test_plates_move_inside_the_bounds(self):
+        items = [{"x": 10, "y": 300, "w": 160, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": 385, "y": 500, "w": 160, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": 200, "y": 8, "w": 160, "wChip": 32, "h": 22, "pri": 0}]
+        out = self.run_layout(items, {"bounds": {"l": 0, "t": 0, "r": 390, "b": 844}, "blocks": []})
+        self.assertEqual(out["modes"], ["full"] * 3)
+        moved = out["items"]
+        self.assertEqual([round(i["x"]) for i in moved], [80, 310, 200], "moved the least: half a plate from the edge")
+        self.assertEqual(round(moved[2]["y"]), 22, "down to its own height")
+        for b in boxes_of(moved, out["modes"]):
+            self.assertTrue(b[0] >= -0.01 and b[1] >= -0.01 and b[2] <= 390.01 and b[3] <= 844.01, b)
+
+    def test_panels_are_never_covered(self):
+        block = [100, 280, 300, 320]
+        items = [{"x": 200, "y": 330, "w": 160, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": 200, "y": 420, "w": 160, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": 150, "y": 300, "w": 160, "wChip": 32, "h": 22, "pri": 3}]
+        out = self.run_layout(items, {"bounds": {"l": 0, "t": 0, "r": 390, "b": 844}, "blocks": [block]})
+        self.assertEqual(out["modes"][1], "full", "a plate clear of the panel")
+        self.assertEqual(out["modes"][0], "none", "full and chip both meet the panel")
+        self.assertEqual(out["modes"][2], "none", "the selected one too: a panel is never covered")
+        self.assertEqual(overlapping(boxes_of(out["items"], out["modes"]) + [tuple(block)]), [], "no plate meets the panel")
+
+    def test_without_opts_as_before(self):
+        items = [{"x": 10, "y": 300, "w": 160, "wChip": 32, "h": 22, "pri": 0}]
+        out = self.run_layout(items, None)
+        self.assertEqual(out["modes"], ["full"])
+        self.assertEqual(out["items"][0]["x"], 10, "no bounds: nothing moves")
+
+
+class TestPlatePriority(unittest.TestCase):
+    """Fix round 2: at phone width the manager's own plate lost to its agents' plates. platePri(f) for a figure f
+    ({ c } a person, { gv: { terr } } an area manager): the selected one 3, the hovered one 2, a session or an area
+    manager 1, an agent 0."""
+
+    def test_priorities(self):
+        out = sim(r"""
+snap(__payload.view, __payload.agents);
+settle(2);
+const P = id => platePri({ c: byId(id) }), G = () => platePri({ gv: { terr: __payload.t1 } });
+const plain = { tm: P('s:t'), w1: P('w1'), w2: P('w2'), gov: G() };
+selected = { t: 'c', id: 'w1' }; hovered = { t: 'c', id: 'w2' };
+const picked = { w1: P('w1'), w2: P('w2'), tm: P('s:t') };
+selected = { t: 'gov', terr: __payload.t1 }; hovered = null;
+__out = { plain, picked, govSel: G() };
+""", {"view": view(), "t1": T1, "agents": [agent("s:t", "task-manager", up=GOV), agent("w1", "worker", up="s:t"),
+                                         agent("w2", "worker", up="s:t")]}, required=REQUIRED + ("platePri",))
+        self.assertEqual(out["plain"], {"tm": 1, "w1": 0, "w2": 0, "gov": 1})
+        self.assertEqual(out["picked"], {"w1": 3, "w2": 2, "tm": 1})
+        self.assertEqual(out["govSel"], 3)
 
 
 PROJECT_JS = r"""
@@ -553,7 +620,7 @@ class TestPlatesOnTheCrowdFloor(unittest.TestCase):
 snap(__payload.view, __payload.agents);
 settle(40);
 const res = {};
-for (const [W, H] of [[1440, 713], [390, 844]]) { const items = plateItems(W, H); res[W] = { items, modes: plateLayout(items) }; }
+for (const [W, H] of [[1440, 713], [390, 844]]) { const items = plateItems(W, H); const modes = plateLayout(items, { bounds: { l: 0, t: 0, r: W, b: H }, blocks: [] }); res[W] = { items, modes, W, H }; }
 __out = { n: live().filter(isDrawn).length, res };
 """, {"view": view(), "agents": agents}, required=REQUIRED + ("plateLayout", "FOV"))
         self.assertEqual(out["n"], 30)
@@ -563,6 +630,9 @@ __out = { n: live().filter(isDrawn).length, res };
                 self.assertEqual(len(modes), 30)
                 self.assertEqual(overlapping(boxes_of(items, modes)), [])
                 self.assertGreater(sum(m != "none" for m in modes), 0)
+                W, H = out["res"][width]["W"], out["res"][width]["H"]
+                off = [b for b in boxes_of(items, modes) if b[0] < -0.5 or b[1] < -0.5 or b[2] > W + 0.5 or b[3] > H + 0.5]
+                self.assertEqual(off, [], "nothing off screen")
 
 
 class TestOthersStayWhenOneLeaves(unittest.TestCase):
