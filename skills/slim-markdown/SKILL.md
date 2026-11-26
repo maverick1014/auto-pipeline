@@ -1,8 +1,8 @@
 ---
-name: md-slim
-description: Keep the files agents read (PRINCIPLES.md, CLAUDE.md, AGENTS.md, skills, agent files, requirement docs) short and exact in meaning. Use when you create or edit one of them, when one has grown or says a thing twice, or when the human calls /auto-pipeline:md-slim.
+name: slim-markdown
+description: Keep the files agents read (PRINCIPLES.md, CLAUDE.md, AGENTS.md, skills, agent files, requirement docs) short and exact in meaning. Use when you create or edit one of them, when one has grown or says a thing twice, or when the human calls /auto-pipeline:slim-markdown.
 ---
-# /md-slim: agent-read files stay short and exact
+# /slim-markdown: agent-read files stay short and exact
 
 The reader is an agent. It knows standard technical terms; it does not know this repo. Every line is paid for on every load.
 Words to the human: the Language setting.

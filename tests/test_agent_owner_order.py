@@ -29,6 +29,10 @@ LONG = ("Some other notes here. keep it, this features is needed ya. because it 
         "the cross communication more reliable")
 LONG_SNIPPET = "…e other notes here. keep it, this features is needed ya. because it can make the…"
 NOT_FOUND = "OWNER ORDER not verified: not found (paraphrased, or typed on another machine?)"
+# approval-design (requirements/check-blocks.md section 53 A4): a short quote needs the question it answered
+SHORT_NO_QUESTION = ('OWNER ORDER not verified: quote too short (%d < %d): '
+                     'a short answer needs --question "<the question it answered>"')
+QUESTION = "1. Publish the export total fix straight to production? A. yes B. wait for my review"
 
 _ids = itertools.count(1)
 
@@ -561,15 +565,15 @@ class TestShortAndUsage(_TestShortAndUsageFixture, OwnerOrderCase):
 
     def test_h21_too_short_before_any_search(self):
         self.assertRefused(self.verify("rules yes"),
-                           "OWNER ORDER not verified: quote too short (9 < 20)")
+                           SHORT_NO_QUESTION % (9, 20))
 
     def test_c3_wide_characters_count_two(self):
         self.assertRefused(self.verify("这个功能很重要"),
-                           "OWNER ORDER not verified: quote too short (14 < 20)")
+                           SHORT_NO_QUESTION % (14, 20))
 
     def test_c3_width_counts_after_normalise(self):
         self.assertRefused(self.verify("  rules     yes   "),
-                           "OWNER ORDER not verified: quote too short (9 < 20)")
+                           SHORT_NO_QUESTION % (9, 20))
 
     def test_c4_empty_quote_is_a_usage_error(self):
         self.assertUsage(self.verify("   "))
@@ -769,7 +773,8 @@ class TestLine(OwnerOrderCase):
     def test_e5_too_short(self):
         r = self.line("rules yes")
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(self.out_lines(r), ["OWNER ORDER not found: quote too short (9 < 20)"])
+        self.assertEqual(self.out_lines(r), ['OWNER ORDER not found: quote too short (9 < 20): '
+                                             'a short answer needs --question "<the question it answered>"'])   # section 53 A9
 
     def test_e5_only_in_a_peer_line(self):
         dt = ago(30)
@@ -986,6 +991,186 @@ class TestConfKeys(unittest.TestCase):
         self.assertEqual(agent_conf.CONSTANTS["owner_order_hours"], 24)
         self.assertEqual(agent_conf.CONSTANTS["owner_order_min_chars"], 20)
 
+
+
+
+# ================================================================== approval-design: short answers (section 53 A4, A5, A9)
+
+class TestShortAnswer(OwnerOrderCase):
+
+    def test_a4_a_whole_short_prompt_with_its_question_is_verified(self):
+        dt = ago(5)
+        path = self.write([assistant(QUESTION, ago(6)), owner("1A", dt)])
+        r = self.verify("1A", "--question", QUESTION)
+        self.assertVerified(r, path, dt)
+        self.assertEqual(self.out_lines(r), [
+            "OWNER ORDER verified %s %s" % (self.shown(path), minute(dt)),
+            'match: "1A"',
+            'question: "%s"' % QUESTION,
+        ])
+
+    def test_a4_whitespace_around_a_short_prompt_is_normalised(self):
+        dt = ago(5)
+        path = self.write([assistant(QUESTION, ago(6)), owner("  1A \n", dt)])
+        self.assertVerified(self.verify("1A", "--question", QUESTION), path, dt)
+
+    def test_a4_a_short_quote_inside_a_longer_prompt_is_refused(self):
+        self.write([owner("1A and also fix the footer typo on the site", ago(5))])
+        line = self.assertReason(self.verify("1A", "--question", QUESTION))
+        self.assertIn("whole prompt", line)
+
+    def test_a4_a_short_quote_without_question_is_refused_before_any_search(self):
+        self.write([owner("ok", ago(5))])
+        self.assertRefused(self.verify("ok"), SHORT_NO_QUESTION % (2, 20))
+
+    def test_a4_only_in_an_assistant_line_is_refused(self):
+        self.write([assistant("1A", ago(5))])
+        line = self.assertReason(self.verify("1A", "--question", QUESTION))
+        self.assertIn("assistant", line)
+
+    def test_a4_two_short_prompts_need_time(self):
+        first, second = ago(50), ago(5)
+        path = self.write([assistant(QUESTION, ago(51)), owner("ok", first),
+                           assistant(QUESTION, ago(6)), owner("ok", second)])
+        r = self.verify("ok", "--question", QUESTION)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("several owner prompts hold the quote, pass --time", r.stdout)
+        self.assertVerified(self.verify("ok", "--question", QUESTION, "--time", minute(second)), path, second)
+
+    def test_a5_a_long_quote_takes_a_question_too(self):
+        dt = ago(5)
+        path = self.write([owner(LONG, dt)])
+        r = self.verify(QUOTE, "--question", QUESTION)
+        self.assertVerified(r, path, dt)
+        self.assertEqual(self.out_lines(r)[2], 'question: "%s"' % QUESTION)
+
+    def test_a5_an_empty_question_is_a_usage_error(self):
+        self.assertUsage(self.verify("1A", "--question", "   "))
+
+
+class TestLineShortAnswer(OwnerOrderCase):
+    """Section 53 A9: a relayed short answer carries its question, so the receiver can verify it."""
+
+    def setUp(self):
+        super().setUp()
+        self.repo.git_init(self.sender)
+
+    def line(self, quote, *extra):
+        e = {"CLAUDE_PID": self.sleeper(), "ANTHROPIC_MODEL": "opus", "CLAUDE_CODE_EFFORT_LEVEL": "xhigh"}
+        return self.run_tool("line", "--quote", quote, *extra, env=e, cwd=self.sender)
+
+    def test_a9_four_lines_with_the_question(self):
+        dt = ago(5)
+        self.write([assistant(QUESTION, ago(6)), owner("1A", dt)])
+        r = self.line("1A", "--question", QUESTION)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lines = self.out_lines(r)
+        self.assertEqual(len(lines), 4, r.stdout)
+        self.assertEqual(lines[1], '"1A"')
+        self.assertEqual(lines[2], 'question: "%s"' % QUESTION)
+        self.assertEqual(shlex.split(lines[3][len("check: "):]),
+                         ["agent-owner-order.sh", "verify", "--repo", self.sender, "--machine", HOST,
+                          "--time", minute(dt), "--quote", "1A", "--question", QUESTION])
+
+    def test_a9_the_check_line_verifies(self):
+        dt = ago(5)
+        path = self.write([assistant(QUESTION, ago(6)), owner("1A", dt)])
+        check = self.out_lines(self.line("1A", "--question", QUESTION))[3]
+        args = shlex.split(check[len("check: "):])[1:]
+        self.assertVerified(self.run_tool(*args), path, dt)
+
+    def test_a9_a_short_answer_without_question_is_not_found(self):
+        self.write([owner("1A", ago(5))])
+        r = self.line("1A")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("--question", r.stdout)
+
+
+
+# ================================================================== FIX ORDER 1 R1: the question stands before the answer
+
+class TestQuestionBeforeTheAnswer(OwnerOrderCase):
+    """TELL cdacc0c5 R1: a short answer counts only when its question (or its numbered key line) stands in the
+    assistant message right before that prompt; any question bound to any "ok" is refused."""
+
+    DROP = "Drop the customers table in production? yes/no"
+
+    def test_r1_an_ok_with_no_question_before_it_is_refused(self):
+        self.write([owner("ok", ago(5))])
+        line = self.assertReason(self.verify("ok", "--question", self.DROP))
+        self.assertIn("not in the assistant message before", line)
+
+    def test_r1_another_question_before_it_is_refused(self):
+        self.write([assistant("1. Rename the report? A. yes B. no", ago(6)), owner("1A", ago(5))])
+        line = self.assertReason(self.verify("1A", "--question", QUESTION))
+        self.assertIn("not in the assistant message before", line)
+
+    def test_r1_only_the_message_right_before_counts(self):
+        self.write([assistant(QUESTION, ago(9)), owner("something else, long enough to be a prompt", ago(8)),
+                    assistant("noted, going on", ago(7)), owner("1A", ago(5))])
+        line = self.assertReason(self.verify("1A", "--question", QUESTION))
+        self.assertIn("not in the assistant message before", line)
+
+    def test_r1_markdown_and_line_breaks_do_not_matter(self):
+        dt = ago(5)
+        path = self.write([assistant("## To decide\n**1. Publish the export total fix straight to production?**\n"
+                                     "  A. yes\n  B. wait for my review\nRecommendation: A", ago(6)), owner("1A", dt)])
+        self.assertVerified(self.verify("1A", "--question", QUESTION), path, dt)
+
+    def test_r1_the_numbered_key_line_is_enough(self):
+        dt = ago(5)
+        path = self.write([assistant("1. Publish the export total fix straight to production? It passed the "
+                                     "review. A. yes, publish B. wait", ago(6)), owner("1A", dt)])
+        self.assertVerified(self.verify("1A", "--question", QUESTION), path, dt)
+
+    def test_r1_tool_lines_between_do_not_hide_the_question(self):
+        dt = ago(5)
+        path = self.write([assistant(QUESTION, ago(7)), tool_result("ran the board", ago(6)),
+                           assistant("Waiting for your answer.", ago(6)), owner("1A", dt)])
+        self.assertVerified(self.verify("1A", "--question", QUESTION), path, dt)
+
+    def test_r1_the_line_command_checks_it_too(self):
+        self.repo.git_init(self.sender)
+        self.write([owner("1A", ago(5))])
+        e = {"CLAUDE_PID": self.sleeper(), "ANTHROPIC_MODEL": "opus", "CLAUDE_CODE_EFFORT_LEVEL": "xhigh"}
+        r = self.run_tool("line", "--quote", "1A", "--question", QUESTION, env=e, cwd=self.sender)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("not in the assistant message before", r.stdout)
+
+
+class TestTheQuestionIsWhole(OwnerOrderCase):
+    """FIX ORDER 2 S2 (TELL f68297ca): the question is a WHOLE line or sentence of that assistant message, or its
+    numbered key line; a fragment is refused."""
+
+    MSG = "I will not publish anything yet. Shall I start the tests? yes/no"
+
+    def answer(self, question):
+        self.write([assistant(self.MSG, ago(6)), owner("ok", ago(5))])
+        return self.verify("ok", "--question", question)
+
+    def test_s2_a_fragment_is_refused(self):
+        for q in ("publish anything", "yes/no", "start the tests", "Shall I start"):
+            with self.subTest(q=q):
+                line = self.assertReason(self.answer(q))
+                self.assertIn("not in the assistant message before", line)
+
+    def test_s2_a_whole_sentence_counts(self):
+        self.assertEqual(self.answer("Shall I start the tests?").returncode, 0)
+        self.assertEqual(self.answer("I will not publish anything yet.").returncode, 0)
+
+    def test_s2_a_whole_line_counts(self):
+        self.assertEqual(self.answer(self.MSG).returncode, 0)
+
+    def test_s2_a_numbered_key_line_inside_a_longer_question_text(self):
+        dt = ago(5)
+        path = self.write([assistant("## To decide\n1. Publish the export total fix straight to production? "
+                                     "It passed the review.\n   A. yes\n   B. wait for my review", ago(6)), owner("1A", dt)])
+        self.assertVerified(self.verify("1A", "--question", QUESTION), path, dt)
+
+    def test_s2_a_fragment_of_the_key_line_is_refused(self):
+        self.write([assistant("1. Publish the export total fix straight to production? A. yes B. no", ago(6)),
+                    owner("1A", ago(5))])
+        self.assertReason(self.verify("1A", "--question", "1. Publish the export total fix?"))
 
 if __name__ == "__main__":
     unittest.main()

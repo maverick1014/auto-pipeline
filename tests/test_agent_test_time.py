@@ -1,5 +1,5 @@
 """Tests of bin/agent_test_time.py: run any repo's test files one by one, N at a time, and
-report seconds, peak MB and exit code per file, slowest first (the test-slim skill, step 1).
+report seconds, peak MB and exit code per file, slowest first (the slim-test-case skill, step 1).
 
 requirements/test-slim.md. One class per feature.
 """

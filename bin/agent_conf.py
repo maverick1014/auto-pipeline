@@ -867,26 +867,6 @@ def cli_model(spec):
     return base + suffix
 
 
-# ------------------------------------------------------------------ owner sentences (check-blocks section 51 H2)
-# An approval is one exact sentence the tool names, typed by the owner and verified as his typed prompt.
-
-def approval_key(text):
-    """Lower-cased, punctuation dropped, extra spaces dropped: how two sentences are compared."""
-    return re.sub(r"[^\w]+", " ", (text or "").lower().replace("_", " ")).strip()
-
-
-def publish_sentence(task):
-    return "yes, publish %s to production" % task
-
-
-def skip_sentence(block, task):
-    return "yes, skip %s for %s" % (block, task)
-
-
-def says(text, sentence):
-    return approval_key(text) == approval_key(sentence)
-
-
 # ------------------------------------------------------------------ working branch
 
 

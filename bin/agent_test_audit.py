@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit a test merge (the test-slim skill, steps 4-6). Python 3 stdlib only, any repo.
+"""Audit a test merge (the slim-test-case skill, steps 4-6). Python 3 stdlib only, any repo.
 
   agent_test_audit.py --before <ids.txt> --after <ids.txt> [--table <md>]
       Every before id (file::Class.test) must be kept (same id after), moved (same test name,

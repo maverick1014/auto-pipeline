@@ -91,6 +91,7 @@ COPY_BIN = [
     "agent_blocks.py",       # check-blocks: the one table of blocks and triggers
     "agent_checks.py",       # check-blocks: gate and next (agent-file.sh)
     "agent_repo_init.py",    # check-blocks: init writes agent_repo.conf v1 (agent-init.sh)
+    "agent-keyword.sh",     # approval-design C: the approval pointer reads the role (main manager only)
     "agent-board-warn.sh",   # check-blocks: board warnings into the main manager's context (hook)
     "agent-nightly.sh",      # check-blocks section 15: the nightly run, selection misses, release-ok
     "agent_nightly.py",
