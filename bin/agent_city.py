@@ -2149,11 +2149,6 @@ class CityState:
             print("agent_city: dropped %d territory(ies) with no repo (\"dir:\" identity)"
                   % len(dropped), file=sys.stderr)
 
-        # A floor whose local folder is gone is dropped here too (see _drop_gone_locked); the
-        # live-session test is moot at start: no session has had a line yet.
-        if self._drop_gone_locked():
-            dirty = True
-
         # The city is never empty: the dir the server was started from (its
         # git repo, or the plain folder itself) always has a territory, the
         # governor's home until a real one shows up.
@@ -2219,6 +2214,12 @@ class CityState:
         if self.chat_path is not None:
             for row in load_chat(self.chat_path):
                 self.feed_chat(row)
+
+        # A floor whose local folder is gone is dropped (see _drop_gone_locked): after the roster is
+        # back, so a floor with a live restored session stays.
+        with self.lock:
+            if self._drop_gone_locked():
+                self._save_world_locked()
 
     # -- SSE clients ----------------------------------------------------
 
@@ -2356,7 +2357,7 @@ class CityState:
         territory: out of "territories", "order", "floors" and "gov_seen". Floor design files and
         history stay. Saves and tells nobody: the caller does. Returns the identities dropped."""
         gone = [i for i in self.world["territories"]
-                if i != getattr(self, "start_repo", None) and territory_folder_gone(i)
+                if i != self.start_repo and territory_folder_gone(i)
                 and not self._territory_live_locked(i)]
         if not gone:
             return []
@@ -5870,21 +5871,53 @@ def repo_name(identity):
     return base
 
 
+# Where disks are mounted. A path whose first missing part is one of these, or sits directly in one
+# (/Volumes/<disk>; /media/<user>/<disk>; /run/media/<user>/<disk>; /mnt/<disk>), is an unmounted disk,
+# never a gone folder: the disk may come back. A list so a test can point it at a temp folder.
+VOLUME_PARENTS = ("/Volumes", "/media", "/run/media", "/mnt")
+
+
+def _volume_root(missing):
+    """True when MISSING (the first missing part of a path) is a mount point of a disk that may be
+    unplugged: a VOLUME_PARENTS folder itself, directly in one, or two levels in under /media or
+    /run/media (the user folder, then the disk)."""
+    up = os.path.dirname(missing)
+    return (missing in VOLUME_PARENTS or up in VOLUME_PARENTS
+            or os.path.dirname(up) in ("/media", "/run/media") and up not in ("/", ""))
+
+
 def territory_folder_gone(identity):
     """The one place that decides a floor's folder is gone. The kinds of territory identity the city
     knows: a git common dir path (".../shop/.git", or a bare ".../shop.git"; a worktree has its repo's),
     a plain folder path (a repo-less folder, realpath), "dir:<name>" (old data, dropped at load), and the
     demo office's "/demo/..." (never in world.json). Only an absolute path of this machine is checked:
-    True when its folder (repo_folder) no longer exists. "dir:" names, relative names, anything else
-    that is no absolute path, and "/demo/..." are never gone."""
+    True only when the OS says the folder does not exist (FileNotFoundError or NotADirectoryError); any
+    other error (no permission ...) is not gone, and a path on an unmounted disk (VOLUME_PARENTS) is
+    not gone. "dir:" names, relative names, anything else that is no absolute path, and "/demo/..."
+    are never gone."""
     if not isinstance(identity, str) or not identity or not os.path.isabs(identity):
         return False
     if identity == "/demo" or identity.startswith("/demo/"):
         return False
     try:
-        return not os.path.exists(repo_folder(identity))
+        os.stat(repo_folder(identity))
+        return False
+    except (FileNotFoundError, NotADirectoryError):
+        pass
     except (OSError, ValueError):
         return False
+    path = os.sep
+    for part in repo_folder(identity).split(os.sep):
+        if not part:
+            continue
+        path = os.path.join(path, part)
+        try:
+            os.stat(path)
+        except (FileNotFoundError, NotADirectoryError):
+            return not _volume_root(path)
+        except (OSError, ValueError):
+            return False
+    return False
 
 
 def new_world():

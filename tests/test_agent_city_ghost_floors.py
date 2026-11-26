@@ -92,7 +92,7 @@ class TestGhostFloors(GhostCase):
 
     def test_G2_a_folder_removed_while_running_is_dropped_and_told(self):
         a, b = self.repo("a"), self.repo("b")
-        self.write_world([a, b])
+        self.write_world([a, b], gov_seen={a: "sa", b: "sb"})
         st = self.city()
         client = st.add_client()
         drain(client)
@@ -102,7 +102,10 @@ class TestGhostFloors(GhostCase):
         kinds = [e.get("type") for e in drain(client)]
         self.assertIn("world", kinds)
         self.assertIn("snapshot", kinds)
-        self.assertNotIn(b, self.read_world()["territories"])
+        on_disk = self.read_world()
+        for key in ("territories", "order", "floors", "gov_seen"):
+            self.assertNotIn(b, on_disk.get(key, {}), key)
+        self.assertIn(a, on_disk["gov_seen"])
 
     def test_G3_a_gone_folder_with_a_live_session_stays(self):
         a = self.repo("a", create=False)
@@ -170,6 +173,62 @@ class TestGhostFloors(GhostCase):
         shutil.rmtree(os.path.dirname(b))
         self.assertEqual(st.sweep_gone_floors(1030.0), 0, "inside the minute: no look")
         self.assertEqual(st.sweep_gone_floors(1061.0), 1)
+
+    def test_G8_a_folder_that_cannot_be_looked_at_is_not_gone(self):
+        if os.geteuid() == 0:
+            self.skipTest("root can look anywhere")
+        a, b = self.repo("a"), self.repo("b")
+        self.write_world([a, b])
+        parent = os.path.join(self.base, "repos")   # the folder's parent cannot be looked into
+        self.addCleanup(os.chmod, parent, 0o755)
+        os.chmod(parent, 0o000)
+        st = self.city()
+        self.assertEqual(len(st.floors()), 2, "start keeps it")
+        self.assertEqual(st.sweep_gone_floors(1000.0), 0)
+        self.assertIn(b, st.world["territories"])
+        self.assertFalse(ac.territory_folder_gone(b))
+
+    def test_G9_a_floor_with_a_restored_live_session_keeps_its_place(self):
+        k1, k2 = self.repo("k1"), self.repo("k2")
+        gone = self.repo("gone", create=False)
+        self.write_world([k1, gone, k2], gov_seen={gone: "old-sid"})
+        roster = os.path.join(self.base, "roster.json")
+        ac.save_roster(roster, [{"sid": "live1", "pid": os.getpid(), "gov": False, "repo": gone, "role": "",
+                                 "proj": "app", "wt": "", "tp": "", "label": "", "task": ""}])
+        st = self.city(roster_path=roster)
+        self.assertEqual(st.world["order"], [k1, gone, k2])
+        self.assertEqual(st.world["floors"], [k1, gone, k2])
+        self.assertEqual(st.world["gov_seen"].get(gone), "old-sid")
+
+    def test_G10_an_unmounted_disk_is_not_gone(self):
+        vols = os.path.join(self.base, "Volumes")
+        os.makedirs(vols)
+        old = ac.VOLUME_PARENTS
+        ac.VOLUME_PARENTS = (vols,)
+        self.addCleanup(setattr, ac, "VOLUME_PARENTS", old)
+        away = os.path.join(vols, "Disk", "proj", ".git")
+        self.assertFalse(ac.territory_folder_gone(away))
+        self.assertTrue(ac.territory_folder_gone(os.path.join(self.base, "other", "proj", ".git")))
+        a = self.repo("a")
+        self.write_world([a, away], gov_seen={away: "sid"})
+        st = self.city()
+        self.assertEqual(st.sweep_gone_floors(1000.0), 0)
+        self.assertEqual(st.world["order"], [a, away])
+        self.assertEqual(st.world["gov_seen"], {away: "sid"})
+        for yes in ("/Volumes/D", "/media", "/media/u", "/media/u/disk", "/run/media/u/disk", "/mnt/d", "/mnt"):
+            ac.VOLUME_PARENTS = old
+            self.assertTrue(ac._volume_root(yes), yes)
+        for no in ("/home/u", "/Users/x", "/media/u/disk/x/y", "/tmp/x"):
+            self.assertFalse(ac._volume_root(no), no)
+
+    def test_G11_the_start_repo_is_never_dropped(self):
+        a, b = self.repo("a"), self.repo("b")
+        start = self.repo("start", create=False)
+        self.write_world([a, start, b])
+        st = self.city(start_repo=start)
+        self.assertEqual(st.world["order"], [a, start, b])
+        self.assertEqual(st.sweep_gone_floors(1000.0), 0)
+        self.assertEqual(st.world["floors"], [a, start, b])
 
 
 if __name__ == "__main__":
