@@ -1893,7 +1893,8 @@ class TestThisRepo(unittest.TestCase):
     def test_version_1_with_the_test_commands(self):
         c = self.conf()
         self.assertEqual(c["version"], "1")
-        self.assertEqual(c["related_cmd"], "python3 -m unittest {modules}")
+        # release-check-loosen decision (a): related tests and the top-up go through the parallel runner too
+        self.assertEqual(c["related_cmd"], "python3 tests/run2.py {tests}")
         self.assertEqual(c["full_cmd"], "python3 tests/run2.py")   # approval-design F: 7.6 min, not 47
         # FIX ORDER 1 R5: the full run is heavy by a seeded weight, so MODULE TESTS of a deps change goes to the net
         sys.path.insert(0, os.path.join(ROOT, "bin"))
