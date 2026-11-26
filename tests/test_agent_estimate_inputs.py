@@ -48,7 +48,7 @@ The data block, in this order (todo done, backfill):
 `data --what`: the columns est0 typed built stages slices right after guess, before what.
 `data` without --what is unchanged.
 
-M   The measure of section 4, in `backtest`, right before the "winner:" line:
+M   The measure of section 4, in `backtest`: one block of lines right before the "winner:" line, opened by:
       measure: <n> clean rows scored, by <winner>
       measure work: n <n> bias <+x.xx> spread <x.xx>
       measure work est < <big>m: n <n> bias <+x.xx> spread <x.xx>
@@ -416,9 +416,14 @@ class TestMeasureLines(EstimateCase):
             hits = [h for h in hits if h]
             self.assertEqual(len(hits), 1, "one %s line in:\n%s" % (key, out))
             found[key] = hits[0]
+        # the measure lines are one block that ends right before "winner:"; these six open it, in order
+        # (part C adds its live lines after the p85 line)
         order = [i for i, l in enumerate(lines) if l.startswith("measure")]
         winner = [i for i, l in enumerate(lines) if l.startswith("winner: ")]
-        self.assertEqual(order, list(range(winner[0] - 6, winner[0])), out)
+        self.assertEqual(order, list(range(order[0], winner[0])), out)
+        self.assertEqual([lines[i].split(":")[0].split(" n ")[0] for i in order[:6]],
+                         ["measure", "measure work", "measure work est < 120m", "measure work est >= 120m",
+                          "measure end", "measure p85"], out)
         return found
 
     def test_a_steady_history(self):

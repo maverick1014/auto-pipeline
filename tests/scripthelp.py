@@ -76,6 +76,7 @@ COPY_BIN = [
     "agent-questions-page.html",
     "agent-name.sh",
     "agent_estimate.py",
+    "agent_forecast.py",     # estimate-improve: the end time (Monte Carlo), board, eta and backtest share it
     "agent-cleanup.sh",
     "agent_cleanup.py",
     "agent_cleanfiles.py",   # clean-up: --files, rubbish docs and outdated agent_* lines

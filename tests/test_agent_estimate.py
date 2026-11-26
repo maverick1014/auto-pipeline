@@ -280,10 +280,11 @@ class TestEstimateLearned(EstimateCase):
         self.assertEqual(likes[0].group(3, 4, 5, 6), ("page", "full", "yes", day(37)))
 
     def test_the_estimate_is_the_geometric_mean_of_the_neighbours(self):
+        # estimate-improve A5: every fixture row is clean (wait 0, clock = work), else it is not learned
         rows = [line(day(i), "plain-%02d" % i, "plain work", type="server", lane="full",
-                     mock="no", est=60, work=50) for i in range(8)]
+                     mock="no", est=60, work=50, wait=0, clock=50) for i in range(8)]
         rows += [line(day(8 + i), "m-%d" % i, "page with mock", type="page", lane="full",
-                      mock="yes", est=90, work=w) for i, w in enumerate((10, 40, 160))]
+                      mock="yes", est=90, work=w, wait=0, clock=w) for i, w in enumerate((10, 40, 160))]
         self.completed(rows)
         self.model(versions=[version(k=3, text=0, type=0)])
         m, likes = self.estimate("full", "yes", "page", "some page")
@@ -292,9 +293,9 @@ class TestEstimateLearned(EstimateCase):
 
     def test_the_text_finds_the_like_tasks(self):
         rows = [line(day(i), "cf-%d" % i, "cloudflare login page step %d" % i, type="cloud",
-                     lane="full", mock="no", est=150, work=200) for i in range(3)]
+                     lane="full", mock="no", est=150, work=200, wait=0, clock=200) for i in range(3)]
         rows += [line(day(3 + i), "srv-%02d" % i, "server change for the relay number %d" % i,
-                      type="cloud", lane="full", mock="no", est=60, work=30) for i in range(20)]
+                      type="cloud", lane="full", mock="no", est=60, work=30, wait=0, clock=30) for i in range(20)]
         self.completed(rows)
         self.model(versions=[version(k=3, text=1, type=0)])
         m, likes = self.estimate("full", "no", "cloud", "cloudflare login page step 4")
@@ -303,9 +304,9 @@ class TestEstimateLearned(EstimateCase):
 
     def test_the_name_counts_as_text(self):
         rows = [line(day(i), "quokka-%d" % i, "plain work", type="cloud", lane="full",
-                     mock="no", est=150, work=200) for i in range(3)]
+                     mock="no", est=150, work=200, wait=0, clock=200) for i in range(3)]
         rows += [line(day(3 + i), "srv-%02d" % i, "plain work", type="cloud", lane="full",
-                      mock="no", est=60, work=30) for i in range(10)]
+                      mock="no", est=60, work=30, wait=0, clock=30) for i in range(10)]
         self.completed(rows)
         self.model(versions=[version(k=3, text=1, type=0)])
         _, likes = self.estimate("full", "no", "cloud", "plain work", "--name", "quokka-9")
@@ -355,9 +356,9 @@ class TestBacktest(EstimateCase):
     def test_the_rubric_and_todo_est_by_hand(self):
         rows = steady(10)
         rows.append(line(day(10), "late-mock", "x", type="page", lane="full", mock="yes",
-                         est=90, work=100))
+                         est=90, work=100, wait=0, clock=100))        # estimate-improve A5: clean rows
         rows.append(line(day(11), "late-fast", "y", type="page", lane="fast", mock="no",
-                         est=15, work=4))
+                         est=15, work=4, wait=0, clock=4))
         self.completed(rows)
         out = self.assertOk(self.af("backtest"))
         self.assertTrue(self.lines(out)[0].startswith("backtest: 12 tasks, 2 tested"), out)
@@ -399,7 +400,9 @@ class TestBacktest(EstimateCase):
         a = self.task_rows(self.assertOk(self.af("backtest", "--tasks")))
         last = data[-1]
         work = int(re.search(r" work=(\d+) ", last).group(1))
-        data[-1] = last.replace(" work=%d " % work, " work=%d " % (work * 3 + 7))
+        # estimate-improve A5: the clock grows with the work, or the row would be dirty and leave the backtest
+        data[-1] = last.replace(" work=%d " % work, " work=%d " % (work * 3 + 7)).replace(
+            " clock=%d " % work, " clock=%d " % (work * 3 + 7))
         self.completed(data)
         b = self.task_rows(self.assertOk(self.af("backtest", "--tasks")))
         self.assertEqual(a[:-1], b[:-1])
@@ -635,44 +638,40 @@ class TestRealData(EstimateCase):
         with open(REAL) as fh:
             self.write("agent_completed.txt", fh.read())
 
+    # estimate-improve A5 (2026-11-26): 15 of these 30 old rows have no wait, so they are not learned; the
+    # numbers below are the new code's, checked by the task manager against the row list (only clean rows
+    # are scored, each from the clean rows before it)
+
     def test_the_backtest_table(self):
         out = self.assertOk(self.af("backtest"))
-        self.assertTrue(self.lines(out)[0].startswith("backtest: 30 tasks, 20 tested"), out)
+        self.assertTrue(self.lines(out)[0].startswith("backtest: 30 tasks, 5 tested"), out)
         t = self.table(out)
-        self.assertEqual(t["estimator"].group(1, 2, 3, 4), ("20", "23.0", "40", "60"))
-        self.assertEqual(t["rubric"].group(1, 2, 3, 4), ("20", "26.5", "30", "30"))
-        self.assertEqual(t["todo est"].group(1, 2, 3), ("20", "26.0", "25"))
-        self.assertEqual(t["winner"], "estimator")
+        self.assertEqual(t["estimator"].group(1, 2, 3, 4), ("5", "41.0", "20", "60"))
+        self.assertEqual(t["rubric"].group(1, 2, 3, 4), ("5", "23.0", "40", "20"))
+        self.assertEqual(t["todo est"].group(1, 2, 3), ("5", "28.0", "20"))
+        self.assertEqual(t["winner"], "rubric")
 
     def test_a_task_row(self):
         rows = self.task_rows(self.assertOk(self.af("backtest", "--tasks")))
-        self.assertEqual(len(rows), 20)
+        self.assertEqual(len(rows), 5)
         row = [TASK_ROW.match(r) for r in rows if r.startswith("task city-device-join ")]
         self.assertEqual(len(row), 1, rows)
-        self.assertEqual(row[0].group(2, 3, 4, 5, 6), ("43", "28", "18", "57", "53"))
-        self.assertEqual(TASK_ROW.match(rows[0]).group(1), "msg-sides")
+        self.assertEqual(row[0].group(2, 3, 4, 5, 6), ("43", "28", "19", "48", "53"))
+        self.assertEqual(TASK_ROW.match(rows[0]).group(1), "city-login-start")
 
-    def test_v1_and_three_example_tasks(self):
+    def test_v1_waits_for_30_clean_tasks(self):
         out = self.assertOk(self.af("retrain"))
-        # estimate-blend: the todo est of these old lines is their guess; the blend ties the
-        # estimator here (within 30% 40% both), so v1 stays the estimator
-        self.assertTrue(self.verdicts(out)[0].startswith(
-            "estimate retrain: v1 made from 30 tasks: estimator"), out)
-        ver = self.model_json()["versions"][0]
-        self.assertEqual((ver["k"], ver["text"], ver["type"]), (3, 1, 0.5))
-        m, likes = self.estimate("fast", "no", "page", "agent-city: fix a typo in the rail label",
-                                 "--name", "fix-typo")
-        self.assertEqual(m.group(1, 2, 3), ("5", "3", "8"))
-        m, likes = self.estimate("full", "yes", "page",
-                                 "agent-city: a new 3D page feature with a mock first",
-                                 "--name", "city-3d-feature")
-        self.assertEqual(m.group(1, 2, 3), ("111", "74", "182"))
+        self.assertEqual(self.verdicts(out), ["estimate retrain: not yet (15 of 30 tasks)"])
+        self.assertIsNone(self.model_text())
+
+    def test_the_like_tasks_are_clean_ones(self):
+        self.model(versions=[version(k=3, text=1, type=0.5)])
         m, likes = self.estimate("full", "no", "script",
                                  "agent-city.sh: join once per computer, hooks gate on team relay, "
                                  "script change with tests", "--name", "script-change")
-        self.assertEqual(m.group(1, 2, 3), ("27", "18", "44"))
+        self.assertEqual(m.group(1, 2, 3, 6), ("35", "22", "63", "15"))
         self.assertEqual([l.group(1) for l in likes],
-                         ["city-device-join", "city-login-start", "session-clean"])
+                         ["city-device-join", "city-login-start", "estimate-data"])
 
 
 # ---------------------------------------------------------------- speed
@@ -866,19 +865,22 @@ class TestTodoGuess(BlendCase):
     def test_todo_done_writes_the_guess_last(self):
         self.write("agent_todo.txt", "t1 | big | build it | est 70m | guess 35m | opened 2026-10-05 15:00 | by main\n")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        # test-levels (2026-11-20): level= follows guess=, the last key
-        self.assertEqual(self.done_line(), "%s | t1 | build it | %s level=-" % (TODAY, gblock(
-            repo="project", type="script", lane="full", est=70, work=60, clock=60, guess=35)))
+        # test-levels (2026-11-20): level= follows guess=; estimate-improve (2026-11-26): six keys follow level,
+        # and the work is measured (wait 0, clock 60), the typed 60 kept as typed=
+        self.assertEqual(self.done_line(), "%s | t1 | build it | %s level=- typed=60 est0=70 added=- built=- "
+                         "stages=- slices=-" % (TODAY, gblock(
+                             repo="project", type="script", lane="full", est=70, work=60, wait=0, clock=60,
+                             guess=35)))
 
     def test_todo_done_with_no_guess_writes_a_dash(self):
         self.write("agent_todo.txt", "t1 | big | build it | est 70m | opened 2026-10-05 15:00 | by main\n")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertTrue(self.done_line().endswith(" adds=- guess=- level=-"), self.done_line())
+        self.assertIn(" adds=- guess=- level=- typed=", self.done_line())
 
     def test_a_guess_word_in_the_what_is_not_the_guess(self):
         self.write("agent_todo.txt", "t1 | big | guess 99m is a word here | est 70m | opened 2026-10-05 15:00 | by main\n")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertTrue(self.done_line().endswith(" guess=- level=-"), self.done_line())
+        self.assertIn(" guess=- level=- typed=", self.done_line())
 
     def test_the_warning_names_the_missing_facts(self):
         for opts, want in ((("--type", "script", "--lane", "full"), None),
@@ -916,10 +918,11 @@ class TestDataGuess(BlendCase):
         self.assertEqual(rows[2][-1], "-")
 
     def test_with_what_the_guess_comes_before_what(self):
+        # estimate-improve: est0 typed built stages slices come between guess and what (data --what only)
         rows = [r.split() for r in self.lines(self.assertOk(self.af("data", "--what")))]
-        self.assertEqual(rows[0][-3:], ["adds", "guess", "what"])
-        self.assertEqual(rows[1][-4:], ["35", "has", "a", "guess"])
-        self.assertEqual(rows[2][-5:], ["-", "an", "old", "data", "line"])
+        self.assertEqual(rows[0][-8:], ["adds", "guess", "est0", "typed", "built", "stages", "slices", "what"])
+        self.assertEqual(rows[1][-9:], ["35", "-", "-", "-", "-", "-", "has", "a", "guess"])
+        self.assertEqual(rows[2][-10:], ["-", "-", "-", "-", "-", "-", "an", "old", "data", "line"])
 
 
 class TestEstimateGuessInputs(BlendCase):

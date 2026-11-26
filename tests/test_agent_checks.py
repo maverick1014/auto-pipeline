@@ -218,6 +218,9 @@ class TestTodoEst(Case):
         r = self.ok("todo", "est", "t", "120", "--guess", "100")
         self.assertEqual(r.stdout.strip(), "todo est: t 60m -> 120m")
         after = self.fields("t")
+        # estimate-improve A3: the first estimate is kept as one new field right after est
+        self.assertEqual(after[after.index("est 120m") + 1], "est0 60m")
+        after.remove("est0 60m")
         self.assertEqual(len(before), len(after))
         for b, a in zip(before, after):
             if b == "est 60m":
@@ -230,7 +233,7 @@ class TestTodoEst(Case):
     def test_est_only_keeps_guess(self):
         self.ok("todo", "add", "t", "big", "task", "60", "--guess", "50")
         self.ok("todo", "est", "t", "90")
-        self.assertEqual(self.fields("t")[3:5], ["est 90m", "guess 50m"])
+        self.assertEqual(self.fields("t")[3:6], ["est 90m", "est0 60m", "guess 50m"])   # estimate-improve A3
 
     def test_refusals(self):
         self.ok("todo", "add", "t", "big", "task", "60")
