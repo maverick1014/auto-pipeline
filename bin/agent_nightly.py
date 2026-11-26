@@ -8,6 +8,7 @@ machine ($AGENT_RESERVE_FILE). Test hooks: AGENT_FAKE_NOW ("YYYY-MM-DD HH:MM"), 
 AGENT_FAKE_RAM_TOTAL_MB, AGENT_FAKE_CPU, AGENT_FAKE_CORES, AGENT_FAKE_HOST, AGENT_TEST_RUN_WAIT_S.
 """
 
+import base64
 import datetime
 import fcntl
 import json
@@ -15,7 +16,6 @@ import math
 import os
 import re
 import resource
-import shlex
 import shutil
 import signal
 import socket
@@ -1249,7 +1249,7 @@ def remote_script():
     """The one line the connected machine runs in its worktree. Markers carry the commit it ran and the result;
     the output itself stays in a file inside the worktree, so a long run never has to be read back."""
     lines = [
-        'T=$1; F=$2; O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)',
+        'T=$1; F=$(printf %s "$2" | base64 -d); O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)',
         "printf '@@NIGHTLY-%s %s\\n' BEGIN \"$T\"",
         'R=$(git rev-parse HEAD)',
         '[ -n "$B" ] && git checkout -q --detach HEAD && git branch -q -D "$B"',
@@ -1339,8 +1339,11 @@ def remote_run(root, env, commit, cmd):
             out["failed"] = ["the connected machine gave no terminal for the run"]
             return out
         token = uuid.uuid4().hex[:10]
-        line = "bash -c %s nightly %s %s" % (shlex.quote(remote_script()), token,
-                                            shlex.quote(os.environ.get("AGENT_NIGHTLY_CMD") or conf_at(root, commit, "full_cmd") or cmd))
+        # only letters, digits, + / = are typed into the remote shell: no quote of any shell can break the line
+        b64 = lambda text: base64.b64encode(text.encode("utf-8")).decode("ascii")
+        line = "printf %%s %s | base64 -d > .nightly-run.sh && bash .nightly-run.sh %s %s" % (
+            b64(remote_script()), token,
+            b64(os.environ.get("AGENT_NIGHTLY_CMD") or conf_at(root, commit, "full_cmd") or cmd))
         sent, why = orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--text", line,
                                "--enter", "--json"], 60)
         if sent is None:
