@@ -264,5 +264,35 @@ class TestStopBarePidStranger(HelperCase):
         self.assertIsNone(stranger.poll(), "the stranger still runs: " + r.stdout)
 
 
+class TestBaseWithASpace(HelperCase):
+    """PR REVIEW pass 3: with a base path holding a space, ours() split the recorded command on whitespace, never found
+    the '--dir <base>/city' pair, left its own server running and deleted the base. The pid file now keeps the exact
+    argument list, and the pair is matched as two list elements."""
+
+    def test_stop_stops_its_own_server(self):
+        base = os.path.join(self.tmp, "a b")
+        r = self.helper("start", "--base", base)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        printed = next(l[len("BASE: "):].split("   (")[0] for l in r.stdout.splitlines() if l.startswith("BASE: "))
+        self.assertEqual(printed, base)
+        with open(os.path.join(base, "server.pid")) as fh:
+            rec = json.load(fh)
+        self.pids.append(rec["pid"])
+        self.assertIn(os.path.join(base, "city"), rec["argv"], "the path with its space is one argument")
+        self.assertEqual(rec["argv"][rec["argv"].index("--dir") + 1], os.path.join(base, "city"))
+        r = self.helper("stop", "--base", base)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("stopped server %d" % rec["pid"], r.stdout)
+        for _ in range(30):
+            try:
+                os.kill(rec["pid"], 0)
+            except OSError:
+                break
+            time.sleep(0.1)
+        else:
+            self.fail("its own server is still running")
+        self.assertFalse(os.path.exists(base))
+
+
 if __name__ == "__main__":
     unittest.main()

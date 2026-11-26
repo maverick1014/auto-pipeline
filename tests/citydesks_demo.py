@@ -109,11 +109,12 @@ def identity(pid):
     return (start, cmd) if start and cmd else None
 
 
-def record_pid(p, name, pid):
-    """The pid file: {"pid", "start", "cmd"}, the process's exact identity right after it started."""
+def record_pid(p, name, pid, argv):
+    """The pid file: {"pid", "start", "cmd", "argv"}: the process's exact identity right after it started and the exact
+    argument list it was started with (a list: a path with a space stays one element)."""
     ident = identity(pid) or ("", "")
     with open(os.path.join(p["base"], name), "w", encoding="utf-8") as fh:
-        json.dump({"pid": pid, "start": ident[0], "cmd": ident[1]}, fh)
+        json.dump({"pid": pid, "start": ident[0], "cmd": ident[1], "argv": [str(a) for a in argv]}, fh)
 
 
 def read_pid(p, name):
@@ -136,15 +137,21 @@ def read_pid(p, name):
 
 def ours(rec, p):
     """The process is ours only while its start time AND its whole command line are exactly the ones recorded when this
-    base started it (never a substring: a stranger whose command names '<base>2/x' is not ours), and that command still
-    carries the exact argument pair it was started with: '--dir <base>/city' or '--base <base>'."""
-    if not rec or not rec.get("start") or not rec.get("cmd"):
+    base started it (never a substring: a stranger whose command names '<base>2/x' is not ours), its command line is the
+    recorded argument list, and that list holds the exact pair it was started with, as two elements, paths resolved:
+    '--dir <base>/city' or '--base <base>' (a base path with a space works: the list is not split on spaces)."""
+    if not rec or not rec.get("start") or not rec.get("cmd") or not isinstance(rec.get("argv"), list) or len(rec["argv"]) < 2:
         return False
     if identity(rec["pid"]) != (rec["start"], rec["cmd"]):
         return False
-    words = rec["cmd"].split()
-    pairs = set(zip(words, words[1:]))
-    return ("--dir", p["city"]) in pairs or ("--base", p["base"]) in pairs
+    argv = rec["argv"]
+    if not rec["cmd"].endswith(" ".join(argv[1:])):   # argv[0] may print differently (the interpreter's own path)
+        return False
+    real = lambda x: os.path.realpath(x)
+    for flag, value in zip(argv, argv[1:]):
+        if (flag == "--dir" and real(value) == real(p["city"])) or (flag == "--base" and real(value) == real(p["base"])):
+            return True
+    return False
 
 
 def server_cmd(p, port, lang, root, start_dir):
@@ -183,10 +190,11 @@ def transcript(p, sid, title):
     return path
 
 
-def line(p, ev, sid, folder, aid="", at="", tool="", role="", desc="", sub="", file="", tp=""):
-    """One hook line, the same keys in the same order as bin/agent-city-hook.sh."""
+def line(p, ev, sid, folder, aid="", at="", tool="", role="", desc="", sub="", file="", tp="", proj=""):
+    """One hook line, the same keys in the same order as bin/agent-city-hook.sh. PROJ: the last part of the session's
+    cwd (a task manager's worktree folder is named after its task); default the repo folder's name."""
     repo = os.path.realpath(os.path.join(folder, ".git"))
-    obj = {"ev": ev, "sid": sid, "aid": aid, "at": at, "tool": tool, "nt": "", "proj": os.path.basename(folder),
+    obj = {"ev": ev, "sid": sid, "aid": aid, "at": at, "tool": tool, "nt": "", "proj": proj or os.path.basename(folder),
            "role": role, "desc": desc, "sub": sub, "q": "", "klen": "", "repo": repo, "to": "", "ask": "", "wt": "",
            "file": file, "tp": tp, "pid": ""}
     with open(os.path.join(p["city"], "events.jsonl"), "a", encoding="utf-8") as fh:
@@ -206,16 +214,16 @@ def save_live(p, live):
         json.dump(live, fh)
 
 
-def start_session(p, live, sid, folder, title):
+def start_session(p, live, sid, folder, title, proj=""):
     tp = transcript(p, sid, title)
-    line(p, "SessionStart", sid, folder, role="task-manager", tp=tp)
-    line(p, "UserPromptSubmit", sid, folder, role="task-manager", tp=tp)
-    live["sessions"][sid] = {"folder": folder, "tp": tp}
+    line(p, "SessionStart", sid, folder, role="task-manager", tp=tp, proj=proj)
+    line(p, "UserPromptSubmit", sid, folder, role="task-manager", tp=tp, proj=proj)
+    live["sessions"][sid] = {"folder": folder, "tp": tp, "proj": proj}
 
 
 def start_agent(p, live, sid, aid, at, desc):
     s = live["sessions"][sid]
-    line(p, "PreToolUse", sid, s["folder"], tool="Agent", role="task-manager", desc=desc, sub=at, tp=s["tp"])
+    line(p, "PreToolUse", sid, s["folder"], tool="Agent", role="task-manager", desc=desc, sub=at, tp=s["tp"], proj=s.get("proj", ""))
     line(p, "SubagentStart", sid, s["folder"], aid=aid, at=at)
     live["agents"][aid] = {"sid": sid, "at": at}
 
@@ -241,7 +249,7 @@ def cmd_start(base, port, lang, root=ROOT):
     argv, env = server_cmd(p, port, lang, root, start_dir)
     log = open(os.path.join(p["base"], "server.log"), "a")
     proc = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-    record_pid(p, "server.pid", proc.pid)
+    record_pid(p, "server.pid", proc.pid, argv)
     print("BASE: %s   (give it as --base to every other command)" % p["base"])
     on = os.path.join(p["city"], "on")
     for _ in range(100):
@@ -258,7 +266,7 @@ def cmd_start(base, port, lang, root=ROOT):
 def cmd_team(p):
     live = load_live(p)
     folder = make_repo(p, TEAM)
-    start_session(p, live, TEAM_SID, folder, "city-agents-at-desks Task Manager")
+    start_session(p, live, TEAM_SID, folder, "city-agents-at-desks Task Manager", proj="city-agents-at-desks")
     for aid, at, desc in TEAM_AGENTS:
         start_agent(p, live, TEAM_SID, aid, at, desc)
     save_live(p, live)
@@ -293,7 +301,7 @@ def cmd_work(p, seconds):
             line(p, "PostToolUse", a["sid"], s["folder"], aid=aid, at=a["at"], tool=tool, file=file)
             k += 1
         for sid, s in live["sessions"].items():
-            line(p, "PostToolUse", sid, s["folder"], tool="Read", role="task-manager", tp=s["tp"])
+            line(p, "PostToolUse", sid, s["folder"], tool="Read", role="task-manager", tp=s["tp"], proj=s.get("proj", ""))
         time.sleep(2)
 
 
@@ -310,7 +318,7 @@ def cmd_end(p):
     live = load_live(p)
     s = live["sessions"].pop(TEAM_SID, None)
     if s:
-        line(p, "SessionEnd", TEAM_SID, s["folder"], role="task-manager", tp=s["tp"])
+        line(p, "SessionEnd", TEAM_SID, s["folder"], role="task-manager", tp=s["tp"], proj=s.get("proj", ""))
         live["agents"] = {k: v for k, v in live["agents"].items() if v["sid"] != TEAM_SID}
     save_live(p, live)
     print("team session ended" if s else "the team session was not running")
@@ -342,10 +350,11 @@ def cmd_phone(p, port):
     except (OSError, ValueError, IndexError):
         sys.exit("start the city first (citydesks_demo.py start)")
     port = port or free_port()
-    proc = subprocess.Popen([sys.executable, os.path.abspath(__file__), "_phone", "--base", p["base"], "--port", str(port)],
+    argv = [sys.executable, os.path.abspath(__file__), "_phone", "--base", p["base"], "--port", str(port)]
+    proc = subprocess.Popen(argv,
                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     time.sleep(0.2)   # past the exec, so the recorded command is the server's own
-    record_pid(p, "phone.pid", proc.pid)
+    record_pid(p, "phone.pid", proc.pid, argv)
     for _ in range(50):
         try:
             socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
