@@ -352,11 +352,11 @@ def work_refusal(ctx, line):
 
 
 def cmd_todo_target(ctx, a):
-    """todo target <task> production --owner-quote Q --means M [--question X] [--time T] [--relayed-from <folder> | --relayed-by-leader <file>]:
+    """todo target <task> production --owner-quote Q --means M [--question X] [--time T] [--relayed-from <folder> | --relayed-by-leader <transcript file> --time "YYYY-MM-DD HH:MM"]:
     the owner's yes after the task was added (FIX ORDER 1 R2). Same checks and record as todo add --target production."""
     if len(a) < 2 or not a[0].strip():
         raise Refuse("todo target: usage: todo target \"<task>\" production --owner-quote \"<words>\" --means \"<action>\" "
-                     "[--question \"<q>\"] [--time <t>] [--relayed-from <folder> | --relayed-by-leader <transcript file>]")
+                     "[--question \"<q>\"] [--time <t>] [--relayed-from <folder> | --relayed-by-leader <transcript file> --time \"YYYY-MM-DD HH:MM\"]")
     name, target, rest = a[0], a[1], a[2:]
     todo = Todo(ctx["root"])
     f = need_line(todo, name)

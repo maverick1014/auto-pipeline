@@ -219,7 +219,7 @@ def command_args(obj, has_result, text):
             return None
         found[m.group(1)] = m.group(2)
         pos = m.end()
-    return found.get("command-args", "") if found else None
+    return found["command-args"] if len(found) == 3 else None
 
 
 def agent_typed(cut_raw):
@@ -512,6 +512,7 @@ def run_common(repo, quote, question=None):
 
 # ------------------------------------------------------------------ Leader's transcript
 
+INJECTED_FIRST = ("<system-reminder", "<task-notification", "<local-command-", "<command-")
 IMAGE_MARK = re.compile(r"\[Image #\d+\]")
 LEADER_SOURCES = ("sdk", "typed", "queued")
 WHY_C = ("his words cannot be told from the text Orca put into this prompt; "
@@ -552,7 +553,8 @@ def leader_kind(obj, has_result):
 
 
 def is_header(line):
-    return (line.startswith("[") and line.rstrip().endswith("]") and not IMAGE_MARK.match(line))
+    return (line.startswith("[") and line.rstrip().endswith("]") and not IMAGE_MARK.match(line)
+            and not AGENT_HEADER.search(line))
 
 
 def his_part(text):
@@ -587,7 +589,7 @@ def his_part(text):
     if j < 0 or not (lines[j].rstrip() == ">>>" or is_header(lines[j])):
         return "c", ""
     his = "\n".join(lines[last + 1:]).strip()
-    if (not his or (his.startswith("[") and not IMAGE_MARK.match(his))
+    if (not his or his.startswith("[")
             or any(l.rstrip() in ("<<<", ">>>") or is_header(l) for l in his.split("\n"))):
         return "bad", ""
     return "b", his
@@ -628,6 +630,12 @@ def scan_leader(fh, mtime, path, quote, now, cutoff, whole, question, acc):
         hit = (epoch, mtime, path, "")
         if kind is not None:
             others.append((kind,) + hit)
+            continue
+        if text.lstrip().startswith(INJECTED_FIRST):
+            others.append(("injected",) + hit)
+            continue
+        if agent_typed(cut_injected(cut_pasted(text))):
+            others.append(("agent-typed",) + hit)
             continue
         state, his = his_part(text)
         if state in ("c", "bad"):

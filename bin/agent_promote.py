@@ -466,7 +466,7 @@ def direct(root, wb, prod, task, branch, results=None):
 
 # ------------------------------------------------------------------ main
 
-USAGE = ("usage: agent-promote.sh --owner-quote \"<words>\" --means \"<action>\" [--question \"<q>\"] [--time <t>] [--relayed-from <folder>] [--relayed-by-leader <transcript file>] | --task \"<task>\" --branch <branch> "
+USAGE = ("usage: agent-promote.sh --owner-quote \"<words>\" --means \"<action>\" [--question \"<q>\"] [--time <t>] [--relayed-from <folder>] [--relayed-by-leader <transcript file> --time \"YYYY-MM-DD HH:MM\"] | --task \"<task>\" --branch <branch> "
          "[--results <file>] | --sync\n")
 
 
