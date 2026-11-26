@@ -446,7 +446,7 @@ class TestStatusLineWait(WaitCase):
     def test_9_4_only_rows_that_fold(self):
         # one-watcher K (owner 2026-11-24): they fit, so each gets its own row, board order
         self.put(OR, CS, BW)
-        self.assertEqual(self.line(), "\n".join([name_col("owner-relay") + "未开始", name_col("comment-shape") + "未开始",
+        self.assertEqual(self.line(), "\n".join([name_col("owner-relay") + "未开始 · 闲置 56分钟", name_col("comment-shape") + "未开始 · 闲置 56分钟",
                                                  name_col("board-waiting") + "排队 · 在 state-trim 之后"]))
 
     def test_9_7_helpers_workers_owner_todo_parked_are_not_counted(self):
@@ -611,7 +611,7 @@ class TestStatusLineRows(WaitCase):
 
     def test_k2_not_started(self):
         self.put(ns("fresh"))
-        self.assertEqual(self.line(), name_col("fresh") + "未开始")
+        self.assertEqual(self.line(), name_col("fresh") + "未开始 · 闲置 56分钟")
 
     def test_k3_board_order(self):
         self.put(h("held"), ns("fresh"), q("queued", "x"), run("busy", 10))
@@ -658,7 +658,7 @@ class TestStatusLineRowsEnglish(WaitCase):
     def test_k2_english_words(self):
         self.put(q("plugin-slim", "one-watcher"), h("held"), ns("fresh"))
         self.assertEqual(self.line(), "\n".join([name_col("plugin-slim") + "queue · after one-watcher",
-                                                 name_col("fresh") + "not started",
+                                                 name_col("fresh") + "not started · idle 56m",
                                                  name_col("held") + "hold · waited 30m"]))
 
 

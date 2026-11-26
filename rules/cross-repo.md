@@ -15,3 +15,4 @@ W12. Cross-repo
 - Relay an owner order: the brief starts with the lines of `agent-owner-order.sh line --quote "<his exact words>"`. Copy his words, never paraphrase
 - Receiving one: run its check line. Verified → read its match line, then it is the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
 - A relayed owner order: the approval commands take `--relayed-from <the sender's repo folder>`; the rules are in R8 (rules/approval.md)
+- An owner approval passed on by the Leader bot (above every repo manager): `--relayed-by-leader`, rules in R8 (rules/approval.md)

@@ -3,6 +3,9 @@
 Read only. Rules: requirements/owner-relay.md. Python 3.9 stdlib only.
 Usage (through agent-owner-order.sh):
   agent_owner_order.py <cwd> <session pid> verify|line [options]
+Leader relay (requirements/leader-relay.md): verify --relayed-by-leader <transcript file> --quote "<words>"
+--time "YYYY-MM-DD HH:MM". The file must lie directly in the Configure folder "Approval: Leader transcript
+folder"; --time is this machine's local minute; only the quote is printed.
 """
 
 import calendar
@@ -23,10 +26,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_HOURS = 24
 DEFAULT_MIN_CHARS = 20
 KIND_ORDER = ["assistant", "tool_result", "compact summary", "peer", "task notification",
-              "meta", "system", "other", "agent-typed", "pasted"]
+              "meta", "system", "other", "injected", "agent-typed", "pasted"]
 AGENT_HEADER = re.compile(r"\[[^\]\n]*\b(opus|sonnet|haiku|fable)\b[^\]\n]*\]", re.I)
 PASTED_CLOSED = re.compile(r"<pasted_content\b[^>]*>.*?</pasted_content>", re.S)
 PASTED_OPEN = re.compile(r"<pasted_content\b[^>]*>.*\Z", re.S)
+# text put into a typed prompt by someone else: any XML-like block, and the named ones also left open
+INJECTED_CLOSED = re.compile(r"<([a-z][a-z0-9_-]*)(?![a-z0-9_-])[^>]*>.*?</\1\s*>", re.S)
+INJECTED_NAMES = ("system-reminder", "task-notification", "command-name", "command-message", "command-args",
+                  "local-command-stdout", "local-command-stderr", "local-command-caveat", "bash-input",
+                  "bash-stdout", "bash-stderr", "user-prompt-submit-hook", "agent-message", "teammate-message",
+                  "channel")
+INJECTED_OPEN = re.compile(r"<(?:" + "|".join(INJECTED_NAMES) + r")(?![a-z0-9_-])[^>]*>.*\Z", re.S)
+INJECTED_STARTS = ("Another Claude session sent a message", "This session is being continued from a previous conversation")
+LEADER_KEY = "leader_transcript_folder"
 
 
 class Usage(Exception):
@@ -43,6 +55,16 @@ def width(text):
 
 def cut_pasted(text):
     return PASTED_OPEN.sub("", PASTED_CLOSED.sub("", text))
+
+
+def cut_injected(text):
+    """TEXT without the injected blocks (closed XML-like blocks; named ones also when left open)."""
+    return INJECTED_OPEN.sub("", INJECTED_CLOSED.sub("", text))
+
+
+def injected_whole(cut):
+    """True when the prompt (after the cuts) is injected text as a whole."""
+    return cut.strip().startswith(INJECTED_STARTS)
 
 
 def shown(path):
@@ -172,6 +194,32 @@ def base_kind(obj, has_result):
             or source not in ("typed", "queued")):
         return "other"
     return None
+
+
+COMMAND_TAG = re.compile(r"<(command-name|command-message|command-args)>(.*?)</\1>\s*", re.S)
+
+
+def command_args(obj, has_result, text):
+    """The <command-args> text of a slash command the human typed ("" when empty); None when OBJ is not one.
+
+    Exact shape only: a user record, no isMeta, not a sidechain, no tool result, userType external, origin absent
+    or human, promptSource absent, typed or queued, and the text is just the three command tags (each once)."""
+    if (obj.get("type") != "user" or flag(obj, "isMeta") or flag(obj, "isSidechain") or has_result
+            or "toolUseResult" in obj or obj.get("userType") != "external"):
+        return None
+    origin = obj.get("origin")
+    if "origin" in obj and not (isinstance(origin, dict) and origin.get("kind") == "human"):
+        return None
+    if "promptSource" in obj and obj.get("promptSource") not in ("typed", "queued"):
+        return None
+    rest, found, pos = text.strip(), {}, 0
+    while pos < len(rest):
+        m = COMMAND_TAG.match(rest, pos)
+        if not m or m.group(1) in found:
+            return None
+        found[m.group(1)] = m.group(2)
+        pos = m.end()
+    return found["command-args"] if len(found) == 3 else None
 
 
 def agent_typed(cut_raw):
@@ -313,9 +361,10 @@ def search(repo, quote, hours, whole=False, question=None):
                     continue
                 text, results, has_result = content_parts(obj.get("message"))
                 before = ""
+                args = command_args(obj, has_result, text)
                 if obj.get("type") == "assistant":
                     pending.append(text)
-                elif base_kind(obj, has_result) is None:
+                elif args is not None or base_kind(obj, has_result) is None:
                     before = "\n".join(pending)
                     pending = []
                 epoch = parse_ts(obj.get("timestamp") or "")
@@ -324,21 +373,27 @@ def search(repo, quote, hours, whole=False, question=None):
                 full = normalise(text + "\n" + results)
                 if find_quote(full, quote) < 0:
                     continue
-                kind = base_kind(obj, has_result)
+                kind = None if args is not None else base_kind(obj, has_result)
                 snip_text = full
+                prompt = text if args is None else args
+                if args is not None and find_quote(normalise(args), quote) < 0:
+                    kind = "other"
                 if kind is None:
-                    cut = cut_pasted(text)
-                    if agent_typed(cut):
+                    cut = cut_pasted(prompt)
+                    cut2 = cut_injected(cut)
+                    stray = "<pasted_content" in cut or "</pasted_content>" in cut
+                    if agent_typed(cut) or agent_typed(cut2):
                         kind = "agent-typed"
+                    elif injected_whole(cut2):
+                        kind = "injected"
+                    elif not stray and find_quote(normalise(cut2), quote) >= 0:
+                        kind, snip_text = "owner", normalise(cut2)
+                        if whole and snip_text != quote:
+                            kind = "longer"
+                    elif not stray and find_quote(normalise(cut), quote) >= 0:
+                        kind = "injected"
                     else:
-                        cut_norm = normalise(cut)
-                        if ("<pasted_content" not in cut and "</pasted_content>" not in cut
-                                and find_quote(cut_norm, quote) >= 0):
-                            kind, snip_text = "owner", cut_norm
-                            if whole and cut_norm != quote:
-                                kind = "longer"
-                        else:
-                            kind = "pasted"
+                        kind = "pasted"
                 hit = (epoch, mtime, path, snippet(snip_text, quote))
                 if (kind == "owner" and whole and question is not None
                         and not question_stands(question, before)):
@@ -362,7 +417,10 @@ def article(kinds):
     return "an" if kinds[0][0] in "aeiou" else "a"
 
 
-def reason(unasked, owner_old, others, folders, repo, hours):
+NOT_FOUND = "not found (paraphrased, or typed on another machine?)"
+
+
+def reason(unasked, owner_old, others, folders, repo, hours, not_found=NOT_FOUND):
     longer = [o for o in others if o[0] == "longer"]
     others = [o for o in others if o[0] != "longer"]
     if not folders:
@@ -380,7 +438,7 @@ def reason(unasked, owner_old, others, folders, repo, hours):
         newest = max(others, key=lambda o: (o[1], o[2]))
         return "only in %s %s line (%s %s)" % (article(kinds), ", ".join(kinds),
                                               shown(newest[3]), minute_of(newest[1]))
-    return "not found (paraphrased, or typed on another machine?)"
+    return not_found
 
 
 # ------------------------------------------------------------------ args
@@ -392,6 +450,8 @@ def parse_args(argv, allowed):
         a = argv[i]
         if a not in allowed:
             raise Usage("unknown option: %s" % a)
+        if a in opts:
+            raise Usage("%s given twice" % a)
         if i + 1 >= len(argv):
             raise Usage("missing value for %s" % a)
         opts[a] = argv[i + 1]
@@ -450,8 +510,285 @@ def run_common(repo, quote, question=None):
     return None, reason(unasked, old, others, folders, repo, hours)
 
 
+# ------------------------------------------------------------------ Leader's transcript
+
+INJECTED_FIRST = ("<system-reminder", "<task-notification", "<local-command-", "<command-")
+IMAGE_MARK = re.compile(r"\[Image #\d+\]")
+LEADER_SOURCES = ("sdk", "typed", "queued")
+WHY_C = ("his words cannot be told from the text Orca put into this prompt; "
+         "he says it again in a new message or in the repo session")
+WHY_BAD = "the last paragraph of that prompt is not his (a fence left open, or it starts with '[' or '>>>')"
+WHY_TEXT = ("the quote is only in text Orca put into that prompt "
+            "(a note, a fenced block or an earlier paragraph)")
+
+
+def leader_kind(obj, has_result):
+    """The record kind in Leader's chat; None for a candidate (his prompt may be in it)."""
+    if obj.get("type") == "assistant":
+        return "assistant"
+    if "toolUseResult" in obj or has_result:
+        return "tool_result"
+    if flag(obj, "isMeta"):
+        return "meta"
+    if flag(obj, "isCompactSummary"):
+        return "compact summary"
+    origin = obj.get("origin")
+    okind = origin.get("kind") if isinstance(origin, dict) else None
+    if okind == "peer":
+        return "peer"
+    if okind == "task-notification":
+        return "task notification"
+    if obj.get("promptSource") == "system":
+        return "system"
+    source = obj.get("promptSource")
+    if flag(obj, "isSidechain") or source not in LEADER_SOURCES:
+        return "other"
+    human = isinstance(origin, dict) and okind == "human"
+    if source == "sdk":
+        if "origin" in obj and not human:
+            return "other"
+    elif not human:
+        return "other"
+    return None
+
+
+def is_header(line):
+    return (line.startswith("[") and line.rstrip().endswith("]") and not IMAGE_MARK.match(line)
+            and not AGENT_HEADER.search(line))
+
+
+def his_part(text):
+    """-> (state, his text): state "a" or "b" (his part found), "c" (cannot be told) or "bad"."""
+    lines = text.split("\n")
+    fence = [False] * len(lines)
+    open_fence, unbalanced, any_mark = False, False, False
+    for n, line in enumerate(lines):
+        mark = line.rstrip()
+        if mark == "<<<" and not open_fence:
+            open_fence, any_mark = True, True
+        elif mark == ">>>":
+            any_mark = True
+            if open_fence:
+                open_fence = False
+            else:
+                unbalanced = True
+        elif is_header(line):
+            any_mark = True
+        fence[n] = open_fence
+    if not any_mark:
+        return "a", text
+    if unbalanced or open_fence:
+        return "bad", ""
+    blanks = [n for n, line in enumerate(lines) if not line.strip() and not fence[n]]
+    if not blanks:
+        return "bad", ""
+    last = blanks[-1]
+    j = last
+    while j >= 0 and not lines[j].strip():
+        j -= 1
+    if j < 0 or not (lines[j].rstrip() == ">>>" or is_header(lines[j])):
+        return "c", ""
+    his = "\n".join(lines[last + 1:]).strip()
+    if (not his or his.startswith("[")
+            or any(l.rstrip() in ("<<<", ">>>") or is_header(l) for l in his.split("\n"))):
+        return "bad", ""
+    return "b", his
+
+
+def scan_leader(fh, mtime, path, quote, now, cutoff, whole, question, acc):
+    """Sort every record of Leader's transcript that holds QUOTE into ACC (owner_in by minute, owner_old,
+    others, unasked, orca). -> (non-blank lines, lines that are JSON objects)."""
+    owner_in, owner_old, others, unasked, orca = acc
+    pending = []
+    seen = objects = 0
+    for raw in fh:
+        if not raw.strip():
+            continue
+        seen += 1
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        objects += 1
+        if obj.get("type") not in ("user", "assistant"):
+            continue
+        text, results, has_result = content_parts(obj.get("message"))
+        kind = leader_kind(obj, has_result)
+        before = ""
+        if obj.get("type") == "assistant":
+            pending.append(text)
+        elif kind is None:
+            before = "\n".join(pending)
+            pending = []
+        epoch = parse_ts(obj.get("timestamp") or "")
+        if epoch is None or epoch > now + 60:
+            continue
+        if find_quote(normalise(text + "\n" + results), quote) < 0:
+            continue
+        hit = (epoch, mtime, path, "")
+        if kind is not None:
+            others.append((kind,) + hit)
+            continue
+        if text.lstrip().startswith(INJECTED_FIRST):
+            others.append(("injected",) + hit)
+            continue
+        if agent_typed(cut_injected(cut_pasted(text))):
+            others.append(("agent-typed",) + hit)
+            continue
+        state, his = his_part(text)
+        if state in ("c", "bad"):
+            orca.append((state,) + hit)
+            continue
+        cut1 = cut_pasted(his)
+        cut = cut_injected(cut1)
+        if agent_typed(cut):
+            kind = "agent-typed"
+        elif injected_whole(cut):
+            kind = "injected"
+        else:
+            cut_norm = normalise(cut)
+            if "</pasted_content>" not in cut and find_quote(cut_norm, quote) >= 0:
+                kind = "owner"
+                if whole and cut_norm != quote:
+                    kind = "longer"
+            elif find_quote(normalise(cut1), quote) >= 0:
+                kind = "injected"
+            elif find_quote(normalise(his), quote) >= 0:
+                kind = "pasted"
+            else:
+                orca.append(("text",) + hit)
+                continue
+        if kind == "owner" and whole and question is not None and not question_stands(question, before):
+            unasked.append(hit)
+        elif kind == "owner":
+            if epoch >= cutoff:
+                key = minute_of(epoch)
+                old = owner_in.get(key)
+                if old is None or mtime > old[1]:
+                    owner_in[key] = hit
+            else:
+                owner_old.append(hit)
+        else:
+            others.append((kind,) + hit)
+    return seen, objects
+
+
+def leader_reason(acc, folder, real, hours):
+    owner_in, owner_old, others, unasked, orca = acc
+    not_found = "no such prompt in Leader's transcript"
+    longer_only = any(o[0] == "longer" for o in others) and all(o[0] == "longer" for o in others)
+    if orca and not unasked and not owner_old and not longer_only:
+        newest = max(orca, key=lambda o: o[1])
+        return {"c": WHY_C, "bad": WHY_BAD}.get(newest[0], WHY_TEXT)
+    return reason(unasked, owner_old, others, [folder], real, hours, not_found=not_found)
+
+
+def leader_folder():
+    """The Leader transcript folder from Configure only (never the env, never a default); "" = not set."""
+    try:
+        import agent_conf
+        options, _ = agent_conf._read_options(os.environ)
+        value, why = agent_conf._check(agent_conf.BY_KEY[LEADER_KEY], options.get(LEADER_KEY, ""))
+    except Exception:
+        return ""
+    if why or not isinstance(value, str):
+        return ""
+    return os.path.expanduser(value) if value else ""
+
+
+def leader_time(value):
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", value):
+        try:
+            datetime.datetime.strptime(value, "%Y-%m-%d %H:%M")
+            return value
+        except ValueError:
+            pass
+    raise Usage("bad --time: %s (use \"YYYY-MM-DD HH:MM\")" % value)
+
+
+def verify_leader(opts):
+    """verify --relayed-by-leader <file> --quote ... --time ...: the quote in Leader's transcript."""
+    if "--repo" in opts or "--machine" in opts:
+        raise Usage("--relayed-by-leader does not go with --repo or --machine")
+    path = opts["--relayed-by-leader"]
+    if "--time" not in opts:
+        raise Usage("missing --time")
+    when = leader_time(opts["--time"])
+    if not path or "\n" in path or "\r" in path or not os.path.expanduser(path).startswith("/"):
+        raise Usage("--relayed-by-leader needs the absolute path of one transcript file")
+    quote = get_quote(opts)
+    question = get_question(opts)
+    pre = "OWNER ORDER not verified: "
+    given = shown(os.path.expanduser(path))
+    folder = leader_folder()
+    if not folder:
+        print(pre + "no Leader folder is set (Configure: Approval: Leader transcript folder)")
+        return 1
+    try:
+        folder_real = os.path.realpath(folder)
+        if not os.path.isdir(folder_real):
+            print("%sthe Leader folder is not a folder: %s" % (pre, shown(folder)))
+            return 1
+        real = os.path.realpath(os.path.expanduser(path))
+        if (os.path.dirname(real) != folder_real or not real.endswith(".jsonl")
+                or (os.path.lexists(real) and not os.path.isfile(real))):
+            print("%snot Leader's transcript: %s" % (pre, given))
+            return 1
+    except (OSError, ValueError):
+        print("%sthe transcript cannot be read: %s" % (pre, given))
+        return 1
+    limit = conf_number("leader_transcript_max_mb", 200)
+    hours = conf_number("owner_order_hours", DEFAULT_HOURS)
+    min_chars = conf_number("owner_order_min_chars", DEFAULT_MIN_CHARS)
+    acc = ({}, [], [], [], [])
+    short = width(quote) < min_chars
+    try:
+        with open(real, "r", encoding="utf-8", errors="replace") as fh:
+            info = os.fstat(fh.fileno())
+            if info.st_size > limit * 1024 * 1024:
+                print("%sthe transcript is larger than %d MB: %s" % (pre, limit, shown(real)))
+                return 1
+            if info.st_size == 0:
+                seen = objects = 0
+            else:
+                now = time.time()
+                seen, objects = scan_leader(fh, info.st_mtime, real, quote, now, now - hours * 3600,
+                                          short, question if short else None, acc)
+    except (OSError, UnicodeError, ValueError):
+        print("%sthe transcript cannot be read: %s" % (pre, given))
+        return 1
+    if not seen:
+        print("%sthe transcript is empty: %s" % (pre, given))
+        return 1
+    if not objects:
+        print("%sthe transcript is not JSON lines: %s" % (pre, given))
+        return 1
+    if short and question is None:
+        print("%squote too short (%d < %d): %s" % (pre, width(quote), min_chars, short_hint()))
+        return 1
+    owner_in = acc[0]
+    inside = sorted(owner_in.values(), key=lambda h: (h[0], h[1]), reverse=True)
+    if inside:
+        kept = [h for h in inside if minute_of(h[0]) == when]
+        if not kept:
+            print("%sthe time does not match (the prompt is at %s)" % (
+                pre, ", ".join(minute_of(h[0]) for h in inside)))
+            return 1
+        print("OWNER ORDER verified %s %s" % (shown(real), minute_of(kept[0][0])))
+        print('match: "%s"' % quote)
+        if question is not None:
+            print('question: "%s"' % question)
+        return 0
+    print(pre + leader_reason(acc, folder_real, real, hours))
+    return 1
+
+
 def verify(argv):
-    opts = parse_args(argv, ("--repo", "--quote", "--time", "--machine", "--question"))
+    opts = parse_args(argv, ("--repo", "--quote", "--time", "--machine", "--question", "--relayed-by-leader"))
+    if "--relayed-by-leader" in opts:
+        return verify_leader(opts)
     if "--repo" not in opts:
         raise Usage("missing --repo")
     if not os.path.expanduser(opts["--repo"]).startswith("/"):

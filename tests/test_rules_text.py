@@ -446,7 +446,7 @@ class TestSettingsTexts(unittest.TestCase):
         self.assertRegex(text, r"(?i)settings live only in")
         # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
         self.assertIn("agent_repo.conf", text)
-        self.assertRegex(text, r"(?i)20 settings|twenty settings")   # + Task files in git, Who may take a task, Data branch (agent-files, TELL 3a14d2f4, 50d02f90)
+        self.assertRegex(text, r"(?i)21 settings|twenty-one settings")   # + Approval: Leader transcript folder (leader-relay, TELL 2d1f9c06)
 
     # test_r8_is_main_s_text (R8 frozen as on main 85b99de) is gone: the owner approved check-blocks on
     # 2026-11-25, R8 is "Check blocks" now (TestPrinciplesR8 pins it)
@@ -1893,7 +1893,8 @@ class TestThisRepo(unittest.TestCase):
     def test_version_1_with_the_test_commands(self):
         c = self.conf()
         self.assertEqual(c["version"], "1")
-        self.assertEqual(c["related_cmd"], "python3 -m unittest {modules}")
+        # release-check-loosen: related tests go through the parallel runner, as every brief runs them
+        self.assertEqual(c["related_cmd"], "python3 tests/run2.py {tests}")
         self.assertEqual(c["full_cmd"], "python3 tests/run2.py")   # approval-design F: 7.6 min, not 47
         # FIX ORDER 1 R5: the full run is heavy by a seeded weight, so MODULE TESTS of a deps change goes to the net
         sys.path.insert(0, os.path.join(ROOT, "bin"))
@@ -2012,7 +2013,7 @@ class TestMemoryGate(unittest.TestCase):
             conf = json.load(fh)["userConfig"]
         self.assertNotIn("heavy_test_slots", conf)
         self.assertNotIn("max_agents", conf)
-        self.assertEqual(len(conf), 20)   # + Reviewer model (owner 2A), Working branch, Auto clear after quiet, + 3 Team (agent-files)
+        self.assertEqual(len(conf), 21)   # + Reviewer model (owner 2A), Working branch, Auto clear after quiet, + 3 Team (agent-files), + Leader transcript folder (leader-relay)
 
 
 class TestKeepTheResultLines(unittest.TestCase):
@@ -2787,7 +2788,8 @@ class TestUserConfig(unittest.TestCase):
             "permission_mode": "string", "auto_resume": "boolean", "todo_before_agent": "boolean", "working_branch": "string",
             "watch_quiet_min": "number", "housekeep_interval_min": "number", "clear_quiet_min": "number",
             "city_port": "number", "city_idle_min": "number",   # owner 1A: no Danger paths
-            "task_files": "string", "task_take": "string", "data_branch": "string"}   # agent-files 2026-11-26
+            "task_files": "string", "task_take": "string", "data_branch": "string",   # agent-files 2026-11-26
+            "leader_transcript_folder": "string"}   # leader-relay 2026-11-26 (TELL 2d1f9c06)
     DEFAULTS = {"runtime": "auto", "language": "en",
                 "main_manager": "opus-5.5:high", "max_usage_percent": 80}
 
@@ -3865,6 +3867,20 @@ class TestApprovalCases(unittest.TestCase):
         line = next(l for l in read("rules", "map.md").splitlines() if l.startswith("Agent skills:"))   # md-slim-principles
         self.assertIn("/auto-pipeline:slim-markdown", line)   # S6: md-slim renamed
         self.assertIn("/auto-pipeline:teacher-teach-me", line)   # TELL 9594c165: the skill main got in e198fbe
+
+
+class TestTeacherEntities(unittest.TestCase):
+    def test_teacher_description_turns_entities_back_and_body_avoids_angle_brackets(self):
+        s = read("skills", "teacher-teach-me", "SKILL.md")
+        desc = next(l for l in s.splitlines() if l.startswith("description:"))
+        for phrase in ("show it unchanged", "EXCEPT", "&lt;", "&gt;", "&amp;", "&quot;", "&#39;",
+                       "teach me", "can you explain", "I am not sure about this feature", "教我", "解释一下", "给我讲讲"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, desc)
+        self.assertIn("agent-file.sh files restore FILE", s)
+        self.assertIn("angle brackets can arrive garbled", s)
+        for line in ("context: fork", "agent: Explore", "name: teacher-teach-me", 'argument-hint: "[what you want explained]"'):
+            self.assertIn(line, s.splitlines())
 
 
 class TestH3ToH5(unittest.TestCase):

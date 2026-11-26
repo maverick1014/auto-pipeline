@@ -1320,13 +1320,13 @@ class TestWork(WaitCase):
     def test_6_3_not_started(self):
         self.put(OR)
         r = self.row(self.rows(now=NOW_NOV20_1231), task="owner-relay")
-        self.assertEqual(r["Status"], "未开始")
+        self.assertEqual(r["Status"], "未开始 · 闲置 56分钟")   # idle-task-flag: added 56 minutes before now
         self.assertDash(r, est="42m")
         self.assertEqual((r["Where"], r["Checks"]), ("-", "level C"))
 
     def test_6_3_not_started_is_never_over_its_estimate(self):
         r = self.one("", base="x | big | w | est 30m | opened 2026-11-20 08:00 | by main")
-        self.assertEqual((r["Status"], r["Work"], r["Done by"]), ("未开始", "-", "-"))
+        self.assertEqual((r["Status"], r["Work"], r["Done by"]), ("未开始 · 闲置 4小时31分", "-", "-"))   # idle-task-flag
 
     def test_6_4_old_line_with_a_stage_and_no_started(self):
         r = self.one("", base="x | big | w | est 60m | opened 2026-11-20 10:31 | by main | waited 30m | "
@@ -1393,7 +1393,7 @@ class TestSimulation(WaitCase):
         self.assertEqual(got["usage-track"]["Status"], "暂缓 · 你说合并监控之后再做 · 已等 3天19小时")
         self.assertEqual(got["one-watcher"]["Status"], "暂缓 · owner close case 2026-11-18: next… · 已等 2天4小时")
         for name in ("owner-relay", "comment-shape"):
-            self.assertEqual(got[name]["Status"], "未开始")
+            self.assertEqual(got[name]["Status"], "未开始 · 闲置 56分钟")   # idle-task-flag
         self.assertEqual((got["owner-relay"]["Est"], got["comment-shape"]["Est"]), ("42m", "28m"))
         for name in ("v4plus-followups", "pc2-plugin-update", "board-waiting", "usage-track", "one-watcher"):
             self.assertDash(got[name])
@@ -1406,7 +1406,7 @@ class TestSimulation(WaitCase):
             name_col("state-trim") + "██░░░░░░░░  20%  写测试  13:12",
             name_col("v4plus-followups") + "等待 v4-Manager · 已等 3天20小时",
             name_col("pc2-plugin-update") + "等待 v4-Manager · 已等 2天19小时",
-            name_col("owner-relay") + "未开始",   # one-watcher K: an own row while there is room
+            name_col("owner-relay") + "未开始 · 闲置 56分钟",   # one-watcher K: an own row while there is room
             "+4 个任务"]))
 
     def test_the_owner_moment(self):
@@ -1419,7 +1419,7 @@ class TestSimulation(WaitCase):
             name_col("state-trim") + "等待 你 · 合并前签字 · 已等 5分钟",
             name_col("v4plus-followups") + "等待 v4-Manager · 已等 3天20小时",
             name_col("pc2-plugin-update") + "等待 v4-Manager · 已等 2天19小时",
-            name_col("owner-relay") + "未开始",   # one-watcher K: an own row while there is room
+            name_col("owner-relay") + "未开始 · 闲置 56分钟",   # one-watcher K: an own row while there is room
             "+4 个任务"]))
 
 
@@ -1433,8 +1433,8 @@ class TestSimulationEnglish(WaitCase):
             "state-trim": "running",
             "v4plus-followups": "waiting v4-Manager · 回复插件更新和同步脚本 · waited 3d 20h",
             "pc2-plugin-update": "waiting v4-Manager · pc2 空闲时更新 plugin · waited 2d 19h",
-            "owner-relay": "not started",
-            "comment-shape": "not started",
+            "owner-relay": "not started · idle 56m",   # idle-task-flag
+            "comment-shape": "not started · idle 56m",
             "board-waiting": "queue · after state-trim",
             "usage-track": "hold · 你说合并监控之后再做 · waited 3d 19h",
             "one-watcher": "hold · owner close case 2026-11-18: next… · waited 2d 4h",
@@ -1446,7 +1446,7 @@ class TestSimulationEnglish(WaitCase):
             name_col("state-trim") + "██░░░░░░░░  20%  tests  13:12",
             name_col("v4plus-followups") + "waiting v4-Manager · waited 3d 20h",
             name_col("pc2-plugin-update") + "waiting v4-Manager · waited 2d 19h",
-            name_col("owner-relay") + "not started",   # one-watcher K
+            name_col("owner-relay") + "not started · idle 56m",   # one-watcher K
             "+4 tasks"]))
 
     def test_the_owner_moment_and_defaults(self):
@@ -1473,12 +1473,12 @@ class TestOldLines(WaitCase):
             "usage-track": "暂缓 · owner close case 2026-11-16: after… · 已等 3天19小时",
             "pc2-plugin-update": "暂缓 · handed to v4-Manager 2026-11-18… · 已等 2天19小时",
             "one-watcher": "暂缓 · owner close case 2026-11-18: next… · 已等 2天4小时",
-            "owner-relay": "未开始",
-            "comment-shape": "未开始",
+            "owner-relay": "未开始 · 闲置 56分钟",   # idle-task-flag
+            "comment-shape": "未开始 · 闲置 56分钟",
         })
         # one-watcher K: 6 rows, 5 lines: 4 own rows by board order, the rest fold
         self.assertEqual(self.line(), "\n".join([
-            name_col("owner-relay") + "未开始", name_col("comment-shape") + "未开始",
+            name_col("owner-relay") + "未开始 · 闲置 56分钟", name_col("comment-shape") + "未开始 · 闲置 56分钟",
             name_col("v4plus-followups") + "暂缓 · 已等 3天20小时", name_col("usage-track") + "暂缓 · 已等 3天19小时",
             "+2 个任务"]))
 
@@ -1544,7 +1544,8 @@ class TestBoardRow(WatchBoardCase):
         beta = self.repo.make_worktree("beta", as_repo=False)
         self.add("beta", "bank recon", 60, opened="2026-11-02 14:20", started=False)
         self.worktree_lines((self.alpha, "alpha", "working"), (beta, "beta", "working"))
-        self.assertEqual(self.status_of("beta"), self.st("not_started") + self.warn(40))
+        idle = " · 闲置 40分钟" if self.lang == "zh" else " · idle 40m"      # idle-task-flag
+        self.assertEqual(self.status_of("beta"), self.st("not_started") + idle + self.warn(40))
 
     def test_live_means_a_sweep_at_most_2_intervals_plus_2_minutes_old(self):
         self.watch(sweep="2026-11-02 14:48", changed="2026-11-02 14:55")
@@ -1928,6 +1929,202 @@ class TestAddedWork(BoardCase):
         pct = int(re.search(r"(\d+)%", after).group(1))
         self.assertGreater(pct, 0, (before, after))
         self.assertGreaterEqual(pct, int(re.search(r"(\d+)%", before).group(1)) // 2)
+
+
+class TestOneRowPerTask(BoardCase):
+    """board-one-row (owner, 2026-11-26: "why deputy also appear at there. deputy no need to show ya, if not
+    confusing"): an agent or pane launched under a task that has a todo row is no row of its own; its task's row
+    says it: status running + " · N 代理", work and place filled in when the task has none."""
+    lang = "zh"
+    ONE = " · 1 代理"
+    TWO = " · 2 代理"
+
+    def launch(self, kind, task, since="2026-11-02 14:30", pid=None, agent="a1", pane=None, key=None, folder=None):
+        line = "LAUNCH %s: %s | task %s | title of %s | since %s | pid %d | by main" % (
+            key or "k_%s_%s_%s" % (kind.replace(" ", ""), task, since[-5:].replace(":", "")), kind, task, kind,
+            since, pid or os.getpid())
+        if agent:
+            line += " | agent " + agent
+        if pane:
+            line += " | pane " + pane
+        self.state(line, folder=folder)
+
+    def mark(self, n):
+        if self.lang == "zh":
+            return " · %d 代理" % n
+        return " · %d agent%s" % (n, "" if n == 1 else "s")
+
+    def test_a_deputy_and_no_stage_is_one_running_row(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("deputy", "t", since="2026-11-02 14:30")
+        rows = self.rows()
+        self.assertEqual([r["Task"] for r in rows], ["t [t]"], rows)
+        r = rows[0]
+        self.assertEqual(r["Status"], self.st("running") + self.mark(1))
+        self.assertEqual(r["Work"], "30m")                       # the deputy's minutes: 14:30 -> 15:00
+        self.assertEqual(r["Where"], "pc2, " + self.repo.dir)    # the deputy's place
+        self.assertEqual(r["Est"], "20m")
+
+    def test_a_task_manager_pane_and_two_workers_is_one_row_and_two_agents(self):
+        self.add("t", "the task", 60, opened="2026-11-02 14:00")           # started: its own work is 1h
+        self.launch("tm-pane", "t", since="2026-11-02 14:59", agent=None)  # a pane: not counted, no row
+        self.launch("worker 1", "t", since="2026-11-02 14:20")
+        self.launch("worker 2", "t", since="2026-11-02 14:40")
+        rows = self.rows()
+        self.assertEqual([r["Task"] for r in rows], ["t [t]"], rows)
+        self.assertEqual(rows[0]["Status"], self.st("running") + self.mark(2))
+        self.assertEqual(rows[0]["Work"], "1h")                  # the task's own work, not a worker's
+
+    def test_a_merge_deputy_and_a_reviewer_at_once_are_two_agents_on_one_row(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("merge", "t", since="2026-11-02 14:50")
+        self.launch("reviewer", "t", since="2026-11-02 14:40")
+        rows = self.rows()
+        self.assertEqual([r["Task"] for r in rows], ["t [t]"], rows)
+        self.assertEqual(rows[0]["Status"], self.st("running") + self.mark(2))
+        self.assertEqual(rows[0]["Work"], "20m")                 # the oldest live agent: 14:40
+
+    def test_every_agent_kind_and_a_pane_kind_is_folded(self):
+        self.add("t", "the task", 20, started=False)
+        kinds = ("deputy", "merge", "reviewer", "explore", "plan", "guide", "agent")
+        for i, kind in enumerate(kinds):
+            self.launch(kind, "t", since="2026-11-02 14:5%d" % i)
+        for kind in ("shell-pane", "pane", "helper-pane"):
+            self.launch(kind, "t", since="2026-11-02 14:59", agent=None, key="k_" + kind)
+        rows = self.rows()
+        self.assertEqual([r["Task"] for r in rows], ["t [t]"], rows)
+        self.assertEqual(rows[0]["Status"], self.st("running") + self.mark(len(kinds)))
+
+    def test_a_finished_agent_adds_nothing(self):
+        self.add("t", "the task", 20, started=False, opened="2026-11-02 14:55")   # idle-task-flag: not idle
+        self.launch("deputy", "t", pid=dead_pid())
+        rows = self.rows()
+        self.assertEqual(len(rows), 1, rows)
+        self.assertEqual((rows[0]["Status"], rows[0]["Work"], rows[0]["Where"]),
+                         (self.st("not_started"), "-", "-"))
+
+    def test_a_live_and_a_finished_agent_count_one(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("deputy", "t", pid=dead_pid(), key="k_dead")
+        self.launch("reviewer", "t", since="2026-11-02 14:45")
+        rows = self.rows()
+        self.assertEqual((len(rows), rows[0]["Status"], rows[0]["Work"]),
+                         (1, self.st("running") + self.mark(1), "15m"))
+
+    def test_an_agent_without_a_todo_row_keeps_its_own_row(self):
+        self.add("t", "the task", 20, started=False, opened="2026-11-02 14:55")   # idle-task-flag: not idle
+        self.launch("deputy", "ghost", since="2026-11-02 14:30")
+        self.launch("tm-pane", "ghost", since="2026-11-02 14:59", agent=None)
+        rows = self.rows()
+        tasks = sorted(r["Task"] for r in rows)
+        word = {"zh": ("副手", "窗格"), "en": ("deputy", "pane")}[self.lang]
+        self.assertEqual(tasks, sorted(["t [t]", "ghost " + word[0], "ghost " + word[1]]), rows)
+        self.assertEqual(self.row(rows, task="t")["Status"], self.st("not_started"))
+        self.assertEqual(self.row(rows, task="ghost " + word[0])["Work"], "30m")
+
+    def test_a_task_with_no_agent_is_unchanged(self):
+        self.add("t", "the task", 20, started=False, opened="2026-11-02 14:55")   # idle-task-flag: not idle
+        r = self.rows()[0]
+        self.assertEqual((r["Status"], r["Work"], r["Where"]), (self.st("not_started"), "-", "-"))
+
+    def test_its_own_place_and_work_win(self):
+        self.add("t", "the task", 60, opened="2026-11-02 14:00")
+        self.af("todo", "where", "t", "box9", "/srv/t")
+        self.launch("deputy", "t", since="2026-11-02 14:50")
+        r = self.rows()[0]
+        self.assertEqual((r["Work"], r["Where"]), ("1h", "box9, /srv/t"))
+
+    def test_a_wait_keeps_its_status_and_gets_the_mark(self):
+        self.add("t", "the task", 20, started=False)
+        self.wait("t", "on", "review")
+        self.launch("reviewer", "t", since="2026-11-02 14:45")
+        rows = self.rows()
+        self.assertEqual(len(rows), 1, rows)
+        self.assertTrue(rows[0]["Status"].endswith(self.mark(1)), rows)
+        self.assertNotIn(self.st("running"), rows[0]["Status"])
+
+    def test_the_order_of_the_rows_holds(self):
+        self.add("a", "first", 20, opened="2026-11-02 13:00", started=False)
+        self.add("b", "second", 20, opened="2026-11-02 13:10")
+        self.launch("deputy", "a", since="2026-11-02 14:30")
+        self.state("OWNER TODO: check the phone build\n")
+        names = [re.sub(r" \[[^\]]*\]$", "", r["Task"]) for r in self.rows()]
+        self.assertEqual(names, ["a", "b", "-"])
+
+    def test_self_view_folds_the_workers_too(self):
+        alpha = self.task_worktree("alpha")
+        self.add("alpha", "the login form", 60, opened="2026-11-02 14:00")
+        self.worktree_lines((alpha, "alpha", "working"))
+        self.launch("worker 1", "alpha", since="2026-11-02 14:20", folder=alpha)
+        self.launch("tm-pane", "alpha", since="2026-11-02 14:59", agent=None, folder=alpha)
+        rows = self.rows("--self", cwd=alpha)
+        self.assertEqual([r["Task"] for r in rows], ["alpha [t]"], rows)
+        # the watch's "not confirmed" warning of a task worktree may sit before the mark; the mark ends the cell
+        self.assertTrue(rows[0]["Status"].startswith(self.st("running")), rows)
+        self.assertTrue(rows[0]["Status"].endswith(self.mark(1)), rows)
+
+    # ---- follow-ups of the review (main manager): the status line says running too; a live pane alone is someone working
+
+    def line(self, width):
+        env = {"AGENT_FAKE_NOW": NOW, "AGENT_FAKE_HOST": HOST, "AGENT_STATUSLINE_WIDTH": str(width)}
+        res = self.statusline_py(json.dumps({"cwd": self.repo.dir}), env=env, cwd=self.repo.dir)
+        return res.stdout
+
+    def test_status_line_reads_running_with_a_live_agent_at_every_width(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("deputy", "t", since="2026-11-02 14:30")
+        for width in (0, 70, 200):
+            text = self.line(width)
+            self.assertIn(self.st("running") + self.mark(1), text, (width, text))
+            self.assertNotIn(self.st("not_started"), text, (width, text))
+
+    def test_status_line_without_an_agent_still_reads_not_started(self):
+        self.add("t", "the task", 20, started=False)
+        for width in (0, 70, 200):
+            text = self.line(width)
+            self.assertIn(self.st("not_started"), text, (width, text))
+            self.assertNotIn(self.st("running"), text, (width, text))
+
+    def test_a_pane_alone_is_running_with_no_count_on_the_board(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("tm-pane", "t", since="2026-11-02 14:58", agent=None)    # a pane with no handle: 2 minutes of life
+        rows = self.rows()
+        self.assertEqual(len(rows), 1, rows)
+        r = rows[0]
+        self.assertEqual((r["Status"], r["Work"], r["Where"]), (self.st("running"), "2m", "pc2, " + self.repo.dir))
+
+    def test_a_pane_alone_keeps_the_tasks_own_work_and_place(self):
+        self.add("t", "the task", 60, opened="2026-11-02 14:00")
+        self.af("todo", "where", "t", "box9", "/srv/t")
+        self.launch("tm-pane", "t", since="2026-11-02 14:58", agent=None)
+        r = self.rows()[0]
+        # the watch's "not confirmed" warning may follow the word; no agent mark ever
+        self.assertTrue(r["Status"].startswith(self.st("running")) and "代理" not in r["Status"]
+                        and "agent" not in r["Status"], r)
+        self.assertEqual((r["Work"], r["Where"]), ("1h", "box9, /srv/t"))
+
+    def test_a_pane_alone_is_running_in_the_status_line_with_no_count(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("tm-pane", "t", since="2026-11-02 14:45", agent=None)
+        for width in (0, 70, 200):
+            text = self.line(width)
+            self.assertIn(self.st("running"), text, (width, text))
+            self.assertNotIn(self.st("not_started"), text, (width, text))
+            self.assertNotIn("代理", text)
+            self.assertNotIn("agent", text)
+
+    def test_with_an_agent_and_a_pane_the_agents_minutes_count(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("tm-pane", "t", since="2026-11-02 14:59", agent=None)
+        self.launch("deputy", "t", since="2026-11-02 14:40")
+        r = self.rows()[0]
+        self.assertEqual((r["Status"], r["Work"]), (self.st("running") + self.mark(1), "20m"))
+
+
+class TestOneRowPerTaskEnglish(TestOneRowPerTask):
+    lang = "en"
+    ONE = " · 1 agent"
+    TWO = " · 2 agents"
 
 
 if __name__ == "__main__":

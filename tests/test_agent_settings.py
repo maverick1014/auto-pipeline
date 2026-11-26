@@ -962,6 +962,8 @@ ORDER = [
     ("task_files", "Team: Task files in git", "string", "local"),
     ("task_take", "Team: Who may take a task", "string", "owner"),
     ("data_branch", "Team: Data branch", "string", "ap-data"),
+    # owner 2026-11-26 (leader-relay, TELL 2d1f9c06): empty = an approval relayed by Leader is refused
+    ("leader_transcript_folder", "Approval: Leader transcript folder", "string", ""),
 ]
 
 
@@ -979,6 +981,7 @@ CONSTANTS = {
     "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024,   # check-blocks section 15 (owner 1A)
     "verify_box_min": 15,   # check-blocks section 19/21: the run or browser check time box
     "share_net_timeout_s": 15, "share_offline_min": 5,   # agent-files fix order 1 D: one network timeout, the offline marker
+    "leader_transcript_max_mb": 200,   # leader-relay: a larger Leader transcript is refused, not read
 }
 
 

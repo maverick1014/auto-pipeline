@@ -1,0 +1,76 @@
+# leader-relay: an owner approval passed on by the Leader bot
+
+Owner, 2026-11-26, typed to his Leader bot (the two lines were checked by the main manager in Leader's transcript):
+- "agree with that one, but then the verfiication actualy have a step which is you need to record down my original words and the worker is able to cross checking on the oriignal text. so that it only will be agree with the instruction"
+- "hermm forward the request and checking for the auto-pipeline"
+
+## Today
+
+- An owner approval (a task published straight to production, a check block left out, the working branch published, OWNER SIGN) counts only when the tool finds his exact words as a prompt he typed: in this repo's own session (`--owner-quote`), or in the session of another repo's main manager (`--relayed-from <repo folder>`: a repo with a main manager lock). Code: `bin/agent_owner_order.py`, `bin/agent-owner-order.sh`, the approval commands in `bin/agent_checks.py` and `bin/agent_promote.py`; rules: `rules/approval.md`.
+- The owner now talks to one bot above every repo manager ("Leader"). Leader is not a repo and has no main manager lock, so an approval he gives Leader is refused and he must type it again in the repo's session.
+
+## The rule
+
+Leader passes on three things: his exact words, the time he typed them, and the path of the transcript file where he typed them. The receiving agent never trusts the relay text: the approval tool opens that transcript itself and accepts only when ALL hold:
+
+1. The source is Leader's chat: the transcript file lies inside the one folder the owner named as Leader's (a new setting, "Leader transcript folder", in /plugin Configure; empty = this feature is off). The real path is compared after links are resolved; a path that leaves the folder, a link pointing out of it, or any other file is refused.
+2. The exact quote stands in a message the owner typed himself in that file: a user prompt, as the same-session check defines one. Not a tool result. Not text put into the chat by anyone else: a relayed mail or message, an Orca note, a system reminder, a task notification, a system notification, a pasted block, a command or skill expansion.
+   Leader's chat (main manager, TELL 380815fe, from the shapes of Leader's real transcripts): every prompt comes through the SDK (type user, promptSource and turnOrigin "sdk", one text block, sometimes an image block first or a plain string); no field says which part he typed. Orca puts notes in front of his message in the same text block: a note header is a line that starts with "[" at column 0 and ends with "]"; a fenced block is a line "<<<", content lines, a line ">>>"; some headers carry unfenced text. His message is the last paragraph, after one blank line. So, for a transcript in the Leader folder only:
+   a. No note header and no fence line: the whole prompt is his (several paragraphs allowed). "[Image #1] " followed by his words is this case.
+   b. With a note header or a fence: only the last paragraph (after the last blank line) is his, and only when the line right before that blank line is a closed fence ">>>" or a note header line.
+   c. Unfenced text right before the last paragraph: refused, "his words cannot be told from the text Orca put into this prompt; he says it again in a new message or in the repo session".
+   d. The quote only in a header, a fence, unfenced note text or an earlier paragraph: refused, saying so. A fence left open, a last paragraph that starts with "[" or is ">>>": refused.
+   e. An image block before the text block changes nothing. Records that are never his stay refused (isMeta, promptSource "system", a task notification, a tool result, text that starts with a system reminder, a task notification, a local command or a command name).
+   The same-session check and `--relayed-from` keep their own function, unchanged.
+3. The time matches: the message that holds the quote carries the time Leader gave (to the minute).
+4. A quote under 20 characters counts only as his whole prompt, with the question it answered standing in the assistant message right before it in that same transcript (the rule of the same-session check).
+
+Anything else is refused, with one line saying which point failed: one character changed, no match, the wrong file, the wrong time, a quote that is only inside relayed text.
+
+- The same-session check and `--relayed-from` stay exactly as they are (their own function; the Leader parser of point 2 is used only for a file in the Leader folder).
+- The stored record says where the words were verified ("relayed by Leader", the file, the time), and the gate and the publish print it with the OWNER WORDS lines.
+- The deciding agent still reads his words by the approval cases (`rules/approval.md`); the tool only proves they are his.
+- The transcript is read only. Nothing of it is copied but the quoted words and their time.
+- Threat model as for every gate here: mistakes and shortcuts through the documented commands. A transcript forged by hand is a breach, not a case the tool can catch.
+
+## How it is used
+
+- The approval commands take the relay in one option beside `--owner-quote` and `--means`: the transcript path and the time (for example `--relayed-by-leader <transcript file> --time <when>`; the builder picks the exact form and keeps it the same on every approval command: `todo add --target production`, `todo target`, `todo checks --remove`, the OWNER SIGN line, `agent-promote.sh`).
+- `agent-owner-order.sh` gets the matching `verify` form, so a main manager can check a relay before acting on it.
+- The rule text (`rules/approval.md`, `rules/cross-repo.md`) gets the case in two or three lines; the quiz gets no new question in this task.
+
+## Examples (the failing tests come from these)
+
+- A transcript in the Leader folder with a user prompt "publish task t9 to production when it is done" at 10:15: the approval with that quote, that file and 10:15 is accepted; the record says relayed by Leader.
+- The same with one character changed in the quote: refused, "no such prompt".
+- The same quote, time 10:40: refused, "the time does not match".
+- The same quote in a transcript outside the Leader folder (another project folder, /tmp, a link inside the Leader folder that points outside): refused, "not Leader's transcript".
+- The setting is empty: every relay by Leader is refused, "no Leader folder is set".
+- The quote stands only inside a tool result, inside a relayed message block, inside a system reminder, inside a task notification, or inside an assistant message: refused.
+- The quote is part of a longer prompt he typed (20 characters or more): accepted, as the same-session check does.
+- "ok" as his whole prompt right after an assistant message that holds the numbered question: accepted with `--question`; "ok" inside a longer prompt: refused.
+- The transcript file is missing, empty, not JSON lines, or larger than the tool will read: refused with a line, no traceback.
+- `--owner-quote` in the repo's own session and `--relayed-from <repo>` behave exactly as before (their tests are not changed).
+
+## Not in this task
+
+Who Leader is or how it sends its message. Any change of what needs an approval. A release of the plugin: that still needs the owner's own words in this repo's session.
+
+## Follow-up (main manager, 2026-11-26 evening)
+
+The owner gave his publish order by typing a slash command in the main manager's session: "/goal settle down all thing ... then i want you release the latest version without any issues anymore ...". The same-session check refused it ("only in a meta, other line"): the record of a typed slash command has no origin and no promptSource. Shapes found in this machine's transcripts (21 days): a typed command is a user record, content a string of `<command-name>/goal</command-name>`, `<command-message>goal</command-message>`, `<command-args>THE WORDS</command-args>`, userType external, entrypoint cli, no isMeta, no origin, no promptSource (/clear and /compact have empty args); a skill he types has origin kind human; a skill the model invokes shows only as a tool result and an isMeta record with its expanded body. For the same-session check and `--relayed-from` (the Leader path keeps its own parser):
+
+- F1. A slash command he typed counts: a user record, not isMeta, not isSidechain, no tool result, userType external, origin absent or kind human, promptSource absent or typed/queued, whose text is exactly the three command tags (whitespace between them, any order, nothing else). Only the text inside `<command-args>` counts as his words, with the 20 character rule, the `--question` rule and the 24 h window as for any prompt. The command name, the message tag, `<local-command-stdout>`, `<local-command-caveat>` and a skill's expanded body never count; a command with no args gives nothing; a skill the model invoked is never accepted.
+- F2. Stricter: inside an accepted typed prompt (and the args of a typed command), text inside a `<system-reminder>` block or another tag block the harness adds (the kinds the Leader parser cuts) is cut before the quote is searched; pasted blocks stay cut as before.
+- F3. Every old test stays green and unchanged (none expected a quote found only inside a cut block to be accepted). New tests, failing first: the /goal record accepted with a quote from its args; the same words only in `<command-message>` or a skill expansion refused; a model-invoked skill refused; a quote only inside a system-reminder of a typed prompt refused, the same quote outside it accepted; todo target, todo checks --remove and OWNER SIGN accept a quote from typed /goal args, and one end-to-end publish through agent-promote.sh.
+
+Fix round (CORE REVIEW at 85f6a2b, TELL 60d7e4c6):
+
+- R1. In Leader's chat a line that matches the agent header (`[<model> <effort>] ...`) is never an Orca note header, and the agent-typed check reads the whole prompt after the cuts (indented or not), besides his last paragraph: "[Opus 5.5 xhigh]\n\n<quote>" is refused as agent-typed, as on the same-session path.
+- R2. A typed command counts only with all three tags present (command-name, command-message, command-args), each once, in any order: args alone, or args with only one of the other two tags, is refused.
+- R3. Leader case a (no note: the whole prompt is his) cannot be told from a `claude -p` session started with the Leader folder as its working folder: on the connected machine such prompts carry entrypoint sdk-cli, promptSource sdk, turnOrigin sdk and no origin, and Leader's prompts (laptop shapes) carry the same promptSource and turnOrigin; no field is known that tells them apart, so no code change. The folder rule is the guard: only a file directly in the owner's Leader folder is read.
+
+Known limits:
+- One verified quote can be used again for another action (as with `--owner-quote` today); a follow-up task, not now.
+- F1 accepts a command record with no origin field: the shape seen for a typed /goal. The CLI writes no origin for some non-human inputs too; none was seen writing the three command tags.
+- R3 above: a `claude -p` prompt in the Leader folder reads as Leader's case a.
