@@ -388,17 +388,50 @@ class TestRetrainGuard(Versions, EstimateCase):
         self.assertEqual(self.lines(out), [self.SKIP])
         self.assertEqual(self.model_text(), before)
 
+    def git_dir(self, *parts):
+        return os.path.join(self.repo.dir, ".git", *parts)
+
+    def settle(self, timeout=120):
+        """Wait until the background estimator runner is gone and its queue is empty."""
+        end = time.time() + timeout
+        while time.time() < end:
+            q = self.git_dir("agent_estimate.queue")
+            if not os.path.isdir(self.git_dir("agent_estimate.lock")) and (not os.path.isdir(q) or not os.listdir(q)):
+                return
+            time.sleep(0.5)
+        self.fail("the estimator run did not end in %d s" % timeout)
+
     def test_todo_done_still_works_and_skips_the_retrain(self):
+        # estimate-improve D12b (fix order 2): the retrain after todo done runs in a detached runner and todo done
+        # prints nothing about it; the guard moved with it: the skip line goes to <git dir>/agent_estimate.log
         self.stale_setup()
         self.completed(steady(29))
         self.todo()
         out = self.done()
         self.assertIn("todo done: t-new", out)
-        self.assertIn(self.SKIP, self.lines(out))
+        self.assertNotIn("retrain", out)
         self.assertEqual(self.verdicts(out), [])
+        self.settle()
+        with open(self.git_dir("agent_estimate.log")) as fh:
+            log = fh.read()
+        self.assertIn(self.SKIP, log.splitlines())
+        self.assertNotIn("estimate retrain", log)
         self.assertIsNone(self.model_text())
         self.assertIn(" | t-new | ", self.repo.read("agent_completed.txt"))
         self.assertEqual(self.repo.read("agent_todo.txt").strip(), "")
+
+    def test_todo_done_waiting_prints_the_skip(self):
+        # the twin of the old check: AGENT_ESTIMATE_WAIT=1 runs the retrain in todo done, the skip line in its output
+        self.stale_setup()
+        self.completed(steady(29))
+        self.todo()
+        out = self.assertOk(self.repo.run("agent-file.sh", "todo", "done", "t-new", "--work", "25", "--wait", "0",
+                                          "--lane", "full", "--mock", "no", "--type", "script",
+                                          env={"AGENT_FAKE_NOW": NOW, "AGENT_ESTIMATE_WAIT": "1"}))
+        self.assertIn("todo done: t-new", out)
+        self.assertIn(self.SKIP, self.lines(out))
+        self.assertEqual(self.verdicts(out), [])
+        self.assertIsNone(self.model_text())
 
     def test_the_newest_still_retrains(self):
         self.stale_setup("0.35.0", None)

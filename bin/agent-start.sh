@@ -1295,21 +1295,43 @@ if [ -n "$WATCH_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   WATCH_TEXT="${w_head}PLUGIN/bin/${w_tail}"
   calc_fixed
 fi
+# then the same short form in the AGENT FILES (and relief) lines of the normal part
+if [ $(( fixed + ptr_bytes )) -gt "$CAP" ] && [ "${NORMAL_TEXT#*"$PLUGIN_ROOT/bin/"}" != "$NORMAL_TEXT" ]; then
+  while [ "${NORMAL_TEXT#*"$PLUGIN_ROOT/bin/"}" != "$NORMAL_TEXT" ]; do
+    w_head=${NORMAL_TEXT%%"$PLUGIN_ROOT/bin/"*}; w_tail=${NORMAL_TEXT#*"$PLUGIN_ROOT/bin/"}
+    NORMAL_TEXT="${w_head}PLUGIN/bin/${w_tail}"
+  done
+  calc_fixed
+fi
+# still over: the AGENT FILES line in its short form (it is never dropped)
+if [ $(( fixed + ptr_bytes )) -gt "$CAP" ] && printf '%s' "$NORMAL_TEXT" | grep -q '^AGENT FILES: still on the code branch'; then
+  NORMAL_TEXT=$(printf '%s' "$NORMAL_TEXT" | sed 's|^AGENT FILES: still on the code branch.*$|AGENT FILES: not moved; PLUGIN/bin/agent-file.sh files move (the owner decides)|'; printf 'X')
+  NORMAL_TEXT=${NORMAL_TEXT%X}
+  calc_fixed
+fi
 
 # 3. worktree rows, last, dropped from the end; the header keeps the real count.
 if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   wt_line=$(printf '%s' "$NORMAL_TEXT" | awk '/^agent_worktree.txt: /{print NR; exit}')
-  wt_total=$(printf '%s' "$NORMAL_TEXT" | awk 'END{print NR}')
-  if [ -n "$wt_line" ] && [ "$wt_total" -gt "$wt_line" ]; then
-    wt_rows=$(( wt_total - wt_line )); wt_orig=$NORMAL_TEXT; wt_keep=$wt_rows
+  # the rows are the indented lines right under the header; a line after them (AGENT FILES) is kept, not counted
+  wt_rows=$(printf '%s' "$NORMAL_TEXT" | awk -v s="${wt_line:-0}" 'NR>s && /^  /{n++; next} NR>s{exit} END{print n+0}')
+  if [ -n "$wt_line" ] && [ "$wt_rows" -gt 0 ]; then
+    wt_orig=$NORMAL_TEXT; wt_keep=$wt_rows
     while [ "$wt_keep" -gt 0 ]; do
       wt_keep=$(( wt_keep - 1 ))
       NORMAL_TEXT=$(printf '%s' "$wt_orig" | head -n $(( wt_line + wt_keep )); \
-        printf '  (%s more: agent_worktree.txt)\n' $(( wt_rows - wt_keep )); printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+        printf '  (%s more: agent_worktree.txt)\n' $(( wt_rows - wt_keep )); \
+        printf '%s' "$wt_orig" | tail -n +$(( wt_line + wt_rows + 1 )); printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
       calc_fixed
       [ $(( fixed + ptr_bytes )) -le "$CAP" ] && break
     done
   fi
+fi
+# 4. still over with every row gone (a long human-direct role text): the AGENT FILES reminder goes, the very last
+# cut; every start repeats it until files move, so the next roomier start shows it again
+if [ $(( fixed + ptr_bytes )) -gt "$CAP" ] && printf '%s' "$NORMAL_TEXT" | grep -q '^AGENT FILES: '; then
+  NORMAL_TEXT=$(printf '%s' "$NORMAL_TEXT" | grep -v '^AGENT FILES: '; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+  calc_fixed
 fi
 
 budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
