@@ -4,6 +4,7 @@
 Every test runs the helper with HOME set to a temp folder, so ~/.claude and ~/.cache/agent-city are temp stand-ins; the
 repo stand-in is a temp git repo holding a copy of the helper. A broken guard can only touch temp folders."""
 
+import json
 import os
 import shutil
 import signal
@@ -183,7 +184,7 @@ class TestRoundTrip(HelperCase):
         self.assertTrue(base.startswith(self.env["TMPDIR"]), base)
         self.assertTrue(os.path.isfile(os.path.join(base, MARKER)))
         with open(os.path.join(base, "server.pid")) as fh:
-            server = int(fh.read())
+            server = json.load(fh)["pid"]
         self.pids.append(server)
         os.kill(server, 0)
         stranger = subprocess.Popen(["sleep", "60"])
@@ -204,6 +205,63 @@ class TestRoundTrip(HelperCase):
         self.assertIsNone(stranger.poll(), "the stranger still runs")
         self.assertEqual((sorted(os.listdir(self.claude)), sorted(os.listdir(self.cache))), before,
                          "nothing written into the real-folder stand-ins")
+
+
+class TestStopKillsOnlyItsOwn(HelperCase):
+    """PR REVIEW second pass (blocker): ours() was a substring test, so 'stop --base <B>' killed a stranger whose argv
+    named '<B>2/other.log'. A pid counts only by its exact recorded identity (start time and whole command line) and the
+    exact argument pair it was started with; a stranger naming '<B>2/x' is left alone, the real server is still stopped."""
+
+    def test_a_stranger_naming_a_longer_base_is_left_alone(self):
+        sys.path.insert(0, HERE)
+        import citydesks_demo as d
+        r = self.helper("start")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        base = next(l.split()[1] for l in r.stdout.splitlines() if l.startswith("BASE: "))
+        with open(os.path.join(base, "server.pid")) as fh:
+            server = json.load(fh)["pid"]
+        self.pids.append(server)
+        stranger = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", base + "2/x", "--base", base + "2"])
+        self.pids.append(stranger.pid)
+        time.sleep(0.3)
+        start, cmd = d.identity(stranger.pid)
+        self.assertIn(base + "2/x", cmd)
+        with open(os.path.join(base, "phone.pid"), "w") as fh:
+            json.dump({"pid": stranger.pid, "start": start, "cmd": cmd}, fh)   # its own true identity, even
+        r = self.helper("stop", "--base", base)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("left pid %d alone" % stranger.pid, r.stdout)
+        self.assertIsNone(stranger.poll(), "the stranger still runs")
+        for _ in range(30):
+            try:
+                os.kill(server, 0)
+            except OSError:
+                break
+            time.sleep(0.1)
+        else:
+            self.fail("the real server is still running")
+        self.assertFalse(os.path.exists(base))
+
+
+class TestStopBarePidStranger(HelperCase):
+    """The review's own case: the pid file holds a bare pid now used by a stranger whose argv names '<B>2/other.log'."""
+
+    def test_left_alone(self):
+        r = self.helper("start")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        base = next(l.split()[1] for l in r.stdout.splitlines() if l.startswith("BASE: "))
+        with open(os.path.join(base, "server.pid")) as fh:
+            server = json.loads(fh.read())
+        server = server["pid"] if isinstance(server, dict) else server
+        self.pids.append(server)
+        stranger = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", base + "2/other.log"])
+        self.pids.append(stranger.pid)
+        time.sleep(0.3)
+        with open(os.path.join(base, "phone.pid"), "w") as fh:
+            fh.write(str(stranger.pid))
+        r = self.helper("stop", "--base", base)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIsNone(stranger.poll(), "the stranger still runs: " + r.stdout)
 
 
 if __name__ == "__main__":

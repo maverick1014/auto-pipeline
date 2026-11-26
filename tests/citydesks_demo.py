@@ -20,7 +20,8 @@ writes the marker file .citydesks-demo into it; every other command refuses a fo
 refuses a folder under ~/.claude, ~/.cache/agent-city or this repo (its checkout and its main folder), and one that holds
 any of them (CITYDESKS_PROTECT, a list split by ':', adds more). The server it starts gets AGENT_CITY_HOME,
 AGENT_CITY_DIR, --floors-dir, --world and --decisions all inside the base; `stop` kills only the processes it started (pid
-files in the base, and only while their command line names the base) and deletes only a marked base.
+files in the base hold each one's pid, start time and whole command line; a pid counts only while all three are exactly
+the same and the command holds '--dir <base>/city' or '--base <base>' as an argument pair) and deletes only a marked base.
 The base holds city/ (AGENT_CITY_DIR), home/ (AGENT_CITY_HOME, home/floors the designs) and repos/.
 """
 
@@ -98,23 +99,52 @@ def checked_base(base, new=False):
     return real
 
 
+def identity(pid):
+    """(start time, full command line) of a live PID as ps prints them, or None."""
+    try:
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True, timeout=10).stdout.strip()
+        cmd = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (start, cmd) if start and cmd else None
+
+
+def record_pid(p, name, pid):
+    """The pid file: {"pid", "start", "cmd"}, the process's exact identity right after it started."""
+    ident = identity(pid) or ("", "")
+    with open(os.path.join(p["base"], name), "w", encoding="utf-8") as fh:
+        json.dump({"pid": pid, "start": ident[0], "cmd": ident[1]}, fh)
+
+
 def read_pid(p, name):
+    """The record of a pid file, or None. A bare number (an old or foreign file) has no identity."""
     try:
         with open(os.path.join(p["base"], name), encoding="utf-8") as fh:
-            return int(fh.read().strip())
-    except (OSError, ValueError):
+            text = fh.read().strip()
+    except OSError:
         return None
-
-
-def ours(pid, p):
-    """PID is alive and its command line names this base (a reused pid of another program is never ours)."""
-    if not pid:
-        return False
     try:
-        cmd = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, timeout=10).stdout
-    except (OSError, subprocess.SubprocessError):
+        rec = json.loads(text)
+    except ValueError:
+        return None
+    if isinstance(rec, int):
+        return {"pid": rec, "start": "", "cmd": ""}
+    if not isinstance(rec, dict) or not isinstance(rec.get("pid"), int):
+        return None
+    return rec
+
+
+def ours(rec, p):
+    """The process is ours only while its start time AND its whole command line are exactly the ones recorded when this
+    base started it (never a substring: a stranger whose command names '<base>2/x' is not ours), and that command still
+    carries the exact argument pair it was started with: '--dir <base>/city' or '--base <base>'."""
+    if not rec or not rec.get("start") or not rec.get("cmd"):
         return False
-    return p["base"] in cmd
+    if identity(rec["pid"]) != (rec["start"], rec["cmd"]):
+        return False
+    words = rec["cmd"].split()
+    pairs = set(zip(words, words[1:]))
+    return ("--dir", p["city"]) in pairs or ("--base", p["base"]) in pairs
 
 
 def server_cmd(p, port, lang, root, start_dir):
@@ -211,8 +241,7 @@ def cmd_start(base, port, lang, root=ROOT):
     argv, env = server_cmd(p, port, lang, root, start_dir)
     log = open(os.path.join(p["base"], "server.log"), "a")
     proc = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-    with open(os.path.join(p["base"], "server.pid"), "w", encoding="utf-8") as fh:
-        fh.write(str(proc.pid))
+    record_pid(p, "server.pid", proc.pid)
     print("BASE: %s   (give it as --base to every other command)" % p["base"])
     on = os.path.join(p["city"], "on")
     for _ in range(100):
@@ -315,8 +344,8 @@ def cmd_phone(p, port):
     port = port or free_port()
     proc = subprocess.Popen([sys.executable, os.path.abspath(__file__), "_phone", "--base", p["base"], "--port", str(port)],
                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    with open(os.path.join(p["base"], "phone.pid"), "w") as fh:
-        fh.write(str(proc.pid))
+    time.sleep(0.2)   # past the exec, so the recorded command is the server's own
+    record_pid(p, "phone.pid", proc.pid)
     for _ in range(50):
         try:
             socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
@@ -360,8 +389,9 @@ def cmd_stop(p):
     """Kill only the processes `start` and `phone` started (their pid files, while their command line names this base),
     then delete this marked base."""
     for name in ("phone.pid", "server.pid"):
-        pid = read_pid(p, name)
-        if ours(pid, p):
+        rec = read_pid(p, name)
+        pid = rec["pid"] if rec else None
+        if ours(rec, p):
             os.kill(pid, signal.SIGTERM)
             for _ in range(50):
                 try:
