@@ -224,6 +224,54 @@ class TestCountCheck(unittest.TestCase):
         self.assertIsNone(run2.count_mismatch(7, 7))
 
 
+
+class TestClassSeconds(unittest.TestCase):
+    """test-slim-3: a big file is dealt out class by class; its classes cost what was
+    measured for them (rows "<seconds> <tests> <file>.<Class>" in timings.txt, written by
+    --time), not the file's seconds shared out by test count (one class of start costs
+    5 s a test, another 0.1 s). A class with no row keeps the old share."""
+
+    def test_the_split_uses_the_measured_class_seconds(self):
+        run2 = load_run2()
+        listing = {"test_big": [("TestFast", 9), ("TestSlow", 1)], "test_x": None, "test_y": None}
+        timings = {"test_big": 90.0, "test_big.TestSlow": 80.0, "test_big.TestFast": 10.0,
+                   "test_x": 30.0, "test_y": 30.0}
+        groups = run2.split(["test_big", "test_x", "test_y"], timings, 2, listing)
+        self.assertEqual(groups, [(["test_big.TestSlow"], 80.0),
+                                  (["test_x", "test_y", "test_big.TestFast"], 70.0)])
+
+    def test_without_class_rows_the_share_follows_the_test_count(self):
+        run2 = load_run2()
+        listing = {"test_big": [("TestFast", 9), ("TestSlow", 1)], "test_x": None, "test_y": None}
+        groups = run2.split(["test_big", "test_x", "test_y"], {"test_big": 90.0, "test_x": 30.0,
+                                                               "test_y": 30.0}, 2, listing)
+        self.assertEqual(groups, [(["test_big.TestFast"], 81.0),
+                                  (["test_x", "test_y", "test_big.TestSlow"], 69.0)])
+
+    def test_time_writes_a_row_per_class(self):
+        root = tempfile.mkdtemp(prefix="run2_test_")
+        self.addCleanup(shutil.rmtree, root, True)
+        tests = os.path.join(root, "tests")
+        os.makedirs(tests)
+        for name, text in (("helper_base.py", HELPER), ("test_big.py", BIG), ("test_small.py", SMALL)):
+            with open(os.path.join(tests, name), "w") as fh:
+                fh.write(text)
+        out_file = os.path.join(root, "t.txt")
+        done = subprocess.run([sys.executable, RUN2, "--root", root, "-j", "2", "--time", "--out", out_file],
+                              capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        rows = {}
+        with open(out_file) as fh:
+            for line in fh:
+                if line.strip() and not line.startswith("#"):
+                    secs, n, name = line.rstrip("\n").split("\t")
+                    rows[name] = int(n)
+        self.assertEqual(rows, {"test_big": 6, "test_small": 1, "test_big.BaseCase": 2,
+                                "test_big.TestInherited": 2, "test_big.TestOwnA": 1,
+                                "test_big.TestOwnB": 1, "test_small.TestSmall": 1})
+        timings = load_run2().read_timings(out_file)
+        self.assertEqual(sorted(timings), sorted(rows))
+
 if __name__ == "__main__":
     unittest.main()
 
