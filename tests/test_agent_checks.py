@@ -1120,6 +1120,36 @@ class TestA1AnotherCheckout(TestGate):
 
 
 @only_own
+class TestG9(Gate):
+    def test_old_passes_do_not_carry_to_a_new_instance(self):
+        self.all_pass_but()
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes sign it", "--means", "sign t")
+        self.ok("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
+        self.ok("todo", "add", "t", "small", "another change", "10", "--checks", "PR REVIEW")
+        main_launched(self.repo.dir, "t")
+        self.git("checkout", "-q", "-b", "other", "base")
+        self.commit_push({"app.js": "unrelated()\n"})
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Review", "--evidence", "read it")   # only a new review
+        r = self.af("checks", "gate", "t", "--dir", self.repo.dir, "--base", "base")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        for block in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
+            with self.subTest(block=block):
+                self.assertNotIn("%s: pass" % block, r.stdout)
+
+    def test_a_line_a_minute_before_the_task_opened_is_ignored(self):
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        line = [l for l in open(os.path.join(self.repo.dir, "agent_todo.txt")) if l.startswith("t | ")][0]
+        opened = line.split("opened ")[1][:16]
+        t0 = time.mktime(time.strptime(opened, "%Y-%m-%d %H:%M"))
+        before = time.strftime("%Y-%m-%d %H:%M", time.localtime(t0 - 60))
+        with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
+            fh.write("CHECK t PR REVIEW: pass | by t Review | at %s | ok | %s\n" % (self.head()[:12], before))
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: missing", r.stdout.splitlines())
+
+
+@only_own
 class TestG11Removals(Gate):
     def test_no_means_is_refused(self):
         for block, words in (("BUILD", "no need to worry about the build server today"),
