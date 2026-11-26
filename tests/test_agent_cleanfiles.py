@@ -286,6 +286,8 @@ class TestDocs(FilesCase):
              ".github/PULL_REQUEST_TEMPLATE.md", ".cursor/rules/r.md",
              "LICENSE", "LICENSE.md", "docs/LICENCE.md", "COPYING.rst",
              "NOTICE.md", "requirements.txt", "CMakeLists.txt", "robots.txt",
+             # md-slim-principles A 1, section 4: the rule files beside the core are never offered
+             "GLOSSARY.md", "rules/checks.md", "rules/ui.md",
              "page.html", "src/app.ts", "agent_estimate.txt", "notes.txt"]
 
     def plant(self):
@@ -1109,7 +1111,7 @@ class TestSkillAndDocs(unittest.TestCase):
 
     def test_principles_r3_names_clean_up_and_the_no(self):
         # settings-configure: docs_keep is a fixed constant; a product repo keeps its docs by a no
-        text = read_root("PRINCIPLES.md")
+        text = read_root("rules", "files.md")
         r3 = text[text.index("R3. Docs"):text.index("R4. ")]
         self.assertIn("clean-up", r3)
         self.assertIn("real docs stay by a no", r3)
