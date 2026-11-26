@@ -115,6 +115,17 @@ class ClearCase(ScriptCase):
     def verbs(self):
         return [c[1] for c in self.calls() if c and c[0] == "terminal"]
 
+    def assert_first_send_after(self, reads):
+        """The first `reads` reads each led to another wait, never to typing, and the first send follows a read.
+        batch-fix: not a fixed verb list: when ready took 2 s or more (whole SECONDS; a loaded or simply unlucky
+        run) prep runs the gate and ready once more (C13), which adds a "wait", "read" before the send."""
+        verbs = self.verbs()
+        self.assertIn("send", verbs, verbs)
+        head = verbs[:verbs.index("send")]
+        self.assertEqual(head[:2 * reads], ["wait", "read"] * reads, verbs)
+        self.assertEqual(set(head), {"wait", "read"}, verbs)
+        self.assertEqual(head[-1], "read", verbs)
+
     # ---- files
 
     @property
@@ -349,8 +360,7 @@ class TestWaiter(ClearCase):
         self.write_state(["ROLE: x", ""])
         self.set_reads(pane("rules yes, and one more"), pane("rules yes, and one more thing"))
         self.assertOk(self.waiter())
-        verbs = self.verbs()
-        self.assertEqual(verbs[:7], ["wait", "read", "wait", "read", "wait", "read", "send"], verbs)
+        self.assert_first_send_after(3)
         self.assertEqual(self.sends(), [SAVE, "/clear", CONT])
         waiting = [l for l in self.state_lines() if l.startswith("AUTO CLEAR waiting")]
         self.assertEqual(waiting, ["AUTO CLEAR waiting: input box not empty | %s" % NOW])
@@ -362,7 +372,7 @@ class TestWaiter(ClearCase):
         nothing = {"ok": True, "result": {"terminal": {"handle": HANDLE, "tail": ["working..."]}}}
         self.set_reads(menu, nothing)
         self.assertOk(self.waiter())
-        self.assertEqual(self.verbs()[:7], ["wait", "read", "wait", "read", "wait", "read", "send"])
+        self.assert_first_send_after(3)
 
     def test_only_the_last_prompt_line_counts(self):
         self.write_state(["ROLE: x", ""])
@@ -439,7 +449,7 @@ class TestWaiter(ClearCase):
         bare = {"ok": True, "result": {"terminal": {"handle": HANDLE, "tail": ["⏺ x", "❯", "no rule lines here"]}}}
         self.set_reads(bare)
         self.assertOk(self.waiter())
-        self.assertEqual(self.verbs()[:5], ["wait", "read", "wait", "read", "send"])
+        self.assert_first_send_after(2)
 
     def test_a_term_signal_leaves_a_line_at_once(self):
         self.write_state(["ROLE: x", ""])
@@ -741,7 +751,8 @@ class TestC13GateAgainAfterAWait(TestWaiterWaitsForTheHuman):
         self.stub_file("wait_hook.sh", '[ "$1" = 2 ] && { printf "%%s\\n" %s >> %s; /bin/sleep 3; }\nexit 0\n'
                        % ("'" + human_now + "'", os.path.join(self.t.dir, "s1.jsonl")))
         self.start()
-        self.assertTrue(wait_until(lambda: self.waiting_line(), 20), (self.sends(), self.state_lines()))
+        # batch-fix: 60 s, was 20 s: on a loaded machine the waiter's steps (python, stubs, a 3 s turn) ran longer
+        self.assertTrue(wait_until(lambda: self.waiting_line(), 60), (self.sends(), self.state_lines()))
         time.sleep(2)
         self.assertEqual(self.sends(), [SAVE], "no /clear after a human prompt in the save turn")
 
@@ -776,7 +787,8 @@ class TestC22EveryPane(TestC13GateAgainAfterAWait):
                        % ("'" + human_now + "'", os.path.join(self.t.dir, "s1.jsonl")))
         proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", "--spawned", env=self.env())
         self.addCleanup(lambda: proc.poll() is None and proc.kill())
-        self.assertTrue(wait_until(lambda: self.waiting_line(), 20), (self.sends(), self.state_lines()))
+        # batch-fix: 60 s, was 20 s: on a loaded machine the waiter's steps (python, stubs, a 3 s turn) ran longer
+        self.assertTrue(wait_until(lambda: self.waiting_line(), 60), (self.sends(), self.state_lines()))
         time.sleep(2)
         self.assertEqual(self.sends(), [SAVE], "no /clear after the owner's prompt in a task manager pane")
 

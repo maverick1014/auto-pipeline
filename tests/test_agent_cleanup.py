@@ -1311,7 +1311,7 @@ class TestStartWiring(CleanupCase):
                          "working | since 2026-09-22 10:00\n" % (i, i))
         out = pointer_part(self.assertOk(self.start()))
         self.assertLessEqual(len(out.encode()), 2000,
-                             "hook is %d bytes" % len(out.encode()))
+                             "hook is %d bytes\n%s" % (len(out.encode()), out))
         self.assertIn("CLEANUP: pc2 unreachable, not checked", out)
         self.assertIn("CLEANUP: pc3 unreachable, not checked", out)
         # kept: the unmerged worktree, and the merged one's origin branch,
@@ -1339,6 +1339,9 @@ class TestStartWiring(CleanupCase):
             more = [l for l in lines if l.startswith("  (%d more" % (4 - len(rows)))]
             self.assertEqual(len(more), 1, out)
             self.assertIn("agent_worktree.txt", more[0])
+        # batch-fix: this repo still tracks its agent files, so the start names files move
+        # (agent-files fix 1 A); that line sits after the worktree rows and is never cut with them
+        self.assertTrue(any(l.startswith("AGENT FILES: ") and "files move" in l for l in lines), out)
 
 
 class TestStartWiringLongPath(TestStartWiring):

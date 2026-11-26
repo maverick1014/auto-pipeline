@@ -3,6 +3,7 @@
 requirements/state-trim.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
+import fcntl
 import glob
 import json
 import os
@@ -674,11 +675,33 @@ class TestOneTrimAtATime(TrimCase):
     """Finding 1: two trims at once lost the moved lines. A lock holds the whole trim and every state add.
     AGENT_FAKE_TRIM_HOLD=<sec> (tests only): the trim sleeps that long right after it read the day file."""
 
+    def lock_held(self, path):
+        """True while another process holds the trim's flock (a try that gets it lets go at once)."""
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return True
+        else:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            return False
+        finally:
+            os.close(fd)
+
     def start_held_trim(self, sec="2"):
         env = {"AGENT_FAKE_NOW": NOW, "AGENT_FAKE_TRIM_HOLD": sec}
+        gitdir = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--absolute-git-dir"],
+                                capture_output=True, text=True, check=True).stdout.strip()
+        lock = os.path.join(gitdir, "agent_state.lock")
         t0 = time.time()
         proc = self.repo.popen("agent-file.sh", "state", "trim", env=env)
-        time.sleep(0.5)
+        # batch-fix: wait until the first trim holds the lock (was a fixed 0.5 s: on a loaded machine the first
+        # trim had not reached its lock yet and the second one took it first)
+        end = time.time() + 30
+        while not self.lock_held(lock):
+            self.assertIsNone(proc.poll(), "the held trim ended before it took the lock")
+            self.assertLess(time.time(), end, "the held trim never took the lock")
+            time.sleep(0.05)
         return proc, t0
 
     def test_two_trims_at_once_lose_nothing(self):
