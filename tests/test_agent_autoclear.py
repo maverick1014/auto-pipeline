@@ -326,8 +326,8 @@ class TestWaiter(ClearCase):
         super().setUp()
         # settings-configure: compact_clear_check_sec is a fixed 30 s; a `sleep` stub on PATH
         # keeps the waiter fast (was: set_conf compact_clear_check_sec 1)
-        # only the waiter's own 30 s pause shrinks (to 0.3 s; test-slim, was 1 s); any other sleep stays real
-        self.pause(0.3)
+        # only the waiter's own 30 s pause shrinks (to 0.05 s; test-slim, was 1 s); any other sleep stays real
+        self.pause(0.05)
 
     def pause(self, seconds):
         self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep %s\nexec /bin/sleep "$@"\n' % seconds)
@@ -590,7 +590,7 @@ class TestWaiterWaitsForTheHuman(ClearCase):
 
     def setUp(self):
         super().setUp()
-        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 0.3\nexec /bin/sleep "$@"\n')
         self.t = Transcript(self, self.repo.dir)
         self.write_state(["ROLE: main manager", ""])
 
@@ -611,7 +611,7 @@ class TestWaiterWaitsForTheHuman(ClearCase):
         self.assertTrue(self.wait_for(lambda: self.waiting_line(), 15), self.state_lines())
         self.assertEqual(self.waiting_line(), [
             "AUTO CLEAR waiting: a human typed at 11:50; the clear waits for 30 quiet minutes | %s" % NOW])
-        time.sleep(3)
+        time.sleep(1.5)   # the pause is 0.3 s now (was 1 s): more waiter rounds than the old 3 s held
         self.assertEqual(self.sends(), [], "nothing is typed while the human is talking")
         self.assertEqual(len(self.waiting_line()), 1, "one line per wait")
 
@@ -690,7 +690,7 @@ class TestC8GateBeforeReady(ClearCase):
     script = "agent-autoclear.sh"
 
     def test_the_gate_comes_before_each_ready(self):
-        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 0.3\nexec /bin/sleep "$@"\n')
         self.repo.write_bin_script("agent-owner-order.sh",
                                    "#!/usr/bin/env bash\nprintf 'CALL\\thuman-quiet\\n' >> \"$ORCA_STUB_LOG\"\n"
                                    "echo quiet\nexit 0\n")
@@ -716,7 +716,7 @@ class TestC9TheWaiter(TestWaiterWaitsForTheHuman):
         line = "AUTO CLEAR waiting: the transcript of this session cannot be read"
         self.assertTrue(wait_until(lambda: any(l.startswith(line) for l in self.state_lines()), 15),
                         self.state_lines())
-        time.sleep(2)
+        time.sleep(1.5)   # the pause is 0.3 s now (was 1 s): more rounds than the old 2 s held
         self.assertEqual(self.sends(), [])
 
     def test_a_spawned_task_manager_is_cleared_as_today(self):
@@ -750,7 +750,7 @@ class TestC13GateAgainAfterAWait(TestWaiterWaitsForTheHuman):
         ran the gate and ready again (C13), and the 2nd wait came before the save prompt was sent."""
         self.stub_file("send_hook.sh", 'case "$1" in "AUTO CLEAR: save"*) touch "$ORCA_STUB_DIR/saved";; esac\n')
         self.stub_file("wait_hook.sh", 'if [ -f "$ORCA_STUB_DIR/saved" ] && [ ! -f "$ORCA_STUB_DIR/typed" ]; then\n'
-                       '  touch "$ORCA_STUB_DIR/typed"; printf "%%s\\n" %s >> %s; /bin/sleep 3\nfi\nexit 0\n'
+                       '  touch "$ORCA_STUB_DIR/typed"; printf "%%s\\n" %s >> %s; /bin/sleep 2.2\nfi\nexit 0\n'
                        % ("'" + human_line + "'", os.path.join(self.t.dir, "s1.jsonl")))
 
     def test_a_human_prompt_during_the_save_turn_stops_the_clear(self):
@@ -761,7 +761,7 @@ class TestC13GateAgainAfterAWait(TestWaiterWaitsForTheHuman):
         self.start()
         # batch-fix: 60 s, was 20 s: on a loaded machine the waiter's steps (python, stubs, a 3 s turn) ran longer
         self.assertTrue(wait_until(lambda: self.waiting_line(), 60), (self.sends(), self.state_lines()))
-        time.sleep(2)
+        time.sleep(1.5)   # the pause is 0.3 s now (was 1 s): more rounds than the old 2 s held
         self.assertEqual(self.sends(), [SAVE], "no /clear after a human prompt in the save turn")
 
     def test_a_humans_pane_is_cleared_when_quiet(self):
@@ -776,7 +776,7 @@ class TestC13PinnedOrder(ClearCase):
     script = "agent-autoclear.sh"
 
     def test_gate_and_ready_before_every_typed_text(self):
-        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 0.3\nexec /bin/sleep "$@"\n')
         self.repo.write_bin_script("agent-owner-order.sh",
                                    "#!/usr/bin/env bash\nprintf 'CALL\\thuman-quiet\\n' >> \"$ORCA_STUB_LOG\"\n"
                                    "echo quiet\nexit 0\n")
@@ -798,7 +798,7 @@ class TestC22EveryPane(TestC13GateAgainAfterAWait):
         self.addCleanup(lambda: proc.poll() is None and proc.kill())
         # batch-fix: 60 s, was 20 s: on a loaded machine the waiter's steps (python, stubs, a 3 s turn) ran longer
         self.assertTrue(wait_until(lambda: self.waiting_line(), 60), (self.sends(), self.state_lines()))
-        time.sleep(2)
+        time.sleep(1.5)   # the pause is 0.3 s now (was 1 s): more rounds than the old 2 s held
         self.assertEqual(self.sends(), [SAVE], "no /clear after the owner's prompt in a task manager pane")
 
 
@@ -806,9 +806,9 @@ class TestH6Cap(ClearCase):
     script = "agent-autoclear.sh"
 
     def test_a_pane_that_never_settles_gets_a_line(self):
-        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 1\nexec /bin/sleep "$@"\n')
+        self.repo.stub_tool("sleep", '#!/bin/bash\n[ "$1" = 30 ] && exec /bin/sleep 0.3\nexec /bin/sleep "$@"\n')
         self.write_state(["ROLE: x", ""])
-        self.stub_file("wait_sleep", "3")                     # every turn takes 3 s: the pane never settles
+        self.stub_file("wait_sleep", "2.2")                   # every turn takes over 2 s: the pane never settles
         proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", "--spawned", env={"AGENT_FAKE_NOW": NOW})
         self.addCleanup(lambda: proc.poll() is None and proc.kill())
         line = "AUTO CLEAR waiting: the pane did not settle in 3 rounds; trying again later"
