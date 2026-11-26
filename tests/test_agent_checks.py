@@ -1218,7 +1218,7 @@ class TestF2CoreReviewIsNoBuildersJob(TestGate):
 
     def test_r8_names_it(self):
         self.assertIn("CORE REVIEW", [x for x in rule("R8. ", "W1. ").splitlines()
-                                      if "builder" in x and "PR REVIEW" in x][0])
+                                      if "not the builder" in x and "PR REVIEW" in x][0])   # FIX ORDER 1: the late-yes line names the builder too
 
 
 # ---------------------------------------------------------------- approval-design (requirements/check-blocks.md section 53 A)

@@ -17,6 +17,7 @@ if HERE not in sys.path:
 
 import agent_conf  # noqa: E402
 import agent_nightly  # noqa: E402
+import agent_state  # noqa: E402
 
 WT_NAME = "agent_promote_wt_%d"
 
@@ -77,10 +78,10 @@ def merge_in_progress(root):
     return run(root, "rev-parse", "-q", "--verify", "MERGE_HEAD")[0] == 0
 
 
-def verify(root, quote, when, question=None):
+def verify(root, quote, when, question=None, relayed=None):
     """True when verify accepts; the typed minute is kept in verify.typed."""
     verify.typed = ""
-    cmd = [os.path.join(HERE, "agent-owner-order.sh"), "verify", "--repo", root, "--quote", quote]
+    cmd = [os.path.join(HERE, "agent-owner-order.sh"), "verify", "--repo", relayed or root, "--quote", quote]
     if when:
         cmd += ["--time", when]
     if question:
@@ -103,7 +104,23 @@ def words_line(label, rec):
     text = 'OWNER WORDS %s: "%s" (typed %s) read as: %s' % (label, rec["quote"], rec.get("typed") or "-", rec["means"])
     if rec.get("question"):
         text += ' | question: "%s"' % rec["question"]
+    if rec.get("relayed_from"):
+        text += " | relayed from %s" % rec["relayed_from"]
     return text
+
+
+def store_record(root, label, prod, sha, rec):
+    """R4: one line in the main repo's agent_state.txt for the words that moved production (after a successful push)."""
+    text = words_line("publish %s -> %s %s" % (label, prod, sha[:7]), rec)
+    saved = sys.stdout
+    sys.stdout = open(os.devnull, "w")
+    try:
+        agent_state.add(root, agent_state.now_of(None), [text], False)
+    except Exception as exc:
+        sys.stdout = saved
+        out("warning: the publish record was not stored: %s" % exc)
+    finally:
+        sys.stdout = saved
 
 
 def fetch(root):
@@ -243,10 +260,11 @@ def sync(root, wb, prod):
 
 # ------------------------------------------------------------------ publish (C36')
 
-def publish(root, wb, prod, quote, when, means, question=None):
-    if not verify(root, quote, when, question):
+def publish(root, wb, prod, quote, when, means, question=None, relayed=None):
+    if not verify(root, quote, when, question, relayed):
         return 1
-    out(words_line("publish " + wb, {"quote": quote, "means": means, "typed": verify.typed, "question": question}))
+    rec = {"quote": quote, "means": means, "typed": verify.typed, "question": question, "relayed_from": relayed}
+    out(words_line("publish " + wb, rec))
     rc, kind = sync(root, wb, prod)
     if kind == "merged":
         tip = run(root, "rev-parse", "--short=7", "refs/heads/" + wb)[1]
@@ -269,6 +287,7 @@ def publish(root, wb, prod, quote, when, means, question=None):
     if rc != 0:
         out("refused: the push to origin/%s failed: %s" % (prod, last_line(se)))
         return 1
+    store_record(root, wb, prod, tip, rec)
     follow_local(root, prod, tip)
     subject = run(root, "log", "-1", "--format=%s", tip)[1]
     out("promote: %s -> %s (%s)" % (prod, tip[:7], subject))
@@ -416,6 +435,7 @@ def direct(root, wb, prod, task, branch, results=None):
         if rc != 0:
             out("refused: the push to origin/%s failed: %s" % (prod, last_line(se)))
             return 1
+        store_record(root, task, prod, sha, words)
         out("promote: %s -> %s (%s)" % (task, prod, sha[:7]))
         follow_local(root, prod, sha)
         where = checked_out(root, prod)
@@ -437,13 +457,13 @@ def direct(root, wb, prod, task, branch, results=None):
 
 # ------------------------------------------------------------------ main
 
-USAGE = ("usage: agent-promote.sh --owner-quote \"<words>\" --means \"<action>\" [--question \"<q>\"] [--time <t>] | --task \"<task>\" --branch <branch> "
+USAGE = ("usage: agent-promote.sh --owner-quote \"<words>\" --means \"<action>\" [--question \"<q>\"] [--time <t>] [--relayed-from <folder>] | --task \"<task>\" --branch <branch> "
          "[--results <file>] | --sync\n")
 
 
 def parse(argv):
     opts, i = {}, 0
-    names = {"--owner-quote": "quote", "--means": "means", "--question": "question", "--time": "time", "--task": "task", "--branch": "branch",
+    names = {"--owner-quote": "quote", "--means": "means", "--question": "question", "--time": "time", "--relayed-from": "relayed", "--task": "task", "--branch": "branch",
              "--results": "results"}
     while i < len(argv):
         a = argv[i]
@@ -464,11 +484,11 @@ def main(argv):
             or ("task" in opts) != ("branch" in opts) or (opts.get("sync") and len(opts) > 1):
         sys.stderr.write(USAGE)
         return 2
-    if "task" in opts and ("quote" in opts or "time" in opts or "means" in opts or "question" in opts):
+    if "task" in opts and ("quote" in opts or "time" in opts or "means" in opts or "question" in opts or "relayed" in opts):
         out("refused: the owner's words come from the task (todo add --target production --owner-quote), "
             "not from promote")
         return 1
-    quote = means = question = None
+    quote = means = question = relayed = None
     if "task" not in opts and not opts.get("sync"):
         quote, means = opts["quote"].strip(), (opts.get("means") or "").strip()
         question = opts["question"].strip() if "question" in opts else None
@@ -484,6 +504,14 @@ def main(argv):
         if why:
             out("refused: " + why)
             return 1
+        if "relayed" in opts:
+            relayed = opts["relayed"].strip()
+            if not os.path.isabs(relayed) or "\n" in relayed or "\r" in relayed or " | " in relayed:
+                out("refused: --relayed-from wants an absolute folder (got: %s)" % (relayed or "nothing"))
+                return 1
+    if opts.get("sync") and "relayed" in opts:
+        sys.stderr.write(USAGE)
+        return 2
     cwd = os.getcwd()
     root = agent_nightly.main_root(cwd)
     remove_stale(root)
@@ -496,7 +524,7 @@ def main(argv):
     if "task" in opts:
         return direct(root, wb, prod, opts["task"], opts["branch"],
                       os.path.abspath(opts["results"]) if opts.get("results") else None)
-    return publish(root, wb, prod, quote, opts.get("time"), means, question)
+    return publish(root, wb, prod, quote, opts.get("time"), means, question, relayed)
 
 
 if __name__ == "__main__":

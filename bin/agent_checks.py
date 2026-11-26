@@ -208,11 +208,11 @@ def cmd_norm(a):
     print(", ".join(parse_list(a[0], True)))
 
 
-def verify_owner(ctx, quote, when, prefix, question=None):
+def verify_owner(ctx, quote, when, prefix, question=None, repo=None):
     """Run agent-owner-order.sh verify with the main repo's absolute path; refuse unless it exits 0.
     Returns the typed minute of the prompt (first stdout line `OWNER ORDER verified <file> <date time>`), else ""."""
     cmd = [os.path.join(HERE, "agent-owner-order.sh"), "verify", "--repo",
-           os.path.abspath(ctx["root"]), "--quote", quote]
+           repo or os.path.abspath(ctx["root"]), "--quote", quote]
     if when:
         cmd += ["--time", when]
     if question:
@@ -249,7 +249,19 @@ def approval_values(cmd, quote, means, question):
     return quote, means, question
 
 
-def store_words(ctx, task, kind, block, quote, means, question, typed, when):
+def relay_value(cmd, folder):
+    """--relayed-from <abs folder> (R3): the repo where the owner typed the words. -> the folder or None."""
+    if folder is None:
+        return None
+    folder = folder.strip()
+    if not folder or not os.path.isabs(folder):
+        raise Refuse("%s: --relayed-from wants an absolute folder (got: %s)" % (cmd, folder or "nothing"))
+    if "\n" in folder or "\r" in folder or " | " in folder:
+        raise Refuse("%s: --relayed-from must not hold a line break or \" | \"" % cmd)
+    return folder
+
+
+def store_words(ctx, task, kind, block, quote, means, question, typed, when, relayed=None):
     gd = common_dir(ctx["root"])
     if not gd:
         return
@@ -261,6 +273,8 @@ def store_words(ctx, task, kind, block, quote, means, question, typed, when):
     rec = {"quote": quote, "means": means, "typed": typed, "time": when or ctx["now"], "verified": True}
     if question:
         rec["question"] = question
+    if relayed:
+        rec["relayed_from"] = relayed
     if kind == "publish":
         ent["publish"] = rec
     else:
@@ -279,8 +293,51 @@ def cmd_owner_words(ctx, a):
     task, when = a[0], (a[2] if len(a) > 2 else "")
     quote, means, question = approval_values("todo add", a[1], a[3] if len(a) > 3 else "",
                                              a[4] if len(a) > 4 and a[4] != "" else None)
-    typed = verify_owner(ctx, quote, when or None, "todo add: owner words not verified, nothing written: ", question)
-    store_words(ctx, task, "publish", None, quote, means, question, typed, when)
+    relayed = relay_value("todo add", a[5] if len(a) > 5 and a[5] != "" else None)
+    typed = verify_owner(ctx, quote, when or None, "todo add: owner words not verified, nothing written: ", question, relayed)
+    store_words(ctx, task, "publish", None, quote, means, question, typed, when, relayed)
+
+
+def cmd_todo_target(ctx, a):
+    """todo target <task> production --owner-quote Q --means M [--question X] [--time T] [--relayed-from <folder>]:
+    the owner's yes after the task was added (FIX ORDER 1 R2). Same checks and record as todo add --target production."""
+    if len(a) < 2 or not a[0].strip():
+        raise Refuse("todo target: usage: todo target \"<task>\" production --owner-quote \"<words>\" --means \"<action>\" "
+                     "[--question \"<q>\"] [--time <t>] [--relayed-from <folder>]")
+    name, target, rest = a[0], a[1], a[2:]
+    todo = Todo(ctx["root"])
+    f = need_line(todo, name)
+    if target != "production":
+        raise Refuse("todo target: only production is set this way (got: %s)" % target)
+    opts, i = {}, 0
+    while i < len(rest):
+        if rest[i] in ("--owner-quote", "--means", "--question", "--time", "--relayed-from") and i + 1 < len(rest):
+            if rest[i] in opts:
+                raise Refuse("todo target: %s given twice" % rest[i])
+            opts[rest[i]] = rest[i + 1]
+            i += 2
+        else:
+            raise Refuse("todo target: unknown or incomplete option: %s" % rest[i])
+    if not opts.get("--owner-quote", "").strip():
+        raise Refuse("todo target: production needs --owner-quote \"<the owner's words>\" and --means")
+    quote, means, question = approval_values("todo target", opts.get("--owner-quote"), opts.get("--means"),
+                                             opts.get("--question"))
+    relayed = relay_value("todo target", opts.get("--relayed-from"))
+    when = opts.get("--time")
+    typed = verify_owner(ctx, quote, when, "todo target: owner words not verified, nothing written: ", question, relayed)
+    at = field_index(f, "target")
+    if at >= 0:
+        f[at] = "target production"
+    else:
+        pos = anchor(f) + 1
+        for p in ("checks", "scope", "builder"):
+            j = field_index(f, p)
+            if j >= 0:
+                pos = max(pos, j + 1)
+        f.insert(pos, "target production")
+    store_words(ctx, name, "publish", None, quote, means, question, typed, when, relayed)
+    todo.set(name, f)
+    print("todo target: %s -> production" % name)
 
 
 def cmd_task_end(ctx, a):
@@ -325,7 +382,7 @@ def cmd_todo_checks(ctx, a):
     if rest and rest[0] == "--remove":
         opts, i = {}, 0
         while i < len(rest):
-            if rest[i] in ("--remove", "--owner-quote", "--means", "--question", "--time") and i + 1 < len(rest):
+            if rest[i] in ("--remove", "--owner-quote", "--means", "--question", "--time", "--relayed-from") and i + 1 < len(rest):
                 if rest[i] in opts:
                     raise Refuse("todo checks: %s given twice" % rest[i])
                 opts[rest[i]] = rest[i + 1]
@@ -342,8 +399,9 @@ def cmd_todo_checks(ctx, a):
                                                  opts.get("--question"))
         if block in (SIGN, "PR REVIEW"):
             raise Refuse("todo checks: %s is never removed" % block)
+        relayed = relay_value("todo checks", opts.get("--relayed-from"))
         typed = verify_owner(ctx, quote, opts.get("--time"), "todo checks: owner order not verified, nothing changed: ",
-                             question)
+                             question, relayed)
         new = [b for b in old if b != block]
         at = field_index(f, "checks")
         removed = "removed %s %s" % (block, ctx["now"])
@@ -352,7 +410,7 @@ def cmd_todo_checks(ctx, a):
         else:       # a tool block (the diff plans it): only the removal is recorded
             f.insert(anchor(f) + 1, removed)
         record_blocks(ctx["root"], name, removed=[block])
-        store_words(ctx, name, "skip", block, quote, means, question, typed, opts.get("--time"))
+        store_words(ctx, name, "skip", block, quote, means, question, typed, opts.get("--time"), relayed)
         print("todo checks: %s %s -> %s (removed %s)" % (name, ", ".join(old) or "-", ", ".join(new) or "-", block))
         todo.set(name, f)
         return
@@ -458,7 +516,7 @@ def cmd_check(ctx, a):
         raise Refuse("check: the result is pass or fail (got: %s)" % verdict)
     opts, i = {}, 0
     while i < len(rest):
-        if rest[i] in ("--by", "--evidence", "--owner-quote", "--means", "--question", "--time", "--commit") and i + 1 < len(rest):
+        if rest[i] in ("--by", "--evidence", "--owner-quote", "--means", "--question", "--time", "--commit", "--relayed-from") and i + 1 < len(rest):
             opts[rest[i]] = rest[i + 1]
             i += 2
         else:
@@ -468,14 +526,15 @@ def cmd_check(ctx, a):
         if not opts.get("--owner-quote", "").strip():
             raise Refuse("check: an OWNER SIGN pass needs --owner-quote \"<the owner's words>\" and --means")
         q, m, x = approval_values("check", opts.get("--owner-quote"), opts.get("--means"), opts.get("--question"))
-        opts["--evidence"] = "owner order verified: %s | means: %s%s | typed: %s" % (
-            q, m, " | question: " + x if x else "", "@TYPED@")
+        relayed = relay_value("check", opts.get("--relayed-from"))
+        opts["--evidence"] = "owner order verified: %s | means: %s%s%s | typed: %s" % (
+            q, m, " | question: " + x if x else "", " | relayed from: " + relayed if relayed else "", "@TYPED@")
     elif "--time" in opts:
         raise Refuse("check: --time belongs to an OWNER SIGN pass only")
     elif "--owner-quote" in opts:
         raise Refuse("check: --owner-quote belongs to an OWNER SIGN pass only")
-    elif "--means" in opts or "--question" in opts:
-        raise Refuse("check: --means and --question belong to an OWNER SIGN pass only")
+    elif "--means" in opts or "--question" in opts or "--relayed-from" in opts:
+        raise Refuse("check: --means, --question and --relayed-from belong to an OWNER SIGN pass only")
     for k in ("--by", "--evidence"):
         v = opts.get(k, "")
         if not v.strip():
@@ -486,7 +545,8 @@ def cmd_check(ctx, a):
         raise Refuse("check: --by must not hold \" | \"")
     if sign_pass:
         typed = verify_owner(ctx, opts["--owner-quote"].strip(), opts.get("--time"),
-                             "check: owner order not verified, nothing written: ", (opts.get("--question") or "").strip() or None)
+                             "check: owner order not verified, nothing written: ", (opts.get("--question") or "").strip() or None,
+                             relay_value("check", opts.get("--relayed-from")))
         opts["--evidence"] = opts["--evidence"].replace("@TYPED@", typed or "-")
     import agent_state
     sha = commit_of(ctx["state"], opts.get("--commit"))
@@ -689,17 +749,19 @@ def parse_sign(evidence):
     if not evidence.startswith(pre):
         return None
     parts = evidence[len(pre):].split(" | ")
-    quote, means, question, typed = parts[0].strip(), None, None, ""
+    quote, means, question, typed, relayed = parts[0].strip(), None, None, "", None
     for p in parts[1:]:
         if p.startswith("means: "):
             means = p[7:].strip()
         elif p.startswith("question: "):
             question = p[10:].strip()
+        elif p.startswith("relayed from: "):
+            relayed = p[14:].strip()
         elif p.startswith("typed: "):
             typed = p[7:].strip()
     if not quote or not means:
         return None
-    return quote, means, question or None, "" if typed == "-" else typed
+    return quote, means, question or None, "" if typed == "-" else typed, relayed or None
 
 
 def sign_believed(ctx, evidence):
@@ -708,9 +770,9 @@ def sign_believed(ctx, evidence):
     got = parse_sign(evidence)
     if not got:
         return False
-    quote, _, question, typed = got
+    quote, _, question, typed, relayed = got
     try:
-        verify_owner(ctx, quote, typed if re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d$", typed) else None, "", question)
+        verify_owner(ctx, quote, typed if re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d$", typed) else None, "", question, relayed)
     except Refuse:
         return False
     return True
@@ -718,22 +780,24 @@ def sign_believed(ctx, evidence):
 
 def print_owner_words(ctx, task, d, opts, f):
     """A8: one OWNER WORDS line per stored approval of the task, before any GATE line."""
-    def line(label, quote, typed, means, question):
+    def line(label, quote, typed, means, question, relayed=None):
         text = 'OWNER WORDS %s: "%s" (typed %s) read as: %s' % (label, quote, typed or "-", means)
         if question:
             text += ' | question: "%s"' % question
+        if relayed:
+            text += ' | relayed from %s' % relayed
         print(text)
     gd = common_dir(ctx["root"])
     ent = load_json(os.path.join(gd, "agent_owner_words.json")).get(task) if gd else None
     if isinstance(ent, dict):
         rec = ent.get("publish")
         if isinstance(rec, dict) and rec.get("quote") and rec.get("means"):
-            line("publish", rec["quote"], rec.get("typed"), rec["means"], rec.get("question"))
+            line("publish", rec["quote"], rec.get("typed"), rec["means"], rec.get("question"), rec.get("relayed_from"))
         skip = ent.get("skip") if isinstance(ent.get("skip"), dict) else {}
         for block in sorted(skip, key=order_key):
             rec = skip[block]
             if isinstance(rec, dict) and rec.get("quote") and rec.get("means"):
-                line("skip " + block, rec["quote"], rec.get("typed"), rec["means"], rec.get("question"))
+                line("skip " + block, rec["quote"], rec.get("typed"), rec["means"], rec.get("question"), rec.get("relayed_from"))
     paths = [os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")]
     if opts.get("--results"):
         paths.append(opts["--results"])
@@ -741,7 +805,7 @@ def print_owner_words(ctx, task, d, opts, f):
     r = read_results(paths, task, opened, soon(ctx["now"])).get(SIGN)
     got = parse_sign(r[2]) if r and r[0] == "pass" else None
     if got:
-        line(SIGN, got[0], got[3], got[1], got[2])
+        line(SIGN, got[0], got[3], got[1], got[2], got[4])
 
 
 def git_line(d, *args):
@@ -1161,6 +1225,8 @@ def main(argv):
             cmd_todo_checks(ctx, a)
         elif cmd == "owner-words":
             cmd_owner_words(ctx, a)
+        elif cmd == "todo-target":
+            cmd_todo_target(ctx, a)
         elif cmd == "task-end":
             cmd_task_end(ctx, a)
         elif cmd == "plan-add":
