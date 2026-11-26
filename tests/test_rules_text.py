@@ -3717,7 +3717,7 @@ class TestApprovalCases(unittest.TestCase):
 
     def test_section_f_names_md_slim(self):
         line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("Agent skills:"))
-        self.assertIn("/auto-pipeline:md-slim", line)
+        self.assertIn("/auto-pipeline:slim-markdown", line)   # S6: md-slim renamed
         self.assertIn("/auto-pipeline:teacher-teach-me", line)   # TELL 9594c165: the skill main got in e198fbe
 
 
@@ -3821,4 +3821,49 @@ class TestFixOrder2Texts(unittest.TestCase):
             with self.subTest(line=start):
                 line = next(l for l in head.splitlines() if start in l and "--owner-quote" in l)
                 self.assertIn("--relayed-from", line)
+
+
+class TestS6SkillRename(unittest.TestCase):
+    """FIX ORDER 2 S6 (TELL 7e677c4d, owner 2026-11-26 "test-slim and md-slim rename abit to slim-test-case to
+    slim-markdown"): the two skills carry their new names everywhere; task names in history stay."""
+
+    NEW = {"slim-test-case": "test-slim", "slim-markdown": "md-slim"}
+
+    def test_s6_the_folders_and_frontmatter(self):
+        for new, old in self.NEW.items():
+            with self.subTest(skill=new):
+                self.assertFalse(os.path.exists(os.path.join(ROOT, "skills", old)), old)
+                text = read("skills", new, "SKILL.md")
+                self.assertIn("\nname: %s\n" % new, "\n" + text)
+                self.assertIn("\n# /%s" % new, text)
+                self.assertNotIn("/auto-pipeline:%s" % old, text)
+
+    def test_s6_principles_and_readme_name_the_new_skills(self):
+        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("Agent skills:"))
+        readme = read("README.md")
+        for new, old in self.NEW.items():
+            with self.subTest(skill=new):
+                self.assertIn("/auto-pipeline:%s" % new, line)
+                self.assertIn("| `/auto-pipeline:%s` |" % new, readme)
+                self.assertNotIn("/auto-pipeline:%s" % old, line + readme)
+
+    def test_s6_the_tools_name_the_new_skill(self):
+        for f in ("agent_test_audit.py", "agent_test_time.py"):
+            with self.subTest(tool=f):
+                text = read("bin", f)
+                self.assertIn("slim-test-case skill", text)
+                self.assertNotIn("test-slim skill", text)
+
+    def test_s6_no_old_skill_name_is_left(self):
+        pat = re.compile(r"auto-pipeline:(test-slim|md-slim)\b|skills/(test-slim|md-slim)\b|\b(test-slim|md-slim) skill\b")
+        files = subprocess.run(["git", "-C", ROOT, "ls-files"], capture_output=True, text=True, check=True).stdout.split()
+        hits = []
+        for f in files:
+            if not f.endswith((".md", ".py", ".sh", ".json")) or f.startswith("requirements/") \
+                    or f == "tests/test_rules_text.py" or not os.path.exists(os.path.join(ROOT, f)):
+                continue
+            for n, line in enumerate(read(f).splitlines(), 1):
+                if pat.search(line):
+                    hits.append("%s:%d" % (f, n))
+        self.assertEqual(hits, [])
 
