@@ -294,8 +294,13 @@ class TestDirectTools(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         return done.stdout
 
-    @unittest.skipUnless(sys.platform == "darwin", "the xcrun shims are macOS only")
     def test_the_same_binaries_without_the_shim(self):
+        if sys.platform != "darwin":
+            # no xcrun shims: nothing changes
+            out = self.call({}, "print(json.dumps([direct_tools(), os.environ.get('AGENT_TEST_TOOLS'),"
+                                " os.environ.get('PYTHONPYCACHEPREFIX')]))")
+            self.assertEqual(__import__("json").loads(out), [None, None, None])
+            return
         out = self.call({}, "folder = direct_tools()\n"
                             "print(json.dumps([folder, os.environ['PATH'].split(os.pathsep)[0],"
                             " shutil.which('git'), shutil.which('python3'),"
