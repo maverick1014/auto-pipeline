@@ -10,7 +10,7 @@
 #   agent-file.sh todo add ... [--checks "<BLOCK>,<BLOCK>"] [--scope "<glob>,<glob>"] [--builder "<name>"]
 #                                                             -> fields " | checks A, B" (table order) right after guess (else est, else what), " | scope <globs>", " | builder <name>"; an unknown block is refused
 #   agent-file.sh todo checks "<name>" <BLOCK>[,<BLOCK>]      -> union into the checks field, table order; prints "todo checks: <name> <old or -> -> <new>"
-#   agent-file.sh todo checks "<name>" --remove <BLOCK> --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>]
+#   agent-file.sh todo checks "<name>" --remove <BLOCK> --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>] [--relayed-from <folder>]
 #                                                             -> only on a verified owner order (agent-owner-order.sh verify): the block leaves the field, the line gets " | removed <BLOCK> <date time>"
 #   agent-file.sh todo target "<name>" production --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>] [--relayed-from <folder>]
 #                                                             -> the owner's yes after the task was added: verified and stored like todo add --target production; the line's target field becomes "target production", every other field stays
@@ -63,7 +63,7 @@
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
 #   agent-file.sh heartbeat "<task>" <step 0-7> <work min> "<what runs now>"  -> agent_state.txt: "HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date time>" (bad step, minutes or empty text: refused)
 #   agent-file.sh helper-join "<task>"                        -> a human-direct Helper becomes a normal agent: its worktree line becomes "<path> | <task> | working | since .. | pane .. | session .."
-#   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working (production needs --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>], verified at once) and --batch <name>
+#   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working (production needs --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>] [--relayed-from <folder>], verified at once) and --batch <name>
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
 #
 # todo done also closes the queue wait of every open line whose " | after <name>" field is that task, drops the after field, and prints "released: <line name>" per line.

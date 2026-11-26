@@ -509,6 +509,11 @@ def main(argv):
             if not os.path.isabs(relayed) or "\n" in relayed or "\r" in relayed or " | " in relayed:
                 out("refused: --relayed-from wants an absolute folder (got: %s)" % (relayed or "nothing"))
                 return 1
+            import agent_checks
+            why = agent_checks.relay_repo_refusal(relayed)
+            if why:
+                out("refused: " + why)
+                return 1
     if opts.get("sync") and "relayed" in opts:
         sys.stderr.write(USAGE)
         return 2

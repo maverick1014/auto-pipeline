@@ -258,7 +258,26 @@ def relay_value(cmd, folder):
         raise Refuse("%s: --relayed-from wants an absolute folder (got: %s)" % (cmd, folder or "nothing"))
     if "\n" in folder or "\r" in folder or " | " in folder:
         raise Refuse("%s: --relayed-from must not hold a line break or \" | \"" % cmd)
+    why = relay_repo_refusal(folder)
+    if why:
+        raise Refuse("%s: %s" % (cmd, why))
     return folder
+
+
+def relay_repo_refusal(folder):
+    """S3: the folder must be a git repo whose main manager lock exists or existed (agent_main.lock or
+    agent_main.closed in its git common dir). -> a refusal text or None."""
+    try:
+        r = subprocess.run(["git", "-C", folder, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True,
+                           stdin=subprocess.DEVNULL, timeout=30)
+        gd = r.stdout.strip() if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        gd = ""
+    if gd and any(os.path.exists(os.path.join(gd, m)) for m in ("agent_main.lock", "agent_main.closed")):
+        return None
+    return ("--relayed-from is not a repo with a main manager (no agent_main.lock or agent_main.closed "
+            "in its git dir): %s" % folder)
 
 
 def store_words(ctx, task, kind, block, quote, means, question, typed, when, relayed=None):
@@ -338,6 +357,13 @@ def cmd_todo_target(ctx, a):
     store_words(ctx, name, "publish", None, quote, means, question, typed, when, relayed)
     todo.set(name, f)
     print("todo target: %s -> production" % name)
+    import agent_conf
+    prod = agent_conf.production_branch(ctx["root"])
+    wb = agent_conf.working_branch(ctx["root"])
+    print("next: a new fast-lane deputy makes a new branch from origin/%s with the task's own commits "
+          "(git cherry-pick of git rev-list --reverse --no-merges origin/%s..origin/<branch>), every planned "
+          "block runs again at its head, then agent-promote.sh --task %s --branch <new branch>"
+          % (prod, wb or "<working branch>", name))
 
 
 def cmd_task_end(ctx, a):
@@ -941,6 +967,26 @@ def soon(now):
         return ""
 
 
+def shared_commits_line(ctx, f, d, branch):
+    """S4a: a production task whose HEAD carries commits of the working branch (the test of agent_promote.direct)."""
+    if f is None or "target production" not in [x.strip() for x in f]:
+        return ""
+    import agent_conf
+    wb = agent_conf.working_branch(ctx["root"])
+    if not wb:
+        return ""
+    prod = agent_conf.production_branch(ctx["root"])
+    rc, o = git_out(d, "rev-list", "HEAD", "^origin/" + prod)
+    if rc != 0:
+        return ""
+    own = set(o.split())
+    rc, o = git_out(d, "rev-list", "refs/heads/" + wb, "^origin/" + prod)
+    if rc != 0 or not own & set(o.split()):
+        return ""
+    name = branch or git_line(d, "rev-parse", "--abbrev-ref", "HEAD")
+    return "%s carries commits of %s that are not in %s: branch it from %s" % (name, wb, prod, prod)
+
+
 def cmd_gate(ctx, a):
     if not a:
         raise Refuse("checks gate: usage: checks gate \"<task>\" --dir <path> [--base <ref>] [--branch <b>] [--results <file>] [--checks \"<list>\"]", 2)
@@ -1056,6 +1102,10 @@ def cmd_gate(ctx, a):
             lines.append("%s: pass (by %s)" % (b, r[1]))
             if b in BUILDER_BLOCKS and not lowb:
                 notes.append("note: builder unknown: %s by %s accepted" % (b, r[1]))
+    shared_line = shared_commits_line(ctx, f, d, opts.get("--branch"))
+    if shared_line:
+        notes.append(shared_line)
+        refused.append("commits of the working branch")
     for l in lines + notes:
         print(l)
     if refused:
