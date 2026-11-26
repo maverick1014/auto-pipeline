@@ -3868,6 +3868,20 @@ class TestApprovalCases(unittest.TestCase):
         self.assertIn("/auto-pipeline:teacher-teach-me", line)   # TELL 9594c165: the skill main got in e198fbe
 
 
+class TestTeacherEntities(unittest.TestCase):
+    def test_teacher_description_turns_entities_back_and_body_avoids_angle_brackets(self):
+        s = read("skills", "teacher-teach-me", "SKILL.md")
+        desc = next(l for l in s.splitlines() if l.startswith("description:"))
+        for phrase in ("show it unchanged", "EXCEPT", "&lt;", "&gt;", "&amp;", "&quot;", "&#39;",
+                       "teach me", "can you explain", "I am not sure about this feature", "教我", "解释一下", "给我讲讲"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, desc)
+        self.assertIn("agent-file.sh files restore FILE", s)
+        self.assertIn("angle brackets can arrive garbled", s)
+        for line in ("context: fork", "agent: Explore", "name: teacher-teach-me", 'argument-hint: "[what you want explained]"'):
+            self.assertIn(line, s.splitlines())
+
+
 class TestH3ToH5(unittest.TestCase):
     def test_h3_the_fixer_is_a_normal_task(self):
         m = read("skills", "merge", "SKILL.md")
