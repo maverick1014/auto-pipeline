@@ -260,6 +260,27 @@ if fake_clock_ok; then NOW=$AGENT_FAKE_NOW; else NOW=$(date '+%Y-%m-%d %H:%M'); 
 AF_FIVE="agent_todo.txt agent_ideas.txt agent_worktree.txt agent_completed.txt agent_estimate.txt"
 KEPT_DIR=""; KEPT_SNAP=""
 kept_snap() { local f; for f in $AF_FIVE; do [ -f "$ROOT/$f" ] && echo "$f $(cksum < "$ROOT/$f")"; done; return 0; }
+kept_readonly() {   # a command that never writes one of the five agent files
+  case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*|show:*|time:*|idea:list|files:*) return 0;; esac
+  return 1
+}
+kept_save() {   # kept_save <file>: keep the old kept copy as <file>.before-<time>[-n] before anything is written, say it, sweep
+  local f=$1 k="$KEPT_DIR/$1" stamp n=0 dst old i=0
+  stamp=$(date '+%Y%m%d-%H%M%S'); dst="$KEPT_DIR/$f.before-$stamp"
+  while [ -e "$dst" ]; do n=$((n+1)); dst="$KEPT_DIR/$f.before-$stamp-$n"; done
+  if cp "$k" "$dst" 2>/dev/null; then
+    echo "WARNING: $ROOT/$f differs from its kept copy (changed outside the scripts); the old kept copy is saved as $dst; put it back with: agent-file.sh files restore $f" >&2
+    # sweep: older than 7 days, except the newest 5 by mtime
+    while IFS= read -r old; do
+      i=$((i+1))
+      [ "$i" -gt 5 ] || continue
+      [ -n "$(find "$old" -mtime +7 2>/dev/null)" ] && rm -f "$old"
+    done < <(cd "$KEPT_DIR" && ls -t -- "$f".before-* 2>/dev/null | sed "s|^|$KEPT_DIR/|")
+  else
+    echo "WARNING: $ROOT/$f differs from its kept copy $k (changed outside the scripts); the old kept copy could not be saved" >&2
+  fi
+  return 0
+}
 kept_start() {   # restore a missing working copy from its kept copy; say (never touch) one that differs
   local gd f k
   [ -e "$ROOT/.git" ] && grep -qx 'agent_completed.txt' "$ROOT/.gitignore" 2>/dev/null || return 0
@@ -273,7 +294,12 @@ kept_start() {   # restore a missing working copy from its kept copy; say (never
     if [ ! -e "$ROOT/$f" ]; then
       cp -p "$k" "$ROOT/$f" 2>/dev/null && echo "restored $f from $k" >&2
     elif ! cmp -s "$k" "$ROOT/$f"; then
-      echo "WARNING: $ROOT/$f differs from its kept copy $k (changed outside the scripts); left as it is" >&2
+      case "${1:-}:${2:-}" in files:restore) continue;; esac
+      if kept_readonly "$@"; then
+        echo "WARNING: $ROOT/$f differs from its kept copy $k (changed outside the scripts); left as it is" >&2
+      else
+        kept_save "$f" "$@"
+      fi
     fi
   done
   KEPT_SNAP=$(kept_snap)
@@ -291,7 +317,7 @@ kept_end() {     # a run that ended 0 copies each of the five files it changed t
   done
   return 0
 }
-kept_start
+kept_start "$@"
 case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the files in git (agent_share.py): a snapshot before and after, one commit on the data branch when a run changed them.
@@ -1585,7 +1611,7 @@ case "${1:-}:${2:-}" in
   files:*)
     command -v python3 >/dev/null 2>&1 || refuse "files: python3 is needed and was not found"
     case "${2:-}" in
-      show|sync|move|set) ;;
+      show|sync|move|set|restore) ;;
       *) usage;;
     esac
     shift

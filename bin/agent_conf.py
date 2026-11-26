@@ -1002,7 +1002,18 @@ def shared_lines(project_root, env=None):
             mine = text(get(key, env)).replace(" ", "")
         except Exception:
             continue
-        if repo not in _row(key).get('options', [repo]):
+        bad = repo not in _row(key).get('options', [repo])
+        if key == "data_branch" and not bad and repo:
+            raw = values[key].strip()
+            try:
+                bad = raw.startswith("-") or subprocess.run(
+                    ["git", "check-ref-format", "--branch", raw], stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, timeout=10).returncode != 0
+            except Exception:
+                bad = False
+            if bad:
+                repo = raw
+        if bad:
             out.append("SHARED FILES: this repo says %s=%s in %s: not valid, the default %s is used"
                        % (key, repo, REPO_FILE, _row(key)['default']))
         elif repo != mine:

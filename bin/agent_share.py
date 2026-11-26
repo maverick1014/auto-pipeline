@@ -482,6 +482,42 @@ def keep(root, *names):
         pass
 
 
+def cmd_restore(root, name):
+    """The newest saved copy of NAME (by mtime) becomes the working copy and the kept copy; committed like a write."""
+    if name not in AGENT_FILES:
+        sys.stderr.write("files restore: %s is not one of the agent files\n" % name)
+        return 1
+    if not moved(root):
+        sys.stderr.write("files restore: this repo is not moved, there are no kept copies\n")
+        return 1
+    saved = []
+    try:
+        for n in os.listdir(kept_dir(root)):
+            if n.startswith(name + ".before-"):
+                p = os.path.join(kept_dir(root), n)
+                saved.append((os.path.getmtime(p), n, p))
+    except OSError:
+        pass
+    if not saved:
+        sys.stderr.write("files restore: no saved copy of %s\n" % name)
+        return 1
+    path = sorted(saved)[-1][2]
+    try:
+        tmp = os.path.join(root, "%s.tmp.%d" % (name, os.getpid()))
+        shutil.copyfile(path, tmp)
+        os.replace(tmp, os.path.join(root, name))
+    except OSError as e:
+        sys.stderr.write("files restore: %s\n" % e)
+        return 1
+    keep(root, name)
+    say("restored %s from %s" % (name, path))
+    try:
+        commit(root, "files restore " + name)
+    except Exception:
+        pass
+    return 0
+
+
 # ------------------------------------------------------------------ who may work a shared task
 
 
@@ -1420,6 +1456,8 @@ def main(argv):
         return 0
     if cmd == "move":
         return move(root)
+    if cmd == "restore":
+        return cmd_restore(root, rest[0]) if len(rest) == 1 else 2
     if cmd == "may-work":
         return cmd_may_work(root, rest[0]) if rest else 2
     if cmd == "pull":
