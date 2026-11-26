@@ -1404,7 +1404,7 @@ class TestSimulation(WaitCase):
             name_col("v4plus-followups") + "等待 v4-Manager · 已等 3天20小时",
             name_col("pc2-plugin-update") + "等待 v4-Manager · 已等 2天19小时",
             name_col("owner-relay") + "未开始",   # one-watcher K: an own row while there is room
-            "+4 排队/暂缓"]))
+            "+4 个任务"]))
 
     def test_the_owner_moment(self):
         self.put(*[ST_REVIEW if l is ST_RUN else l for l in FIXTURE_F])
@@ -1417,7 +1417,7 @@ class TestSimulation(WaitCase):
             name_col("v4plus-followups") + "等待 v4-Manager · 已等 3天20小时",
             name_col("pc2-plugin-update") + "等待 v4-Manager · 已等 2天19小时",
             name_col("owner-relay") + "未开始",   # one-watcher K: an own row while there is room
-            "+4 排队/暂缓"]))
+            "+4 个任务"]))
 
 
 class TestSimulationEnglish(WaitCase):
@@ -1444,7 +1444,7 @@ class TestSimulationEnglish(WaitCase):
             name_col("v4plus-followups") + "waiting v4-Manager · waited 3d 20h",
             name_col("pc2-plugin-update") + "waiting v4-Manager · waited 2d 19h",
             name_col("owner-relay") + "not started",   # one-watcher K
-            "+4 queued/held"]))
+            "+4 tasks"]))
 
     def test_the_owner_moment_and_defaults(self):
         self.put(*[ST_REVIEW if l is ST_RUN else l for l in FIXTURE_F])
@@ -1477,7 +1477,7 @@ class TestOldLines(WaitCase):
         self.assertEqual(self.line(), "\n".join([
             name_col("owner-relay") + "未开始", name_col("comment-shape") + "未开始",
             name_col("v4plus-followups") + "暂缓 · 已等 3天20小时", name_col("usage-track") + "暂缓 · 已等 3天19小时",
-            "+2 排队/暂缓"]))
+            "+2 个任务"]))
 
     def test_10_odd_lines_never_crash(self):
         self.put("bare",
