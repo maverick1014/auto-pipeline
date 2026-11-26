@@ -14,6 +14,9 @@ import subprocess  # noqa: E402
 import time  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
 import tempfile  # noqa: E402
+import atexit  # noqa: E402
+import hashlib  # noqa: E402
+import shutil  # noqa: E402
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -298,6 +301,23 @@ class TestCheckLine(Case):
                 self.assertEqual(self.state(), before)
 
 
+_GATE_SNAP = {}
+_LEVEL_ANSWERS = {}
+
+# tests that keep the real agent-file.sh command line for the verb they check (one per verb and exit path)
+REAL_SHELL = {
+    "TestGate.test_refused_while_a_planned_block_has_no_pass_line",
+    "TestGate.test_pass_when_every_planned_block_passed",
+    "TestGate.test_checks_gather_keeps_a_worktrees_lines_in_main",
+    "TestGate.test_no_todo_line_needs_checks",
+    "TestGate.test_builder_field_on_the_todo_line",
+    "TestTodoTarget.test_r2_the_line_keeps_its_instance",
+    "TestTodoTarget.test_r2_a_working_target_becomes_production",
+    "TestTodoTarget.test_s1_it_prints_the_next_step",
+    "TestTodoTarget.test_r2_refusals_change_nothing",
+}
+
+
 class TestGate(Case):
     """The task's branch is committed and pushed (core review defect 4: the gate plans what merges)."""
 
@@ -322,6 +342,15 @@ class TestGate(Case):
     def setUp(self):
         super().setUp()
         self.origin = os.path.join(self.repo.base, "origin.git")
+        snap = _GATE_SNAP.get("dir")
+        if snap and not os.environ.get("AGENT_TEST_NO_TEMPLATE"):
+            # test-slim: the fixture below is built once per process; a test gets a copy
+            # (the remote URL is the one absolute path in it: set again)
+            shutil.rmtree(self.repo.dir)
+            shutil.copytree(os.path.join(snap, "project"), self.repo.dir, symlinks=True)
+            shutil.copytree(os.path.join(snap, "origin.git"), self.origin, symlinks=True)
+            self.git("remote", "set-url", "origin", self.origin)
+            return
         subprocess.run(["git", "init", "-q", "--bare", self.origin], check=True, capture_output=True)
         self.write({"app.js": "x()\n"})
         self.git("add", "app.js")
@@ -334,6 +363,87 @@ class TestGate(Case):
         self.commit_push({"app.js": "y()\n"})
         self.ok("todo", "add", "t", "small", "task", "10", "--checks", "PR REVIEW")
         main_launched(self.repo.dir, "t")                           # section 44 F2
+        if not os.environ.get("AGENT_TEST_NO_TEMPLATE"):
+            snap = tempfile.mkdtemp(prefix="gate_fixture_")
+            atexit.register(shutil.rmtree, snap, True)
+            shutil.copytree(self.repo.dir, os.path.join(snap, "project"), symlinks=True)
+            shutil.copytree(self.origin, os.path.join(snap, "origin.git"), symlinks=True)
+            _GATE_SNAP["dir"] = snap
+
+    # test-slim: the gate family runs the verbs whose logic is Python (check, checks gate/gather,
+    # todo checks/target/builder/est) in this process; the tests named in REAL_SHELL, and any
+    # run with an env this helper does not model, keep the real agent-file.sh command line.
+    def af(self, *args, **kw):
+        cmd = None
+        if args[:1] == ("check",):
+            cmd, rest = "check", args[1:]
+        elif args[:2] in (("checks", "gate"), ("checks", "gather")):
+            cmd, rest = args[1], args[2:]
+        elif args[:2] in (("todo", "checks"), ("todo", "target"), ("todo", "builder"), ("todo", "est")):
+            cmd, rest = "todo-" + args[1], args[2:]
+        env = kw.get("env") or {}
+        key = "%s.%s" % (type(self).__name__, self._testMethodName)
+        if (cmd is None or key in REAL_SHELL or set(env) - {"CLAUDE_PROJECT_DIR", "AGENT_FAKE_NOW"}
+                or set(kw) - {"env", "cwd"}):
+            return super().af(*args, **kw)
+        # what agent-file.sh's roots_read and clock hand to agent_checks.py
+        merged = self.repo._env(env)
+        cwd = kw.get("cwd") or self.repo.cwd
+        start = os.path.realpath(merged.get("CLAUDE_PROJECT_DIR") or cwd)
+        lst = subprocess.run(["git", "-C", start, "worktree", "list", "--porcelain"], capture_output=True,
+                             text=True).stdout.splitlines()
+        root = ([l.split(" ", 1)[1] for l in lst if l.startswith("worktree ")] or [start])[0]
+        top = subprocess.run(["git", "-C", start, "rev-parse", "--show-toplevel"], capture_output=True,
+                             text=True).stdout.strip() or start
+        now = merged.get("AGENT_FAKE_NOW") or time.strftime("%Y-%m-%d %H:%M")
+        self.share_level_runs()
+        return self.repo.run_py("agent_checks", "agent_checks.py", root, top, now, cmd, *rest, env=env, cwd=cwd)
+
+    def share_level_runs(self):
+        """The gate asks agent-level.sh which tool blocks the diff plans (0.3 s a run) and keeps blocks and sign
+        only. Two runs on the very same repo state (same HEAD and base commits, same working tree files, same
+        conf) answer the same: the process keeps the first answer per state. The first call of a test runs for real."""
+        mod = self.repo.__dict__.get("_py_modules", {}).get(os.path.join(self.repo.plugin_bin, "agent_checks.py"))
+        if mod is None or getattr(mod, "_level_shared", False):
+            return
+        real = mod.tool_blocks
+        repo_dir = self.repo.dir
+
+        def tool_blocks(dirpath, base):
+            key = None
+            try:
+                shas = subprocess.run(["git", "-C", dirpath, "rev-parse", "HEAD", base], capture_output=True,
+                                      text=True, check=True).stdout.split()
+                status = subprocess.run(["git", "-C", dirpath, "status", "--porcelain", "-z", "-uall"],
+                                        capture_output=True, check=True).stdout
+                h = hashlib.sha1(status)
+                for entry in status.split(b"\0"):
+                    if len(entry) > 3:
+                        try:
+                            with open(os.path.join(dirpath, entry[3:].decode()), "rb") as fh:
+                                h.update(fh.read())
+                        except OSError:
+                            pass
+                for conf in (os.path.join(repo_dir, "agent_repo.conf"),
+                             os.path.join(repo_dir, ".git", "agent_test_weights.json")):
+                    try:
+                        with open(conf, "rb") as fh:
+                            h.update(fh.read())
+                    except OSError:
+                        h.update(b"-")
+                key = (base, tuple(shas), h.hexdigest())
+            except (OSError, subprocess.CalledProcessError):
+                pass
+            if key is not None and key in _LEVEL_ANSWERS:
+                blocks, sign = _LEVEL_ANSWERS[key]
+                return list(blocks), sign
+            blocks, sign = real(dirpath, base)
+            if key is not None:
+                _LEVEL_ANSWERS[key] = (list(blocks), sign)
+            return blocks, sign
+
+        mod.tool_blocks = tool_blocks
+        mod._level_shared = True
 
     def at_now(self):
         """(head sha12, the todo line's opened minute): a hand line that belongs to this task instance (G9)."""
