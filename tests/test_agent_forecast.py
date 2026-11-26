@@ -9,11 +9,12 @@ bin/agent_forecast.py (new; Python 3.9 standard library; the board, eta and the 
   FORECAST_MIN_ROWS = 10, ES_MIN = 0.2, DRAWS = 10000, SEED = 26.
   BUILD = (brief register mock tests workers verify push), TAIL = (report e2e merge): the stage words.
 
-  history(root) -> rows from <root>/agent_completed.txt: clean lines only (part A's rule: clock and wait
-      numbers, work <= clock <= 1440), each a dict
+  history(root) -> rows from <root>/agent_completed.txt: clean lines only (part A's rule after fix order 1:
+      clock a number, work <= clock <= 1440; the wait may be missing), each a dict
         est    est0 when a number, else est, else None
         label  built when a number, else work
-        tail   work - built when built is a number, else max(0, clock - wait - work)
+        tail   work - built when built is a number, else max(0, clock - wait - work) when wait is a number,
+               else None (the row teaches the work, not the tail)
         lane   "fast" or "full" (anything else: "full")
         built  built or None; stages {stage: minutes} (empty when "-"); slices [minutes]
   forecast(task, rows, draws=DRAWS, seed=SEED) -> (p50, p85) minutes still to go, or None
@@ -22,7 +23,7 @@ bin/agent_forecast.py (new; Python 3.9 standard library; the board, eta and the 
             minutes at the builder's done, or None)
       The pool: the rows of the task's lane when 10 or more of them have an est and a label, else every
       such row; fewer than FORECAST_MIN_ROWS in the pool: None.
-      Q = label / est of the pool rows; T = the pool rows' tails. Each draw (random.Random(seed), uniform
+      Q = label / est of the pool rows; T = the pool rows' tails that are not None (none: every tail is 0). Each draw (random.Random(seed), uniform
       with replacement):
         stage None or a BUILD stage:
           q = a draw of Q; total = est x q. Age rule: when total <= work, q is drawn from the Q values with
@@ -155,6 +156,11 @@ class TestForecastFunction(unittest.TestCase):
         rows = [hrow()] * 20
         self.assertEqual(self.f.forecast(task(work=80, stage=("tests", None, None), p=0.1), rows), (80, 80))
 
+    def test_rows_with_no_tail_teach_the_work_only(self):
+        rows = [hrow(tail=None)] * 10 + [hrow(tail=30)] * 2
+        self.assertEqual(self.f.forecast(task(est=60), rows), (90, 90))
+        self.assertEqual(self.f.forecast(task(est=60), [hrow(tail=None)] * 10), (60, 60))
+
     def test_report_has_only_the_tail(self):
         rows = [hrow(tail=20)] * 10
         self.assertEqual(self.f.forecast(task(work=70, stage=("report", None, None), p=0.83), rows), (20, 20))
@@ -193,12 +199,13 @@ class TestHistory(tb.BoardCase):
                      stages="brief:5,tests:55,report:20", slices="10,20"),
                  row(day(2), "old", "w", lane="fast", est=10, work=8, wait=2, clock=15),
                  row(day(3), "dirty", "w", lane="full", est=10, work=30, wait=0, clock=9),
-                 row(day(4), "nowait", "w", lane="full", est=10, work=5, clock=9)]
+                 row(day(4), "nowait", "w", lane="full", est=10, work=5, clock=9)]      # fix order 1: kept
         with open(self.repo.path("agent_completed.txt"), "w") as fh:
             fh.write("\n".join(lines) + "\n")
         rows = load("agent_forecast").history(self.repo.dir)
-        self.assertEqual(len(rows), 2)
-        new, old = rows
+        self.assertEqual(len(rows), 3)
+        new, old, nowait = rows
+        self.assertEqual((nowait["est"], nowait["label"], nowait["tail"]), (10, 5, None))
         self.assertEqual((new["est"], new["label"], new["tail"], new["lane"], new["built"]), (50, 60, 20, "full", 60))
         self.assertEqual(new["stages"], {"brief": 5, "tests": 55, "report": 20})
         self.assertEqual(new["slices"], [10, 20])

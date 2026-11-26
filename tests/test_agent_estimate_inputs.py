@@ -37,11 +37,13 @@ A3  todo est keeps the first estimate.
 A4  todo add: an est equal to --guess is refused unless --why "<reason>" is given; --why writes the field
     " | why <reason>" right after guess. Refused: one line on stderr that names --why, exit 1, nothing
     written. --why with an empty value, " | " or a line break: refused.
-A5  Clean rows (bin/agent_estimate.py).
-    A row is clean when clock and wait are numbers, work <= clock and clock <= 1440 (one day).
+A5  Clean rows (bin/agent_estimate.py). Fix order 1 (main manager, 2026-11-26): the wait is needed only by
+    the END learner.
+    A row is clean when clock is a number, work <= clock and clock <= 1440 (one day); its wait may be
+    missing. The END learner (the tail of the end measure, the forecast's tail) also needs the wait.
     The label a learner learns = built when the row has it, else work.
-    Only clean rows are neighbours (like lines), pick the setting, make the ranges, the weight and the
-    bias. The backtest scores only clean rows, each from the clean rows before it (10 or more).
+    Only clean rows are neighbours (like lines), pick the setting, make the ranges, the weight, the bias
+    and the fit. The backtest scores only clean rows, each from the clean rows before it (10 or more).
 The data block, in this order (todo done, backfill):
     repo type lane mock est work wait clock bounces workers files lines tests adds guess level
     typed est0 added built stages slices
@@ -58,8 +60,9 @@ M   The measure of section 4, in `backtest`: one block of lines right before the
     q = ln(label / estimate) per scored row, the estimate of the winner's method; bias = the median of q,
     spread = the population standard deviation of q; n 0: "bias - spread -". The groups go by the
     ESTIMATE (big = estimate_big_min, 120).
-    end: actual = clock - wait; its estimate = the winner's estimate + the median tail of the clean rows
-    before it of the same lane (tail = clock - wait - label, at least 0; fewer than 5 such rows: tail 0).
+    end: only the scored rows that have a wait; actual = clock - wait; its estimate = the winner's estimate +
+    the median tail of the clean rows with a wait before it of the same lane (tail = clock - wait - label,
+    at least 0; fewer than 5 such rows: tail 0).
     p85: the statement = estimate x exp(the 85th percentile, linear, of q of the scored rows before it, same
     method); a row with fewer than 10 scored rows before it makes no statement and is not counted;
     holds = label <= statement; n 0: "holds -".
@@ -94,8 +97,16 @@ def row(date, name, what, **known):
 
 
 def data_of(line):
-    """{key: value} of a completed line's data block."""
-    return dict(w.split("=", 1) for w in line.split(" | data ", 1)[1].split())
+    """{key: value} of a completed line's data block; by= is the last key and runs to the end of the line
+    (a name may hold spaces: tests/test_agent_owner_name.py)."""
+    block = line.split(" | data ", 1)[1]
+    by = None
+    if " by=" in " " + block:
+        block, by = (" " + block).rsplit(" by=", 1)
+    d = dict(w.split("=", 1) for w in block.split())
+    if by is not None:
+        d["by"] = by
+    return d
 
 
 class InputCase(tb.BoardCase):
@@ -335,14 +346,18 @@ class TestCleanRows(EstimateCase):
         self.assertNotIn("d-40", [l.group(1) for l in likes])
         self.assertEqual(m.group(1), "3")
 
-    def test_a_row_over_one_day_or_with_no_wait_is_never_learned(self):
-        self.completed(clean_rows() + [self.dirty("d-40", 40, clock=1441),
-                                       self.dirty("d-41", 41, wait="-")])
+    def test_a_row_over_one_day_is_never_learned(self):
+        self.completed(clean_rows() + [self.dirty("d-40", 40, clock=1441)])
         m, likes = self.estimate("fast", "no", "page", "fix a small thing on the page")
-        names = [l.group(1) for l in likes]
-        self.assertNotIn("d-40", names)
-        self.assertNotIn("d-41", names)
+        self.assertNotIn("d-40", [l.group(1) for l in likes])
         self.assertEqual(m.group(1), "3")
+
+    def test_a_row_with_no_wait_is_learned_for_the_work(self):
+        # fix order 1: only the end learner needs the wait
+        self.completed(clean_rows() + [self.dirty("d-41", 41, wait="-")])
+        m, likes = self.estimate("fast", "no", "page", "fix a small thing on the page")
+        self.assertIn("d-41", [l.group(1) for l in likes])
+        self.assertNotEqual(m.group(1), "3")
 
     def test_one_day_is_still_clean(self):
         self.completed(clean_rows() + [self.dirty("d-40", 40, work=500, clock=1440)])
@@ -444,6 +459,14 @@ class TestMeasureLines(EstimateCase):
         self.assertEqual(m["work"].groups(), ("30", "+0.00", "0.18"))
         # without the tail every end would run 30m over its estimate: the bias would be above 0
         self.assertEqual(m["end"].groups(), ("30", "+0.00", "0.61"))
+
+    def test_the_end_counts_only_rows_with_a_wait(self):
+        # fix order 1: rows 20-39 have no wait: they are scored for the work, not for the end
+        rows = steady(20) + [r.replace(" wait=0 ", " wait=- ") for r in steady(20, start=20)]
+        self.completed(rows)
+        m = self.measures(self.assertOk(self.af("backtest")))
+        self.assertEqual(m["work"].group(1), "30")
+        self.assertEqual(m["end"].group(1), "10")
 
     def test_no_clean_row_scored(self):
         self.completed(steady(8))
