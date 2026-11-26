@@ -962,10 +962,10 @@ ORDER = [
     ("task_files", "Team: Task files in git", "string", "local"),
     ("task_take", "Team: Who may take a task", "string", "owner"),
     ("data_branch", "Team: Data branch", "string", "ap-data"),
-    # owner 2026-11-26 (leader-relay, TELL 2d1f9c06): empty = an approval relayed by Leader is refused
-    ("leader_transcript_folder", "Approval: Leader transcript folder", "string", ""),
     # owner 2026-11-26 (nightly-on-machine): a personal environment name, never in a repo file
     ("full_run_machine", "Load: Full run machine", "string", ""),
+    # owner 2026-11-26 (leader-relay, TELL 2d1f9c06): empty = an approval relayed by Leader is refused
+    ("leader_transcript_folder", "Approval: Leader transcript folder", "string", ""),
 ]
 
 

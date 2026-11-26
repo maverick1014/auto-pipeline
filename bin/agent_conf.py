@@ -1,4 +1,4 @@
-"""The one reader of the 21 auto-pipeline settings.
+"""The one reader of the 22 auto-pipeline settings.
 
 The settings live only in Claude Code: /plugin -> Installed -> auto-pipeline -> Configure.
 They are stored in <claude config dir>/settings.json under
@@ -95,10 +95,10 @@ SETTINGS = [
        options=["owner", "anyone"]),
     _s("data_branch", "Team: Data branch", "string", "ap-data",
        "Branch for the shared agent files; the repo value wins. Any branch works, production too: then they live under .ap-data/ there, it needs an origin, and a commit can start a deploy."),
-    _s("leader_transcript_folder", "Approval: Leader transcript folder", "string", "",
-       "Folder of the Leader bot's Claude transcripts (/... or ~/...). An owner approval Leader passes on is checked in a file directly in it. Empty = off: every relay by Leader is refused."),
     _s("full_run_machine", "Load: Full run machine", "string", "",
        "Name of the connected Orca environment where the full test run goes, when the repo's full_run_where asks for it. Empty = none. Personal: never written into a repo file."),
+    _s("leader_transcript_folder", "Approval: Leader transcript folder", "string", "",
+       "Folder of the Leader bot's Claude transcripts (/... or ~/...). An owner approval Leader passes on is checked in a file directly in it. Empty = off: every relay by Leader is refused."),
 ]
 
 CONSTANTS = {

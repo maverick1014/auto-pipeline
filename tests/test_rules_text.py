@@ -446,7 +446,7 @@ class TestSettingsTexts(unittest.TestCase):
         self.assertRegex(text, r"(?i)settings live only in")
         # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
         self.assertIn("agent_repo.conf", text)
-        self.assertRegex(text, r"(?i)21 settings|twenty-one settings")   # + Approval: Leader transcript folder (leader-relay, TELL 2d1f9c06)
+        self.assertRegex(text, r"(?i)22 settings|twenty-two settings")   # + Approval: Leader transcript folder (leader-relay, TELL 2d1f9c06)
 
     # test_r8_is_main_s_text (R8 frozen as on main 85b99de) is gone: the owner approved check-blocks on
     # 2026-11-25, R8 is "Check blocks" now (TestPrinciplesR8 pins it)
@@ -2789,8 +2789,8 @@ class TestUserConfig(unittest.TestCase):
             "watch_quiet_min": "number", "housekeep_interval_min": "number", "clear_quiet_min": "number",
             "city_port": "number", "city_idle_min": "number",   # owner 1A: no Danger paths
             "task_files": "string", "task_take": "string", "data_branch": "string",   # agent-files 2026-11-26
-            "leader_transcript_folder": "string",   # leader-relay 2026-11-26 (TELL 2d1f9c06)
-            "full_run_machine": "string"}   # nightly-on-machine 2026-11-26
+            "full_run_machine": "string",   # nightly-on-machine 2026-11-26
+            "leader_transcript_folder": "string"}   # leader-relay 2026-11-26 (TELL 2d1f9c06)
     DEFAULTS = {"runtime": "auto", "language": "en",
                 "main_manager": "opus-5.5:high", "max_usage_percent": 80}
 
