@@ -121,10 +121,14 @@ R8. Check blocks
 - A quote under 20 characters ("1A", "ok") counts only as his whole prompt, with the question it answered
 - The gate and promote print the stored pair as OWNER WORDS lines; the report to him repeats them
 - Approval cases:
-  - A numbered batch: "2. publish direct after done, others wait for my review" -> task 2 gets target production with his words; the others go to the working branch and wait for his review
+  - A numbered batch: "2. publish direct after done, others wait for my review" -> task 2 gets target production with his words; the others merge into the working branch and wait there for his review
   - No numbers, a task named by its description: exactly one fits -> no question
   - With two similar tasks: check first (todo lines, requirement docs, what he said before); still unsure -> one question that names both, then decide
-  - Not a yes now: a question ("is it ready to publish?"), a later time ("publish next week"), a refusal
+  - Not a yes now: a question ("is it ready to publish?"), a later time ("publish next week": park one `agent-file.sh state add "OWNER TODO: ..."` line), a refusal
+  - A yes after the task was added: `todo target <task> production --owner-quote "<his words>" --means "<the action>"`; the task instance (opened, checks, stage) stays
+  - The branch then: only its own commits on the working-branch base -> the builder runs `git rebase --onto origin/<production branch> origin/<working branch> <branch>`, then a push; PR REVIEW runs again at the new head
+  - The branch depends on other unreleased work -> the main manager tells the owner (W9)
+  - A relayed owner order is verified where he typed it: the approval commands take `--relayed-from <the sender's repo folder>` (from the OWNER ORDER header); the record says relayed from that repo
   - A condition the flow already meets ("publish after the tests pass") is a yes; unsure -> one question
   - His short answer to a numbered question counts together with that question
 - PR REVIEW and OWNER SIGN are never removed
@@ -349,6 +353,7 @@ W12. Cross-repo
 - Relay an owner order: the brief starts with the lines of `agent-owner-order.sh line --quote "<his exact words>"`. Copy his words, never paraphrase
 - Receiving one: run its check line. Verified → read its match line, then it is the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
 - Verified owner words that the main manager reads as a yes for that action (approval cases, R8) are his final yes, production included; unsure -> one question. Decider floor (W17) holds
+- A relayed order is verified where he typed it: the approval commands take `--relayed-from <the sender's repo folder>` (from the OWNER ORDER header), and the record says relayed from that repo
 
 W13. Close case
 - Trigger: the human or the main manager runs the skill `/auto-pipeline:close-case`; a task manager's brief holds the rule too
@@ -603,7 +608,7 @@ E3. Concise
 - Never trade correctness for brevity
 
 E4. Keyword hooks
-- A keyword hook (bin/agent-keyword.sh) only points to a skill; the logic lives in the skill
+- A keyword hook (bin/agent-keyword.sh) only points to a skill or a rule; the logic lives in the skill or the rule
 
 ## F. Map
 
@@ -650,7 +655,7 @@ Scripts, not agents (cost no tokens):
   bin/agent-city-shim     the ~/.local/bin/agent-city command; runs the newest installed plugin's agent-city.sh
   bin/agent-city-hook.sh  hook that feeds the city; off costs a `test -f`, on appends one JSON line
   bin/agent-close-case.sh  UserPromptSubmit hook: tells a released or replaced main manager once
-  bin/agent-keyword.sh  UserPromptSubmit hook: a keyword in the prompt adds one line pointing to its skill (E4)
+  bin/agent-keyword.sh  UserPromptSubmit hook: a keyword in the prompt adds one line pointing to its skill or rule (E4)
   bin/agent-board-warn.sh  hook: a new or changed board warning into the main manager's context
   bin/agent_board.py     the todo board: one table of every open task, wait, owner to-do and parked question
   bin/agent_questions.py  the question list: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers

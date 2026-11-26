@@ -290,6 +290,8 @@ def main():
     args = ap.parse_args()
     if not args.files:
         os.environ["AGENT_FULL_RUN"] = "1"
+    else:
+        os.environ.pop("AGENT_FULL_RUN", None)
 
     if args.j is None:
         args.j = default_jobs()
