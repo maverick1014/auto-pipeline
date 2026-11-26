@@ -958,6 +958,10 @@ ORDER = [
     ("clear_quiet_min", "Context: Auto clear after quiet (min)", "number", 30),
     ("city_port", "City: City port", "number", 4777),
     ("city_idle_min", "City: City auto close (min)", "number", 30),
+    # owner 2026-11-26 (agent-files, TELL 3a14d2f4 and 50d02f90): the person's default; a repo value wins
+    ("task_files", "Team: Task files in git", "string", "local"),
+    ("task_take", "Team: Who may take a task", "string", "owner"),
+    ("data_branch", "Team: Data branch", "string", "ap-data"),
 ]
 
 

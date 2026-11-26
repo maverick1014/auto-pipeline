@@ -13,9 +13,10 @@ value = the person's Configure, no setting = the default. init writes neither ke
 The place is ONE function (bin/agent_share.py place()). The data branch name is a third value with the same rule as
 task_files and task_take: agent_repo.conf data_branch= wins, else the Configure setting "Data branch", default
 "ap-data" (bin/agent_conf.py SETTINGS). A change of the place or of a default costs one line. A branch that holds code
-(the production or the working branch, or a branch with any file that is not an agent file) is refused with one line
-naming "holds code": `files set data_branch` exits 1; a Configure or repo value that names one leaves the files on
-the default ap-data and every write says so in one line.
+(the production or the working branch, or a branch with any file that is not an agent file) carries them under
+".ap-data/" (tests/test_agent_files_codebranch.py); it needs an origin: without one `files set data_branch` exits 1
+and a Configure or repo value that names one leaves the files on the default ap-data, every write says so in one line
+("needs an origin").
 
 Where a file lives (section 2), place data:
   Every agent file (agent_todo.txt, agent_ideas.txt, agent_worktree.txt, agent_completed.txt, agent_estimate.txt) is
@@ -370,23 +371,20 @@ class TestTheSettingsAreThePersonsDefault(FilesCase):
         self.assertIn("| t |", data_file(self.dir, "agent_completed.txt", ref="mine-data") or "")
         self.assertIn("place=mine-data", self.af("files", "show").stdout)
 
-    def test_a_branch_that_holds_code_is_refused_with_one_line(self):
-        # owner 2026-11-26 (TELL 50d02f90): a code branch is allowed only once tests prove the copies never fight;
-        # until then the setting refuses it with one clear line and the files go to the default
+    def test_a_code_branch_without_an_origin_is_refused_with_one_line(self):
+        # TELL 50d02f90: a code branch carries the files under .ap-data/ on top of the remote tip
+        # (tests/test_agent_files_codebranch.py); with no origin there is no remote tip: refused, the files stay on
+        # the default ap-data and every write says so in one line
         self.commit_all()
         code = git(self.dir, "symbolic-ref", "--short", "HEAD").strip()
-        r = self.af("files", "set", "data_branch", code, ok=False)
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("holds code", r.stderr)
-        self.assertNotIn("data_branch", self.conf())
         self.repo.set_conf("data_branch", code)
         self.af("todo", "add", "t", "small", "the t task", "30")
         sha = head(self.dir)
         r = self.af("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
-        self.assertEqual(len([l for l in (r.stdout + r.stderr).splitlines() if "holds code" in l]), 1,
+        self.assertEqual(len([l for l in (r.stdout + r.stderr).splitlines() if "needs an origin" in l]), 1,
                          r.stdout + r.stderr)
         self.assertEqual(head(self.dir), sha)
-        self.assertNotIn("agent_completed.txt", git(self.dir, "ls-tree", "--name-only", code))
+        self.assertNotIn(".ap-data", git(self.dir, "ls-tree", "--name-only", code))
         self.assertIn("| t |", data_file(self.dir, "agent_completed.txt") or "")
 
     def test_the_settings_table_shows_the_data_branch(self):
