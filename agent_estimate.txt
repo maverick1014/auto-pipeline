@@ -1,0 +1,117 @@
+{
+ "current": 2,
+ "checked_tasks": 208,
+ "versions": [
+  {
+   "version": 1,
+   "date": "2026-11-26",
+   "tasks": 301,
+   "method": "blend",
+   "k": 5,
+   "text": 1,
+   "type": 0,
+   "backtest": {
+    "tasks": 291,
+    "estimator": {
+     "error": 21.0,
+     "within30": 29,
+     "inrange": 56
+    },
+    "rubric": {
+     "error": 30.0,
+     "within30": 27,
+     "inrange": 28
+    },
+    "blend": {
+     "error": 17.0,
+     "within30": 37,
+     "inrange": 55
+    },
+    "blend_repo": {
+     "error": 15.0,
+     "within30": 35,
+     "inrange": 56
+    }
+   },
+   "weight": 0.5,
+   "repo_bias": false,
+   "bias": {},
+   "span": [
+    0.506,
+    1.461
+   ]
+  },
+  {
+   "version": 2,
+   "date": "2026-11-26",
+   "tasks": 208,
+   "method": "fit",
+   "k": 7,
+   "text": 0,
+   "type": 0.5,
+   "backtest": {
+    "tasks": 198,
+    "estimator": {
+     "error": 25.0,
+     "within30": 26,
+     "inrange": 53
+    },
+    "rubric": {
+     "error": 34.0,
+     "within30": 26,
+     "inrange": 27
+    },
+    "blend": {
+     "error": 20.5,
+     "within30": 33,
+     "inrange": 55
+    },
+    "blend_repo": {
+     "error": 16.5,
+     "within30": 39,
+     "inrange": 55
+    }
+   },
+   "weight": 0.5,
+   "repo_bias": true,
+   "bias": {
+    "auto-pipeline": 1.04,
+    "home-shiyawase": 1.03,
+    "v4-plus": 0.77,
+    "v4-pospro": 1.5
+   },
+   "span": [
+    0.587,
+    1.617
+   ]
+  }
+ ],
+ "checks": [
+  {
+   "date": "2026-11-26",
+   "tasks": 208,
+   "new": 0,
+   "current": 1,
+   "current_error": 20.5,
+   "new_error": 18.5,
+   "kept": 2,
+   "basis": "backtest"
+  }
+ ],
+ "measures": [
+  {
+   "date": "2026-11-26",
+   "tasks": 212,
+   "n": 202,
+   "winner": "fit",
+   "work_bias": -0.09,
+   "work_spread": 0.82,
+   "end_bias": 0.2,
+   "end_spread": 0.95,
+   "p85": 84,
+   "live_small": 115,
+   "live_big": null
+  }
+ ],
+ "checked_date": "2026-11-26"
+}
