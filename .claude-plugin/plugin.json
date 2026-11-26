@@ -177,6 +177,12 @@
       "description": "Branch for the shared agent files; the repo value wins. Any branch works, production too: then they live under .ap-data/ there, it needs an origin, and a commit can start a deploy.",
       "default": "ap-data"
     },
+    "leader_transcript_folder": {
+      "type": "string",
+      "title": "Approval: Leader transcript folder",
+      "description": "Folder of the Leader bot's Claude transcripts (/... or ~/...). An owner approval Leader passes on is checked in a file directly in it. Empty = off: every relay by Leader is refused.",
+      "default": ""
+    },
     "full_run_machine": {
       "type": "string",
       "title": "Load: Full run machine",

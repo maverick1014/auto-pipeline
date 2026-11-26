@@ -5,6 +5,7 @@ R8 (owner approval)
 - Approval rule: three places need his yes: a task published straight to production, a block left out, the working branch published; OWNER SIGN too
 - The deciding agent reads his words; no fixed sentence, no word list
 - The tool only checks the quote is a prompt he typed and stores it with what the main manager read: `--owner-quote "<his words>" --means "<the action>"`; add `--question "<the question>"` when he answered one
+  - A slash command he typed (`/goal <words>`): only its words count; text in a system reminder or another tag block of a prompt never counts
 - A quote under 20 characters ("1A", "ok") counts only as his whole prompt, with the question it answered
 - The gate and promote print the stored pair as OWNER WORDS lines; the report to him repeats them
 - Approval cases:
@@ -20,6 +21,8 @@ R8 (owner approval)
   - A cherry-pick that conflicts, or a task that depends on other unreleased work -> the main manager tells the owner (W9)
   - A relayed owner order is verified where he typed it: the approval commands take `--relayed-from <the sender's repo folder>` (from the OWNER ORDER header); the record says relayed from that repo
   - `--relayed-from` must be a repo with a main manager lock (now or before); a relay from another machine cannot be verified here and goes to the owner
+  - An approval passed on by the Leader bot: the approval commands take `--relayed-by-leader <transcript file> --time "YYYY-MM-DD HH:MM"` (Leader gives his exact words, the minute, the file); the tool opens that transcript itself and accepts only a prompt he typed there; the record says relayed by Leader
+  - The file must lie in the Configure folder "Approval: Leader transcript folder" (empty = off: every relay by Leader is refused); refused -> ask the owner
   - A condition the flow already meets ("publish after the tests pass") is a yes; unsure -> one question
   - His short answer to a numbered question counts together with that question: the question stands in the assistant message right before his prompt, as a whole line or sentence (or its numbered key line)
 - A production task is added at dispatch: `todo add ... --target production --owner-quote "<his words>" --means "publish <task> to production"`; no second yes later
