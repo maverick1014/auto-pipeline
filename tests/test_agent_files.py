@@ -1047,10 +1047,6 @@ class Ex9TwoPeopleFinishAtOnce(PairCase):
         self.assertEqual(tip(self.bare), tip(self.dir))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestTheRuleText(unittest.TestCase):
     """The task-file rule says where the files live, how a repo moves, and who may work a shared task."""
 
@@ -1075,3 +1071,7 @@ class TestTheRuleText(unittest.TestCase):
         at = [n for n, l in enumerate(lines) if l.startswith("- Repo facts live in the committed `agent_repo.conf`")][0]
         for key in ("task_files", "task_take", "data_branch"):
             self.assertIn(key, lines[at + 1])
+
+
+if __name__ == "__main__":
+    unittest.main()

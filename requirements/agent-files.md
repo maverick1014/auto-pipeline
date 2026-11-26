@@ -72,7 +72,7 @@ One more fact in `agent_repo.conf`: `task_take = owner` (default) or `anyone`.
 
 - One command, run in the main checkout, takes a repo from "tracked and changed" to its mode: every agent file is taken out of the code branch with its content kept (a copy goes into the git folder first), the ignore lines are written, and the files that are in git by section 2 go onto the data branch (created when missing, pushed). It prints what it did per file. Run twice, the second run changes nothing.
 - In another clone of that repo the same command settles the pull: a local file removed upstream keeps its content there too.
-- Setup in a new repo writes the ignore lines for the local files and the default facts.
+- Setup in a new repo writes the ignore lines for every agent file and no team facts: the person's Configure is the default (section 2, Settings); the command that turns sharing on writes them.
 - THIS repo is moved by the main manager in the main checkout after the merge. The task branch must not delete, untrack or commit this repo's own `agent_*.txt` files: a merge into a checkout that has changed them would be refused.
 
 ## 6. Order and dependency
@@ -82,7 +82,7 @@ One more fact in `agent_repo.conf`: `task_take = owner` (default) or `anyone`.
 
 ## 7. Examples (the failing tests come from these)
 
-- Setup in a new repo: `git status` does not list `agent_todo.txt`, `agent_ideas.txt`, `agent_worktree.txt`; `git check-ignore` names them. `agent_completed.txt` is not ignored.
+- Setup in a new repo: `git status` does not list any agent file; `git check-ignore` names `agent_todo.txt`, `agent_ideas.txt`, `agent_worktree.txt`, `agent_completed.txt` and `agent_estimate.txt` (section 2: every agent file is git-ignored in the main checkout; the files in git live on the data branch).
 - A repo that tracks `agent_todo.txt` with 3 uncommitted lines: after the move command the file still has those lines, `git ls-files agent_todo.txt` is empty, and a new worktree has no `agent_todo.txt`.
 - `todo done` in a default repo: `agent_completed.txt` has the new record, `git status` of the code branch is clean, and the tip of `ap-data` holds the same file content; HEAD and the index of the checkout did not move.
 - `task_files = ideas`: `idea add` puts a new commit on `ap-data`; `todo add` puts none.
