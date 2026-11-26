@@ -2,8 +2,8 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                          resource check + pointers + open tasks
-#   ./agent-start.sh --quiz                   print the 34 quiz questions
-#   ./agent-start.sh --answer "1A 2D ... 34D"    grade your quiz answers
+#   ./agent-start.sh --quiz                   print the 36 quiz questions
+#   ./agent-start.sh --answer "1A 2D ... 36D"    grade your quiz answers
 #   ./agent-start.sh --take-over              this session becomes the main manager
 #                                             (only when the human asks; the old one is closed)
 #   ./agent-start.sh --clean ["carry line" ...]
@@ -29,9 +29,9 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 b75587e9915ec885 b10039ac08596652 6e172188c9c4bc39 5e1a8ca54c3fbadd 13127809c0aa4e07 2de03a63345b0488 d019670ac24fe392 1a6951e83e3e46bb 52fcf5e8a49617f0 d7dd4d5626dfebb7 14d3ea7536a00bbf d956db8d1ed42790 72241f6e3363d877 c20dbe1e5d7e0c3a f4c5ea8cff8e3805 1abb73a3e6683277 ed3aa1e779d86517 7fb8bf29915b93ba 53f2f80016081d7b 452e097c150557a7 86748978724ff86c 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 f9d86ca36f2238ad 6ef895678e4d73f6 60a1877ffe0c9ecf fc755642e7b2d547 81b9e6e9fb8fe2c5 )
-RULE=( _ W1 R6 H1 W2 W4 W12 S3 H3 R5 R2 R3 H3 R1 W7 W6 W7 W9 S1 W10 S8 S8 H1 H3 W8 R8 W17 R8 R8 R8 R8 R8 R8 P1 R8 )
-N=34
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 b75587e9915ec885 b10039ac08596652 6e172188c9c4bc39 5e1a8ca54c3fbadd 13127809c0aa4e07 2de03a63345b0488 d019670ac24fe392 1a6951e83e3e46bb 52fcf5e8a49617f0 d7dd4d5626dfebb7 14d3ea7536a00bbf d956db8d1ed42790 72241f6e3363d877 c20dbe1e5d7e0c3a f4c5ea8cff8e3805 1abb73a3e6683277 ed3aa1e779d86517 7fb8bf29915b93ba 53f2f80016081d7b 452e097c150557a7 86748978724ff86c 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 f9d86ca36f2238ad 6ef895678e4d73f6 60a1877ffe0c9ecf fc755642e7b2d547 81b9e6e9fb8fe2c5 a06bbc5adaee446e 23168b3ea65a8215 )
+RULE=( _ W1 R6 H1 W2 W4 W12 S3 H3 R5 R2 R3 H3 R1 W7 W6 W7 W9 S1 W10 S8 S8 H1 H3 W8 R8 W17 R8 R8 R8 R8 R8 R8 P1 R8 W9 P1 )
+N=36
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -223,8 +223,8 @@ fi
 # ---- --quiz: print the questions only, nothing else, no lock, no roots ----
 if [ "${1:-}" = "--quiz" ]; then
   cat <<'QUIZ'
-=== QUIZ — answer all 34 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 34D"
+=== QUIZ — answer all 36 before any work ===
+Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 36D"
 Do not start work until you see PASS.
 
 Q1. Mid-task, part of the spec is unclear.
@@ -430,13 +430,25 @@ Q34. A task is built from the working branch and not merged yet. Now the owner w
   B. Add the task again with --target production
   C. todo target <task> production with his words (--means); a new fast-lane deputy makes a new branch from production with the task's own commits (cherry-pick); every planned block runs again at its head; then promote --task with the new branch
   D. Tell him it must wait for the next working-branch publish
+
+Q35. Task u is urgent (publish straight after done) and needs a helper function that only the open, not urgent task n brings. You:
+  A. Ship u alone and let n follow later
+  B. Merge n into production too, without asking
+  C. It cannot ship alone: tell the owner at once (ship u and n together, or move that part into u); never guess
+  D. Copy the function into u quietly
+
+Q36. A live task manager is changing the discount logic of the billing module. The owner now asks for a follow-up on that same discount logic. You:
+  A. A new branch and a new agent, as for any task: the second merge resolves the conflict
+  B. Send it to that task manager: it is a follow-up on the logic it is changing right now; a different part of the module would get its own branch and agent
+  C. Hold it until that task is merged
+  D. Do it yourself in the main chat
 QUIZ
   exit 0
 fi
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 34D"'; exit 2; }
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D"'; exit 2; }
   ok=0; wrong=""
   for q in $(seq 1 $N); do
     tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)

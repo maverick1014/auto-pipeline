@@ -128,9 +128,10 @@ R8. Check blocks
   - With two similar tasks: check first (todo lines, requirement docs, what he said before); still unsure -> one question that names both, then decide
   - Not a yes now: a question ("is it ready to publish?"), a later time ("publish next week": park one `agent-file.sh state add "OWNER TODO: ..."` line), a refusal
   - A yes after the task was added: `todo target <task> production --owner-quote "<his words>" --means "<the action>"`; the task instance (opened, checks, stage) stays
-  - After `todo target <task> production ...` the main manager sends a new fast-lane deputy: a new branch from the production branch, `git cherry-pick` of the task's own commits, the builder's blocks again, a push
+  - After `todo target <task> production ...` the main manager sends a new fast-lane deputy: a new branch from the production branch, `git cherry-pick` of its own commits, the builder's blocks again, a push
+  - Its brief names `late yes of: <task>` and `old branch: <branch>`
   - Then every planned block runs again at its head (PR REVIEW, FLOW CHECK, UI CHECK, CORE REVIEW, OWNER SIGN), then `agent-promote.sh --task` with the new branch; the merge deputy deletes the old branch at cleanup
-  - A task already merged into the working branch (todo line closed): the same deputy cherry-picks its commits from the working branch, under a new todo line `<task>-publish` with target production and his words
+  - A task already merged (todo line closed): the same deputy cherry-picks its commits from the working branch, under a new todo line `<task>-publish`: target production, his words, `--checks "<its BLOCK list>"`
   - A cherry-pick that conflicts, or a task that depends on other unreleased work -> the main manager tells the owner (W9)
   - A relayed owner order is verified where he typed it: the approval commands take `--relayed-from <the sender's repo folder>` (from the OWNER ORDER header); the record says relayed from that repo
   - `--relayed-from` must be a repo with a main manager lock (now or before); a relay from another machine cannot be verified here and goes to the owner
@@ -359,8 +360,7 @@ W12. Cross-repo
 - Relay an owner order: the brief starts with the lines of `agent-owner-order.sh line --quote "<his exact words>"`. Copy his words, never paraphrase
 - Receiving one: run its check line. Verified → read its match line, then it is the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
 - Verified owner words that the main manager reads as a yes for that action (approval cases, R8) are his final yes, production included; unsure -> one question. Decider floor (W17) holds
-- A relayed order is verified where he typed it: the approval commands take `--relayed-from <the sender's repo folder>` (from the OWNER ORDER header), and the record says relayed from that repo
-- `--relayed-from` must be a repo with a main manager lock (now or before); a relay from another machine cannot be verified here and goes to the owner
+- A relayed owner order: the approval commands take `--relayed-from <the sender's repo folder>`; the rules are in R8
 
 W13. Close case
 - Trigger: the human or the main manager runs the skill `/auto-pipeline:close-case`; a task manager's brief holds the rule too
@@ -641,7 +641,7 @@ Main manager   (Main manager model · the main chat · free for the human)
               └── Worker (Helper model)  code until the tests pass, slice 2
 
 Scripts, not agents (cost no tokens):
-  bin/agent-start.sh   RAM/CPU guard, prints the rules, 34-question quiz gate, main-manager lock
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 36-question quiz gate, main-manager lock
   bin/agent-nightly.sh  the nightly run of all tests: gates nothing, records selection misses, --release-ok
   bin/agent-test-run.sh  every test run: reserves its measured memory, a monitor watches it (S3, S5)
   bin/agent-room.sh  the memory gate: check, reserve, release, list, relief, measure-pane

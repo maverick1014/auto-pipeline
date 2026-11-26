@@ -24,6 +24,8 @@ description: Main manager only. After a task manager reports DONE PASS, send the
    branch: <branch>
    worktree path: <path>
    merged: <merge hash>   (target production only: the merge `agent-promote.sh --task` made; else leave empty)
+   late yes of: <task>   (a late yes only; else leave empty)
+   old branch: <branch>   (a late yes only: the branch the cleanup deletes; else leave empty)
    results file: <path>   (remote task only: the CHECK lines of its REPORT, for the gate's `--results`; else leave empty)
    terminal handle: <term_...>   (orca only, leave empty in plain and cloud)
    todo done arguments: --work <actual> --wait <wait> --bounces <n> --workers <n> --mock <yes|no> --lane <full|fast> --type <t> --tests <n> --adds <n>
