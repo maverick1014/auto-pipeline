@@ -445,5 +445,65 @@ class TestReviewFixes(TopUpCase):
         self.assertEqual(self.misses_file(), [])
 
 
+@tn.only_own
+class TestReviewFixes3(TopUpCase):
+    """The second attack pass on 4c39713: 1 (proof read from the test's own output), 2 (stale picker trees),
+    3 (tests that read a changed text file by its name)."""
+
+    def test_1_a_file_that_exits_at_import_or_holds_no_test_is_red(self):
+        self.full_green()
+        cases = {
+            "exit at import": "import sys\nsys.exit(0)\n" + FAILING,
+            "prints its own OK": "import sys\nprint('Ran 1 test in 0.001s')\nprint()\nprint('OK')\nsys.exit(0)\n" + FAILING,
+            "os._exit": "import os\nos._exit(0)\n" + FAILING,
+            "no test method": "import unittest\n\n\nclass N(unittest.TestCase):\n    pass\n",
+        }
+        for name, body in cases.items():
+            with self.subTest(case=name):
+                self.commit({"tests/test_y.py": body}, name)
+                st = self.start()
+                self.assertEqual((st["kind"], st["result"]), ("top-up", "red"), st)
+                self.assertTrue(any(f.startswith("top-up: tests/test_y.py") for f in st["failed"]), st)
+        self.commit({"tests/test_y.py": PASSING}, "normal")
+        st = self.start()
+        self.assertEqual((st["kind"], st["result"]), ("top-up", "green"), st)
+
+    def test_2_a_stale_picker_tree_goes_and_a_live_one_stays(self):
+        dead = subprocess.Popen(["true"])
+        dead.wait()
+        live = subprocess.Popen(["sleep", "60"])
+        self.addCleanup(live.kill)
+        trees = {}
+        for pid in (dead.pid, live.pid):
+            trees[pid] = os.path.join(self.gitdir(), "agent_nightly_wt_pick_%d" % pid)
+            self.git("worktree", "add", "-q", "--detach", trees[pid], "HEAD")
+        self.addCleanup(lambda: subprocess.run(["git", "-C", self.repo.dir, "worktree", "remove", "--force",
+                                                trees[live.pid]], capture_output=True))
+        self.nightly("--status", env=self.env())
+        listed = self.git("worktree", "list")
+        self.assertFalse(os.path.exists(trees[dead.pid]))
+        self.assertNotIn(trees[dead.pid], listed)
+        self.assertTrue(os.path.exists(trees[live.pid]))
+
+    def test_3_tests_that_read_a_changed_text_file_by_name_run(self):
+        reads = ("import os, unittest\n\n\nclass R(unittest.TestCase):\n    def test_reads(self):\n"
+                 "        with open(os.path.join(%s)) as fh:\n            self.assertIn('keep', fh.read())\n")
+        self.commit({"skills/merge/SKILL.md": "---\nname: merge\n---\nkeep\n",
+                     "agents/reviewer.md": "keep\n",
+                     "tests/test_reads_skill.py": reads % "'skills', 'merge', 'SKILL.md'",
+                     "tests/test_reads_agent.py": reads % "'agents', 'reviewer.md'"}, "readers")
+        g = self.full_green()
+        for rel, test in (("skills/merge/SKILL.md", "tests/test_reads_skill.py"),
+                          ("agents/reviewer.md", "tests/test_reads_agent.py")):
+            with self.subTest(rel=rel):
+                self.git("reset", "-q", "--hard", g)
+                body = "---\nname: merge\n---\ngone\n" if "SKILL" in rel else "gone\n"
+                self.commit({rel: body}, "break " + rel)
+                st = self.start()
+                self.assertEqual((st["kind"], st["result"]), ("top-up", "red"), st)
+                self.assertIn(test, st["tests"])
+        self.assertEqual(agent_nightly.text_named(self.repo.dir, g, ["requirements/x.md"]), [])
+
+
 if __name__ == "__main__":
     unittest.main()

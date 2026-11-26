@@ -43,6 +43,10 @@ A green top-up is recorded on the tip together with the full run it stands on ("
   - C. `--due` counts FULL runs only: a top-up never stands in for the night's full run.
   - D. The version-only tip counts as its parent only when plugin.json changes the version alone (the same version check).
   - E. A selection miss is a finding of a full run only; a red top-up is a red run with its failing tests.
+- Second attack pass (2026-11-26, on 4c39713):
+  - 1. Before a planned test file runs, the tool loads it itself (unittest discovery on that one file, in the scratch tree) and needs its own line back: a nonce sent on stdin, read after the load, plus the test count; no line, a load failure or 0 tests: red (`could not be loaded`, `holds no test`). The test's own output is never the proof.
+  - 2. Every picker tree `agent_nightly_wt_pick_<pid>` whose pid is dead is removed before a pick and on `--status`; `--start --nightly` never runs the picker.
+  - 3. The top-up also runs every tests/test_*.py whose source names a changed text file (its path, its base name, `<folder>/*<ext>`, `<parent>/*/<base name>`); plain text search, and the record check needs this set too.
 
 ## Examples (the failing tests come from these)
 

@@ -1148,6 +1148,49 @@ class RunLock:
             return False
 
 
+PROBE = r"""
+import os, sys, unittest
+out = os.fdopen(os.dup(1), "w")
+path = sys.argv[1]
+sys.path.insert(0, os.getcwd())
+def flat(suite):
+    for t in suite:
+        if isinstance(t, unittest.TestSuite):
+            yield from flat(t)
+        else:
+            yield t
+loader = unittest.TestLoader()
+try:
+    suite = loader.discover(os.path.dirname(path) or ".", pattern=os.path.basename(path), top_level_dir=os.getcwd())
+    tests = list(flat(suite))
+except BaseException:
+    tests, loader.errors = [], ["load"]
+bad = loader.errors or any(type(t).__name__ in ("_FailedTest", "ModuleImportFailure") for t in tests)
+nonce = sys.__stdin__.readline().strip()        # read only after the file is loaded: its import never saw it
+out.write("%s %s %d\n" % (nonce, "bad" if bad else "ok", len(tests)))
+out.flush()
+os._exit(0)
+"""
+
+
+def probe(wt, path):
+    """"" when the tool itself loads the test file the way discovery does and finds tests, else why not. The nonce
+    waits on stdin, is read only after the file is loaded, and comes back on the probe's own line: a file that exits
+    at import never prints it. (A file that reads stdin itself at import is a deliberate attack: out of scope.)"""
+    nonce = os.urandom(16).hex()
+    try:
+        res = subprocess.run([sys.executable, "-I", "-c", PROBE, path], cwd=wt, input=nonce + "\n",
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, timeout=300)
+        lines = [l.split() for l in res.stdout.splitlines() if l.startswith(nonce + " ")]
+    except (OSError, subprocess.SubprocessError):
+        lines = []
+    if len(lines) != 1 or len(lines[0]) != 3 or lines[0][1] != "ok":
+        return "top-up: %s could not be loaded" % path
+    if lines[0][2] == "0":
+        return "top-up: %s holds no test" % path
+    return ""
+
+
 def do_run(cwd, nightly=False):
     """The foreground run: lock, gate, command (monitored), status, misses. Exit 0 whatever the result.
     nightly: started by the automatic nightly path: always the full run (it can only make a run bigger)."""
@@ -1163,9 +1206,10 @@ def do_run(cwd, nightly=False):
     st = read_status(gitdir) or {}
     prev = st.get("prev") if st.get("result") == "running" else st
     commit = tip_of(root)
-    p = plan(root, prev, commit)                       # full or top-up: from git and the last record alone
-    if nightly:
+    if nightly:                                        # the nightly never needs the plan (nor its picker)
         p = {"kind": "full", "base": "", "tests": [], "why": "the automatic nightly is always the full run"}
+    else:
+        p = plan(root, prev, commit)                   # full or top-up: from git and the last record alone
     carry = p["base"] if p["kind"] == "top-up" else full_base(prev)[0]
     base = {"started": now().strftime(FMT), "commit": commit, "finished": "", "result": "running", "failed": [],
             "last_green": (prev or {}).get("last_green", ""), "pid": os.getpid(), "prev": prev,
@@ -1228,6 +1272,12 @@ def do_run(cwd, nightly=False):
                     link_deps(root, wt)
                     began, mb, code, output, missing = time.time(), 0, 0, "", []
                     for path, one in cmds:
+                        if path is not None and path.endswith(".py"):
+                            why_not = probe(wt, path)           # the tool's own proof, not the test's output
+                            if why_not:
+                                missing.append(why_not)
+                                code = code or 1
+                                continue
                         with open(log, "wb") as out_fh:
                             rc, peak, stop = run_monitored(one, need, shell=True, cwd=wt, stdin=subprocess.DEVNULL,
                                                            stdout=out_fh, stderr=subprocess.STDOUT)
@@ -1238,13 +1288,8 @@ def do_run(cwd, nightly=False):
                         if stop is not None:
                             break
                         rc = exit_code(rc) if rc is not None and rc < 0 else rc
-                        if path is not None:                       # the top-up: this planned file must have run
-                            ran = re.findall(r"^Ran (\d+) tests? in", part, re.M)
-                            if rc != 0 and not failed_tests(part):
-                                missing.append("top-up: %s did not run (exit %s)" % (path, rc))
-                            elif ran and int(ran[-1]) == 0 or "NO TESTS RAN" in part:
-                                missing.append("top-up: %s ran no test" % path)
-                                rc = rc or 5
+                        if path is not None and rc != 0 and not failed_tests(part):
+                            missing.append("top-up: %s did not run (exit %s)" % (path, rc))
                         code = code or rc
                     try:
                         with locked():
@@ -1299,9 +1344,10 @@ def start(cwd, wait, nightly=False):
         return 0
     subprocess.Popen([sys.executable, os.path.abspath(__file__), "run"] + (["--nightly"] if nightly else []), cwd=cwd, stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    p = plan(root, read_status(gitdir))
     if nightly:
         p = {"kind": "full", "why": "the automatic nightly is always the full run"}
+    else:
+        p = plan(root, read_status(gitdir))
     print("NIGHTLY: started in the background (%s: %s)" % ("top-up" if p["kind"] == "top-up" else "full run", p["why"]))
     return 0
 
@@ -1548,6 +1594,45 @@ def guard_tests(conf):
 
 
 PICKED = {}
+PICK_TREE = re.compile(r"^%s_pick_(\d+)$" % SCRATCH)
+
+
+def clean_picks(root):
+    """Remove every picker tree whose pid is dead (a run killed during the pick); never one whose pid lives."""
+    gitdir = common_dir(root)
+    try:
+        names = os.listdir(gitdir)
+    except OSError:
+        return
+    for name in names:
+        m = PICK_TREE.match(name)
+        if m and not pid_alive(m.group(1)):
+            drop_scratch(root, os.path.join(gitdir, name))
+    git(root, "worktree", "prune")
+
+
+TEXT_READER = re.compile(r"^tests/test_[^/]+\.py$")
+
+
+def text_named(root, tip, changed):
+    """The test files of the tests folder (at tip) whose source names a changed text file: its path, its base name,
+    or its folder as a glob (<folder>/*.md, <parent>/*/<base name>). Plain text search, no import."""
+    ok, out = git_rc(root, "ls-tree", "-r", "-z", "--name-only", tip, "tests/")
+    tests = [t for t in out.split("\0") if TEXT_READER.match(t)] if ok else []
+    needles = set()
+    for path in changed:
+        base, folder = os.path.basename(path), os.path.dirname(path)
+        needles.update([path, base])
+        if folder:
+            needles.add("%s/*%s" % (folder, os.path.splitext(path)[1]))
+            if os.path.dirname(folder):
+                needles.add("%s/*/%s" % (os.path.dirname(folder), base))
+    found = []
+    for t in tests:
+        ok, body = git_rc(root, "cat-file", "blob", "%s:%s" % (tip, t))
+        if ok and any(n in body for n in needles):
+            found.append(t)
+    return sorted(found)
 
 
 def related_picked(root, base, tip):
@@ -1556,6 +1641,7 @@ def related_picked(root, base, tip):
     key = (base, tip)
     if key in PICKED:
         return PICKED[key]
+    clean_picks(root)
     gitdir = common_dir(root)
     wt = os.path.join(gitdir, SCRATCH + "_pick_%d" % os.getpid())
     got = None
@@ -1584,8 +1670,10 @@ def topup_tests(root, base, tip, changed):
     picked = related_picked(root, base, tip)
     if picked is None:
         return None
+    diff = raw_diff(root, base, tip) or []
+    texts = [c[5] for c in diff if c[5].endswith(".md") or c[5].startswith("mock/")]
     run = []
-    for t in guard_tests(conf_at(root, tip)) + changed + picked:
+    for t in guard_tests(conf_at(root, tip)) + changed + picked + text_named(root, tip, texts):
         if t not in run:
             run.append(t)
     return run
@@ -1784,6 +1872,7 @@ def main(argv):
         return do_run(cwd, "--nightly" in argv[1:])
     if not argv or argv[0] == "--status":
         st = read_status(common_dir(cwd))
+        clean_picks(main_root(cwd))
         print(status_line(st))
         print(needed_line(main_root(cwd), st))
         return 0
