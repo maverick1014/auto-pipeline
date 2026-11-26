@@ -4684,18 +4684,18 @@ function pinOv(f, st){
 function govFigsHere(){
   return governorFigures().filter(g => g.at === cur && !g.inLift);
 }
-/* panelBlocks() -> the boxes of the panels over the floor view, in the overlay's coordinates; read at most 4 times a second */
+/* panelBlocks() -> the boxes of the panels and windows over the floor view (when they show), in the overlay's coordinates; read at most 4 times a second, and at once when the selection changes or a window opens or closes */
 let panelBox = { at:-1e9, list:[] };
 function panelBlocks(){
-  const now = performance.now();
-  if (now - panelBox.at < 250) return panelBox.list;
+  const now = performance.now(), sk = selected ? selected.t + ':' + (selected.id || selected.terr || '') : '';
+  if (now - panelBox.at < 250 && panelBox.sel === sk) return panelBox.list;   // read again when the selection changes (its window opens or closes)
   const r0 = ovRoot.getBoundingClientRect(), list = [];
-  for (const el of document.querySelectorAll('#floorSign, #rail, #rail-tab, #follow, #proto, #lift, .cam button')) {
+  for (const el of document.querySelectorAll('#floorSign, #rail, #rail-tab, #follow, #proto, #lift, .cam button, #win, #win-tab, #ask, #dPop')) {
     if (el.hidden) continue;
     const r = el.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) list.push([r.left - r0.left, r.top - r0.top, r.right - r0.left, r.bottom - r0.top]);
   }
-  panelBox = { at:now, list };
+  panelBox = { at:now, list, sel:sk };
   return list;
 }
 function syncFigs(dt){
