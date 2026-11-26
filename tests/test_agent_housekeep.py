@@ -71,12 +71,16 @@ def write(path, text):
         fh.write(text)
 
 
+# md-slim-principles: the rule file that holds each rule code (requirements/md-slim-principles/codes.md)
+RULE_FILE = {"R5": "files.md", "R6": "files.md", "R7": "files.md", "W8": "worktrees.md", "W12": "cross-repo.md"}
+
+
 def principles_section(code):
-    """The lines of one PRINCIPLES.md rule, e.g. "W8", heading included."""
+    """The lines of one rule, e.g. "W8", heading included, read from the rules/ file that holds it."""
     out = []
     inside = False
-    for line in read_root("PRINCIPLES.md").splitlines():
-        if re.match(r"^[A-Z]\d+\. ", line) or line.startswith("## "):
+    for line in read_root("rules", RULE_FILE[code]).splitlines():
+        if re.match(r"^[A-Z]\d+\. ", line) or line.startswith("#") or line == "Files:":   # "Files:" = the table after R7
             inside = line.startswith(code + ". ")
             if inside:
                 out.append(line)
@@ -1348,7 +1352,7 @@ class TestDocs(unittest.TestCase):
         self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 34, 1))
 
     def test_readme_lists_the_script(self):
-        self.assertIn("bin/agent-housekeep.sh", read_root("PRINCIPLES.md"))
+        self.assertIn("bin/agent-housekeep.sh", read_root("rules", "map.md"))
 
 
 ROWS_NOW = "2026-11-24 12:00"

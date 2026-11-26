@@ -1228,7 +1228,7 @@ class TestF2CoreReviewIsNoBuildersJob(TestGate):
             self.assertIn("CORE REVIEW: pass by the builder (t Task Manager), not accepted", r.stdout.splitlines())
 
     def test_r8_names_it(self):
-        self.assertIn("CORE REVIEW", [x for x in rule("R8. ", "W1. ").splitlines()
+        self.assertIn("CORE REVIEW", [x for x in read("rules", "checks.md").splitlines()   # md-slim-principles: R8 stands in rules/checks.md
                                       if "not the builder" in x and "PR REVIEW" in x][0])   # FIX ORDER 1: the late-yes line names the builder too
 
 
