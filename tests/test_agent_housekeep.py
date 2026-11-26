@@ -618,6 +618,15 @@ class TestTodoStale(HousekeepCase):
         self.apply()
         self.assertEqual(self.stale_line("s3"), [])
 
+    def test_a_stage_log_does_not_hide_the_stage(self):
+        # estimate-improve fix order 2 A: " | stage log ..." stands before the stage field; the stale age counts
+        # from the stage's since (11:00, 60 min), not from opened only (08:00, 240 min)
+        self.set_file("agent_todo.txt", [self.todo(
+            "s5", opened="2026-11-13 08:00",
+            extra=" | stage log brief 0, tests 30 | started 2026-11-13 08:00 | stage tests since 2026-11-13 11:00")])
+        self.apply()
+        self.assertEqual(self.stale_line("s5"), [])
+
     def test_an_open_wait_is_not_stale(self):
         self.set_file("agent_todo.txt", [self.todo(
             "s4", opened="2026-11-13 08:00", extra=" | waiting question since 2026-11-13 08:30")])

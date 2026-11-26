@@ -582,6 +582,12 @@ class TestRetrainCheck(EstimateCase):
 # ---------------------------------------------------------------- todo done runs it
 
 class TestTodoDoneRetrains(EstimateCase):
+    """estimate-improve fix order 2: todo done runs the retrain in the background; these tests read its verdict,
+    so they ask todo done to wait for it (AGENT_ESTIMATE_WAIT=1)."""
+
+    def af(self, *args, **kwargs):
+        env = {"AGENT_FAKE_NOW": kwargs.pop("now", NOW), "AGENT_ESTIMATE_WAIT": "1"}
+        return self.repo.run("agent-file.sh", *args, env=env, **kwargs)
 
     def todo(self, name="t-new"):
         self.write("agent_todo.txt", "%s | big | one shell script | est 50m | opened 2026-10-05 15:00 | by main\n" % name)

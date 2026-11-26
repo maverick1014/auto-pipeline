@@ -28,16 +28,18 @@ bin/agent_forecast.py (new; Python 3.9 standard library; the board, eta and the 
       with replacement):
         stage None or a BUILD stage:
           q = a draw of Q; total = est x q. Age rule: when total <= work, q is drawn from the Q values with
-          est x q > work instead; none: total = work / p when p >= ES_MIN, else 2 x work.
+          est x q > work instead; none (fix order 2): total = work + max(1, est x (1 - p)) (p None: 0), the
+          plan's share still to do, so the time left never grows with the work.
           Earned schedule: p >= ES_MIN -> total = max(total, work / p).
           build = max(0, total - work).
           Stage workers i/m with m - i >= 1 open slices: plan = est x stage_workers / (sum of the stage
           weights) / m; slices = the max over the open slices of plan x (an own draw of Q each);
           build = max(build, slices).
           tail = a draw of T.
-        stage report: build = 0, tail = a draw of T.
-        stage e2e or merge: build = 0; age = work - built_work (built_work None: 0); tail = a draw of the
-          T values > age, minus age; none: a draw of T (a new round).
+        stage report, e2e or merge (fix order 2: the age rule in every tail stage): build = 0;
+          age = max(0, work - built_work) (built_work None: 0); tail = a draw of the T values > age, minus age;
+          none: 1 minute ("due any minute": past the largest past tail the time left never jumps up with age
+          and stays above zero).
         left = build + tail.
       p50, p85 = the 50th and the 85th percentile (linear) of left over the draws, each rounded UP to a
       whole minute.
@@ -154,13 +156,30 @@ class TestForecastFunction(unittest.TestCase):
         self.assertEqual(self.f.forecast(task(work=10, stage=("tests", None, None), p=0.1), rows), (50, 50))
 
     def test_past_every_history_with_no_pace(self):
+        # fix order 2: the plan's share still to do, 60 x (1 - 0.1) = 54, the same at any later work
         rows = [hrow()] * 20
-        self.assertEqual(self.f.forecast(task(work=80, stage=("tests", None, None), p=0.1), rows), (80, 80))
+        self.assertEqual(self.f.forecast(task(work=80, stage=("tests", None, None), p=0.1), rows), (54, 54))
+        self.assertEqual(self.f.forecast(task(work=120, stage=("tests", None, None), p=0.1), rows), (54, 54))
 
     def test_rows_with_no_tail_teach_the_work_only(self):
         rows = [hrow(tail=None)] * 10 + [hrow(tail=30)] * 2
         self.assertEqual(self.f.forecast(task(est=60), rows), (90, 90))
         self.assertEqual(self.f.forecast(task(est=60), [hrow(tail=None)] * 10), (60, 60))
+
+    def test_report_counts_its_age(self):
+        # fix order 2: 15 minutes already spent after the builder's done; only the 30 minute tails remain
+        rows = [hrow(tail=10)] * 10 + [hrow(tail=30)] * 10
+        t = task(work=55, stage=("report", None, None), p=0.83, built_work=40)
+        self.assertEqual(self.f.forecast(t, rows), (15, 15))
+
+    def test_the_time_left_never_jumps_up_with_age(self):
+        rows = [hrow(tail=10), hrow(tail=20), hrow(tail=30)] * 4
+        def left(age):
+            return self.f.forecast(task(work=age, stage=("merge", None, None), p=0.95, built_work=0), rows)[0]
+        self.assertLessEqual(left(40), left(25) + 1)
+        self.assertGreater(left(40), 0)
+        self.assertEqual(left(40), 1)
+        self.assertEqual(left(100), 1)
 
     def test_report_has_only_the_tail(self):
         rows = [hrow(tail=20)] * 10

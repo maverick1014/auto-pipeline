@@ -1540,3 +1540,24 @@ class TestRelayedFrom(ApprovalCase):
                 r = self.add_p(*extra)
                 self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
                 self.assertNotIn("p | ", self.todo())
+
+
+class TestFieldPrefixes(unittest.TestCase):
+    """estimate-improve fix order 2 A: a field name that is the prefix of another never matches it."""
+
+    def test_stage_is_not_the_stage_log(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
+        import importlib
+        import agent_checks
+        agent_checks = importlib.reload(agent_checks)
+        f = ["x", "big", "w", "est 80m", "est0 60m", "added 20m", "stage log brief 0, tests 30",
+             "started 2026-11-13 08:00", "stage tests since 2026-11-13 11:00"]
+        self.assertEqual(agent_checks.field_of(f, "stage"), "tests since 2026-11-13 11:00")
+        self.assertEqual(agent_checks.field_index(f, "stage"), 8)
+        self.assertEqual(agent_checks.field_of(f, "est"), "80m")
+        self.assertEqual(agent_checks.field_of(f, "stage log"), "brief 0, tests 30")
+        self.assertIsNone(agent_checks.field_of(f[:8], "stage"))
+
+
+if __name__ == "__main__":
+    unittest.main()

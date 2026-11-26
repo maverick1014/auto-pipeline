@@ -16,6 +16,16 @@ D12 retrain every 10 finished tasks (bin/agent_estimate.py, bin/agent-file.sh).
          "live_small": <error>, "live_big": <error>}
     each value as the backtest's measure lines print it (numbers; null for "-"). Every save of the file
     keeps the list (retrain included). A failure never stops todo done.
+D12b fix order 2 (main manager, 2026-11-26): todo done never waits for the estimator (on 182 real rows the
+    backtest took about 20 s and todo done about 52 s). After its record is written, todo done queues one
+    estimator run, a file in <git common dir>/agent_estimate.queue/, and starts the runner detached
+    (stdin, stdout and stderr not shared with the caller) unless one runs: <git common dir>/agent_estimate.lock/
+    is a directory holding the runner's pid in the file "pid"; a lock whose pid is dead is taken over. The runner
+    takes the queue files oldest first, for each: the retrain when due, then one measures entry; every line it
+    prints goes to <git common dir>/agent_estimate.log; it removes its lock when the queue is empty and looks once
+    more (a file queued meanwhile is never lost). A second todo done while it runs only queues its file. Nothing of
+    it ever changes todo done's exit code; todo done prints nothing about it and returns in under 3 seconds.
+    AGENT_ESTIMATE_WAIT=1: todo done waits for that run and prints its verdict line (as before fix order 2).
 D13 the slip flag (bin/agent-file.sh todo stage, bin/agent_board.py).
     todo stage on a todo line of this repo: after the stage is written, when the board's forecast of that
     line gives numbers (part C), the field " | p50 <YYYY-MM-DD HH:MM> at <YYYY-MM-DD HH:MM>" (the p50 clock
@@ -30,6 +40,7 @@ import json
 import os
 import re
 import sys
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +56,11 @@ MEASURE_KEYS = {"date", "tasks", "n", "winner", "work_bias", "work_spread", "end
 
 
 class LearnCase(EstimateCase):
+    """These tests read the verdict and the measures right after todo done: they wait for the run."""
+
+    def af(self, *args, **kwargs):
+        env = {"AGENT_FAKE_NOW": kwargs.pop("now", "2026-10-05 16:00"), "AGENT_ESTIMATE_WAIT": kwargs.pop("wait", "1")}
+        return self.repo.run("agent-file.sh", *args, env=env, **kwargs)
 
     def todo(self, name="t-new"):
         self.write("agent_todo.txt", "%s | big | one shell script | est 50m | opened 2026-10-05 15:35 | by main\n" % name)
@@ -151,6 +167,79 @@ class TestMeasuresKept(LearnCase):
         out = self.done()
         self.assertIn("todo done: t-new", out)
         self.assertEqual(self.model_text(), "{not json")
+
+
+# ---------------------------------------------------------------- D12b the background run
+
+class TestTodoDoneInTheBackground(LearnCase):
+
+    def git_dir(self, *parts):
+        return os.path.join(self.repo.dir, ".git", *parts)
+
+    def settle(self, timeout=240):
+        """Wait until the runner is gone and the queue is empty."""
+        end = time.time() + timeout
+        while time.time() < end:
+            q = self.git_dir("agent_estimate.queue")
+            if not os.path.isdir(self.git_dir("agent_estimate.lock")) and (not os.path.isdir(q) or not os.listdir(q)):
+                return
+            time.sleep(0.5)
+        self.fail("the estimator run did not end in %d s" % timeout)
+
+    def log(self):
+        path = self.git_dir("agent_estimate.log")
+        return open(path).read() if os.path.exists(path) else ""
+
+    def quick_done(self, name):
+        start = time.time()
+        out = self.assertOk(self.af("todo", "done", name, "--wait", "0", "--lane", "full", "--mock", "no",
+                                    "--type", "script", wait=""))
+        return out, time.time() - start
+
+    def test_todo_done_does_not_wait_for_the_backtest(self):
+        self.completed(steady(120))
+        self.model(checked=120, date=TODAY)
+        self.todo()
+        out, took = self.quick_done("t-new")
+        self.assertLess(took, 3.0, out)
+        self.assertIn("todo done: t-new", out)
+        self.assertEqual([l for l in self.lines(out) if l.startswith("estimate retrain")], [])
+        self.settle()
+        self.assertEqual(len(self.model_json()["measures"]), 1)
+        self.assertNotIn("Traceback", self.log())
+
+    def test_two_todo_done_in_a_row_lose_nothing(self):
+        self.completed(steady(120))
+        self.model(checked=120, date=TODAY)
+        self.write("agent_todo.txt", "".join(
+            "t-%d | big | one shell script | est 50m | opened 2026-10-05 15:35 | by main\n" % i for i in range(2)))
+        self.quick_done("t-0")
+        self.quick_done("t-1")
+        done = [l for l in self.repo.read("agent_completed.txt").splitlines() if " | t-0 | " in l or " | t-1 | " in l]
+        self.assertEqual(len(done), 2)
+        self.settle()
+        self.assertEqual(len(self.model_json()["measures"]), 2)
+        self.assertNotIn("Traceback", self.log())
+
+    def test_a_dead_runner_lock_is_taken_over(self):
+        self.completed(steady(40))
+        self.model(checked=40, date=TODAY)
+        os.makedirs(self.git_dir("agent_estimate.lock"))
+        with open(self.git_dir("agent_estimate.lock", "pid"), "w") as fh:
+            fh.write("999999\n")
+        self.todo()
+        self.quick_done("t-new")
+        self.settle()
+        self.assertEqual(len(self.model_json()["measures"]), 1)
+
+    def test_the_due_retrain_runs_in_the_background_too(self):
+        self.completed(steady(39))
+        self.model(checked=30, date=TODAY)
+        self.todo()
+        self.quick_done("t-new")
+        self.settle()
+        self.assertEqual(self.model_json()["checked_tasks"], 40)
+        self.assertIn("estimate retrain: kept v1", self.log())
 
 
 # ---------------------------------------------------------------- D13 the slip flag
