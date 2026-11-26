@@ -1674,7 +1674,8 @@ function subBadge(rowId){
    Each item's x, y end at its final box's bottom centre. */
 function plateLayout(items, opts){
   const n = items.length, out = new Array(n), blocks = (opts && opts.blocks) || [], bd = opts && opts.bounds, order = [], boxes = new Array(n).fill(null);
-  const hit = (a, b) => Math.min(a[2], b[2]) > Math.max(a[0], b[0]) && Math.min(a[3], b[3]) > Math.max(a[1], b[1]);
+  const GAP = 2;   // two plates keep at least this far apart (the panels need none)
+  const hit = (a, b, g) => { g = g || 0; return Math.min(a[2], b[2]) - Math.max(a[0], b[0]) > -g && Math.min(a[3], b[3]) - Math.max(a[1], b[1]) > -g; };
   const heads = items.map(it => ({ x:it.x, y:it.y }));
   for (let i = 0; i < n; i++) {
     const it = items[i];
@@ -1687,7 +1688,7 @@ function plateLayout(items, opts){
   const chipBox = (it, x, y) => [x - it.wChip / 2, y - it.h, x + it.wChip / 2, y];
   const free = (b, except) => {
     for (const q of blocks) if (hit(q, b)) return false;
-    for (let j = 0; j < n; j++) if (j !== except && boxes[j] && hit(boxes[j], b)) return false;
+    for (let j = 0; j < n; j++) if (j !== except && boxes[j] && hit(boxes[j], b, GAP)) return false;
     return true;
   };
   const inside = (ew, eh, p) => { const c = clampTo(ew, eh, p.x, p.y); return Math.abs(c.x - p.x) < 1e-6 && Math.abs(c.y - p.y) < 1e-6; };
@@ -1697,12 +1698,14 @@ function plateLayout(items, opts){
     const ew = fullW(it), eh = fullH(it);
     // it starts where its plate was laid out last frame (px, py), so a hovered chip stays under the pointer
     let p = clampTo(ew, eh, it.px != null ? it.px : heads[i].x, it.py != null ? it.py : heads[i].y);
-    const taken = c => blocks.some(q => hit(q, fullBox(it, c.x, c.y))) || boxes.some(q => q && hit(q, fullBox(it, c.x, c.y)));   // the panels, and the selected / hovered laid out before
+    const taken = c => blocks.some(q => hit(q, fullBox(it, c.x, c.y))) || boxes.some(q => q && hit(q, fullBox(it, c.x, c.y), GAP));   // the panels, and the selected / hovered laid out before (GAP apart)
     for (let k = 0; k < 12; k++) {
-      const me = fullBox(it, p.x, p.y), blk = blocks.find(q => hit(q, me)) || boxes.find(q => q && hit(q, me));
+      const me = fullBox(it, p.x, p.y);
+      let blk = blocks.find(q => hit(q, me)), g = 0;
+      if (!blk) { blk = boxes.find(q => q && hit(q, me, GAP)); g = GAP; }
       if (!blk) break;
       let best = null, bd2 = 1e18;
-      for (const c of [{ x:p.x, y:blk[3] + eh }, { x:blk[0] - ew / 2, y:p.y }, { x:blk[2] + ew / 2, y:p.y }]) {
+      for (const c of [{ x:p.x, y:blk[3] + eh + g }, { x:blk[0] - ew / 2 - g, y:p.y }, { x:blk[2] + ew / 2 + g, y:p.y }]) {
         if (!inside(ew, eh, c) || taken(c)) continue;
         const d = (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y);
         if (d < bd2) { bd2 = d; best = c; }
@@ -4648,8 +4651,9 @@ function pinOv(f, st){
   pin(o.tag, sx, y, true); y -= 26;
   if (o.mDirty) {   // measured once per change of the plate's content: the full plate, and the role chip alone
     const nmEl = o.tag.querySelector('.nm');
-    o.wFull = o.tag.offsetWidth; o.hTag = o.tag.offsetHeight || 22;
-    o.wChip = nmEl ? Math.max(0, o.wFull - nmEl.offsetWidth - 5) : o.wFull;
+    const rb = o.tag.getBoundingClientRect();   // as drawn (fractional), not the whole-pixel offsetWidth
+    o.wFull = rb.width; o.hTag = rb.height || 22;
+    o.wChip = nmEl ? Math.max(0, o.wFull - nmEl.getBoundingClientRect().width - 5) : o.wFull;
     o.mDirty = o.wFull === 0;
   }
   const doing = !far && c && st.mood === 'busy' ? doingText(c) : '';
@@ -4657,7 +4661,7 @@ function pinOv(f, st){
   pin(o.doing, sx, y, doing !== '');
   o.doingOn = doing !== '';
   if (doing) {   // its size is measured only when its text changes (syncFigs lays it out with the plate)
-    if (o.dMeasured !== doing) { o.dMeasured = doing; o.wd = o.doing.offsetWidth; o.hdRaw = o.doing.offsetHeight || 20; }
+    if (o.dMeasured !== doing) { o.dMeasured = doing; const db = o.doing.getBoundingClientRect(); o.wd = db.width; o.hdRaw = db.height || 20; }
     y -= 22;
   }
   const ask = c ? openAskFor(c.id) : openGovAskFor(terr);
