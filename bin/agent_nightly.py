@@ -853,6 +853,8 @@ def status_line(st):
     if not st:
         return "NIGHTLY: none"
     res = st.get("result", "")
+    if res == "override":
+        res = "override-%s" % st.get("outcome", "?")      # shown, but not green or red for any reader
     if res == "running":
         res, when = ("running" if running(st) else "none"), st.get("started", "")
         if res == "none":
@@ -860,7 +862,7 @@ def status_line(st):
     else:
         when = st.get("finished", "")
     return "NIGHTLY: %s %s %s%s" % (res, str(st.get("commit", ""))[:7], when,
-                                  (" on a %s" % st["where"] if st.get("where") else "") + (" (override)" if st.get("override") else ""))
+                                  (" on a %s" % st["where"] if st.get("where") else ""))
 
 
 def overridden():
@@ -892,8 +894,8 @@ def due(cwd):
     st = read_status(gitdir)
     if running(st):
         return False
-    if st and st.get("result") == "stopped":
-        st = None                                       # a stopped run is not done (C20)
+    if st and st.get("result") in ("stopped", "override"):
+        st = None                                       # a stopped run is not done (C20); an override run is no nightly
     t, last = now(), last_stamp(st)
     hour_at = t.replace(hour=number("nightly_hour", 22), minute=0, second=0, microsecond=0)
     if t >= hour_at and (last is None or last < hour_at):
@@ -1252,12 +1254,18 @@ def remote_stale(env, root):
             remote_cleanup(env, str(path), None)
 
 
-def remote_script(token):
+def weight_key():
+    """An override run is not the repo's full run: its time and memory never replace the 'nightly' weight."""
+    return "nightly-override" if overridden() else "nightly"
+
+
+def remote_script(token, key="nightly"):
     """The one line the connected machine runs in its worktree. Markers carry the commit it ran and the result;
     the output itself stays in a file inside the worktree, so a long run never has to be read back.
-    The token is inside this text only (never an argument, never exported) and the file removes itself first, so
-    the suite cannot learn it; every line of the suite's output that is echoed back is cleaned of control
-    characters and of "@@", so it can never form a marker."""
+    What is closed: the token is in this text only (never an argument, never exported, the file removes itself
+    first), the suite runs with every ORCA_* variable unset, and every echoed line of its output is cleaned of
+    control characters and of "@", so printed output can never form a marker. A deliberately hostile suite is out
+    of scope (it could read the open script or the shell history)."""
     lines = [
         'rm -f "$0"; T=%s; F=$(printf %%s "$1" | base64 -d); O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)' % token,
         "printf '@@NIGHTLY-%s %s\\n' BEGIN \"$T\"",
@@ -1266,16 +1274,19 @@ def remote_script(token):
         'G=./bin/agent-test-run.sh',
         '[ -x "$G" ] || G=$(ls -d "$HOME"/.claude/plugins/cache/*/auto-pipeline/*/bin/agent-test-run.sh 2>/dev/null '
         '| sort -V | tail -n 1)',
-        'if [ -n "$G" ] && [ -x "$G" ]; then "$G" --key nightly -- bash -c "$F" >"$O" 2>&1; '
+        'for V in $(env | sed -n "s/^\\(ORCA_[A-Za-z0-9_]*\\)=.*/\\1/p"); do unset "$V"; done',
+        'if [ -n "$G" ] && [ -x "$G" ]; then "$G" --key %s --' % key + ' bash -c "$F" >"$O" 2>&1; '
         'else bash -c "$F" >"$O" 2>&1; fi; X=$?',
-        'W=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get(\\"nightly\\",\\"\\"))" '
-        '"$(git rev-parse --git-common-dir)/agent_test_weights.json" 2>/dev/null)',
+        'W=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get(\\"%s\\",\\"\\"))" '
+        '"$(git rev-parse --git-common-dir)/agent_test_weights.json" 2>/dev/null)' % key,
         "printf '@@NIGHTLY-%s %s commit=%s exit=%s\\n' RESULT \"$T\" \"$R\" \"$X\"",
         "printf '@@NIGHTLY-%s %s %s\\n' WEIGHT \"$T\" \"$W\"",
-        "grep -E '^[[:space:]]*(FAIL|ERROR): |^(FAILED|ERROR) ' \"$O\" | head -n 200 | "
-        "while IFS= read -r L; do L=$(printf %s \"$L\" | LC_ALL=C tr -cd ' -~' | sed 's/@@/@ @/g'); "
+        "grep -aE '^[[:space:]]*(FAIL|ERROR): |^(FAILED|ERROR) ' \"$O\" > \"$O.f\"; "
+        "head -n 50 \"$O.f\" | "
+        "while IFS= read -r L; do L=$(printf %s \"$L\" | LC_ALL=C tr -cd ' -~' | sed 's/@/@ /g'); "
         "printf '@@NIGHTLY-FAIL %s %s\\n' \"$T\" \"$L\"; done",
-        "tail -n 3 \"$O\" | while IFS= read -r L; do L=$(printf %s \"$L\" | LC_ALL=C tr -cd ' -~' | sed 's/@@/@ @/g'); "
+        "N=$(wc -l < \"$O.f\" | tr -d ' '); [ \"$N\" -gt 50 ] && printf '@@NIGHTLY-FAIL %s ... and %s more failing rows\\n' \"$T\" \"$((N-50))\"; rm -f \"$O.f\"",
+        "tail -n 3 \"$O\" | while IFS= read -r L; do L=$(printf %s \"$L\" | LC_ALL=C tr -cd ' -~' | sed 's/@/@ /g'); "
         "printf '@@NIGHTLY-TAIL %s %s\\n' \"$T\" \"$L\"; done",
         "printf '@@NIGHTLY-%s %s\\n' END \"$T\"",
     ]
@@ -1358,7 +1369,7 @@ def remote_run(root, env, commit, cmd):
         # only letters, digits, + / = are typed into the remote shell: no quote of any shell can break the line
         b64 = lambda text: base64.b64encode(text.encode("utf-8")).decode("ascii")
         line = "printf %%s %s | base64 -d > .nightly-run.sh && bash .nightly-run.sh %s" % (
-            b64(remote_script(token)),
+            b64(remote_script(token, weight_key())),
             b64(os.environ.get("AGENT_NIGHTLY_CMD") or conf_at(root, commit, "full_cmd") or cmd))
         sent, why = orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--text", line,
                                "--enter", "--json"], 60)
@@ -1416,7 +1427,7 @@ def write_final(root, gitdir, base, prev, commit, result, failed, extra=None):
     final = {"started": base["started"], "commit": commit, "finished": stamp, "result": result, "failed": failed,
              "last_green": commit if result == "green" and not overridden() else base["last_green"]}
     if overridden():
-        final["override"] = True
+        final.update(result="override", outcome=result, override=True)   # neither green nor red: older readers see no finished run
     final.update(extra or {})
     if result != "green" and not any(is_note(f) for f in failed):
         try:
@@ -1464,7 +1475,7 @@ def do_remote(root, gitdir, env, commit, cmd, base, prev, either):
     if got:
         try:
             with locked():
-                write_weight(gitdir, "nightly", got[0], got[1])
+                write_weight(gitdir, weight_key(), got[0], got[1])
         except OSError:
             pass
     ok = res["state"] == "ok" and not res["failed"]
@@ -1552,7 +1563,7 @@ def do_run(cwd):
                                                        stdout=out_fh, stderr=subprocess.STDOUT)
                     try:
                         with locked():
-                            write_weight(gitdir, "nightly", int(round(time.time() - began)), mb)
+                            write_weight(gitdir, weight_key(), int(round(time.time() - began)), mb)
                     except OSError:
                         pass
                     with open(log, encoding="utf-8", errors="replace") as fh:
@@ -1581,7 +1592,7 @@ def do_run(cwd):
              "result": "green" if code == 0 else "red", "failed": failed,
              "last_green": commit if code == 0 and not overridden() else base["last_green"]}
     if overridden():
-        final["override"] = True
+        final.update(result="override", outcome="green" if code == 0 else "red", override=True)
     if code != 0:
         try:
             record_misses(root, gitdir, prev, failed, commit, stamp)
@@ -1718,6 +1729,9 @@ def release_ok(cwd):
     st = read_status(gitdir)
     if not target:
         print("NIGHTLY: release not ok: no commit to release; %s" % fix)
+        return 1
+    if st and st.get("result") == "override":
+        print("NIGHTLY: release not ok: the last run used a command override (AGENT_NIGHTLY_CMD), not the repo's full_cmd; %s" % fix)
         return 1
     if not st or st.get("result") not in ("green", "red"):
         print("NIGHTLY: release not ok: no finished nightly; %s" % fix)

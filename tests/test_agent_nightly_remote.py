@@ -367,7 +367,68 @@ class TestNeverGreenOnARedSuite(RemoteCase):
         rel = self.nightly("--release-ok")
         self.assertEqual(rel.returncode, 1, rel.stdout)
         self.assertIn("override", rel.stdout)
-        self.assertIn("(override)", self.nightly("--status").stdout)
+        self.assertIn("override-green", self.nightly("--status").stdout)
+        self.assertEqual(st["result"], "override")
+        self.assertEqual(st["outcome"], "green")
+
+    def test_an_override_record_reads_as_no_finished_run_for_an_older_release_ok(self):
+        self.machine()
+        self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_CMD": "true"})
+        st = self.status_file()
+        # 0.46.0's release_ok: only "green" or "red" is a finished nightly, and only "green" releases
+        self.assertNotIn(st["result"], ("green", "red"))
+
+    def test_an_override_run_does_not_make_the_real_nightly_not_due(self):
+        self.where("local")
+        self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_CMD": "true", "AGENT_FAKE_NOW": "2026-11-25 22:30"})
+        self.assertEqual(self.status_file()["result"], "override")
+        self.assertEqual(self.nightly("--due", env={"AGENT_FAKE_NOW": "2026-11-25 23:00"}).returncode, 0)
+
+    def test_many_failing_rows_still_leave_begin_in_the_pane(self):
+        self.machine()
+        many = "import sys\nfor i in range(300):\n    print('FAIL: test_%d (m.C)' % i)\nsys.exit(1)\n"
+        self.set_full("python3 many.py", {"many.py": many})
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertTrue(any("test_0" in f for f in st["failed"]), st)
+
+    def test_a_nul_in_the_output_does_not_lose_the_test_names(self):
+        self.machine()
+        nul = "import sys\nsys.stdout.buffer.write(b'x\\0y\\n')\nprint('FAIL: test_named (m.C)')\nsys.exit(1)\n"
+        self.set_full("python3 nul.py", {"nul.py": nul})
+        self.nightly("--start", "--wait")
+        self.assertTrue(any("test_named" in f for f in self.status_file()["failed"]), self.status_file())
+
+    def test_the_suite_runs_with_no_orca_variable(self):
+        self.machine()
+        self.set_full("echo \"FAIL: orca_vars=$(env | grep -c '^ORCA_')\"; exit 1")
+        self.nightly("--start", "--wait", env={"ORCA_USER_DATA_PATH": "x", "ORCA_TERMINAL_HANDLE": "y"})
+        self.assertTrue(any("orca_vars=0" in f for f in self.status_file()["failed"]), self.status_file())
+
+    def test_an_override_run_never_writes_the_nightly_weight_local(self):
+        self.where("local")
+        self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_CMD": "true"})
+        w = os.path.join(self.repo.dir, ".git", "agent_test_weights.json")
+        data = json.load(open(w)) if os.path.exists(w) else {}
+        self.assertNotIn("nightly", data)
+
+    def test_an_override_run_uses_its_own_weight_key_remote(self):
+        import agent_nightly
+        self.assertIn("--key nightly --", agent_nightly.remote_script("t"))
+        self.assertIn("--key nightly-override --", agent_nightly.remote_script("t", "nightly-override"))
+        os.environ["AGENT_NIGHTLY_CMD"] = "true"
+        try:
+            self.assertEqual(agent_nightly.weight_key(), "nightly-override")
+        finally:
+            del os.environ["AGENT_NIGHTLY_CMD"]
+        self.assertEqual(agent_nightly.weight_key(), "nightly")
+
+    def test_every_at_sign_is_broken_and_binary_output_is_read(self):
+        import agent_nightly
+        self.assertIn("sed 's/@/@ /g'", agent_nightly.remote_script("t"))
+        self.assertIn("grep -aE", agent_nightly.remote_script("t"))
 
     def test_the_command_override_never_counts_for_a_release_local(self):
         self.where("local")
@@ -375,6 +436,7 @@ class TestNeverGreenOnARedSuite(RemoteCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         st = self.status_file()
         self.assertTrue(st.get("override"), st)
+        self.assertEqual(st["result"], "override")
         self.assertEqual(st.get("last_green", ""), "")
         self.assertEqual(self.nightly("--release-ok").returncode, 1)
 
@@ -426,6 +488,9 @@ class TestNeverGreenOnARedSuite(RemoteCase):
         self.machine()
         other = os.path.join(self.repo.base, "clone2")
         subprocess.run(["git", "clone", "-q", self.repo.dir, other], check=True, capture_output=True)
+        origin = self.git("remote", "get-url", "origin").strip()
+        subprocess.run(["git", "-C", other, "remote", "set-url", "origin", origin], check=True, capture_output=True)
+        self.assertEqual(agent_nightly.repo_label(other), agent_nightly.repo_label(self.repo.dir))
         self.assertNotEqual(agent_nightly.host_tag(self.repo.dir), agent_nightly.host_tag(other))
         name = agent_nightly.remote_name(other, self.git("rev-parse", "HEAD"))
         live = os.path.join(self.remote_dir(), "wts", name)
