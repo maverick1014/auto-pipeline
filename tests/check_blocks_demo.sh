@@ -287,16 +287,21 @@ owner_said "the footer one can go live straight after it is done"
 echo "-- the late yes: todo target keeps the task instance and stores his words"
 expect 1 "$P/bin/agent-file.sh" todo target f1 production --owner-quote "the footer one can go live straight after it is done"
 expect 0 "$P/bin/agent-file.sh" todo target f1 production --owner-quote "the footer one can go live straight after it is done" --means "publish f1 (the footer fix) to production"
-echo "-- cut from the working branch: promote refuses it as it is"
+echo "-- cut from the working branch: the gate and promote refuse it as it is (FIX ORDER 2 S4)"
+expect 1 "$P/bin/agent-file.sh" checks gate f1 --dir "$W" --branch f1 --base origin/main
 expect 1 "$P/bin/agent-promote.sh" --task f1 --branch f1
-echo "-- only its own commits on top of the working-branch base: the builder moves it onto production, pushes, and every block runs again at the new head"
-git -C "$W" rebase -q --onto origin/main origin/ap-main-demo f1 && git -C "$W" push -q --force-with-lease origin f1
-for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P/bin/agent-file.sh" check f1 "$b" pass --by "f1 Deputy" --evidence demo >/dev/null); done
+echo "-- FIX ORDER 2 S1: a NEW fast-lane deputy: a new branch from production, the task's own commits cherry-picked, no rebase, no force push"
+W2="$T/walk6-f1-prod"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b f1-prod "$W2" origin/main
+git -C "$W2" cherry-pick $(git -C "$M" rev-list --reverse --no-merges origin/ap-main-demo..origin/f1) >/dev/null && git -C "$W2" push -q -u origin f1-prod
+echo "-- every planned block runs again at its head"
+for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W2" && "$P/bin/agent-file.sh" check f1 "$b" pass --by "f1-prod Deputy" --evidence demo >/dev/null); done
 launch f1 auto-pipeline:reviewer "f1 Review"
-"$P/bin/agent-file.sh" check f1 "PR REVIEW" pass --by "f1 Review" --commit "$(git -C "$W" rev-parse HEAD)" --evidence "read the diff at the new head" >/dev/null
-if "$P/bin/agent-file.sh" checks gate f1 --dir "$W" --branch f1 --base origin/main | grep -E "GATE|OWNER WORDS"; then
-  expect 0 "$P/bin/agent-promote.sh" --task f1 --branch f1
+"$P/bin/agent-file.sh" check f1 "PR REVIEW" pass --by "f1 Review" --commit "$(git -C "$W2" rev-parse HEAD)" --evidence "read the diff at the new head" >/dev/null
+if "$P/bin/agent-file.sh" checks gate f1 --dir "$W2" --branch f1-prod --base origin/main | grep -E "GATE|OWNER WORDS"; then
+  expect 0 "$P/bin/agent-promote.sh" --task f1 --branch f1-prod
 else echo "-- GATE REFUSED: no promote"; FAILS="$FAILS | walk 6 gate refused"; fi
+echo "-- the merge deputy deletes the old branch at cleanup"
+git -C "$M" push -q origin --delete f1 f1-prod; git -C "$M" worktree remove --force "$W"; git -C "$M" worktree remove --force "$W2"; git -C "$M" branch -q -D f1 f1-prod
 echo "production has the footer and not the other task: $(git -C "$M" show origin/main:footer.py 2>/dev/null | tr -d '\n') / $(git -C "$M" show origin/main:other.py >/dev/null 2>&1 && echo other-there || echo other-not-there)"
 cd "$T"
 

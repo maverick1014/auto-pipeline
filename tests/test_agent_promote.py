@@ -683,8 +683,9 @@ class TestPublishRecord(PromoteCase):
         log = os.path.join(self.repo.base, "verify.log")
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\n"
                                    "echo 'OWNER ORDER verified ~/.claude/projects/-r/s1.jsonl 2026-11-26 08:40'\n" % log)
-        sender = os.path.join(self.repo.base, "sender-repo")
-        os.makedirs(sender)
+        sys.path.insert(0, HERE)
+        import test_agent_checks as _tcr
+        sender = _tcr.sender_repo(self.repo.base)          # FIX ORDER 2 S3: a repo with a main manager lock
         self.green()
         r = self.promote("--relayed-from", sender)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -692,6 +693,34 @@ class TestPublishRecord(PromoteCase):
             args = fh.read().split("\n")
         self.assertEqual(args[args.index("--repo") + 1], sender)
         self.assertIn("| relayed from %s" % sender, r.stdout)
+
+
+class TestS4GateSaysIt(PromoteCase):
+    """FIX ORDER 2 S4: after todo target, a branch that still carries working-branch commits is refused by the gate
+    with the same line promote prints."""
+
+    def test_s4_the_gate_refuses_a_branch_cut_from_the_working_branch(self):
+        self.git("switch", "-q", "-c", "feat-l", self.wb)
+        self.put("src/footer.py", "f = 2\n")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "fix the footer")
+        self.git("push", "-q", "-u", "origin", "feat-l")
+        self.git("switch", "-q", self.wb)
+        self.ready_direct("feat-l", "feat-l")
+        wt = os.path.join(self.repo.base, "wt-feat-l")
+        self.git("worktree", "add", "-q", wt, "feat-l")
+        r = self.repo.run("agent-file.sh", "checks", "gate", "feat-l", "--dir", wt, "--branch", "feat-l", "--base", "origin/main")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("feat-l carries commits of %s that are not in main" % self.wb, r.stdout)
+        self.assertNotIn("GATE PASS", r.stdout)
+
+    def test_s4_a_branch_from_production_still_passes(self):
+        b = TestF1DirectPath.branch_from_main(self, "feat-n")
+        self.ready_direct(b, b)
+        wt = os.path.join(self.repo.base, "wt-feat-n")
+        self.git("worktree", "add", "-q", wt, b)
+        r = self.repo.run("agent-file.sh", "checks", "gate", b, "--dir", wt, "--branch", b, "--base", "origin/main")
+        self.assertNotIn("carries commits of", r.stdout)
 
 
 class TestG15Gather(PromoteCase):

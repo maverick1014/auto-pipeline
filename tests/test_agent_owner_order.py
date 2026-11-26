@@ -1137,5 +1137,40 @@ class TestQuestionBeforeTheAnswer(OwnerOrderCase):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("not in the assistant message before", r.stdout)
 
+
+class TestTheQuestionIsWhole(OwnerOrderCase):
+    """FIX ORDER 2 S2 (TELL f68297ca): the question is a WHOLE line or sentence of that assistant message, or its
+    numbered key line; a fragment is refused."""
+
+    MSG = "I will not publish anything yet. Shall I start the tests? yes/no"
+
+    def answer(self, question):
+        self.write([assistant(self.MSG, ago(6)), owner("ok", ago(5))])
+        return self.verify("ok", "--question", question)
+
+    def test_s2_a_fragment_is_refused(self):
+        for q in ("publish anything", "yes/no", "start the tests", "Shall I start"):
+            with self.subTest(q=q):
+                line = self.assertReason(self.answer(q))
+                self.assertIn("not in the assistant message before", line)
+
+    def test_s2_a_whole_sentence_counts(self):
+        self.assertEqual(self.answer("Shall I start the tests?").returncode, 0)
+        self.assertEqual(self.answer("I will not publish anything yet.").returncode, 0)
+
+    def test_s2_a_whole_line_counts(self):
+        self.assertEqual(self.answer(self.MSG).returncode, 0)
+
+    def test_s2_a_numbered_key_line_inside_a_longer_question_text(self):
+        dt = ago(5)
+        path = self.write([assistant("## To decide\n1. Publish the export total fix straight to production? "
+                                     "It passed the review.\n   A. yes\n   B. wait for my review", ago(6)), owner("1A", dt)])
+        self.assertVerified(self.verify("1A", "--question", QUESTION), path, dt)
+
+    def test_s2_a_fragment_of_the_key_line_is_refused(self):
+        self.write([assistant("1. Publish the export total fix straight to production? A. yes B. no", ago(6)),
+                    owner("1A", ago(5))])
+        self.assertReason(self.verify("1A", "--question", "1. Publish the export total fix?"))
+
 if __name__ == "__main__":
     unittest.main()

@@ -26,7 +26,7 @@ question ever appears in the hook output, except the output section
 ("## E. Output", right before the RULES line; tests/test_agent_start.py).
 The byte limits below are for the rest: pointer_part() drops the section.
 
-    --quiz    prints the 44 questions and nothing else
+    --quiz    prints the 45 questions and nothing else
     --answer  unchanged, still grades and still says PASS
 
 Compaction (stdin source "compact"), nothing else at all:
@@ -508,11 +508,11 @@ class TestResourcesHelper(StartCase):
 
 class TestQuizStillWorks(StartCase):
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B")   # check-blocks: Q38 is a blocks question now
+               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B 45C")   # check-blocks: Q38 is a blocks question now
 
     def test_all_right_is_a_pass(self):
         out = self.assertOk(self.start("--answer", self.ANSWERS))
-        self.assertIn("44/44 PASS", out)
+        self.assertIn("45/45 PASS", out)
 
     def test_one_wrong_is_a_fail(self):
         result = self.start("--answer", self.ANSWERS.replace("1A", "1B"))
@@ -534,7 +534,7 @@ class TestNoQuizForSubagents(StartCase):
     def pass_quiz(self, sid="sess-1"):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid(sid)))
-        self.assertIn("44/44 PASS", out)
+        self.assertIn("45/45 PASS", out)
 
     def test_a_pass_writes_the_session_marker(self):
         self.pass_quiz()
@@ -583,7 +583,7 @@ class TestNoQuizForSubagents(StartCase):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid()))
         self.assertEqual(self.lines(out),
-                         ["QUIZ RESULT: 44/44 PASS", "You may start work."])
+                         ["QUIZ RESULT: 45/45 PASS", "You may start work."])
 
     def test_it_still_fits_the_cap(self):
         self.pass_quiz()
@@ -1082,7 +1082,7 @@ NAMES = ["DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "
 
 
 ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-           "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B")
+           "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B 45C")
 
 
 QUIZ_Q6 = """Q6. You are one of four agents. You changed files under api/auth/. Which tests do you run?
@@ -1191,6 +1191,14 @@ QUIZ_Q44 = """Q44. You doubt whether two tasks touch the same code. A quick chec
   D. Run both and hope"""
 
 
+# FIX ORDER 2 S4 (TELL f68297ca): the late yes
+QUIZ_Q45 = """Q45. A task is built from the working branch and not merged yet. Now the owner writes "the footer one can go live after done". You:
+  A. Push its branch straight to production
+  B. Add the task again with --target production
+  C. todo target <task> production with his words (--means); a new fast-lane deputy makes a new branch from production with the task's own commits (cherry-pick); every planned block runs again at its head; then promote --task with the new branch
+  D. Tell him it must wait for the next working-branch publish"""
+
+
 LEVEL_WORDS = re.compile(r"(?i)(\brisk types?\b|(?-i:\btype [A-D]\b)|\b[A-D] = (?:text|ui|logic|danger)\b|--level\b|"
                          r"\btodo level\b|--declared\b|\bRAISE\b|REQUIRED TYPE|\blevel [0-4]\b|\(R8 check)")
 
@@ -1208,22 +1216,22 @@ class TestQuiz(ScriptCase):
     def test_the_changed_questions(self):
         out = self.quiz()
         for n, text in ((6, QUIZ_Q6), (7, QUIZ_Q7), (8, QUIZ_Q8), (9, QUIZ_Q9), (16, QUIZ_Q16), (23, QUIZ_Q23), (25, QUIZ_Q25), (35, QUIZ_Q35), (38, QUIZ_Q38), (39, QUIZ_Q39),
-                        (40, QUIZ_Q40), (41, QUIZ_Q41), (42, QUIZ_Q42), (43, QUIZ_Q43), (44, QUIZ_Q44)):
+                        (40, QUIZ_Q40), (41, QUIZ_Q41), (42, QUIZ_Q42), (43, QUIZ_Q43), (44, QUIZ_Q44), (45, QUIZ_Q45)):
             with self.subTest(q=n):
                 self.assertEqual(self.question(out, n), text)
 
     def test_no_level_words_in_the_quiz(self):
         self.assertEqual(LEVEL_WORDS.findall(self.quiz()), [])
 
-    def test_44_and_the_new_key_passes(self):
+    def test_45_and_the_new_key_passes(self):
         out = self.quiz()
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 44)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 45)
         r = self.repo.run("agent-start.sh", "--answer", ANSWERS)
-        self.assertIn("QUIZ RESULT: 44/44 PASS", r.stdout)
+        self.assertIn("QUIZ RESULT: 45/45 PASS", r.stdout)
 
     def test_the_approval_questions_name_their_rule(self):
         # approval-design (section 53 D): the cases live in R8, the quick check in P1
-        for good, code in (("40B", "R8"), ("41C", "R8"), ("42A", "R8"), ("43D", "R8"), ("44B", "P1")):
+        for good, code in (("40B", "R8"), ("41C", "R8"), ("42A", "R8"), ("43D", "R8"), ("44B", "P1"), ("45C", "R8")):
             for letter in "ABCD":
                 wrong = good[:-1] + letter
                 if wrong == good:
@@ -2560,7 +2568,7 @@ class TestTheQuiz(ScriptCase):
 
     script = "agent-start.sh"
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B")   # check-blocks: Q38 is a blocks question now
+               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B 45C")   # check-blocks: Q38 is a blocks question now
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
@@ -2576,13 +2584,13 @@ class TestTheQuiz(ScriptCase):
 
     def test_the_quiz_says_34(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 44 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 44D"', out)
+        self.assertIn("=== QUIZ — answer all 45 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 45D"', out)
 
     def test_c_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer",
                                           self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 44/44 PASS", out)
+        self.assertIn("QUIZ RESULT: 45/45 PASS", out)
 
     def test_another_letter_fails_and_names_w8(self):
         for wrong in ("32A", "32B", "32D"):
@@ -3003,9 +3011,9 @@ class TestQuiz36(ScriptCase):
 
     def test_36_questions(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 44 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 44D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 44)
+        self.assertIn("=== QUIZ — answer all 45 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 45D"', out)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 45)
 
     def test_q35_is_the_release_run(self):
         # check-blocks 2026-11-25 (owner 1A): Q35 asks who fixes a failing release run (Max agents is gone)
@@ -3021,7 +3029,7 @@ class TestQuiz36(ScriptCase):
 
     def test_all_pass(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", ANSWERS))
-        self.assertIn("QUIZ RESULT: 44/44 PASS", out)
+        self.assertIn("QUIZ RESULT: 45/45 PASS", out)
 
     def test_wrong_letters_name_the_rule(self):
         for good, rule_code, wrongs in (("35B", "R8", ("35A", "35C", "35D")),   # the release run (R8), check-blocks section 27
@@ -3038,14 +3046,14 @@ class TestQuiz36(ScriptCase):
 
     def test_usage_and_readme_say_36(self):
         src = read("bin", "agent-start.sh")
-        self.assertIn("print the 44 quiz questions", src)
-        self.assertIn('--answer "1A 2D ... 44D"', src)
-        self.assertIn("44-question quiz", read("PRINCIPLES.md"))
+        self.assertIn("print the 45 quiz questions", src)
+        self.assertIn('--answer "1A 2D ... 45D"', src)
+        self.assertIn("45-question quiz", read("PRINCIPLES.md"))
 
 
 class TestQuiz34(ScriptCase):
     ANSWERS = ("1A 2D 3C 4B 5D 6D 7C 8C 9A 10D 11C 12C 13D 14C 15D 16B 17C "
-               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B")   # check-blocks: Q38 is a blocks question now
+               "18D 19C 20A 21D 22C 23B 24D 25B 26D 27B 28B 29B 30B 31B 32C 33B 34B 35B 36C 37C 38B 39B 40B 41C 42A 43D 44B 45C")   # check-blocks: Q38 is a blocks question now
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz"))
@@ -3063,13 +3071,13 @@ class TestQuiz34(ScriptCase):
 
     def test_34_questions(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 44 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 44D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 44)
+        self.assertIn("=== QUIZ — answer all 45 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 45D"', out)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 45)
 
     def test_b_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 44/44 PASS", out)
+        self.assertIn("QUIZ RESULT: 45/45 PASS", out)
 
     def test_another_letter_fails_and_names_w10(self):
         for wrong in ("34A", "34C", "34D"):
@@ -3085,13 +3093,13 @@ class TestQuiz34(ScriptCase):
 
     def test_the_principles_say_34(self):
         text = read("PRINCIPLES.md")
-        self.assertIn("44-question quiz", text)
+        self.assertIn("45-question quiz", text)
         self.assertNotIn("33-question quiz", text)
 
     def test_the_usage_lines_say_34(self):
         src = read("bin", "agent-start.sh")
-        self.assertIn("print the 44 quiz questions", src)
-        self.assertIn('--answer "1A 2D ... 44D"', src)
+        self.assertIn("print the 45 quiz questions", src)
+        self.assertIn('--answer "1A 2D ... 45D"', src)
         self.assertNotIn("33B\"", src)
 
 

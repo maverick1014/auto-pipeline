@@ -313,7 +313,7 @@ class TestPrinciplesW13CloseCase(unittest.TestCase):
     def test_the_quiz_still_has_twenty_nine_questions(self):
         text = read("bin", "agent-start.sh")
         # test-levels (2026-11-20): Q38 and Q39 (R8); approval-design: Q40-Q44
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 44)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 45)
 
 
 class TestCloseCaseSkill(unittest.TestCase):
@@ -1680,7 +1680,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
     def test_the_map_names_the_new_pieces(self):
         f = self.text().split("## F. Map")[1]
         for phrase in ("bin/agent_blocks.py", "bin/agent-level.sh", "Check deputy", "agent_repo.conf",
-                       "44-question quiz", "agent-file.sh next", "checks gate"):
+                       "45-question quiz", "agent-file.sh next", "checks gate"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, f)
 
@@ -3744,10 +3744,14 @@ class TestFixOrder1Texts(unittest.TestCase):
 
     def test_r2_the_late_yes_case(self):
         r8 = self.r8()
-        for phrase in ("todo target <task> production", "rebase --onto", "PR REVIEW runs again at the new head",
+        # FIX ORDER 2 S1: no rebase, no force push: a new fast-lane deputy cherry-picks onto a new branch
+        for phrase in ("todo target <task> production", "a new fast-lane deputy", "a new branch from the production branch",
+                       "cherry-pick", "every planned block runs again at its head", "<task>-publish",
                        "depends on other unreleased work"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r8)
+        self.assertNotIn("rebase --onto", read("PRINCIPLES.md"))
+        self.assertNotIn("force", r8.lower().replace("enforce", ""))
         self.assertIn("todo target", read(*DISPATCH))
 
     def test_r3_the_relayed_order(self):
@@ -3778,4 +3782,41 @@ class TestFixOrder1Texts(unittest.TestCase):
         for opt in ("--owner-quote", "--means", "--question"):
             with self.subTest(opt=opt):
                 self.assertIn(opt, line)
+
+
+class TestFixOrder2Texts(unittest.TestCase):
+    """FIX ORDER 2 (TELL f68297ca) S1-S4: the rule text."""
+
+    def r8(self):
+        return principles_between("R8. ", "## B. Work")
+
+    def test_s1_the_fast_lane_deputy_case(self):
+        dep = read("agents", "fast-lane-deputy.md")
+        for phrase in ("cherry-pick", "git switch -c <new branch> origin/<production branch>",
+                       "git rev-list --reverse --no-merges origin/<working branch>..origin/<branch>",
+                       "<task>-publish", "conflict"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, dep)
+        self.assertNotIn("rebase", dep)
+
+    def test_s1_the_merge_deputy_deletes_the_old_branch(self):
+        self.assertIn("old branch", read(*DEPUTY))
+
+    def test_s2_where_the_question_stands(self):
+        self.assertIn("the question stands in the assistant message right before his prompt", self.r8())
+        self.assertIn("a whole line or sentence", self.r8())
+
+    def test_s3_another_machine_goes_to_the_owner(self):
+        for text in (self.r8(), principles_between("W12. ", "W13. ")):
+            with self.subTest(rule=text[:4]):
+                line = next(l for l in text.splitlines() if "another machine" in l and "cannot be verified here" in l)
+                self.assertIn("owner", line)
+        self.assertIn("main manager lock", self.r8())
+
+    def test_s4_usage_shows_relayed_from(self):
+        head = read("bin", "agent-file.sh").split("\nset ")[0]
+        for start in ("agent-file.sh todo checks", "todo add also takes"):
+            with self.subTest(line=start):
+                line = next(l for l in head.splitlines() if start in l and "--owner-quote" in l)
+                self.assertIn("--relayed-from", line)
 

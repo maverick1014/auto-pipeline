@@ -1400,6 +1400,17 @@ class TestApprovalPrinted(ApprovalCase):
 
 # ---------------------------------------------------------------- FIX ORDER 1 (TELL cdacc0c5) R2, R3
 
+def sender_repo(base, name="sender-repo", mark="agent_main.lock"):
+    """A git repo with a main manager lock (or the closed mark of one): what a relay comes from (FIX ORDER 2 S3)."""
+    path = os.path.join(base, name)
+    os.makedirs(path)
+    subprocess.run(["git", "init", "-q", path], check=True)
+    if mark:
+        with open(os.path.join(path, ".git", mark), "w") as fh:
+            fh.write("4242 2026-11-26 08:00 s1 term_m\n")
+    return path
+
+
 @only_own
 class TestTodoTarget(ApprovalCase):
     """R2: a yes that comes after the task was added: `todo target <task> production` keeps the task instance."""
@@ -1438,6 +1449,16 @@ class TestTodoTarget(ApprovalCase):
         self.assertIn('OWNER WORDS publish: "2. need to publish direct after done" (typed 2026-11-26 08:40) read as: '
                       'publish task 2 (t) to production', r.stdout.splitlines())
 
+    def test_s1_it_prints_the_next_step(self):
+        # FIX ORDER 2 S1: no rebase; a new fast-lane deputy cherry-picks the task's own commits onto a new branch
+        r = self.target("--owner-quote", "the footer one can go live", "--means", "publish t to production")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        nxt = [l for l in r.stdout.splitlines() if l.startswith("next: ")]
+        self.assertEqual(len(nxt), 1, r.stdout)
+        for word in ("new fast-lane deputy", "cherry-pick", "every planned block", "agent-promote.sh --task t --branch"):
+            with self.subTest(word=word):
+                self.assertIn(word, nxt[0])
+
     def test_r2_refusals_change_nothing(self):
         before = self.todo()
         for args in (("todo", "target", "t", "production", "--owner-quote", "the footer one can go live"),   # no --means
@@ -1460,8 +1481,7 @@ class TestRelayedFrom(ApprovalCase):
 
     def setUp(self):
         super().setUp()
-        self.sender = os.path.join(self.repo.base, "sender-repo")
-        os.makedirs(self.sender)
+        self.sender = sender_repo(self.repo.base)      # FIX ORDER 2 S3: a repo whose main manager lock exists
 
     def repo_arg(self, args):
         return args[args.index("--repo") + 1]
@@ -1493,6 +1513,22 @@ class TestRelayedFrom(ApprovalCase):
         self.ok("todo", "target", "t", "production", "--owner-quote", "the footer one can go live", "--means",
                 "publish t to production", "--relayed-from", self.sender)
         self.assertEqual(self.repo_arg(self.calls()[-1]), self.sender)
+
+    def test_s3_the_folder_must_be_a_repo_with_a_main_manager(self):
+        plain = os.path.join(self.repo.base, "plain-folder")
+        os.makedirs(plain)
+        no_lock = sender_repo(self.repo.base, "no-lock-repo", mark=None)
+        for folder in (plain, no_lock):
+            with self.subTest(folder=folder):
+                r = self.add_p("--owner-quote", "merge the export fix to main after done", "--means", "publish p",
+                               "--relayed-from", folder)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("main manager", r.stdout + r.stderr)
+                self.assertNotIn("p | ", self.todo())
+        closed = sender_repo(self.repo.base, "closed-repo", mark="agent_main.closed")
+        r = self.add_p("--owner-quote", "merge the export fix to main after done", "--means", "publish p",
+                       "--relayed-from", closed)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_r3_bad_uses_are_refused(self):
         for extra in (("--owner-quote", "merge the export fix to main", "--means", "publish p", "--relayed-from", "rel/path"),
