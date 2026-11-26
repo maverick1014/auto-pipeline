@@ -1677,7 +1677,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
     def test_the_map_names_the_new_pieces(self):
         f = self.text().split("## F. Map")[1]
         for phrase in ("bin/agent_blocks.py", "bin/agent-level.sh", "Check deputy", "agent_repo.conf",
-                       "39-question quiz", "agent-file.sh next", "checks gate"):
+                       "44-question quiz", "agent-file.sh next", "checks gate"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, f)
 
@@ -1808,7 +1808,7 @@ class TestThisRepo(unittest.TestCase):
         c = self.conf()
         self.assertEqual(c["version"], "1")
         self.assertEqual(c["related_cmd"], "python3 -m unittest {modules}")
-        self.assertEqual(c["full_cmd"], "python3 -m unittest discover -s tests -t .")
+        self.assertEqual(c["full_cmd"], "python3 tests/run2.py")   # approval-design F: 7.6 min, not 47
         self.assertTrue(c["build_cmd"].startswith("python3 -m compileall -q"))
         # test-slim-2: the plugin layout pins (TestPluginFolders, TestPluginManifest, ...) live in test_rules_text.py
         self.assertIn("tests/test_rules_text.py", c["guard_tests"].split(","))
@@ -3231,7 +3231,7 @@ class TestA9NoSecondYes(unittest.TestCase):
     def test_three_places(self):
         for text in (principles_between("R8. ", "W1. "), read("skills", "dispatch", "SKILL.md"), read("skills", "merge", "SKILL.md")):
             self.assertNotIn("the owner's yes", text)
-        self.assertIn("his verified words at dispatch that name the publish are his final yes", principles_between("R8. ", "W1. "))
+        self.assertIn("his verified words at dispatch, read as the publish of that task, are his final yes", principles_between("R8. ", "W1. "))   # approval-design
 
 
 class TestWalks(unittest.TestCase):
@@ -3258,7 +3258,7 @@ class TestA11ToA18Texts(unittest.TestCase):
 
     def test_a15_dispatch_template(self):
         step2 = [l for l in read("skills", "dispatch", "SKILL.md").splitlines() if l.startswith("2. Small task")][0]
-        self.assertIn('--target production --owner-quote "yes, publish <task> to production"', step2)   # section 51 H2: the exact sentence
+        self.assertIn('--target production --owner-quote "<his words>" --means "publish <task> to production"', step2)   # approval-design: no fixed sentence
 
     def test_a16_no_diff_read(self):
         sys.path.insert(0, os.path.join(ROOT, "bin"))
@@ -3285,7 +3285,7 @@ class TestG13G14(unittest.TestCase):
 
     def test_g14_the_deputy_checks_before_force(self):
         dep = read("agents", "merge-deputy.md")
-        self.assertIn("git -C <worktree path> log --oneline origin/<target>..HEAD", dep)
+        self.assertIn("git -C <worktree path> log --oneline origin/<working branch>..HEAD", dep)   # approval-design E: <target> is no brief field
         i = dep.index("worktree remove --force")
         self.assertIn("clean", dep[max(0, i - 600):i])
 
@@ -3612,6 +3612,7 @@ class TestMergeSkillLine(unittest.TestCase):
         self.assertEqual(len(hits), 1, "one line with bin/agent-release.sh --push")
         # check-blocks section 28 (owner 2026-11-25): the publish is agent-promote.sh, the release build right after
         self.assertIn("agent-promote.sh --owner-quote", hits[0])
+        self.assertIn("--means", hits[0])   # approval-design: what the main manager read from his words
         self.assertIn("right after", hits[0])
         self.assertIn("auto-pipeline", hits[0])
 
@@ -3631,14 +3632,84 @@ class TestAgentText(unittest.TestCase):
 
 
 class TestH2Texts(unittest.TestCase):
-    def test_dispatch_shows_the_sentence(self):
-        d = read("skills", "dispatch", "SKILL.md")
-        self.assertIn('yes, publish <task> to production', d)
-        self.assertIn("yes, skip <BLOCK> for <task>", read("PRINCIPLES.md") + d)
+    def test_no_fixed_sentence_is_left(self):
+        # approval-design (section 53 A1): the owner picked C, the interim sentences of section 51 H2 go
+        texts = [("PRINCIPLES.md",), DISPATCH, MERGE, DEPUTY, ("README.md",), ("agents", "reviewer.md"),
+                 ("agents", "fast-lane-deputy.md"), ("skills", "close-case", "SKILL.md")]
+        for parts in texts:
+            text = read(*parts)
+            for gone in ("yes, publish", "yes, skip", "type exactly", "types exactly", "the one sentence"):
+                with self.subTest(file="/".join(parts), gone=gone):
+                    self.assertNotIn(gone, text)
 
     def test_the_open_design_section(self):
         req = read("requirements", "check-blocks.md")
         self.assertIn("## 52. Approval design, open for the owner", req)
+        self.assertIn("## 53. Approval design: the owner picked C", req)
+
+
+class TestApprovalCases(unittest.TestCase):
+    """approval-design (requirements/check-blocks.md section 53 B, owner 2026-11-26): the agent reads his words;
+    the cases are written once in R8, R1, W9, W12 and skills/dispatch agree."""
+
+    def r8(self):
+        return principles_between("R8. ", "## B. Work")
+
+    def test_r8_holds_the_rule(self):
+        r8 = self.r8()
+        for phrase in ("reads his words", "no fixed sentence", "no word list", "--owner-quote", "--means",
+                       "--question", "under 20 characters", "whole prompt", "OWNER WORDS",
+                       "PR REVIEW and OWNER SIGN are never removed"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, r8)
+
+    def test_r8_holds_the_five_cases(self):
+        r8 = self.r8()
+        for phrase in ("numbered batch", "2. publish direct after done, others wait for my review",
+                       "by its description", "exactly one fits", "two similar tasks", "check first",
+                       "one question that names both", "is it ready to publish?", "publish next week",
+                       "a refusal", "publish after the tests pass", "short answer to a numbered question"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, r8)
+
+    def test_the_cases_are_written_once(self):
+        self.assertEqual(read("PRINCIPLES.md").count("is it ready to publish?"), 1)
+
+    def test_r1_w9_w12_point_to_the_cases(self):
+        for start, end in (("R1. ", "R2. "), ("W9. ", "W10. "), ("W12. ", "W13. ")):
+            with self.subTest(rule=start):
+                self.assertIn("approval cases", principles_between(start, end))
+        self.assertNotIn("that name the action", principles_between("W12. ", "W13. "))
+
+    def test_r8_promote_line_takes_means(self):
+        self.assertIn('agent-promote.sh --owner-quote "<his words>" --means "<what you read>"', self.r8())
+
+    def test_r8_says_who_launches_the_reviewer(self):
+        r8 = self.r8()
+        self.assertIn("PR REVIEW, FLOW CHECK and UI CHECK count only from a reviewer or check deputy the main manager launched", r8)
+
+    def test_dispatch_agrees(self):
+        d = read(*DISPATCH)
+        for phrase in ("approval cases", "--means", "--question", "numbered batch", "by its description",
+                       "two similar tasks", "publish next week"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, d)
+
+    def test_merge_repeats_the_owner_words(self):
+        self.assertIn("OWNER WORDS", read(*MERGE))
+
+    def test_the_deputy_fast_lane_case(self):
+        dep = read(*DEPUTY)
+        self.assertNotIn("origin/<target>", dep)
+        line = next(l for l in dep.splitlines() if "**a fast-lane subagent**" in l)
+        self.assertIn("origin/<working branch>..HEAD", line)
+        self.assertIn("origin/<production branch>..HEAD", line)
+        self.assertIn("git branch -D <branch>", line)
+
+    def test_section_f_names_md_slim(self):
+        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("Agent skills:"))
+        self.assertIn("/auto-pipeline:md-slim", line)
+        self.assertIn("/auto-pipeline:teacher-teach-me", line)   # TELL 9594c165: the skill main got in e198fbe
 
 
 class TestH3ToH5(unittest.TestCase):

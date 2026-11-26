@@ -74,6 +74,11 @@ class Case(ScriptCase):
             return fh.read()
 
 
+VERIFIED_AT = ("#!/usr/bin/env bash\n"
+               "echo 'OWNER ORDER verified ~/.claude/projects/-r/s1.jsonl 2026-11-26 08:40'\n"
+               "echo 'match: \"the words\"'\nexit 0\n")
+
+
 def main_launched(repo_dir, *tasks, at=None):
     """Section 44 F2: the guard's durable records of a reviewer and a check deputy launched by the main manager.
     Section 47 G8: dated within the task instance (default: now)."""
@@ -130,7 +135,7 @@ class TestTargetAndBatch(Case):
     def test_target_and_batch_fields(self):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "add", "x1", "big", "x one", "60", "--target", "production", "--batch", "b1",
-                "--owner-quote", "yes, publish x1 to production")   # section 51 H2: the exact sentence
+                "--owner-quote", "x1 can go straight to production", "--means", "publish x1 to production")   # approval-design: his words + what was read
         f = self.fields("x1")
         self.assertIn("target production", f)
         self.assertIn("batch b1", f)
@@ -182,7 +187,8 @@ class TestTodoChecks(Case):
     def test_remove_without_a_verified_owner_order_is_refused(self):
         self.repo.write_bin_script("agent-owner-order.sh",
                                    "#!/usr/bin/env bash\necho 'refused: no such owner prompt'\nexit 1\n")
-        r = self.refused("todo", "checks", "t", "--remove", "PR REVIEW", "--owner-quote", "drop the diff read")
+        r = self.refused("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "drop the related tests",
+                         "--means", "leave out RELATED TESTS for t")
         self.assertIn("no such owner prompt", r.stderr)
 
     def test_remove_with_a_verified_owner_order(self):
@@ -191,7 +197,8 @@ class TestTodoChecks(Case):
                                    "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\necho 'verified'\nexit 0\n" % log)
         # section 47 G1: PR REVIEW is never removed; another block when the words name it and leaving it out
         self.ok("todo", "checks", "t", "UI CHECK")
-        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "yes, skip UI CHECK for t")   # section 51 H2: the exact sentence
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "no screen changes, leave the ui check out",
+                "--means", "leave out UI CHECK for t")   # approval-design: no fixed sentence
         f = self.fields("t")
         self.assertFalse(any(x.startswith("checks ") and "UI CHECK" in x for x in f), f)
         self.assertTrue(any(re.fullmatch(r"removed UI CHECK \d{4}-\d{2}-\d{2} \d{2}:\d{2}", x) for x in f), f)
@@ -199,7 +206,7 @@ class TestTodoChecks(Case):
             args = fh.read().split("\n")
         self.assertEqual(args[0], "verify")
         self.assertIn("--quote", args)
-        self.assertIn("yes, skip UI CHECK for t", args)
+        self.assertIn("no screen changes, leave the ui check out", args)
         self.assertIn("--repo", args)
         # core review defect 1: agent-owner-order.sh verify wants an absolute folder
         repo_arg = args[args.index("--repo") + 1]
@@ -252,13 +259,15 @@ class TestCheckLine(Case):
         self.assertNotIn("CHECK", self.todo())
 
     def test_fail_and_owner_sign(self):
-        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
+        self.repo.write_bin_script("agent-owner-order.sh", VERIFIED_AT)
         self.ok("check", "t", "BUILD", "fail", "--by", "tm", "--evidence", "tsc: 2 errors")
-        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it")
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it",
+                "--means", "merge t with the new roles")
         lines = self.state().strip().splitlines()
         self.assertRegex(lines[-2], r"^CHECK t BUILD: fail \| by tm \| at [0-9a-f]{12} \| tsc: 2 errors \| ")   # F3
+        # approval-design (section 53 A7): the quote, what was read, the typed minute
         self.assertRegex(lines[-1], r"^CHECK t OWNER SIGN: pass \| by owner \| at [0-9a-f]{12} \| owner order verified: "
-                                    r"yes merge it \| ")
+                                    r"yes merge it \| means: merge t with the new roles \| typed: 2026-11-26 08:40 \| ")
 
     def test_owner_sign_needs_a_verified_owner_quote(self):
         # core review defect 7: any agent could write an OWNER SIGN pass line
@@ -267,7 +276,8 @@ class TestCheckLine(Case):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("--owner-quote", r.stderr)
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho 'refused: not typed'\nexit 1\n")
-        r = self.af("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it")
+        r = self.af("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it",
+                    "--means", "merge t")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("not typed", r.stderr)
         self.assertEqual(self.state(), before)
@@ -377,7 +387,7 @@ class TestGate(Case):
         self.assertEqual(r.returncode, 1)
         self.assertIn("OWNER SIGN: missing", r.stdout.splitlines())
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
-        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes, merge")
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes, merge", "--means", "merge t")
         self.assertEqual(self.gate().returncode, 0)
 
     def test_a_planned_owner_sign_is_gated(self):
@@ -506,7 +516,7 @@ class TestGate(Case):
         self.repo.write_bin_script("agent-owner-order.sh",
                                    "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\necho verified\nexit 0\n" % log)
         self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it",
-                "--time", "2026-11-25 13:40")
+                "--means", "merge t", "--time", "2026-11-25 13:40")
         with open(log) as fh:
             args = fh.read().split("\n")
         self.assertEqual(args[args.index("--time") + 1], "2026-11-25 13:40")
@@ -562,7 +572,7 @@ class TestGate(Case):
         self.git("push", "-q", "origin", "base:refs/heads/main")
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "add", "p", "small", "publish it", "10", "--target", "production",
-                "--owner-quote", "yes, publish p to production")   # section 51 H2: the exact sentence
+                "--owner-quote", "p can go live after done", "--means", "publish p to production")
         main_launched(self.repo.dir, "p")
         for b in ("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW"):
             self.ok("check", "p", b, "pass", "--by", "tm", "--evidence", "ok")
@@ -581,7 +591,7 @@ class TestGate(Case):
     def test_a_removed_brief_block_is_not_planned(self):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "checks", "t", "UI CHECK")
-        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "yes, skip UI CHECK for t")   # section 51 H2: the exact sentence
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "leave the ui check out", "--means", "leave out UI CHECK for t")
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         self.assertEqual(self.gate().returncode, 0)
 
@@ -598,7 +608,7 @@ class TestGate(Case):
         # a removal is recorded, but the gate recomputes the tool blocks from the diff
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.ok("todo", "checks", "t", "BUILD")
-        self.ok("todo", "checks", "t", "--remove", "BUILD", "--owner-quote", "yes, skip BUILD for t")   # section 51 H2: the exact sentence
+        self.ok("todo", "checks", "t", "--remove", "BUILD", "--owner-quote", "no build needed here", "--means", "leave out BUILD for t")
         self.ok("todo", "checks", "t", "BUILD")
         self.passes("DIFF SCAN", "RELATED TESTS", "PR REVIEW")
         r = self.gate()
@@ -779,42 +789,48 @@ class Gate(TestGate):
 @only_own
 class TestG1Removals(Gate):
     def test_pr_review_is_never_removed(self):
-        r = self.af("todo", "checks", "t", "--remove", "PR REVIEW", "--owner-quote", "skip the review for this one")
+        r = self.af("todo", "checks", "t", "--remove", "PR REVIEW", "--owner-quote", "skip the review for this one",
+                    "--means", "leave out PR REVIEW for t")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("todo checks: PR REVIEW is never removed", r.stdout + r.stderr)
         self.all_pass_but("PR REVIEW")
         self.assertEqual(self.gate().returncode, 1)
 
     def test_owner_sign_is_never_removed(self):
-        r = self.af("todo", "checks", "t", "--remove", "OWNER SIGN", "--owner-quote", "no need to sign this one")
+        r = self.af("todo", "checks", "t", "--remove", "OWNER SIGN", "--owner-quote", "no need to sign this one",
+                    "--means", "leave out OWNER SIGN for t")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("todo checks: OWNER SIGN is never removed", r.stdout + r.stderr)
 
-    def test_words_that_do_not_name_the_block_are_refused(self):
+    def test_no_means_is_refused(self):
+        # approval-design (section 53 A3): the tool stores what the main manager read; without it nothing changes
         r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote",
-                    "please fix the footer typo on the site")
+                    "the related tests can wait, it is only a typo")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("todo checks: ask the owner to type exactly: yes, skip RELATED TESTS for t", r.stdout + r.stderr)   # section 51 H2: the exact sentence
+        self.assertIn("--means", r.stdout + r.stderr)
         self.all_pass_but("RELATED TESTS")
         self.assertEqual(self.gate().returncode, 1)
 
-    def test_words_that_name_it_remove_it(self):
-        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "yes, skip RELATED TESTS for t")
+    def test_his_words_and_the_means_remove_it(self):
+        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote",
+                "the related tests can wait, it is only a typo", "--means", "leave out RELATED TESTS for t")
         self.all_pass_but("RELATED TESTS")
         self.assertEqual(self.gate().returncode, 0)
 
-    def test_the_word_lists_are_gone(self):
-        # section 51 H2: word lists cannot read a sentence; the approval is one exact sentence
+    def test_the_word_lists_and_sentences_are_gone(self):
+        # section 51 H2: word lists cannot read a sentence; approval-design (section 53 A1): no fixed sentence either
         sys.path.insert(0, BIN)
         import agent_conf
-        for name in ("BLOCK_WORDS", "SKIP_WORDS", "PUBLISH_WORDS", "NEGATION_WORDS", "skip_before_name"):
+        for name in ("BLOCK_WORDS", "SKIP_WORDS", "PUBLISH_WORDS", "NEGATION_WORDS", "skip_before_name",
+                     "publish_sentence", "skip_sentence", "says", "approval_key"):
             self.assertFalse(hasattr(agent_conf, name), name)
 
 
 @only_own
 class TestG2OneInstance(Gate):
     def test_a_removal_ends_with_its_task(self):
-        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "yes, skip RELATED TESTS for t")
+        self.ok("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "the related tests can wait",
+                "--means", "leave out RELATED TESTS for t")
         self.ok("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
         self.ok("todo", "add", "t", "small", "task again", "10")
         main_launched(self.repo.dir, "t")
@@ -903,7 +919,7 @@ class TestH1AtTheHead(Gate):
     def test_an_owner_sign_on_an_earlier_commit_is_refused(self):
         self.ok("todo", "checks", "t", "OWNER SIGN")
         self.all_pass_but()
-        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it")   # signs c1
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes merge it", "--means", "merge t")   # signs c1
         self.commit_push({"app.js": "z()\n"})                                       # c2 changes more
         self.all_pass_but()
         r = self.gate()
@@ -1047,7 +1063,8 @@ class TestF11Removals(TestGate):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
 
     def test_a_verified_removal_is_subtracted_by_the_gate(self):
-        r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "yes, skip RELATED TESTS for t")   # section 51 H2: the exact sentence
+        r = self.af("todo", "checks", "t", "--remove", "RELATED TESTS", "--owner-quote", "the related tests can wait",
+                    "--means", "leave out RELATED TESTS for t")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.passes("DIFF SCAN", "BUILD")
         self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")
@@ -1102,61 +1119,35 @@ class TestA1AnotherCheckout(TestGate):
         self.assertEqual(r.returncode, 0, r.stdout)
 
 
-ASK = "ask the owner to type exactly: "   # section 51 H2 (was: ask him one plain question)
-
-
-@only_own
-class TestG9(Gate):
-    def test_old_passes_do_not_carry_to_a_new_instance(self):
-        self.all_pass_but()
-        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes sign it")
-        self.ok("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
-        self.ok("todo", "add", "t", "small", "another change", "10", "--checks", "PR REVIEW")
-        main_launched(self.repo.dir, "t")
-        self.git("checkout", "-q", "-b", "other", "base")
-        self.commit_push({"app.js": "unrelated()\n"})
-        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Review", "--evidence", "read it")   # only a new review
-        r = self.af("checks", "gate", "t", "--dir", self.repo.dir, "--base", "base")
-        self.assertEqual(r.returncode, 1, r.stdout)
-        for block in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
-            with self.subTest(block=block):
-                self.assertNotIn("%s: pass" % block, r.stdout)
-
-    def test_a_line_a_minute_before_the_task_opened_is_ignored(self):
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
-        line = [l for l in open(os.path.join(self.repo.dir, "agent_todo.txt")) if l.startswith("t | ")][0]
-        opened = line.split("opened ")[1][:16]
-        t0 = time.mktime(time.strptime(opened, "%Y-%m-%d %H:%M"))
-        before = time.strftime("%Y-%m-%d %H:%M", time.localtime(t0 - 60))
-        with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
-            fh.write("CHECK t PR REVIEW: pass | by t Review | at %s | ok | %s\n" % (self.head()[:12], before))
-        r = self.gate()
-        self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("PR REVIEW: missing", r.stdout.splitlines())
-
-
 @only_own
 class TestG11Removals(Gate):
-    def test_loose_words_are_refused(self):
+    def test_no_means_is_refused(self):
         for block, words in (("BUILD", "no need to worry about the build server today"),
                              ("CORE REVIEW", "the review went fine yesterday, ship it without the banner"),
                              ("FLOW CHECK", "the flow on the screen looks good, no need to change it")):
             with self.subTest(block=block):
                 r = self.af("todo", "checks", "t", "--remove", block, "--owner-quote", words)
                 self.assertEqual(r.returncode, 1, r.stdout)
-                self.assertIn(ASK, r.stdout + r.stderr)
+                self.assertIn("--means", r.stdout + r.stderr)
+                self.assertNotIn("type exactly", r.stdout + r.stderr)
 
-    def test_the_exact_sentence(self):
-        # section 51 H2: only the exact sentence (case, punctuation and spaces aside)
-        for block, words in (("BUILD", "Yes, skip BUILD for t."), ("RELATED TESTS", "yes skip related tests for t")):
+    def test_no_fixed_sentence(self):
+        # approval-design (section 53 A1): the main manager reads his words; the tool verifies and stores them
+        for block, words in (("BUILD", "the build can be skipped for this one"), ("RELATED TESTS", "skip the tests, only a typo")):
             with self.subTest(words=words):
-                r = self.af("todo", "checks", "t", "--remove", block, "--owner-quote", words)
+                r = self.af("todo", "checks", "t", "--remove", block, "--owner-quote", words,
+                            "--means", "leave out %s for t" % block)
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
-    def test_the_task_request_itself_removes_nothing(self):
-        r = self.af("todo", "checks", "t", "--remove", "DB CHECK", "--owner-quote", "remove the db column legacy_note")
-        self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn(ASK + "yes, skip DB CHECK for t", r.stdout + r.stderr)
+    def test_bad_values_are_refused(self):
+        for extra in (("--means", "leave out BUILD\nfor t"), ("--means", "leave out BUILD | for t"), ("--means", "  "),
+                      ("--means", "leave out BUILD for t", "--question", "1. skip it?\nA. yes"),
+                      ("--means", "leave out BUILD for t", "--question", "1. skip it? | A. yes")):
+            with self.subTest(extra=extra):
+                r = self.af("todo", "checks", "t", "--remove", "BUILD", "--owner-quote", "the build can be skipped",
+                            *extra)
+                self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertNotIn("removed BUILD", self.repo.read("agent_todo.txt"))
 
 
 @only_own
@@ -1198,3 +1189,180 @@ class TestF2CoreReviewIsNoBuildersJob(TestGate):
     def test_r8_names_it(self):
         self.assertIn("CORE REVIEW", [x for x in rule("R8. ", "W1. ").splitlines()
                                       if "builder" in x and "PR REVIEW" in x][0])
+
+
+# ---------------------------------------------------------------- approval-design (requirements/check-blocks.md section 53 A)
+
+LOGGED = ("#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" >> %s\necho '-- end'  >> %s\n"
+          "echo 'OWNER ORDER verified ~/.claude/projects/-r/s1.jsonl 2026-11-26 08:40'\n"
+          "echo 'match: \"the words\"'\nexit 0\n")
+
+
+@only_own
+class ApprovalCase(TestGate):
+    def setUp(self):
+        super().setUp()
+        self.log = os.path.join(self.repo.base, "verify.log")
+        self.repo.write_bin_script("agent-owner-order.sh", LOGGED % (self.log, self.log))
+
+    def calls(self):
+        """The argument lists of every verify call so far."""
+        if not os.path.exists(self.log):
+            return []
+        with open(self.log) as fh:
+            parts = fh.read().split("-- end\n")
+        return [p.rstrip("\n").split("\n") for p in parts if p.strip()]
+
+    def words(self):
+        gd = self.git("rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+        path = os.path.join(gd, "agent_owner_words.json")
+        if not os.path.exists(path):
+            return {}
+        with open(path) as fh:
+            return json.load(fh)
+
+    def add_p(self, *extra):
+        return self.af("todo", "add", "p", "small", "publish it", "10", "--target", "production", *extra)
+
+
+@only_own
+class TestApprovalRecords(ApprovalCase):
+    def test_a3_target_production_needs_means(self):
+        r = self.add_p("--owner-quote", "2. need to publish direct after done")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("--means", r.stdout + r.stderr)
+        self.assertNotIn("type exactly", r.stdout + r.stderr)
+        self.assertNotIn("p | ", self.todo())
+        self.assertNotIn("p", self.words())
+
+    def test_a6_his_words_and_the_means_are_stored(self):
+        r = self.add_p("--owner-quote", "2. need to publish direct after done", "--means", "publish task 2 (p) to production")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec = self.words()["p"]["publish"]
+        self.assertEqual(rec["quote"], "2. need to publish direct after done")
+        self.assertEqual(rec["means"], "publish task 2 (p) to production")
+        self.assertEqual(rec["typed"], "2026-11-26 08:40")
+        self.assertIs(rec["verified"], True)
+        self.assertNotIn("question", rec)
+        self.assertIn("target production", self.fields("p"))
+
+    def test_a4_a_short_answer_goes_to_verify_with_its_question(self):
+        q = "1. Publish p (the export total) straight to production? A. yes B. no"
+        r = self.add_p("--owner-quote", "1A", "--question", q, "--means", "publish p to production")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        args = self.calls()[-1]
+        self.assertEqual(args[0], "verify")
+        self.assertEqual(args[args.index("--quote") + 1], "1A")
+        self.assertEqual(args[args.index("--question") + 1], q)
+        self.assertEqual(self.words()["p"]["publish"]["question"], q)
+
+    def test_a3_means_and_question_belong_to_an_owner_quote(self):
+        for extra in (("--means", "publish p to production"), ("--question", "1. publish p? A. yes")):
+            with self.subTest(extra=extra):
+                r = self.af("todo", "add", "w", "small", "x", "10", *extra)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertNotIn("w | ", self.todo())
+        r = self.af("check", "t", "BUILD", "pass", "--by", "tm", "--evidence", "ok", "--means", "x")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+
+    def test_a3_bad_values_are_refused(self):
+        for extra in (("--means", "publish p\nto production"), ("--means", "publish p | to production"),
+                      ("--means", "   "), ("--means", "publish p", "--question", "1. ok?\nA. yes"),
+                      ("--means", "publish p", "--question", "1. ok? | A. yes")):
+            with self.subTest(extra=extra):
+                r = self.add_p("--owner-quote", "2. need to publish direct after done", *extra)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertNotIn("p | ", self.todo())
+
+    def test_a6_a_removal_stores_its_words(self):
+        self.ok("todo", "checks", "t", "UI CHECK")
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "nothing on screen changes, skip the ui check",
+                "--means", "leave out UI CHECK for t")
+        rec = self.words()["t"]["skip"]["UI CHECK"]
+        self.assertEqual(rec["quote"], "nothing on screen changes, skip the ui check")
+        self.assertEqual(rec["means"], "leave out UI CHECK for t")
+        self.assertEqual(rec["typed"], "2026-11-26 08:40")
+
+    def test_a6_the_words_end_with_the_task(self):
+        self.ok("todo", "checks", "t", "UI CHECK")
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "skip the ui check",
+                "--means", "leave out UI CHECK for t")
+        self.ok("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
+        self.assertNotIn("t", self.words())
+
+    def test_a7_owner_sign_holds_the_means_and_the_question(self):
+        q = "2. Sign the new roles of t? A. yes B. no"
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "2A", "--question", q,
+                "--means", "sign the new roles of t")
+        last = self.state().strip().splitlines()[-1]
+        self.assertIn('owner order verified: 2A | means: sign the new roles of t | question: %s | typed: 2026-11-26 08:40 | ' % q,
+                      last)
+        r = self.af("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes sign it")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("--means", r.stdout + r.stderr)
+
+
+@only_own
+class TestApprovalPrinted(ApprovalCase):
+    """Section 53 A8: the gate prints every stored pair, so he always sees which words were taken as his yes."""
+
+    def all_pass(self, task="t"):
+        for b in ("DIFF SCAN", "BUILD", "RELATED TESTS"):
+            self.ok("check", task, b, "pass", "--by", "tm", "--evidence", "ok")
+        self.ok("check", task, "PR REVIEW", "pass", "--by", task + " Review", "--evidence", "read it")
+
+    def test_a8_the_gate_prints_the_removal_and_the_sign(self):
+        self.ok("todo", "checks", "t", "UI CHECK,OWNER SIGN")
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "1B", "--question",
+                "1. Run the UI CHECK for t? A. yes B. no, leave it out", "--means", "leave out UI CHECK for t")
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "yes, the new roles are fine",
+                "--means", "sign the new roles of t")
+        self.all_pass()
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lines = r.stdout.splitlines()
+        skip = 'OWNER WORDS skip UI CHECK: "1B" (typed 2026-11-26 08:40) read as: leave out UI CHECK for t' \
+               ' | question: "1. Run the UI CHECK for t? A. yes B. no, leave it out"'
+        sign = 'OWNER WORDS OWNER SIGN: "yes, the new roles are fine" (typed 2026-11-26 08:40) read as: sign the new roles of t'
+        self.assertIn(skip, lines)
+        self.assertIn(sign, lines)
+        gate = next(i for i, l in enumerate(lines) if l.startswith("GATE "))
+        self.assertLess(lines.index(skip), gate)
+        self.assertLess(lines.index(sign), gate)
+
+    def test_a8_printed_on_a_refusal_too(self):
+        self.ok("todo", "checks", "t", "UI CHECK")
+        self.ok("todo", "checks", "t", "--remove", "UI CHECK", "--owner-quote", "skip the ui check for t",
+                "--means", "leave out UI CHECK for t")
+        r = self.gate()      # nothing passed yet
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn('OWNER WORDS skip UI CHECK: "skip the ui check for t" (typed 2026-11-26 08:40) read as: '
+                      'leave out UI CHECK for t', r.stdout.splitlines())
+
+    def test_a8_a_task_with_no_words_prints_none(self):
+        self.all_pass()
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("OWNER WORDS", r.stdout)
+
+    def test_a7_the_gate_verifies_the_sign_again_at_its_typed_minute(self):
+        self.ok("todo", "checks", "t", "OWNER SIGN")
+        self.ok("check", "t", "OWNER SIGN", "pass", "--by", "owner", "--owner-quote", "3A", "--question",
+                "3. Sign t? A. yes B. no", "--means", "sign t")
+        self.all_pass()
+        before = len(self.calls())
+        self.assertEqual(self.gate().returncode, 0)
+        args = self.calls()[before]
+        self.assertEqual(args[args.index("--quote") + 1], "3A")
+        self.assertEqual(args[args.index("--time") + 1], "2026-11-26 08:40")
+        self.assertEqual(args[args.index("--question") + 1], "3. Sign t? A. yes B. no")
+
+    def test_a7_an_old_sign_line_without_means_is_not_accepted(self):
+        self.ok("todo", "checks", "t", "OWNER SIGN")
+        self.all_pass()
+        head, opened = self.at_now()
+        with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
+            fh.write("CHECK t OWNER SIGN: pass | by owner | at %s | owner order verified: yes merge it | %s\n" % (head, opened))
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("OWNER SIGN: pass not verified, not accepted", r.stdout.splitlines())

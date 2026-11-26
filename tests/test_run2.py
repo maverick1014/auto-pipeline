@@ -162,6 +162,49 @@ class TestCountCheckPerFile(unittest.TestCase):
                 self.assertFalse(any("test_small" in l or "test_unlisted" in l for l in bad), out.stdout)
 
 
+ENV_SEEN = '''import os
+import unittest
+
+
+class TestSeen(unittest.TestCase):
+    def test_writes_the_mark(self):
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "seen.txt"), "w") as fh:
+            fh.write(os.environ.get("AGENT_FULL_RUN", ""))
+'''
+
+
+class TestFullRunMark(unittest.TestCase):
+    """approval-design F (requirements/check-blocks.md section 53 F): run2 with no file named is the full suite
+    (the release run and the nightly, full_cmd) and marks its processes AGENT_FULL_RUN=1, so a heavy test runs
+    there and never in a task's run of named files."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="run2_test_")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.tests = os.path.join(self.root, "tests")
+        os.makedirs(self.tests)
+        with open(os.path.join(self.tests, "test_seen.py"), "w") as fh:
+            fh.write(ENV_SEEN)
+        with open(os.path.join(self.tests, "test_small.py"), "w") as fh:
+            fh.write(SMALL)
+
+    def seen(self, *extra):
+        env = dict(os.environ)
+        env.pop("AGENT_FULL_RUN", None)
+        out = subprocess.run([sys.executable, RUN2, "--root", self.root, "-j", "1"] + list(extra),
+                             capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        with open(os.path.join(self.tests, "seen.txt")) as fh:
+            return fh.read()
+
+    def test_the_full_suite_is_marked(self):
+        self.assertEqual(self.seen(), "1")
+
+    def test_named_files_are_not_marked(self):
+        self.assertEqual(self.seen("test_seen"), "")
+        self.assertEqual(self.seen("test_seen", "test_small"), "")
+
+
 class TestCountCheck(unittest.TestCase):
     def test_a_difference_prints_the_line(self):
         run2 = load_run2()

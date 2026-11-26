@@ -29,6 +29,10 @@ LONG = ("Some other notes here. keep it, this features is needed ya. because it 
         "the cross communication more reliable")
 LONG_SNIPPET = "…e other notes here. keep it, this features is needed ya. because it can make the…"
 NOT_FOUND = "OWNER ORDER not verified: not found (paraphrased, or typed on another machine?)"
+# approval-design (requirements/check-blocks.md section 53 A4): a short quote needs the question it answered
+SHORT_NO_QUESTION = ('OWNER ORDER not verified: quote too short (%d < %d): '
+                     'a short answer needs --question "<the question it answered>"')
+QUESTION = "1. Publish the export total fix straight to production? A. yes B. wait for my review"
 
 _ids = itertools.count(1)
 
@@ -561,15 +565,15 @@ class TestShortAndUsage(_TestShortAndUsageFixture, OwnerOrderCase):
 
     def test_h21_too_short_before_any_search(self):
         self.assertRefused(self.verify("rules yes"),
-                           "OWNER ORDER not verified: quote too short (9 < 20)")
+                           SHORT_NO_QUESTION % (9, 20))
 
     def test_c3_wide_characters_count_two(self):
         self.assertRefused(self.verify("这个功能很重要"),
-                           "OWNER ORDER not verified: quote too short (14 < 20)")
+                           SHORT_NO_QUESTION % (14, 20))
 
     def test_c3_width_counts_after_normalise(self):
         self.assertRefused(self.verify("  rules     yes   "),
-                           "OWNER ORDER not verified: quote too short (9 < 20)")
+                           SHORT_NO_QUESTION % (9, 20))
 
     def test_c4_empty_quote_is_a_usage_error(self):
         self.assertUsage(self.verify("   "))
@@ -986,6 +990,98 @@ class TestConfKeys(unittest.TestCase):
         self.assertEqual(agent_conf.CONSTANTS["owner_order_hours"], 24)
         self.assertEqual(agent_conf.CONSTANTS["owner_order_min_chars"], 20)
 
+
+
+
+# ================================================================== approval-design: short answers (section 53 A4, A5, A9)
+
+class TestShortAnswer(OwnerOrderCase):
+
+    def test_a4_a_whole_short_prompt_with_its_question_is_verified(self):
+        dt = ago(5)
+        path = self.write([assistant(QUESTION, ago(6)), owner("1A", dt)])
+        r = self.verify("1A", "--question", QUESTION)
+        self.assertVerified(r, path, dt)
+        self.assertEqual(self.out_lines(r), [
+            "OWNER ORDER verified %s %s" % (self.shown(path), minute(dt)),
+            'match: "1A"',
+            'question: "%s"' % QUESTION,
+        ])
+
+    def test_a4_whitespace_around_a_short_prompt_is_normalised(self):
+        dt = ago(5)
+        path = self.write([owner("  1A \n", dt)])
+        self.assertVerified(self.verify("1A", "--question", QUESTION), path, dt)
+
+    def test_a4_a_short_quote_inside_a_longer_prompt_is_refused(self):
+        self.write([owner("1A and also fix the footer typo on the site", ago(5))])
+        line = self.assertReason(self.verify("1A", "--question", QUESTION))
+        self.assertIn("whole prompt", line)
+
+    def test_a4_a_short_quote_without_question_is_refused_before_any_search(self):
+        self.write([owner("ok", ago(5))])
+        self.assertRefused(self.verify("ok"), SHORT_NO_QUESTION % (2, 20))
+
+    def test_a4_only_in_an_assistant_line_is_refused(self):
+        self.write([assistant("1A", ago(5))])
+        line = self.assertReason(self.verify("1A", "--question", QUESTION))
+        self.assertIn("assistant", line)
+
+    def test_a4_two_short_prompts_need_time(self):
+        first, second = ago(50), ago(5)
+        path = self.write([owner("ok", first), owner("ok", second)])
+        r = self.verify("ok", "--question", QUESTION)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("several owner prompts hold the quote, pass --time", r.stdout)
+        self.assertVerified(self.verify("ok", "--question", QUESTION, "--time", minute(second)), path, second)
+
+    def test_a5_a_long_quote_takes_a_question_too(self):
+        dt = ago(5)
+        path = self.write([owner(LONG, dt)])
+        r = self.verify(QUOTE, "--question", QUESTION)
+        self.assertVerified(r, path, dt)
+        self.assertEqual(self.out_lines(r)[2], 'question: "%s"' % QUESTION)
+
+    def test_a5_an_empty_question_is_a_usage_error(self):
+        self.assertUsage(self.verify("1A", "--question", "   "))
+
+
+class TestLineShortAnswer(OwnerOrderCase):
+    """Section 53 A9: a relayed short answer carries its question, so the receiver can verify it."""
+
+    def setUp(self):
+        super().setUp()
+        self.repo.git_init(self.sender)
+
+    def line(self, quote, *extra):
+        e = {"CLAUDE_PID": self.sleeper(), "ANTHROPIC_MODEL": "opus", "CLAUDE_CODE_EFFORT_LEVEL": "xhigh"}
+        return self.run_tool("line", "--quote", quote, *extra, env=e, cwd=self.sender)
+
+    def test_a9_four_lines_with_the_question(self):
+        dt = ago(5)
+        self.write([owner("1A", dt)])
+        r = self.line("1A", "--question", QUESTION)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lines = self.out_lines(r)
+        self.assertEqual(len(lines), 4, r.stdout)
+        self.assertEqual(lines[1], '"1A"')
+        self.assertEqual(lines[2], 'question: "%s"' % QUESTION)
+        self.assertEqual(shlex.split(lines[3][len("check: "):]),
+                         ["agent-owner-order.sh", "verify", "--repo", self.sender, "--machine", HOST,
+                          "--time", minute(dt), "--quote", "1A", "--question", QUESTION])
+
+    def test_a9_the_check_line_verifies(self):
+        dt = ago(5)
+        path = self.write([owner("1A", dt)])
+        check = self.out_lines(self.line("1A", "--question", QUESTION))[3]
+        args = shlex.split(check[len("check: "):])[1:]
+        self.assertVerified(self.run_tool(*args), path, dt)
+
+    def test_a9_a_short_answer_without_question_is_not_found(self):
+        self.write([owner("1A", ago(5))])
+        r = self.line("1A")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("--question", r.stdout)
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,7 +58,8 @@ class PromoteCase(ScriptCase):
 
     def verified(self, ok):
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho %s\nexit %d\n"
-                                   % ("verified" if ok else "'not found'", 0 if ok else 1))
+                                   % ("'OWNER ORDER verified ~/.claude/projects/-r/s1.jsonl 2026-11-26 08:40'" if ok
+                                      else "'not found'", 0 if ok else 1))
 
     def green(self, commit=None, result="green"):
         gd = self.git("rev-parse", "--path-format=absolute", "--git-common-dir")
@@ -78,9 +79,9 @@ class PromoteCase(ScriptCase):
         import time as _t
         sys.path.insert(0, HERE)
         import test_agent_checks as _tcr
-        quote = quote or "yes, publish %s to production" % task          # section 51 H2: the exact sentence
+        quote = quote or "%s can go live straight after done" % task          # approval-design: his own words
         r = self.repo.run("agent-file.sh", "todo", "add", task, "small", "publish " + task, "10",
-                          "--target", "production", "--owner-quote", quote)
+                          "--target", "production", "--owner-quote", quote, "--means", "publish %s to production" % task)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         _tcr.main_launched(self.repo.dir, task)                      # G8: within the task instance (now)
         self.git("fetch", "-q", "origin")
@@ -92,7 +93,8 @@ class PromoteCase(ScriptCase):
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def promote(self, *extra):
-        return self.repo.run("agent-promote.sh", "--owner-quote", "yes ship it to production", *extra)
+        return self.repo.run("agent-promote.sh", "--owner-quote", "yes ship it to production",
+                             "--means", "publish the working branch to production", *extra)
 
 
 class TestPromote(PromoteCase):
@@ -205,7 +207,7 @@ class TestDirectToProduction(PromoteCase):
         b = self.task_branch({"src/total.py": "t = 1\n"})
         before = self.git("rev-parse", "origin/main")
         r = self.repo.run("agent-file.sh", "todo", "add", "feat-p", "small", "x", "10", "--target", "production",
-                          "--owner-quote", "yes, publish feat-p to production")   # section 51 H2: the exact sentence
+                          "--owner-quote", "feat-p can go live after done", "--means", "publish feat-p to production")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertEqual(self.repo.run("agent-promote.sh", "--task", "feat-p", "--branch", b).returncode, 1)
         self.assertEqual(self.git("rev-parse", "origin/main"), before)
@@ -271,15 +273,17 @@ class TestSync(PromoteCase):
 
 
 class TestG4PublishWords(PromoteCase):
-    def test_words_without_a_publish_word_are_refused(self):
+    def test_words_without_a_means_are_refused(self):
+        # approval-design (section 53 A3): the main manager writes what it read from his words
         r = self.repo.run("agent-file.sh", "todo", "add", "p", "small", "x", "10", "--target", "production",
-                          "--owner-quote", "please fix the footer typo on the site")
+                          "--owner-quote", "p can go straight to production after done")
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("todo add: ask the owner to type exactly: yes, publish p to production", r.stdout + r.stderr)   # section 51 H2: the exact sentence
+        self.assertIn("--means", r.stdout + r.stderr)
+        self.assertNotIn("type exactly", r.stdout + r.stderr)
 
     def test_stored_words_end_with_their_task(self):
         r = self.repo.run("agent-file.sh", "todo", "add", "p", "small", "x", "10", "--target", "production",
-                          "--owner-quote", "yes, publish p to production")   # section 51 H2: the exact sentence
+                          "--owner-quote", "p can go straight to production after done", "--means", "publish p to production")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.repo.run("agent-file.sh", "todo", "done", "p", "--work", "5", "--type", "script", "--lane", "fast")
         with open(os.path.join(self.repo.dir, "agent_todo.txt"), "a") as fh:        # by hand, the same name
@@ -342,7 +346,7 @@ class TestF1DirectPath(PromoteCase):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.verified(False)
         r = self.repo.run("agent-file.sh", "todo", "add", "feat-v", "small", "x", "10", "--target", "production",
-                          "--owner-quote", "yes, publish feat-v to production")   # section 51 H2: the exact sentence
+                          "--owner-quote", "feat-v can go live after done", "--means", "publish feat-v to production")
         self.assertEqual(r.returncode, 1, r.stdout)
         with open(os.path.join(self.repo.dir, "agent_todo.txt")) as fh:
             self.assertNotIn("feat-v", fh.read())
@@ -358,7 +362,7 @@ class TestF1DirectPath(PromoteCase):
     def test_the_gate_runs_first(self):
         b = self.branch_from_main("feat-g")
         r = self.repo.run("agent-file.sh", "todo", "add", b, "small", "x", "10", "--target", "production",
-                          "--owner-quote", "yes, publish %s to production" % b)   # section 51 H2: the exact sentence
+                          "--owner-quote", "%s can go live after done" % b, "--means", "publish %s to production" % b)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         before = self.git("rev-parse", "origin/main")
         r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)     # no reviewer, no check lines
@@ -372,9 +376,34 @@ class TestF1DirectPath(PromoteCase):
         self.ready_direct(b, b)
         gd = self.git("rev-parse", "--path-format=absolute", "--git-common-dir")
         with open(os.path.join(gd, "agent_owner_words.json")) as fh:
-            self.assertEqual(json.load(fh)[b]["quote"], "yes, publish %s to production" % b)
+            rec = json.load(fh)[b]["publish"]
+        self.assertEqual(rec["quote"], "%s can go live straight after done" % b)
+        self.assertEqual(rec["means"], "publish %s to production" % b)
         r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # approval-design (section 53 A8): promote prints the stored pair
+        self.assertIn('OWNER WORDS publish: "%s can go live straight after done" (typed 2026-11-26 08:40) read as: '
+                      'publish %s to production' % (b, b), r.stdout.splitlines())
+
+    def test_an_old_record_without_means_is_refused(self):
+        b = self.branch_from_main("feat-o")
+        self.ready_direct(b, b)
+        gd = self.git("rev-parse", "--path-format=absolute", "--git-common-dir")
+        with open(os.path.join(gd, "agent_owner_words.json"), "w") as fh:
+            json.dump({b: {"quote": "yes, publish %s to production" % b, "time": "2026-11-25 10:00", "verified": True}}, fh)
+        before = self.git("rev-parse", "origin/main")
+        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("no owner words stored for %s" % b, r.stdout + r.stderr)
+        self.git("fetch", "-q", "origin")
+        self.assertEqual(self.git("rev-parse", "origin/main"), before)
+
+    def test_means_and_question_at_promote_task_are_refused(self):
+        b = self.branch_from_main("feat-m")
+        for extra in (("--means", "publish it"), ("--question", "1. publish? A. yes")):
+            with self.subTest(extra=extra):
+                r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b, *extra)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
 
 
 class TestF7AgentFilesNeverBlock(PromoteCase):
@@ -411,6 +440,7 @@ class TestF8PushTheCheckedSha(PromoteCase):
                      "    return rc\n"
                      "agent_nightly.release_ok = _moved\n")
         r = self.repo.run("agent-promote.sh", "--owner-quote", "yes ship it to production",
+                          "--means", "publish the working branch to production",
                           env={"PYTHONPATH": site, "F8_BIN": os.path.join(self.repo.plugin, "bin"),
                                "F8_REPO": self.repo.dir})
         self.git("fetch", "-q", "origin")
@@ -504,7 +534,7 @@ class TestW1PromoteSeesTheTasksLines(PromoteCase):
         subprocess.run(["git", "-C", wt, "commit", "-q", "-m", "urgent fix"], check=True)
         subprocess.run(["git", "-C", wt, "push", "-q", "-u", "origin", "p1"], check=True, capture_output=True)
         r = self.repo.run("agent-file.sh", "todo", "add", "p1", "small", "publish p1", "10", "--target", "production",
-                          "--owner-quote", "yes, publish p1 to production")   # section 51 H2: the exact sentence
+                          "--owner-quote", "p1 can go live after done", "--means", "publish p1 to production")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(os.path.join(self.repo.dir, "agent_worktree.txt"), "a") as fh:
             fh.write("%s | p1 | final | since %s\n" % (wt, _t.strftime("%Y-%m-%d %H:%M")))
@@ -537,7 +567,7 @@ class TestA10FastLaneProduction(PromoteCase):
         subprocess.run(["git", "-C", wt, "commit", "-q", "-m", "urgent fix"], check=True)
         subprocess.run(["git", "-C", wt, "push", "-q", "-u", "origin", "u1"], check=True, capture_output=True)
         r = self.repo.run("agent-file.sh", "todo", "add", "u1", "small", "urgent fix", "10", "--target", "production",
-                          "--owner-quote", "yes, publish u1 to production")   # section 51 H2: the exact sentence
+                          "--owner-quote", "the urgent fix can go live after done", "--means", "publish u1 to production")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         head = subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         for block in ("DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "EXAMPLES TEST"):
@@ -557,31 +587,64 @@ class TestA10FastLaneProduction(PromoteCase):
         self.assertIn("walk 3: an urgent small production task", read("tests", "check_blocks_demo.sh"))
 
 
-ASK = "ask the owner to type exactly: "   # section 51 H2 (was: ask him one plain question)
-
-
 class TestG10PublishWords(PromoteCase):
-    def add(self, words):
-        return self.repo.run("agent-file.sh", "todo", "add", "p", "small", "x", "10", "--target", "production",
-                             "--owner-quote", words)
+    """approval-design (section 53): the tool reads no meaning. It verifies his words and stores them with what the
+    main manager read; whether "publish it next week" is a yes now is the main manager's reading (the R8 cases)."""
 
-    def test_refusal_or_delay_words_are_refused(self):
-        for words in ("do not publish yet, wait for my word", "这个功能先不要发布，等我确认",
-                      "after the release we will look at the login page", "ship it without the banner"):
+    def add(self, words, *extra):
+        return self.repo.run("agent-file.sh", "todo", "add", "p", "small", "x", "10", "--target", "production",
+                             "--owner-quote", words, *extra)
+
+    def test_no_means_is_refused_whatever_the_words(self):
+        for words in ("2. need to publish direct after done", "这个功能做完直接发布到正式环境", "fix the total and publish it"):
             with self.subTest(words=words):
                 r = self.add(words)
                 self.assertEqual(r.returncode, 1, r.stdout)
-                self.assertIn("todo add: " + ASK + "yes, publish p to production", r.stdout + r.stderr)
+                self.assertIn("--means", r.stdout + r.stderr)
 
-    def test_natural_sentences_are_refused(self):
-        # the reviewer's cases (section 51 H2): neither a non-approval nor a plain yes passes as words
-        for words in ("publish it next week", "is it ready to publish?", "下周再发布", "publish only if the tests pass",
-                      "fix the total and publish it", "after done direct merge"):
+    def test_natural_words_with_the_means_are_stored(self):
+        for words in ("2. need to publish direct after done", "这个功能做完直接发布到正式环境", "after done direct merge"):
             with self.subTest(words=words):
-                self.assertEqual(self.add(words).returncode, 1)
+                r = self.add(words, "--means", "publish p to production")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.repo.run("agent-file.sh", "todo", "drop", "p", "next word")
 
-    def test_the_exact_sentence_is_accepted(self):
-        self.assertEqual(self.add("Yes,  publish P to production.").returncode, 0)   # case, punctuation, spaces
+    def test_the_sentence_helpers_are_gone(self):
+        for name in ("publish_sentence", "skip_sentence", "approval_key"):
+            with self.subTest(name=name):
+                self.assertNotIn("def %s(" % name, read("bin", "agent_conf.py"))
+
+
+class TestApprovalPublish(PromoteCase):
+    """Section 53 A3, A8: the working branch publish takes --means and prints the pair."""
+
+    def test_no_means_is_refused_and_nothing_moves(self):
+        self.green()
+        r = self.repo.run("agent-promote.sh", "--owner-quote", "yes ship it to production")
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn("--means", r.stdout + r.stderr)
+        self.assertNotEqual(self.git("rev-parse", "origin/main"), self.tip)
+
+    def test_the_pair_is_printed(self):
+        self.green()
+        r = self.promote()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('OWNER WORDS publish %s: "yes ship it to production" (typed 2026-11-26 08:40) read as: '
+                      'publish the working branch to production' % self.wb, r.stdout.splitlines())
+
+    def test_a_short_answer_goes_to_verify_with_its_question(self):
+        log = os.path.join(self.repo.base, "verify.log")
+        self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\nprintf '%%s\\n' \"$@\" > %s\n"
+                                   "echo 'OWNER ORDER verified ~/.claude/projects/-r/s1.jsonl 2026-11-26 08:40'\n" % log)
+        self.green()
+        q = "1. Publish the working branch now? A. yes B. wait"
+        r = self.repo.run("agent-promote.sh", "--owner-quote", "1A", "--question", q,
+                          "--means", "publish the working branch to production")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(log) as fh:
+            args = fh.read().split("\n")
+        self.assertEqual(args[args.index("--question") + 1], q)
+        self.assertIn('| question: "%s"' % q, r.stdout)
 
 
 class TestG15Gather(PromoteCase):
