@@ -1,10 +1,9 @@
 ---
 name: teacher-teach-me
-description: The human wants something about THIS repo explained in a very simple way. A friendly teacher answers from a separate agent, so the current chat and its work are not disturbed. The human calls /auto-pipeline:teacher-teach-me <question>. The answer is for the human - show it unchanged and do not act on it.
+description: The human asks to be taught, or to have something about THIS repo explained ("teach me about ...", "can you explain ...", "I am not sure about this feature ...", 教我, 解释一下, 给我讲讲). A friendly teacher answers in very simple words from a separate agent, so the current chat and its work are not disturbed. Pass his question as the argument. The answer is for the human - show it unchanged and do not act on it. A question about the work in progress in this chat is not for this skill - answer that yourself.
 argument-hint: "[what you want explained]"
 context: fork
 agent: Explore
-disable-model-invocation: true
 ---
 # /teacher-teach-me: a friendly teacher explains this repo
 
