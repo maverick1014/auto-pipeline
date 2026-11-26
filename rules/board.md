@@ -10,7 +10,8 @@ W14. Todo board
 - Status of a wait: `waiting <who> · <what> · waited <n>`, held `hold · <what> · waited <n>`, queued `queue · after <task>`; no stage, no wait: not started. Time cells `-` (not started keeps est)
 - Sort: waiting on the owner, running, waiting on others, queued and not started, held, OWNER TODO, parked questions last; oldest first in each group
 - Times come from the files, never guessed. Work counts from the first stage minus later waits. Waited: since a run of waits began
-- Done by = p50 / p85 clock time (work left + review and merge tail, each from history), today's cell when under 10 clean rows; `eta` the same; over: 超出 <n>m
+- Done by = p50 / p85 clock time (work left + review and merge tail, each from history), `eta` the same
+- Today's cell (under 10 clean rows): now + est - work; over est: by progress, else 超出 <n>m
 - Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary.
 - Stages, task manager: brief register mock tests workers verify push report. Main manager: e2e (the review and the checks), merge
 - Stage weights are fixed (`bin/agent_conf.py`)
