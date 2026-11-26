@@ -44,7 +44,8 @@ bin/agent_forecast.py (new; Python 3.9 standard library; the board, eta and the 
 
 The board (bin/agent_board.py): the "Done by" cell of a running row with an est and a work: the forecast
   of that row (rows = history(the project root); work, p, stage as the board counts them; built_work from
-  the line's stage log, the minutes of its first report entry, else of its first e2e entry, else None).
+  the line's stage log, the minutes of its first report entry, else of its first e2e entry, else None;
+  lane "fast" when field 2 of the todo line is "small", else "full").
   A forecast -> "<p50 clock> / <p85 clock>" (each written as the cell writes one time today: "HH:MM",
   "HH:MM tomorrow", "HH:MM on <date>", zh as today). None -> the cell of today, unchanged.
   An open wait on the owner stays apart (the Wait cell), never inside the forecast.
@@ -245,6 +246,14 @@ class TestBoardDoneBy(BoardForecastCase):
         self.assertGreater(m.group(1), "15:10")
         self.assertGreater(m.group(2), "15:10")
         self.assertLessEqual(m.group(1), m.group(2))
+
+    def test_a_small_task_uses_the_fast_lane(self):
+        fast = [row(day(20 + i), "f-%02d" % i, "fix", lane="fast", type="page", mock="no", est=10, work=10,
+                    wait=0, clock=12) for i in range(12)]
+        self.history(history_lines() + fast)
+        self.put("s | small | fix the label | est 10m | opened 2026-11-02 14:55 | by main | started 2026-11-02 14:55")
+        # fast history: 10 in all, 5 done, a tail of 2 -> 15:07 (the full lane would add 20 or 40)
+        self.assertEqual(self.row(self.rows(now=NOW), task="s")["Done by"], "15:07 / 15:07")
 
     def test_no_history_keeps_todays_cell(self):
         self.verify_line()

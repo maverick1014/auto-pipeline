@@ -318,8 +318,10 @@ class BoardCase(ScriptCase):
         return self.table(self.board(*args, **kw))
 
     def row(self, rows, task=None, what=None):
+        # estimate-improve scope add (owner 2026-11-26): a line with an owner field shows "<task> [<name>]"
         for r in rows:
-            if (task is None or r["Task"] == task) and (what is None or r["What"] == what):
+            name = re.sub(r" \[[^\]]*\]$", "", r["Task"])
+            if (task is None or r["Task"] == task or name == task) and (what is None or r["What"] == what):
                 return r
         self.fail("no row task=%r what=%r in %r" % (task, what, rows))
 
