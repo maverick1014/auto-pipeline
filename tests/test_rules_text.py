@@ -2013,7 +2013,7 @@ class TestMemoryGate(unittest.TestCase):
             conf = json.load(fh)["userConfig"]
         self.assertNotIn("heavy_test_slots", conf)
         self.assertNotIn("max_agents", conf)
-        self.assertEqual(len(conf), 20)   # + Reviewer model (owner 2A), Working branch, Auto clear after quiet, + 3 Team (agent-files)
+        self.assertEqual(len(conf), 21)   # + Reviewer model (owner 2A), Working branch, Auto clear after quiet, + 3 Team (agent-files), + Full run machine (nightly-on-machine)
 
 
 class TestKeepTheResultLines(unittest.TestCase):
@@ -2788,7 +2788,8 @@ class TestUserConfig(unittest.TestCase):
             "permission_mode": "string", "auto_resume": "boolean", "todo_before_agent": "boolean", "working_branch": "string",
             "watch_quiet_min": "number", "housekeep_interval_min": "number", "clear_quiet_min": "number",
             "city_port": "number", "city_idle_min": "number",   # owner 1A: no Danger paths
-            "task_files": "string", "task_take": "string", "data_branch": "string"}   # agent-files 2026-11-26
+            "task_files": "string", "task_take": "string", "data_branch": "string",   # agent-files 2026-11-26
+            "full_run_machine": "string"}   # nightly-on-machine 2026-11-26
     DEFAULTS = {"runtime": "auto", "language": "en",
                 "main_manager": "opus-5.5:high", "max_usage_percent": 80}
 

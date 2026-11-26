@@ -1,0 +1,467 @@
+"""nightly-on-machine: the full run of a repo on a connected machine, through Orca only (Orca is a stub here).
+
+Requirement: requirements/nightly-on-machine.md. The stub makes a real git worktree for `worktree create`, runs the
+text sent to its terminal with bash, and answers `terminal read` with what that printed, so the real remote script runs.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+from test_agent_room import NetCase  # noqa: E402
+
+ENV = "box-one"          # a made-up environment name: no real machine name in any test
+
+STUB = r'''#!/usr/bin/env python3
+"""Fake orca for the remote full run. State: $ORCA_STUB_DIR/remote/<env>/ (down, create_fail, ran, garbage, hang)."""
+import json, os, subprocess, sys
+
+args = sys.argv[1:]
+D = os.environ["ORCA_STUB_DIR"]
+with open(os.environ["ORCA_STUB_LOG"], "a") as fh:
+    fh.write("CALL" + "".join("\t" + a for a in args) + "\n")
+
+
+def opt(name):
+    for i, a in enumerate(args[:-1]):
+        if a == name:
+            return args[i + 1]
+    return None
+
+
+def ok(result):
+    print(json.dumps({"ok": True, "result": result}))
+    sys.exit(0)
+
+
+def fail(text):
+    print(json.dumps({"ok": False, "error": {"code": "x", "message": text}}))
+    sys.exit(1)
+
+
+env = opt("--environment")
+R = os.path.join(D, "remote", env or "local")
+os.makedirs(os.path.join(R, "wts"), exist_ok=True)
+if os.path.exists(os.path.join(R, "down")):
+    sys.stderr.write("orca: environment %s is not reachable\n" % env)
+    sys.exit(1)
+verb = " ".join(args[:2])
+repo = open(os.path.join(D, "repo")).read().strip()
+
+
+def wts():
+    out = []
+    for name in sorted(os.listdir(os.path.join(R, "wts"))):
+        out.append({"id": "R::" + os.path.join(R, "wts", name), "path": os.path.join(R, "wts", name),
+                    "displayName": name})
+    return out
+
+
+def handle_of(path):
+    return "term_" + os.path.basename(path)
+
+
+if verb == "terminal list":
+    sel = opt("--worktree")
+    rows = []
+    for w in wts():
+        if sel is None or sel in ("path:" + w["path"], w["id"]):
+            rows.append({"handle": handle_of(w["path"]), "worktreePath": w["path"], "worktreeId": w["id"]})
+    ok({"terminals": rows})
+elif verb == "worktree list":
+    ok({"worktrees": wts()})
+elif verb == "worktree create":
+    if os.path.exists(os.path.join(R, "create_fail")):
+        fail("cannot create the worktree")
+    name, base = opt("--name"), opt("--base-branch")
+    path = os.path.join(R, "wts", name)
+    res = subprocess.run(["git", "-C", repo, "worktree", "add", "--detach", path, base],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        fail(res.stderr.strip() or "git worktree add failed")
+    head = subprocess.run(["git", "-C", path, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    ok({"worktree": {"id": "R::" + path, "path": path, "head": head, "displayName": name,
+                     "branch": "refs/heads/x/" + name}})
+elif verb == "terminal send":
+    path = None
+    for w in wts():
+        if handle_of(w["path"]) == opt("--terminal"):
+            path = w["path"]
+    if path is None:
+        fail("terminal_handle_stale")
+    buf = os.path.join(R, "buf-" + os.path.basename(path))
+    if args and "--interrupt" in args:
+        with open(os.path.join(R, "interrupted"), "w") as fh:
+            fh.write("1")
+        ok({})
+    if os.path.exists(os.path.join(R, "hang")):
+        ok({})
+    ran = os.path.join(R, "ran")
+    if os.path.exists(ran):
+        want = open(ran).read().strip()
+        subprocess.run(["git", "-C", path, "checkout", "-q", "--detach", want], capture_output=True)
+    run = subprocess.run(["bash", "-c", opt("--text")], cwd=path, capture_output=True, text=True)
+    out = run.stdout
+    if os.path.exists(os.path.join(R, "garbage")):
+        out = "\x1b[31m%%%% nothing you can read\n"
+    with open(buf, "a") as fh:
+        fh.write(out)
+    ok({})
+elif verb == "terminal read":
+    path = None
+    for w in wts():
+        if handle_of(w["path"]) == opt("--terminal"):
+            path = w["path"]
+    if path is None:
+        fail("terminal_handle_stale")
+    buf = os.path.join(R, "buf-" + os.path.basename(path))
+    lines = open(buf).read().splitlines() if os.path.exists(buf) else []
+    ok({"terminal": {"handle": opt("--terminal"), "status": "running", "tail": lines[-int(opt("--limit") or 120):]}})
+elif verb == "terminal close":
+    ok({})
+elif verb == "worktree rm":
+    sel = opt("--worktree") or ""
+    path = sel[len("path:"):] if sel.startswith("path:") else sel.split("::", 1)[-1]
+    subprocess.run(["git", "-C", repo, "worktree", "remove", "--force", path], capture_output=True)
+    ok({"removed": True})
+elif verb == "worktree ps":
+    for w in wts():
+        print(w["displayName"])
+    sys.exit(0)
+else:
+    ok({})
+'''
+
+
+class RemoteCase(NetCase):
+    def setUp(self):
+        super().setUp()
+        self.git("config", "--local", "auto-pipeline.workingbranch", "ap-main-t")
+        self.git("checkout", "-q", "-b", "ap-main-t")
+        self.repo.stub_tool("orca", STUB)
+        with open(os.path.join(self.repo.orca_dir, "repo"), "w") as fh:
+            fh.write(self.repo.dir)
+        self.where("remote")
+        self.addCleanup(self.drop_stub_worktrees)
+
+    def drop_stub_worktrees(self):
+        subprocess.run(["git", "-C", self.repo.dir, "worktree", "prune"], capture_output=True)
+
+    def where(self, value, commit=True):
+        conf = os.path.join(self.repo.dir, "agent_repo.conf")
+        with open(conf) as fh:
+            lines = [l for l in fh.read().splitlines() if not l.startswith("full_run_where")]
+        if value:
+            lines.append("full_run_where=" + value)
+        with open(conf, "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+        if commit:
+            self.git("add", "-A")
+            self.git("commit", "-q", "-m", "where " + (value or "default"), "--allow-empty")
+
+    def machine(self, name=ENV):
+        self.repo.set_conf("full_run_machine", name)
+
+    def remote_dir(self, name=ENV):
+        path = os.path.join(self.repo.orca_dir, "remote", name)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def flag(self, name, text="1", env=ENV):
+        with open(os.path.join(self.remote_dir(env), name), "w") as fh:
+            fh.write(text)
+
+    def nightly(self, *args, env=None):
+        extra = {"AGENT_NIGHTLY_POLL_S": "0.1"}
+        extra.update(env or {})
+        return self.repo.run("agent-nightly.sh", *args, env=extra, timeout=120)
+
+    def status_file(self):
+        with open(os.path.join(self.gitdir(), "agent_nightly.json")) as fh:
+            return json.load(fh)
+
+    def calls(self):
+        try:
+            with open(self.repo.orca_log) as fh:
+                return [l.rstrip("\n").split("\t")[1:] for l in fh if l.startswith("CALL")]
+        except OSError:
+            return []
+
+    def verbs(self):
+        return [" ".join(c[:2]) for c in self.calls()]
+
+    def left_over(self, env=ENV):
+        folder = os.path.join(self.remote_dir(env), "wts")
+        return os.listdir(folder) if os.path.isdir(folder) else []
+
+
+class TestRemoteFullRun(RemoteCase):
+
+    def test_green_on_the_connected_machine(self):
+        self.machine()
+        head = self.git("rev-parse", "HEAD")
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual((st["result"], st["commit"], st["failed"]), ("green", head, []))
+        self.assertEqual(st.get("where"), "connected machine")
+        creates = [c for c in self.calls() if c[:2] == ["worktree", "create"]]
+        self.assertEqual(len(creates), 1, self.calls())
+        self.assertIn(ENV, creates[0])
+        self.assertIn(head, creates[0])
+        verbs = self.verbs()
+        self.assertLess(verbs.index("worktree create"), verbs.index("terminal send"))
+        self.assertIn("terminal close", verbs)
+        self.assertEqual(verbs[-1], "worktree rm")
+        self.assertEqual(self.left_over(), [], "the remote worktree is removed")
+        self.assertEqual(self.nightly("--release-ok").returncode, 0)
+        self.assertIn("connected machine", self.nightly("--status").stdout)
+        self.assertEqual(os.listdir(os.path.join(self.gitdir(), "worktrees")) if os.path.isdir(
+            os.path.join(self.gitdir(), "worktrees")) else [], [])
+
+    def test_red_names_the_failing_test_and_publish_is_refused(self):
+        self.machine()
+        self.put({"src/x.txt": "broken\n"})
+        self.git("commit", "-qam", "break")
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red")
+        self.assertEqual(len(st["failed"]), 1, st)
+        self.assertIn("test_x_txt", st["failed"][0])
+        out = self.nightly("--failures").stdout
+        self.assertIn("test_x_txt", out)
+        rel = self.nightly("--release-ok")
+        self.assertEqual(rel.returncode, 1, rel.stdout)
+        self.assertEqual(self.left_over(), [])
+
+    def test_a_different_commit_is_a_failed_run_never_green(self):
+        self.machine()
+        asked = self.git("rev-parse", "HEAD")
+        self.put({"src/y.txt": "y\n"})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "another")
+        other = self.git("rev-parse", "HEAD")
+        self.git("reset", "-q", "--hard", asked)
+        self.flag("ran", other)
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red")
+        self.assertEqual(st["failed"], ["the connected machine ran %s, not %s" % (other[:7], asked[:7])])
+        self.assertEqual(self.nightly("--release-ok").returncode, 1)
+        self.assertEqual(self.left_over(), [])
+
+    def test_output_that_cannot_be_read_is_a_failed_run(self):
+        self.machine()
+        self.flag("garbage")
+        r = self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_REMOTE_TIMEOUT_S": "2"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red")
+        self.assertIn("connected machine", st["failed"][0])
+        self.assertEqual(self.nightly("--release-ok").returncode, 1)
+        self.assertEqual(self.left_over(), [])
+
+    def test_a_timeout_stops_the_run_and_cleans_up(self):
+        self.machine()
+        self.flag("hang")
+        r = self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_REMOTE_TIMEOUT_S": "1"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red")
+        self.assertRegex(st["failed"][0], r"timed out")
+        self.assertIn("terminal send", self.verbs())
+        self.assertTrue(os.path.exists(os.path.join(self.remote_dir(), "interrupted")))
+        self.assertEqual(self.left_over(), [])
+
+    def test_a_create_failure_is_recorded_not_run_here(self):
+        self.machine()
+        self.flag("create_fail")
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red")
+        self.assertIn("connected machine", st["failed"][0])
+        self.assertNotIn("terminal send", self.verbs())
+
+    def test_a_stale_remote_worktree_is_removed_by_the_next_start(self):
+        self.machine()
+        self.nightly("--start", "--wait")
+        head = self.git("rev-parse", "HEAD")
+        # a killed run left its worktree: the stub shows it in `worktree list` under the name the run gives it
+        first = [c for c in self.calls() if c[:2] == ["worktree", "create"]][0]
+        name = first[first.index("--name") + 1]
+        stale = os.path.join(self.remote_dir(), "wts", name)
+        subprocess.run(["git", "-C", self.repo.dir, "worktree", "add", "--detach", stale, head], check=True,
+                       capture_output=True)
+        os.remove(self.repo.orca_log)
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rms = [c for c in self.calls() if c[:2] == ["worktree", "rm"]]
+        self.assertGreaterEqual(len(rms), 2, self.calls())      # the stale one, then this run's own
+        self.assertLess(self.verbs().index("worktree rm"), self.verbs().index("worktree create"))
+        self.assertEqual(self.left_over(), [])
+        self.assertEqual(self.status_file()["result"], "green")
+
+    def test_the_background_start_returns_at_once_and_records(self):
+        self.machine()
+        r = self.nightly("--start")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("started in the background", r.stdout)
+        import time
+        for _ in range(100):
+            time.sleep(0.3)
+            try:
+                if self.status_file()["result"] != "running":
+                    break
+            except (OSError, ValueError):
+                pass
+        self.assertEqual(self.status_file()["result"], "green")
+        self.assertEqual(self.left_over(), [])
+
+
+class TestWhere(RemoteCase):
+
+    def test_remote_and_not_reachable_is_refused_in_one_line_and_nothing_runs_here(self):
+        self.machine()
+        self.flag("down")
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("not reachable", lines[0])
+        self.assertFalse(os.path.exists(os.path.join(self.gitdir(), "agent_nightly.json")), "no local run")
+        self.assertNotIn("worktree create", self.verbs())
+        r = self.nightly("--start")
+        self.assertEqual(r.returncode, 1, "the plain start says it at once, not in the background")
+
+    def test_remote_and_the_setting_is_empty_is_refused(self):
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("set Full run machine in /plugin Configure", r.stdout)
+        self.assertEqual(self.calls(), [])
+        self.assertFalse(os.path.exists(os.path.join(self.gitdir(), "agent_nightly.json")))
+
+    def test_either_with_no_setting_runs_here(self):
+        self.where("either")
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.status_file()["result"], "green")
+        self.assertNotIn("where", self.status_file())
+        self.assertEqual(self.calls(), [], "no orca call for a run here")
+
+    def test_the_default_is_either(self):
+        self.where("")
+        self.nightly("--start", "--wait")
+        self.assertEqual(self.status_file()["result"], "green")
+        self.assertEqual(self.calls(), [])
+
+    def test_either_with_a_reachable_machine_runs_there(self):
+        self.where("either")
+        self.machine()
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.status_file().get("where"), "connected machine")
+        self.assertIn("worktree create", self.verbs())
+
+    def test_either_with_an_unreachable_machine_runs_here(self):
+        self.where("either")
+        self.machine()
+        self.flag("down")
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.status_file()["result"], "green")
+        self.assertNotIn("where", self.status_file())
+        self.assertNotIn("worktree create", self.verbs())
+
+    def test_local_runs_here_with_no_orca_call(self):
+        self.where("local")
+        self.machine()
+        r = self.nightly("--start", "--wait")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.status_file()["result"], "green")
+        self.assertEqual(self.calls(), [])
+
+    def test_a_remote_green_is_not_asked_again_on_this_machine(self):
+        """publish accepts the green run of the connected machine exactly like a local one."""
+        self.machine()
+        self.nightly("--start", "--wait")
+        out = self.nightly("--release-ok")
+        self.assertEqual(out.returncode, 0, out.stdout)
+        self.assertIn("release ok", out.stdout)
+
+
+SET = "set Full run machine in /plugin Configure"
+
+
+class TestAutomatic(RemoteCase):
+    """The automatic nightly (the session start, the housekeep pass) calls --start: it follows the same rule."""
+
+    def env(self):
+        return {"AGENT_FAKE_NOW": "2026-11-25 23:00", "CLAUDE_PID": str(os.getpid()), "AGENT_FAKE_HOST": "box",
+                "AGENT_RESERVE_FILE": os.path.join(self.repo.base, "reserve.json"), "AGENT_NIGHTLY_POLL_S": "0.1"}
+
+    def session(self):
+        return self.repo.run("agent-start.sh", stdin='{"cwd": "%s", "source": "startup"}' % self.repo.dir,
+                             env=self.env())
+
+    def wait_status(self, seconds=40):
+        import time
+        end = time.time() + seconds
+        while time.time() < end:
+            try:
+                if self.status_file()["result"] in ("green", "red"):
+                    return self.status_file()
+            except (OSError, ValueError, KeyError):
+                pass
+            time.sleep(0.3)
+        return {}
+
+    def test_the_start_runs_it_on_the_connected_machine(self):
+        self.machine()
+        r = self.session()
+        self.assertNotIn("a connected machine runs it", r.stdout)
+        self.assertEqual(self.wait_status().get("where"), "connected machine", r.stdout)
+        self.assertEqual(self.left_over(), [])
+
+    def test_the_start_says_the_refusal_in_one_line_and_runs_nothing_here(self):
+        r = self.session()          # remote, and no machine named
+        self.assertIn(SET, r.stdout)
+        import time
+        time.sleep(1)
+        self.assertFalse(os.path.exists(os.path.join(self.gitdir(), "agent_nightly.json")))
+
+    def test_the_housekeep_pass_starts_it_there_too(self):
+        self.machine()
+        r = self.repo.run("agent-housekeep.sh", "--apply", env=self.env())
+        self.assertNotIn("a connected machine runs it", r.stdout + r.stderr)
+        self.assertEqual(self.wait_status().get("where"), "connected machine", r.stdout + r.stderr)
+
+
+class TestNoMachineName(unittest.TestCase):
+
+    def test_this_repos_fact_is_remote_and_no_machine_name_is_committed_by_this_task(self):
+        root = os.path.dirname(HERE)
+        with open(os.path.join(root, "agent_repo.conf")) as fh:
+            body = fh.read()
+        self.assertIn("full_run_where=remote", body.splitlines())
+        for rel in ("agent_repo.conf", "bin/agent_nightly.py", "tests/test_agent_nightly_remote.py"):
+            with open(os.path.join(root, rel)) as fh:
+                text = fh.read().lower()
+            for word in ("p" + "c2", "niaga" + "wan", "mave" + "rick"):
+                self.assertNotIn(word, text, rel)
+
+    def test_the_setting_is_in_configure_with_an_empty_default(self):
+        import agent_conf
+        self.assertEqual(agent_conf.BY_KEY["full_run_machine"]["default"], "")
+        self.assertEqual(agent_conf.get("full_run_machine", {}), "")
+
+
+if __name__ == "__main__":
+    unittest.main()

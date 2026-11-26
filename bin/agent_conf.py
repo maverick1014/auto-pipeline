@@ -95,6 +95,8 @@ SETTINGS = [
        options=["owner", "anyone"]),
     _s("data_branch", "Team: Data branch", "string", "ap-data",
        "Branch for the shared agent files; the repo value wins. Any branch works, production too: then they live under .ap-data/ there, it needs an origin, and a commit can start a deploy."),
+    _s("full_run_machine", "Load: Full run machine", "string", "",
+       "Name of the connected Orca environment where the full test run goes, when the repo's full_run_where asks for it. Empty = none. Personal: never written into a repo file."),
 ]
 
 CONSTANTS = {
@@ -416,7 +418,8 @@ def repo_paths(project_root):
 
 
 REPO_V1_SINGLE = ("version", "production_branch", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd",
-                  "test_config", "data_scripts", "real_data", "build_seconds", "guard_seconds", "build_mb")
+                  "test_config", "data_scripts", "real_data", "build_seconds", "guard_seconds", "build_mb",
+                  "full_run_where")
 REPO_V1_GLOBS = ("core_paths", "test_config", "data_scripts")
 
 

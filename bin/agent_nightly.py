@@ -15,12 +15,14 @@ import math
 import os
 import re
 import resource
+import shlex
 import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -857,10 +859,13 @@ def status_line(st):
             return "NIGHTLY: none"
     else:
         when = st.get("finished", "")
-    return "NIGHTLY: %s %s %s" % (res, str(st.get("commit", ""))[:7], when)
+    return "NIGHTLY: %s %s %s%s" % (res, str(st.get("commit", ""))[:7], when,
+                                  " on a %s" % st["where"] if st.get("where") else "")
 
 
 def full_cmd(root):
+    if os.environ.get("AGENT_NIGHTLY_CMD"):         # a short command for a proof of the mechanics, never the real run
+        return os.environ["AGENT_NIGHTLY_CMD"]
     try:
         return agent_conf.repo_conf(root)[0].get("full_cmd", "")
     except Exception:
@@ -1121,6 +1126,330 @@ class RunLock:
             return False
 
 
+# ------------------------------------------------------------------ the full run on a connected machine (nightly-on-machine)
+# Where it runs: the repo fact full_run_where (either | remote | local, agent_repo.conf) and the person's setting
+# "Full run machine" (an Orca environment name, never in a repo file). Orca only, never ssh.
+
+WHERE_VALUES = ("either", "remote", "local")
+WHERE_LABEL = "connected machine"
+NOTE_PREFIXES = ("full_cmd exit", "the connected machine", "no room on the connected machine")   # a failed row that is not a test name
+SET_LINE = "set Full run machine in /plugin Configure"
+REMOTE = {}                     # the remote run going on (env, path, handle): a stop signal removes it
+
+
+def full_where(root):
+    try:
+        value = agent_conf.repo_conf(root)[0].get("full_run_where", "").strip().lower()
+    except Exception:
+        value = ""
+    return value if value in WHERE_VALUES else "either"
+
+
+def machine_name():
+    try:
+        return str(agent_conf.get("full_run_machine") or "").strip()
+    except Exception:
+        return ""
+
+
+def reachable(env):
+    return orca_json(["terminal", "list", "--environment", env, "--json"], 15) is not None
+
+
+def plan(root):
+    """("local", "") | ("remote", <environment>) | ("refuse", <one line>) for the full run of this repo."""
+    where, env = full_where(root), machine_name()
+    if where == "local":
+        return "local", ""
+    if where == "either":
+        return ("remote", env) if env and reachable(env) else ("local", "")
+    if not env:
+        return "refuse", "NIGHTLY: refused: full_run_where=remote and no machine is named: %s" % SET_LINE
+    if not reachable(env):
+        return "refuse", ("NIGHTLY: refused: full_run_where=remote and the connected machine %s is not reachable; "
+                          "the run never falls back to this machine" % env)
+    return "remote", env
+
+
+def is_note(test):
+    return str(test).startswith(NOTE_PREFIXES)
+
+
+def orca_call(args, timeout=60):
+    """(data, why): the parsed JSON when orca answered ok, else None and a short reason."""
+    try:
+        res = subprocess.run(["orca"] + args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, universal_newlines=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, str(exc) or exc.__class__.__name__
+    try:
+        data = json.loads(res.stdout)
+    except ValueError:
+        data = None
+    if res.returncode == 0 and isinstance(data, dict) and data.get("ok") is not False:
+        return data, ""
+    why = ""
+    if isinstance(data, dict) and isinstance(data.get("error"), dict):
+        why = str(data["error"].get("message") or data["error"].get("code") or "")
+    err = (res.stderr or "").strip().splitlines()
+    return None, (why or (err[-1] if err else "") or "orca failed")[:160]
+
+
+def result_of(data):
+    inner = data.get("result") if isinstance(data, dict) else None
+    return inner if isinstance(inner, dict) else {}
+
+
+def repo_label(root):
+    url = git(root, "config", "--get", "remote.origin.url") or root
+    name = re.sub(r"\.git$", "", url.rstrip("/").replace("\\", "/").rsplit("/", 1)[-1].rsplit(":", 1)[-1])
+    return re.sub(r"[^A-Za-z0-9._-]", "-", name) or "repo"
+
+
+def host_tag():
+    """A short tag of THIS machine, so a start never removes the run of another machine that uses the same remote."""
+    import hashlib
+    return hashlib.sha1(socket.gethostname().encode("utf-8")).hexdigest()[:4]
+
+
+def remote_name(root, commit):
+    return "nightly-%s-%s-%s" % (repo_label(root), commit[:7], host_tag())
+
+
+def conf_at(root, commit, key):
+    """A single value of agent_repo.conf as committed in COMMIT (the remote runs that file's full_cmd)."""
+    body = git(root, "show", "%s:agent_repo.conf" % commit)
+    return agent_conf._parse_old(body).get(key, "") if body else ""
+
+
+def remote_cleanup(env, path, handle):
+    """Close the terminal and remove the worktree on the connected machine. A note when that did not work."""
+    if handle:
+        orca_call(["terminal", "close", "--terminal", handle, "--environment", env, "--json"], 30)
+    data, why = orca_call(["worktree", "rm", "--worktree", "path:" + path, "--force", "--delete-branch",
+                           "--environment", env, "--json"], 90)
+    if data is None:
+        return "the remote worktree %s was not removed (%s); the next --start removes it" % (path, why)
+    return ""
+
+
+def remote_stale(env, root):
+    """Remove the worktrees an earlier run of this repo from this machine left there (a killed run)."""
+    data, _ = orca_call(["worktree", "list", "--environment", env, "--json"], 60)
+    rows = result_of(data).get("worktrees") or []
+    mine, tag = "nightly-%s-" % repo_label(root), "-" + host_tag()
+    for row in rows if isinstance(rows, list) else []:
+        path = row.get("path") if isinstance(row, dict) else None
+        base = os.path.basename(str(path or "").rstrip("/"))
+        if path and base.startswith(mine) and base.endswith(tag):
+            remote_cleanup(env, str(path), None)
+
+
+def remote_script():
+    """The one line the connected machine runs in its worktree. Markers carry the commit it ran and the result;
+    the output itself stays in a file inside the worktree, so a long run never has to be read back."""
+    lines = [
+        'T=$1; F=$2; O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)',
+        "printf '@@NIGHTLY-%s %s\\n' BEGIN \"$T\"",
+        'R=$(git rev-parse HEAD)',
+        '[ -n "$B" ] && git checkout -q --detach HEAD && git branch -q -D "$B"',
+        'G=./bin/agent-test-run.sh',
+        '[ -x "$G" ] || G=$(ls -d "$HOME"/.claude/plugins/cache/*/auto-pipeline/*/bin/agent-test-run.sh 2>/dev/null '
+        '| sort -V | tail -n 1)',
+        'if [ -n "$G" ] && [ -x "$G" ]; then "$G" --key nightly -- bash -c "$F" >"$O" 2>&1; '
+        'else bash -c "$F" >"$O" 2>&1; fi; X=$?',
+        'W=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get(\\"nightly\\",\\"\\"))" '
+        '"$(git rev-parse --git-common-dir)/agent_test_weights.json" 2>/dev/null)',
+        "printf '@@NIGHTLY-%s %s commit=%s exit=%s\\n' RESULT \"$T\" \"$R\" \"$X\"",
+        "printf '@@NIGHTLY-%s %s %s\\n' WEIGHT \"$T\" \"$W\"",
+        "grep -E '^[[:space:]]*(FAIL|ERROR): |^(FAILED|ERROR) ' \"$O\" | head -n 200 | "
+        "while IFS= read -r L; do printf '@@NIGHTLY-FAIL %s %s\\n' \"$T\" \"$L\"; done",
+        "tail -n 3 \"$O\" | while IFS= read -r L; do printf '@@NIGHTLY-TAIL %s %s\\n' \"$T\" \"$L\"; done",
+        "printf '@@NIGHTLY-%s %s\\n' END \"$T\"",
+    ]
+    return "; ".join(lines)
+
+
+MARK = re.compile(r"^@@NIGHTLY-([A-Z]+) (\S+)(?: (.*))?$")
+RESULT = re.compile(r"^commit=(\S*) exit=(-?\d+)$")
+
+
+def parse_remote(lines, token):
+    """What the markers of this run's token say: begin, end, commit, exit, weight, fail rows, tail rows."""
+    out = {"begin": False, "end": False, "commit": None, "exit": None, "weight": "", "fail": [], "tail": []}
+    for line in lines:
+        m = MARK.match(str(line).strip())
+        if not m or m.group(2) != token:
+            continue
+        kind, rest = m.group(1), m.group(3) or ""
+        if kind == "BEGIN":
+            out["begin"] = True
+        elif kind == "END":
+            out["end"] = True
+        elif kind == "RESULT":
+            r = RESULT.match(rest)
+            if r:
+                out["commit"], out["exit"] = r.group(1), int(r.group(2))
+        elif kind == "WEIGHT":
+            out["weight"] = rest
+        elif kind == "FAIL":
+            out["fail"].append(rest)
+        elif kind == "TAIL":
+            out["tail"].append(rest)
+    return out
+
+
+def read_terminal(env, handle):
+    data, _ = orca_call(["terminal", "read", "--terminal", handle, "--limit", "400", "--environment", env,
+                         "--json"], 60)
+    tail = (result_of(data).get("terminal") or {}).get("tail") if data else None
+    return tail if isinstance(tail, list) else None
+
+
+def remote_run(root, env, commit, cmd):
+    """Run CMD at COMMIT on the connected machine ENV: a worktree of that commit, one terminal, markers read back.
+    {"state": ok | failed | noroom | nocreate, "failed": [...], "note": ..., "weight": ...}. Always cleans up."""
+    out = {"state": "failed", "failed": [], "note": "", "weight": ""}
+    try:
+        remote_stale(env, root)
+    except Exception:
+        pass
+    data, why = orca_call(["worktree", "create", "--environment", env, "--repo", "name:" + repo_label(root),
+                           "--name", remote_name(root, commit), "--base-branch", commit, "--no-parent",
+                           "--setup", "skip", "--json"], 180)
+    wt = result_of(data).get("worktree") if data else None
+    path = wt.get("path") if isinstance(wt, dict) else None
+    if not path:
+        out.update(state="nocreate", failed=["the connected machine could not make the worktree of %s: %s"
+                                             % (commit[:7], why or "no path in the answer")])
+        return out
+    handle = None
+    REMOTE.update(env=env, path=path, handle=None)
+    try:
+        data, _ = orca_call(["terminal", "list", "--environment", env, "--worktree", "path:" + path, "--json"], 60)
+        rows = result_of(data).get("terminals") or []
+        if rows and isinstance(rows[0], dict):
+            handle = rows[0].get("handle")
+        if not handle:
+            data, _ = orca_call(["terminal", "create", "--environment", env, "--worktree", "path:" + path,
+                                 "--json"], 60)
+            handle = (result_of(data).get("terminal") or {}).get("handle") or result_of(data).get("handle")
+        REMOTE["handle"] = handle
+        if not handle:
+            out["failed"] = ["the connected machine gave no terminal for the run"]
+            return out
+        token = uuid.uuid4().hex[:10]
+        line = "bash -c %s nightly %s %s" % (shlex.quote(remote_script()), token,
+                                            shlex.quote(os.environ.get("AGENT_NIGHTLY_CMD") or conf_at(root, commit, "full_cmd") or cmd))
+        sent, why = orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--text", line,
+                               "--enter", "--json"], 60)
+        if sent is None:
+            out["failed"] = ["the connected machine did not take the command (%s)" % why]
+            return out
+        try:
+            limit = float(os.environ.get("AGENT_NIGHTLY_REMOTE_TIMEOUT_S", "10800"))
+            poll = float(os.environ.get("AGENT_NIGHTLY_POLL_S", "5"))
+        except ValueError:
+            limit, poll = 10800.0, 5.0
+        end, bad, got = time.time() + limit, 0, None
+        while True:
+            lines = read_terminal(env, handle)
+            if lines is None:
+                bad += 1
+                if bad >= 3:
+                    out["failed"] = ["the connected machine: the terminal output cannot be read"]
+                    return out
+            else:
+                bad = 0
+                got = parse_remote(lines, token)
+                if got["end"]:
+                    break
+            if time.time() >= end:
+                orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--interrupt", "--json"], 30)
+                half = got is not None and got["begin"]
+                out["failed"] = ["the connected machine: %s after %d s"
+                                 % ("the run stopped half way, timed out" if half else
+                                    "timed out without a readable result", limit)]
+                return out
+            time.sleep(poll)
+        if got["commit"] is None or got["exit"] is None:
+            out["failed"] = ["the connected machine: the result line is missing or unreadable"]
+        elif got["commit"] != commit:
+            out["failed"] = ["the connected machine ran %s, not %s" % ((got["commit"] or "no commit")[:7], commit[:7])]
+        elif got["exit"] == 3 and any("ROOM" in t for t in got["tail"]):
+            out.update(state="noroom", failed=["no room on the connected machine: " + (got["tail"] or [""])[-1]])
+        else:
+            names = failed_tests("\n".join(got["fail"]))
+            out.update(state="ok", weight=got["weight"],
+                       failed=[] if got["exit"] == 0 else (names or ["full_cmd exit %d" % got["exit"]]))
+        return out
+    finally:
+        out["note"] = remote_cleanup(env, path, handle)
+        REMOTE.clear()
+
+
+def write_final(root, gitdir, base, prev, commit, result, failed, extra=None):
+    stamp = now().strftime(FMT)
+    final = {"started": base["started"], "commit": commit, "finished": stamp, "result": result, "failed": failed,
+             "last_green": commit if result == "green" else base["last_green"]}
+    final.update(extra or {})
+    if result != "green" and not any(is_note(f) for f in failed):
+        try:
+            record_misses(root, gitdir, prev, failed, commit, stamp)
+        except Exception:
+            pass
+    atomic_write(status_path(gitdir), json.dumps(final))
+
+
+def do_remote(root, gitdir, env, commit, cmd, base, prev, either):
+    """The run on the connected machine, recorded here. 0 when recorded, 3 when there was no room (status put back),
+    None when the run is to go on here instead (full_run_where=either: no room, no worktree there)."""
+
+    def on_stop(signum, frame):
+        if REMOTE:
+            try:
+                remote_cleanup(REMOTE.get("env", env), REMOTE.get("path", ""), REMOTE.get("handle"))
+            except Exception:
+                pass
+        atomic_write(status_path(gitdir), json.dumps({"started": base["started"], "commit": commit,
+                                                      "finished": now().strftime(FMT), "result": "stopped",
+                                                      "failed": [], "last_green": base["last_green"]}))
+        os._exit(128 + signum)
+
+    for sig in STOP_SIGNALS:
+        signal.signal(sig, on_stop)
+    try:
+        res = remote_run(root, env, commit, cmd)
+    except Exception as exc:
+        res = {"state": "failed", "failed": ["the connected machine: the run broke (%s)" % exc], "note": "",
+               "weight": ""}
+    if res["state"] in ("noroom", "nocreate") and either:
+        return None
+    if res["state"] == "noroom":
+        if prev:
+            atomic_write(status_path(gitdir), json.dumps(prev))
+        else:
+            try:
+                os.remove(status_path(gitdir))
+            except OSError:
+                pass
+        sys.stdout.write("NIGHTLY: %s\n" % res["failed"][0])
+        return 3
+    got = parse_weight(res.get("weight", ""))
+    if got:
+        try:
+            with locked():
+                write_weight(gitdir, "nightly", got[0], got[1])
+        except OSError:
+            pass
+    ok = res["state"] == "ok" and not res["failed"]
+    extra = {"where": WHERE_LABEL}
+    if res.get("note"):
+        extra["note"] = res["note"]
+    write_final(root, gitdir, base, prev, commit, "green" if ok else "red", [] if ok else res["failed"], extra)
+    return 0
+
+
 def do_run(cwd):
     """The foreground run: lock, gate, command (monitored), status, misses. Exit 0 whatever the result."""
     root, gitdir = main_root(cwd), common_dir(cwd)
@@ -1128,6 +1457,10 @@ def do_run(cwd):
     if not cmd:
         sys.stdout.write("NIGHTLY: no full_cmd in agent_repo.conf of %s, nothing to run\n" % root)
         return 0
+    mode, env = plan(root)
+    if mode == "refuse":
+        print(env)
+        return 1
     lock = RunLock(gitdir)
     if not lock.take():
         print("NIGHTLY: already running")
@@ -1138,6 +1471,12 @@ def do_run(cwd):
     base = {"started": now().strftime(FMT), "commit": commit, "finished": "", "result": "running", "failed": [],
             "last_green": (prev or {}).get("last_green", ""), "pid": os.getpid(), "prev": prev}
     atomic_write(status_path(gitdir), json.dumps(base))
+    if mode == "remote":
+        done = do_remote(root, gitdir, env, commit, cmd, base, prev, full_where(root) == "either")
+        if done is not None:
+            return done
+        print("NIGHTLY: the connected machine could not take the run; it runs here")
+        sys.stdout.flush()
     weight, measured = weight_of(gitdir, os.path.join(root, "agent_repo.conf"), "nightly")
     me = os.getpid()
     wt = os.path.join(gitdir, SCRATCH)
@@ -1232,6 +1571,10 @@ def start(cwd, wait):
         return 0
     if wait:
         return do_run(cwd)
+    mode, line = plan(root)
+    if mode == "refuse":
+        print(line)
+        return 1
     if running(read_status(gitdir)):
         print("NIGHTLY: already running")
         return 0
@@ -1389,7 +1732,7 @@ def failures(cwd):
     green, head = st.get("last_green", ""), st.get("commit", "")
     for test in st.get("failed", []):
         merge, task, req = "-", "-", "-"
-        if green and green != head and not test.startswith("full_cmd exit"):
+        if green and green != head and not is_note(test):
             short, subject = find_merge(root, test, green, head, gitdir)
             merge = ("%s %s" % (short, subject)).strip()
             m = re.match(r"^Merge (?:branch |pull request )?'?([^\s']+)", subject)
@@ -1438,12 +1781,15 @@ def main(argv):
         return release_ok(cwd)
     if argv[0] == "--machines":
         return machines_cli(cwd)
+    if argv[0] == "--where":
+        print({"local": "local", "remote": "remote", "refuse": "refused"}[plan(main_root(cwd))[0]])
+        return 0
     if argv[0] == "--misses":
         return misses(cwd)
     if argv[0] == "--failures":
         return failures(cwd)
     sys.stderr.write("usage: agent-nightly.sh --start [--wait] | --status | --due | --release-ok | --misses | "
-                     "--failures\n")
+                     "--failures | --where\n")
     return 2
 
 
