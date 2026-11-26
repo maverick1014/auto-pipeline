@@ -41,6 +41,9 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fasttools import direct_tools  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAN = re.compile(r"^Ran (\d+) tests? in ([\d.]+)s", re.M)
 RESULT = re.compile(r"^(OK|FAILED)\b(.*)$", re.M)
@@ -288,6 +291,7 @@ def main():
     ap.add_argument("--root")
     ap.add_argument("--out")
     args = ap.parse_args()
+    direct_tools()   # test-slim-3: git and python3 without the macOS xcrun shim, for every process started
     if not args.files:
         os.environ["AGENT_FULL_RUN"] = "1"
     else:

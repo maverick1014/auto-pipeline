@@ -226,3 +226,48 @@ class TestCountCheck(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDirectTools(unittest.TestCase):
+    """test-slim-3 (tests/fasttools.py): on macOS the test run finds git and python3
+    without the xcrun shim: the very binaries the shim would start; elsewhere,
+    or with AGENT_TEST_SHIMS=1, nothing changes."""
+
+    def call(self, env_extra, code):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("AGENT_TEST_TOOLS", "PYTHONPYCACHEPREFIX")}
+        env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep)
+                                      if "agent_test_tools_" not in p)
+        env.update(env_extra)
+        script = ("import json, os, shutil, sys; sys.path.insert(0, %r)\n"
+                  "from fasttools import direct_tools\n%s" % (HERE, code))
+        done = subprocess.run([sys.executable, "-c", script], env=env,
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return done.stdout
+
+    @unittest.skipUnless(sys.platform == "darwin", "the xcrun shims are macOS only")
+    def test_the_same_binaries_without_the_shim(self):
+        out = self.call({}, "folder = direct_tools()\n"
+                            "print(json.dumps([folder, os.environ['PATH'].split(os.pathsep)[0],"
+                            " shutil.which('git'), shutil.which('python3'),"
+                            " os.environ.get('PYTHONPYCACHEPREFIX'), direct_tools(),"
+                            " os.path.realpath(shutil.which('git')), os.path.realpath(shutil.which('python3'))]))")
+        folder, first, git, py, prefix, again, git_real, py_real = __import__("json").loads(out)
+        self.assertIsNone(again, "a second call changes nothing")
+        for name, found, found_real in (("git", git, git_real), ("python3", py, py_real)):
+            shim = shutil.which(name) == "/usr/bin/" + name or found.startswith(folder or "-")
+            if not shim:
+                continue
+            self.assertEqual(first, folder)
+            self.assertEqual(found, os.path.join(folder, name))
+            real = subprocess.run(["xcrun", "--find", name], capture_output=True, text=True).stdout.strip()
+            self.assertEqual(found_real, os.path.realpath(real))
+        if getattr(sys, "pycache_prefix", None):
+            self.assertEqual(prefix, os.path.join(folder, "pycache"))
+
+    def test_the_old_way_on_request(self):
+        out = self.call({"AGENT_TEST_SHIMS": "1"},
+                        "print(json.dumps([direct_tools(), os.environ.get('AGENT_TEST_TOOLS'),"
+                        " os.environ.get('PYTHONPYCACHEPREFIX')]))")
+        self.assertEqual(__import__("json").loads(out), [None, None, None])
