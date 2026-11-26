@@ -1666,7 +1666,8 @@ function subBadge(rowId){
    none) }. opts.bounds { l, t, r, b }: every box is kept inside by its own width (a chip stays over its head); a head
    outside the bounds is 'none' and not moved. opts.blocks [[l, t, r, b], ...]: the panels, never covered. Order: higher
    pri first; equal pri: the larger y (nearer the viewer) first, then input order. Three steps:
-   1. pri >= 2: 'full' first, starting from where its plate was laid out last frame (px, py) when given; a panel or an
+   1. pri >= 2: 'full' first, starting from where its plate was laid out last frame (px, py) when given and its head has moved
+      less than 1 px since (hx0, hy0: last frame's head), else from its head; a panel or an
       earlier selected / hovered plate in the way: it takes the nearest free spot in any direction inside the bounds.
    2. everyone else: a chip over its head; else nudged left or right by 0.6 chip widths, else one row up (h + 2); the first
       spot that meets no panel and no box laid out before; none fits: 'none'.
@@ -1697,7 +1698,9 @@ function plateLayout(items, opts){
     if ((it.pri || 0) < 2) continue;
     const ew = fullW(it), eh = fullH(it);
     // it starts where its plate was laid out last frame (px, py), so a hovered chip stays under the pointer
-    let p = clampTo(ew, eh, it.px != null ? it.px : heads[i].x, it.py != null ? it.py : heads[i].y);
+    // ... but only while its head stands still (hx0, hy0: the head of that frame); a head that moves takes its plate with it
+    const still = it.px != null && it.py != null && Math.abs(heads[i].x - (it.hx0 != null ? it.hx0 : heads[i].x)) < 1 && Math.abs(heads[i].y - (it.hy0 != null ? it.hy0 : heads[i].y)) < 1;
+    let p = clampTo(ew, eh, still ? it.px : heads[i].x, still ? it.py : heads[i].y);
     const taken = c => blocks.some(q => hit(q, fullBox(it, c.x, c.y))) || boxes.some(q => q && hit(q, fullBox(it, c.x, c.y), GAP));   // the panels, and the selected / hovered laid out before (GAP apart)
     if (!inside(ew, eh, p) || taken(p)) {   // the nearest free spot, in any direction: candidates aligned with the edges of the panels and plates, and of the bounds
       const E = 1e-6, xs = [p.x], ys = [p.y];
@@ -4743,16 +4746,17 @@ function syncFigs(dt){
     if (o.tag.hidden || !(o.wFull > 0)) { pin(o.doing, 0, 0, false); o.lastOn = false; continue; }
     const dn = o.doingOn && o.wd > 0;   // the doing line: part of the full plate's box, 26 px above the plate's bottom
     items.push({ x:o.tag._px, y:o.tag._py, w:o.wFull, wChip:o.wChip, h:o.hTag || 22, pri:platePri(f),
-      px:o.lastOn ? o.lastX : undefined, py:o.lastOn ? o.lastY : undefined,   // where this plate was laid out last frame
+      px:o.lastOn ? o.lastX : undefined, py:o.lastOn ? o.lastY : undefined,   // where this plate was laid out last frame ...
+      hx0:o.lastOn ? o.lastHX : undefined, hy0:o.lastOn ? o.lastHY : undefined,   // ... and where its head was then
       wd:dn ? o.wd : 0, hd:dn ? o.hdRaw + Math.max(0, 26 - (o.hTag || 22)) : 0 });
     ovs.push(o);
   }
   const bounds = { l:4, t:4, r:W - 4, b:H - 4 }, blocks = panelBlocks();
-  const modes = plateLayout(items, { bounds, blocks });
+  const heads0 = items.map(it => ({ x:it.x, y:it.y })), modes = plateLayout(items, { bounds, blocks });
   for (let i = 0; i < ovs.length; i++) {
     const t = ovs[i].tag;
     t.classList.toggle('chip', modes[i] === 'chip');
-    ovs[i].lastOn = modes[i] !== 'none'; ovs[i].lastX = items[i].x; ovs[i].lastY = items[i].y;
+    ovs[i].lastOn = modes[i] !== 'none'; ovs[i].lastX = items[i].x; ovs[i].lastY = items[i].y; ovs[i].lastHX = heads0[i].x; ovs[i].lastHY = heads0[i].y;
     if (modes[i] === 'none') t.hidden = true;
     else pin(t, items[i].x, items[i].y, true);
     if (modes[i] === 'full' && ovs[i].doingOn) pin(ovs[i].doing, items[i].x, items[i].y - 26, true);   // the doing line only over a full plate, at its moved spot
