@@ -380,8 +380,9 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 /* floor sign */
 .floorsign{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:3;display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:5px 14px 5px 6px;box-shadow:0 3px 0 rgba(42,43,69,.18);white-space:nowrap;pointer-events:auto;max-width:calc(100% - 24px)}
 .floorsign .fno{font:700 18px/1 var(--display);background:var(--ink);color:var(--paper);border-radius:9px;padding:5px 8px}
-.floorsign .frn{font:700 15px/1 var(--display);overflow:hidden;text-overflow:ellipsis}
-.floorsign .frs{font:500 12px/1 var(--round);color:var(--ink-3)}
+.floorsign .frn{font:700 15px/1 var(--display);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.floorsign .frs{font:500 12px/1 var(--round);color:var(--ink-3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.floorsign .fpc{font:500 12px/1 var(--round);color:var(--ink-3);flex-shrink:0;white-space:nowrap}
 .fedit{all:unset;cursor:pointer;font:600 12px/1 var(--round);padding:5px 9px;border-radius:8px;background:var(--panel-2);border:1.5px solid var(--line);color:var(--ink)}
 .fedit:hover{border-color:var(--ink)}
 .fedit:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
@@ -1660,42 +1661,85 @@ function subBadge(rowId){
   return [w ? 'worker ×' + w : '', d ? 'deputy ×' + d : ''].filter(Boolean).join(' · ');
 }
 /* plateLayout(items, opts) -> 'full' | 'chip' | 'none' per item, in input order. An item is a name plate on screen { x, y (its
-   bottom centre, px), w (the full plate), wChip (the role chip alone), h, pri, wd and hd (the doing line above a full plate:
-   its width and its height; 0 or absent: none -- a chip or hidden plate shows none) }. opts.bounds { l, t, r, b }: first each item
-   is moved (x and y changed in place) the least that keeps its full box inside; opts.blocks [[l, t, r, b], ...]: boxes
-   already taken (panels): no shown plate meets one, the first included. Higher pri first; equal pri: the larger y (nearer
-   the viewer) first, then input order. The first is always 'full' (unless a block is in the way); each next one is 'full'
-   when its full box meets no box shown, else 'chip' when its chip box meets none, else 'none'. */
+   head: the plate's bottom centre, px), w (the full plate), wChip (the role chip alone), h, pri (selected 3, hovered 2,
+   session or area manager 1, agent 0), wd and hd (the doing line above a full plate: its width and height; 0 or absent:
+   none) }. opts.bounds { l, t, r, b }: every box is kept inside by its own width (a chip stays over its head); a head
+   outside the bounds is 'none' and not moved. opts.blocks [[l, t, r, b], ...]: the panels, never covered. Order: higher
+   pri first; equal pri: the larger y (nearer the viewer) first, then input order. Three steps:
+   1. pri >= 2: 'full' first; a panel in the way moves it the least way out (down, left or right) inside the bounds.
+   2. everyone else: a chip over its head; else nudged left or right by 0.6 chip widths, else one row up (h + 2); the first
+      spot that meets no panel and no box laid out before; none fits: 'none'.
+   3. in order, a chip becomes 'full' when its full box (with its doing line) over its head meets no panel and no other box.
+   Each item's x, y end at its final box's bottom centre. */
 function plateLayout(items, opts){
-  const n = items.length, order = [], out = new Array(n), blocks = (opts && opts.blocks) || [], bd = opts && opts.bounds, shown = [];
-  if (bd) for (const it of items) {
-    if (it.x < bd.l || it.x > bd.r || it.y < bd.t || it.y > bd.b) { it.off = true; continue; }   // the head is off screen: no plate, not moved
-    const ew = Math.max(it.w, it.wd || 0);
-    it.x = Math.max(bd.l + ew / 2, Math.min(bd.r - ew / 2, it.x));
-    it.y = Math.max(bd.t + it.h + (it.hd || 0), Math.min(bd.b, it.y));
+  const n = items.length, out = new Array(n), blocks = (opts && opts.blocks) || [], bd = opts && opts.bounds, order = [], boxes = new Array(n).fill(null);
+  const hit = (a, b) => Math.min(a[2], b[2]) > Math.max(a[0], b[0]) && Math.min(a[3], b[3]) > Math.max(a[1], b[1]);
+  const heads = items.map(it => ({ x:it.x, y:it.y }));
+  for (let i = 0; i < n; i++) {
+    const it = items[i];
+    if (bd && (it.x < bd.l || it.x > bd.r || it.y < bd.t || it.y > bd.b)) out[i] = 'none'; else order.push(i);
   }
-  for (let i = 0; i < n; i++) { if (items[i].off) { out[i] = 'none'; delete items[i].off; } else order.push(i); }
   order.sort((a, b) => ((items[b].pri || 0) - (items[a].pri || 0)) || (items[b].y - items[a].y) || (a - b));
-  const box = (it, w, hd) => [it.x - w / 2, it.y - it.h - hd, it.x + w / 2, it.y];   // hd: the doing line above a full plate
-  const hit = (q, b) => Math.min(q[2], b[2]) > Math.max(q[0], b[0]) && Math.min(q[3], b[3]) > Math.max(q[1], b[1]);
-  const meets = b => { for (const q of shown) if (hit(q, b)) return true; for (const q of blocks) if (hit(q, b)) return true; return false; };
-  for (const i of order) {
-    const it = items[i], full = box(it, Math.max(it.w, it.wd || 0), it.hd || 0), chip = box(it, it.wChip, 0);
-    if (!meets(full)) { shown.push(full); out[i] = 'full'; }
-    else if (!meets(chip)) { shown.push(chip); out[i] = 'chip'; }
-    else out[i] = 'none';
+  const clampTo = (ew, eh, x, y) => bd ? { x:Math.max(bd.l + ew / 2, Math.min(bd.r - ew / 2, x)), y:Math.max(bd.t + eh, Math.min(bd.b, y)) } : { x, y };
+  const fullW = it => Math.max(it.w, it.wd || 0), fullH = it => it.h + (it.hd || 0);
+  const fullBox = (it, x, y) => [x - fullW(it) / 2, y - fullH(it), x + fullW(it) / 2, y];
+  const chipBox = (it, x, y) => [x - it.wChip / 2, y - it.h, x + it.wChip / 2, y];
+  const free = (b, except) => {
+    for (const q of blocks) if (hit(q, b)) return false;
+    for (let j = 0; j < n; j++) if (j !== except && boxes[j] && hit(boxes[j], b)) return false;
+    return true;
+  };
+  const inside = (ew, eh, p) => { const c = clampTo(ew, eh, p.x, p.y); return Math.abs(c.x - p.x) < 1e-6 && Math.abs(c.y - p.y) < 1e-6; };
+  for (const i of order) {   // 1. the selected and the hovered: in full, a panel moves them the least way out
+    const it = items[i];
+    if ((it.pri || 0) < 2) continue;
+    const ew = fullW(it), eh = fullH(it);
+    let p = clampTo(ew, eh, heads[i].x, heads[i].y);
+    for (let k = 0; k < 8; k++) {
+      const blk = blocks.find(q => hit(q, fullBox(it, p.x, p.y)));
+      if (!blk) break;
+      let best = null, bd2 = 1e18;
+      for (const c of [{ x:p.x, y:blk[3] + eh }, { x:blk[0] - ew / 2, y:p.y }, { x:blk[2] + ew / 2, y:p.y }]) {
+        if (!inside(ew, eh, c) || blocks.some(q => hit(q, fullBox(it, c.x, c.y)))) continue;
+        const d = (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y);
+        if (d < bd2) { bd2 = d; best = c; }
+      }
+      if (!best) break;
+      p = best;
+    }
+    it.x = p.x; it.y = p.y; out[i] = 'full'; boxes[i] = fullBox(it, p.x, p.y);
+  }
+  for (const i of order) {   // 2. everyone else: a chip over its head, nudged, or a row up
+    const it = items[i];
+    if ((it.pri || 0) >= 2) continue;
+    const hx = heads[i].x, hy = heads[i].y, nud = .6 * it.wChip;
+    out[i] = 'none';
+    for (const c of [{ x:hx, y:hy }, { x:hx - nud, y:hy }, { x:hx + nud, y:hy }, { x:hx, y:hy - (it.h + 2) }]) {
+      const p = clampTo(it.wChip, it.h, c.x, c.y), b = chipBox(it, p.x, p.y);
+      if (!free(b, i)) continue;
+      it.x = p.x; it.y = p.y; out[i] = 'chip'; boxes[i] = b;
+      break;
+    }
+  }
+  for (const i of order) {   // 3. a chip becomes a full plate (with its doing line) over its head when that meets nothing
+    const it = items[i];
+    if (out[i] !== 'chip') continue;
+    const p = clampTo(fullW(it), fullH(it), heads[i].x, heads[i].y), b = fullBox(it, p.x, p.y);
+    if (free(b, i)) { it.x = p.x; it.y = p.y; out[i] = 'full'; boxes[i] = b; }
   }
   return out;
 }
-/* plateName(c) -> the name on c's plate: a session's nameOf; an agent's description without the type its chip already says
-   ('' when the description is only its type; two alike keep nameOf's '#<id>' ending) */
-function plateName(c){
+/* plateName(c, long) -> the name on c's plate: a session's nameOf; an agent's description without the type its chip already
+   says ('' when the description is only its type; two alike keep nameOf's '#<id>' ending). The short form (the default) also
+   drops a leading task name (a kebab-case word with a '-', followed by more text): 'city-x PR REVIEW' -> 'PR REVIEW'. */
+function plateName(c, long){
   const n = nameOf(c);
   if (!isSub(c)) return n;
   const l = shortLabel(c.label, repoOf(c)) || c.label || '';
-  if (!l || !n.startsWith(l)) return n;
-  const rest = n.slice(l.length);
-  return rest.startsWith(' · ') ? rest.slice(3) : rest.trim();
+  let r = n;
+  if (l && n.startsWith(l)) { r = n.slice(l.length); r = r.startsWith(' · ') ? r.slice(3) : r.trim(); }
+  if (!long) r = r.replace(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)+\s+(?=\S)/, '');
+  return r;
 }
 /* platePri(f) -> how early a head tag is laid out: the selected one 3, the one under the pointer 2, a session or an area
    manager 1, an agent 0. f is a figure: { c } a person, { gv: { terr } } an area manager. */
@@ -4572,10 +4616,11 @@ function pinOv(f, st){
   const o = ensureOv(f), c = f.c, terr = f.gv ? f.gv.terr : '';
   const isSel = !!(selected && ((selected.t === 'c' && c && selected.id === c.id) || (selected.t === 'gov' && f.gv && (selected.terr || govTerr) === terr)));
   f.ring.visible = isSel;
-  const key = [c ? plateName(c) : '', c ? c.role : 'governor', c ? plateWord(c) : '', isSel].join('|');
+  const lng = platePri(f) >= 2, nmShow = c ? plateName(c, lng) : '';   // the long form on a hovered or selected plate
+  const key = [nmShow, c ? c.role : 'governor', c ? plateWord(c) : '', isSel].join('|');
   if (o.tagKey !== key) {
     o.tagKey = key;
-    const word = c ? plateWord(c) : roleWord(f.role), nm = c ? plateName(c) : '';
+    const word = c ? plateWord(c) : roleWord(f.role), nm = nmShow;
     o.tag.innerHTML = '<span class="rolechip ' + ROLE_CLS[f.role] + '">' + esc(word) + '</span>' + (nm ? '<span class="nm">' + esc(nm) + '</span>' : '');
     o.tag.title = c ? nameOf(c) : '';   // the full name (type included) on hover
     o.tag.classList.toggle('sel', isSel);
@@ -4951,7 +4996,7 @@ function renderFloorSign(){
   } else {
     const t = terrOf(cur), th = themeOf(cur), tag = floorTag(cur), reno = renovating(cur);
     h = '<span class="fno">' + esc(tag.floor) + '</span><i class="rc" style="--rc:' + terrColor(cur) + '"></i><span class="frn">' + esc(t.name) + '</span>' +
-      '<span class="frs">' + esc(reno ? i18n('office.renovating') : th.name) + ' · ' + tag.people + ' ' + esc(i18n('office.people')) + '</span>' +
+      '<span class="frs">' + esc(reno ? i18n('office.renovating') : th.name) + '</span><span class="fpc">' + tag.people + ' ' + esc(i18n('office.people')) + '</span>' +
       (reno ? '' : '<button class="fedit" id="fEdit" type="button">' + esc(i18n('office.renovate')) + '</button>');
     title = th.why ? i18n('office.designBy') + th.why : '';
   }

@@ -485,11 +485,13 @@ class TestPlateLayout(unittest.TestCase):
         rnd = random.Random(7)
         items = [{"x": 600 + rnd.uniform(-60, 60), "y": 300 + rnd.uniform(-30, 30), "w": rnd.uniform(100, 180),
                   "wChip": rnd.choice([32, 52, 62]), "h": 22, "pri": 0} for _ in range(30)]
-        modes = layout(items)
+        first = max(range(30), key=lambda i: (items[i]["pri"], items[i]["y"], -i))   # from the heads, before any move
+        out = sim("const items = __payload.items; __out = { modes: plateLayout(items), items };", {"items": items},
+                  required=("plateLayout",))
+        modes = out["modes"]
         self.assertEqual(len(modes), 30)
         self.assertTrue(set(modes) <= {"full", "chip", "none"}, modes)
-        self.assertEqual(overlapping(boxes_of(items, modes)), [])
-        first = max(range(30), key=lambda i: (items[i]["pri"], items[i]["y"], -i))
+        self.assertEqual(overlapping(boxes_of(out["items"], modes)), [], "the boxes where they end (a chip may be nudged)")
         self.assertNotEqual(modes[first], "none", "the first in order always keeps at least its chip")
 
     def test_the_selected_one_is_full_in_a_pile(self):
@@ -817,13 +819,14 @@ __out = { names: ids.map(id => plateName(byId(id))), words: ids.map(id => plateW
         n = dict(zip(["s:t", "r1", "m1", "w1", "e1", "a1", "c1", "c2"], out["names"]))
         w = dict(zip(["s:t", "r1", "m1", "w1", "e1", "a1", "c1", "c2"], out["words"]))
         self.assertEqual(n["s:t"], out["tm"], "a session: as before")
-        self.assertEqual((w["r1"], n["r1"]), ("审查员", "city-x PR REVIEW"))
-        self.assertEqual((w["m1"], n["m1"]), ("合并副手", "city-x merge"))
+        # fix round 2 (main manager's decision): the short name also drops the leading task name (TestPlateNameShort)
+        self.assertEqual((w["r1"], n["r1"]), ("审查员", "PR REVIEW"))
+        self.assertEqual((w["m1"], n["m1"]), ("合并副手", "merge"))
         self.assertEqual((w["w1"], n["w1"]), ("工人", "Worker 1 · seats"))
         self.assertEqual((w["e1"], n["e1"]), ("Explore", "find the hook"))
         self.assertEqual(n["a1"], "", "a description that is only the type: the chip alone")
         self.assertNotEqual(n["c1"], n["c2"])
-        self.assertTrue(n["c1"].startswith("city-y UI CHECK") and n["c2"].startswith("city-y UI CHECK"), (n["c1"], n["c2"]))
+        self.assertTrue(n["c1"].startswith("UI CHECK") and n["c2"].startswith("UI CHECK"), (n["c1"], n["c2"]))
         labels = {a["id"]: a["label"] for a in agents}
         for k, v in n.items():
             if k != "s:t":
