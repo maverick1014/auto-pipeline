@@ -87,8 +87,9 @@ import agent_city as ac  # noqa: E402
 from cityhelp import QS  # noqa: E402
 from cityhelp import SHOP  # noqa: E402
 from cityhelp import q_body  # noqa: E402
-from cityhelp import InteractCase  # noqa: E402
-from cityhelp import AskHookCase  # noqa: E402
+from cityhelp import InteractCase as _InteractCase  # noqa: E402
+from cityhelp import AskHookCase as _AskHookCase  # noqa: E402
+from cityhelp import ServerCase as _ServerCase  # noqa: E402
 from cityhelp import stop_payload  # noqa: E402
 import re  # noqa: E402
 from cityhelp import world_make_repo as make_repo  # noqa: E402
@@ -110,6 +111,30 @@ from cityhelp import PROMPT  # noqa: E402
 from cityhelp import line as line_aa  # noqa: E402
 from cityhelp import configure_text  # noqa: E402
 from cityhelp import AddCase  # noqa: E402
+
+
+class _KillAtOnce:
+    """test-slim-3: a server started by a test is killed at the end of the test, not asked to stop:
+    the graceful stop waits for serve_forever's 0.2 s poll, about 0.2 s per test. The test folder is
+    removed right after, so nothing of the server's exit is read by any test."""
+
+    def tearDown(self):
+        for p in self.procs:
+            if p.poll() is None:
+                p.kill()
+        super().tearDown()
+
+
+class ServerCase(_KillAtOnce, _ServerCase):
+    pass
+
+
+class InteractCase(_KillAtOnce, _InteractCase):
+    pass
+
+
+class AskHookCase(_KillAtOnce, _AskHookCase):
+    pass
 
 
 def line(ev, sid="s1", aid="", at="", tool="", nt="", role="", desc="", sub="", q=""):
@@ -334,7 +359,8 @@ class TestBudget(ServerCase):
         for i in range(10):
             self.append("".join(line("PostToolUse", aid="a1", at="worker", tool="Edit")
                                 for _ in range(30)))
-            time.sleep(0.15)
+            # was sleep(0.15): the next batch goes in once the city has read this one (60 s: a loaded run)
+            wait_for(lambda: len(client.events("tool")) >= 30 * (i + 1), timeout=60)
         # five-fixes S4: 60 s, not 15: under a loaded full suite the lines come late, never lost
         self.assertTrue(wait_for(lambda: len(client.events("tool")) == 300, timeout=60),
                         "got %d tool events" % len(client.events("tool")))
@@ -501,7 +527,7 @@ def stop_server(city_dir):
     if pid is None:
         return
     try:
-        os.kill(pid, signal.SIGTERM)
+        os.kill(pid, signal.SIGKILL)   # test-slim-3: at the end of a test, no graceful stop to wait for
     except OSError:
         return
     wait_for_anywhere(lambda: not _alive(pid), timeout=5)
@@ -1294,7 +1320,8 @@ class TestTerminal(InteractCase):
         self.event(sid="s1", aid="a1", tool="Bash", klen="3")
         self.event(sid="s1", aid="a2", tool="Bash", klen=str(len("rm -rf build/")))
         self.event(sid="s1", aid="a1", tool="Edit")
-        time.sleep(1.0)
+        # was sleep(1.0): the city has read all three lines (feed_line counts under the same lock)
+        wait_for(lambda: self.health()["lines"] == 3, timeout=10)
         self.assertIsNotNone(self.view(ask_id))
 
     def test_escaped_length_is_compared(self):
@@ -1557,7 +1584,7 @@ class TestGovWatch(AskHookCase):
     def test_permissions_never_wake_it(self):
         self.start()
         proc = self.watch(max_wait="3")
-        time.sleep(0.5)
+        wait_for(lambda: self.health()["governors"] == 1, timeout=5)   # was a sleep: the watcher is the governor now
         self.ask(perm_body(repo=os.path.realpath(self.work)))
         code, out, err = self.finish(proc)
         self.assertEqual((code, out, err), (0, b"", b""))
@@ -1565,14 +1592,14 @@ class TestGovWatch(AskHookCase):
     def test_other_repo_questions_do_not_wake_it(self):
         self.start()
         proc = self.watch(max_wait="3")
-        time.sleep(0.5)
+        wait_for(lambda: self.health()["governors"] == 1, timeout=5)   # was a sleep: the watcher is the governor now
         self.ask(q_body(repo="/r/elsewhere/.git"))
         self.assertEqual(self.finish(proc)[0], 0)
 
     def test_second_watcher_replaces_the_first(self):
         self.start()
         first = self.watch()
-        time.sleep(1.0)
+        wait_for(lambda: self.health()["governors"] == 1, timeout=5)   # was a sleep: the watcher is the governor now
         second = self.watch()
         code, _, _ = self.finish(first, timeout=10)
         self.assertEqual(code, 0)
@@ -1596,8 +1623,10 @@ class TestGovWatch(AskHookCase):
 
     def test_server_gone(self):
         srv = self.start()
-        proc = self.watch()
-        time.sleep(0.5)
+        # max_wait 3, not the 20 of a plain watch: a watcher whose server is gone keeps looking for it
+        # until its max wait is over (_watch_poll), and the test only needs it to end with 0
+        proc = self.watch(max_wait="3")
+        wait_for(lambda: self.health()["governors"] == 1, timeout=5)   # was a sleep: the watcher is the governor now
         srv.terminate()
         self.assertEqual(self.finish(proc)[0], 0)
 
@@ -1929,7 +1958,7 @@ class TestHttpOffice(OfficeCase):
         self.port = self.server.server_address[1]
         self.server.host_set = {"127.0.0.1:%d" % self.port, "localhost:%d" % self.port}
         self.server.origin_set = {"http://127.0.0.1:%d" % self.port, "http://localhost:%d" % self.port}
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=lambda: self.server.serve_forever(poll_interval=0.02), daemon=True)   # test-slim-3: shutdown() waits one poll
         self.thread.start()
 
     def tearDown(self):
@@ -2070,7 +2099,7 @@ class TestRoutesAreGone(Case):
         port = server.server_address[1]
         server.host_set = {"127.0.0.1:%d" % port}
         server.origin_set = {"http://127.0.0.1:%d" % port}
-        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.02), daemon=True)
         t.start()
         try:
             for method, path in (("POST", "/api/layout"), ("GET", "/api/balance?terr=x&kind=build")):
@@ -2181,7 +2210,7 @@ class TestUpInTheSnapshotS2(ServerCase_rail_tree):
         self.assertEqual(self.snap_agents()["w1"]["up"], "s:tm1")
 
 
-class TestGovWatchRoles(interact.AskHookCase):
+class TestGovWatchRoles(AskHookCase):
     def setUp(self):
         super().setUp()
         self.repo_id = os.path.realpath(self.work)      # not a git dir: _repo_id() gives the folder
@@ -3261,7 +3290,7 @@ class TestHttp(AddCase):
         self.port = self.server.server_address[1]
         self.server.host_set = {"127.0.0.1:%d" % self.port, "localhost:%d" % self.port}
         self.server.origin_set = {"http://127.0.0.1:%d" % self.port, "http://localhost:%d" % self.port}
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=lambda: self.server.serve_forever(poll_interval=0.02), daemon=True)   # test-slim-3: shutdown() waits one poll
         self.thread.start()
 
     def tearDown(self):
