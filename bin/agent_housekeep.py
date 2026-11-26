@@ -587,7 +587,7 @@ class Housekeep(object):
         except Exception:
             paired, reachable = [], []
         if reachable:
-            self.nightly.append("NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start --nightly there")
+            self.nightly.append("NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start there")
             return
         if paired:
             self.nightly.append("NIGHTLY: the paired machine %s did not answer; it runs here when there is room"
@@ -605,9 +605,9 @@ class Housekeep(object):
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60) != 0:
                 host = os.environ.get("AGENT_FAKE_HOST") or os.uname()[1].split(".")[0]
                 self.nightly.append("NIGHTLY: due, no room on %s: start it where there is room (W7): "
-                                    "agent-nightly.sh --start --nightly" % host)
+                                    "agent-nightly.sh --start" % host)
                 return
-        res = subprocess.run([script, "--start", "--nightly"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+        res = subprocess.run([script, "--start"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, timeout=60)
         if res.returncode == 0:
             self.nightly.append("nightly: started in the background (agent-nightly.sh --status)")

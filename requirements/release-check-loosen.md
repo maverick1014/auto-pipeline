@@ -68,3 +68,17 @@ A green top-up is recorded on the tip together with the full run it stands on ("
 ## Not in this task
 
 Which tests a task runs. The nightly's timing. Any change of who may publish.
+
+## Outcome (2026-11-26)
+
+The top-up was built, attacked in four reviews and DROPPED (main manager's stop rule: a real hole in the final review drops it). Each round found one more way a partial run could stand in for the full run and be wrong:
+- Shell characters in test file names (`;`, a space, `$(...)`) reached the runner's shell: a failing test was skipped and the top-up was green.
+- A test file that exits at import (`sys.exit(0)`, `os._exit(0)`) or prints its own "Ran 1 test / OK" was taken as run and green.
+- Tests that read a changed .md by its name (a base name like SKILL.md, a path in parts) were not picked: green top-up, red full run.
+- With this repo's single-process related runner the top-up was slower than the full run (661 s against 460 s).
+- Tests that run only in the full run (`skipUnless(AGENT_FULL_RUN == "1")`) are skipped by run2.py when files are named: green top-up, red full run on the same tip.
+
+Kept, because each is proven and useful on its own:
+- The version-only tip counts as its parent only when its single change is a version-only edit of `.claude-plugin/plugin.json` (before, any plugin.json change passed).
+- The failure reader accepts run2.py's indented FAIL/ERROR lines, so a red full run records its failing tests and `--failures` names them (before: only "full_cmd exit 1").
+- This repo's `related_cmd` is `python3 tests/run2.py {tests}` (what every brief already runs) and `tests/test_rules_structure.py` joins `guard_tests` (a rule file over 70 lines passed the old guard).

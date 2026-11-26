@@ -15,7 +15,6 @@ import math
 import os
 import re
 import resource
-import shlex
 import shutil
 import signal
 import socket
@@ -858,21 +857,7 @@ def status_line(st):
             return "NIGHTLY: none"
     else:
         when = st.get("finished", "")
-    kind = ""
-    if st.get("kind") == "top-up":
-        kind = " top-up over %s" % str(st.get("full_green", ""))[:7]
-    elif st.get("kind") == "full":
-        kind = " full run"
-    return "NIGHTLY: %s %s %s%s" % (res, str(st.get("commit", ""))[:7], when, kind)
-
-
-def needed_line(root, st):
-    """The second --status line: which kind of run the tip needs now, and why."""
-    if running(st):
-        return "NEEDED: wait for the run going on"
-    if st and st.get("result") == "green" and not invalid(root, st) and st.get("commit") in released_commits(root):
-        return "NEEDED: nothing: green on the tip (%s)" % kind_of(st)
-    return "NEEDED: " + need_line(plan(root, st))
+    return "NIGHTLY: %s %s %s" % (res, str(st.get("commit", ""))[:7], when)
 
 
 def full_cmd(root):
@@ -899,8 +884,7 @@ def due(cwd):
         return False
     if st and st.get("result") == "stopped":
         st = None                                       # a stopped run is not done (C20)
-    t = now()
-    last = parse(full_stamp(st)) if st and ("kind" in st or "full_green" in st) else last_stamp(st)   # full runs only
+    t, last = now(), last_stamp(st)
     hour_at = t.replace(hour=number("nightly_hour", 22), minute=0, second=0, microsecond=0)
     if t >= hour_at and (last is None or last < hour_at):
         return True
@@ -952,17 +936,6 @@ def fill(cmd, tests):
     """related_cmd with {tests} and {modules} filled; the paths are added when it has no slot."""
     paths = " ".join(tests)
     modules = " ".join(os.path.splitext(t)[0].replace("/", ".") for t in tests)
-    if "{tests}" not in cmd and "{modules}" not in cmd:
-        return (cmd + " " + paths).strip()
-    return cmd.replace("{tests}", paths).replace("{modules}", modules)
-
-
-def fill_safe(cmd, tests):
-    """fill() for a shell: every path and every module is one shlex-quoted word, so no file name can split the
-    command, add one, or run $(...); {tests} -> the quoted paths, {modules} -> the quoted dotted modules, no slot ->
-    the quoted paths appended."""
-    paths = " ".join(shlex.quote(t) for t in tests)
-    modules = " ".join(shlex.quote(os.path.splitext(t)[0].replace("/", ".")) for t in tests)
     if "{tests}" not in cmd and "{modules}" not in cmd:
         return (cmd + " " + paths).strip()
     return cmd.replace("{tests}", paths).replace("{modules}", modules)
@@ -1067,7 +1040,7 @@ def record_misses(root, gitdir, prev, failed, commit, stamp):
     old = set((prev or {}).get("failed", [])) if (prev or {}).get("result") == "red" else set()
     lines = []
     for test in failed:
-        if test in old or test.startswith(("full_cmd exit", "top-up exit")):
+        if test in old or test.startswith("full_cmd exit"):
             continue
         short, subject = find_merge(root, test, green, commit, gitdir)
         lines.append("%s | %s | %s %s" % (stamp, test, short, subject))
@@ -1148,53 +1121,8 @@ class RunLock:
             return False
 
 
-PROBE = r"""
-import os, sys, unittest
-out = os.fdopen(os.dup(1), "w")
-path = sys.argv[1]
-sys.path.insert(0, os.getcwd())
-sys.path.insert(0, os.path.dirname(os.path.abspath(path)))   # as `unittest discover -s <its folder>` does
-def flat(suite):
-    for t in suite:
-        if isinstance(t, unittest.TestSuite):
-            yield from flat(t)
-        else:
-            yield t
-loader = unittest.TestLoader()
-try:
-    suite = loader.discover(os.path.dirname(path) or ".", pattern=os.path.basename(path), top_level_dir=os.getcwd())
-    tests = list(flat(suite))
-except BaseException:
-    tests, loader.errors = [], ["load"]
-bad = loader.errors or any(type(t).__name__ in ("_FailedTest", "ModuleImportFailure") for t in tests)
-nonce = sys.__stdin__.readline().strip()        # read only after the file is loaded: its import never saw it
-out.write("%s %s %d\n" % (nonce, "bad" if bad else "ok", len(tests)))
-out.flush()
-os._exit(0)
-"""
-
-
-def probe(wt, path):
-    """"" when the tool itself loads the test file the way discovery does and finds tests, else why not. The nonce
-    waits on stdin, is read only after the file is loaded, and comes back on the probe's own line: a file that exits
-    at import never prints it. (A file that reads stdin itself at import is a deliberate attack: out of scope.)"""
-    nonce = os.urandom(16).hex()
-    try:
-        res = subprocess.run([sys.executable, "-I", "-c", PROBE, path], cwd=wt, input=nonce + "\n",
-                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, timeout=300)
-        lines = [l.split() for l in res.stdout.splitlines() if l.startswith(nonce + " ")]
-    except (OSError, subprocess.SubprocessError):
-        lines = []
-    if len(lines) != 1 or len(lines[0]) != 3 or lines[0][1] != "ok":
-        return "top-up: %s could not be loaded" % path
-    if lines[0][2] == "0":
-        return "top-up: %s holds no test" % path
-    return ""
-
-
-def do_run(cwd, nightly=False):
-    """The foreground run: lock, gate, command (monitored), status, misses. Exit 0 whatever the result.
-    nightly: started by the automatic nightly path: always the full run (it can only make a run bigger)."""
+def do_run(cwd):
+    """The foreground run: lock, gate, command (monitored), status, misses. Exit 0 whatever the result."""
     root, gitdir = main_root(cwd), common_dir(cwd)
     cmd = full_cmd(root)
     if not cmd:
@@ -1207,25 +1135,10 @@ def do_run(cwd, nightly=False):
     st = read_status(gitdir) or {}
     prev = st.get("prev") if st.get("result") == "running" else st
     commit = tip_of(root)
-    if nightly:                                        # the nightly never needs the plan (nor its picker)
-        p = {"kind": "full", "base": "", "tests": [], "why": "the automatic nightly is always the full run"}
-    else:
-        p = plan(root, prev, commit)                   # full or top-up: from git and the last record alone
-    carry = p["base"] if p["kind"] == "top-up" else full_base(prev)[0]
     base = {"started": now().strftime(FMT), "commit": commit, "finished": "", "result": "running", "failed": [],
-            "last_green": (prev or {}).get("last_green", ""), "pid": os.getpid(), "prev": prev,
-            "kind": p["kind"], "full_green": carry}
-    base["full_finished"] = full_stamp(prev)
-    cmds = [(None, cmd)]
-    if p["kind"] == "top-up":
-        base["tests"] = p["tests"]
-        rcmd = conf_at(root, commit).get("related_cmd", "")
-        cmds = [("top-up", rcmd)]       # one related_cmd call over every planned file that passes the probe
-    print("NIGHTLY: %s on %s: %s" % ("top-up" if p["kind"] == "top-up" else "full run", commit[:7], p["why"]))
-    sys.stdout.flush()
+            "last_green": (prev or {}).get("last_green", ""), "pid": os.getpid(), "prev": prev}
     atomic_write(status_path(gitdir), json.dumps(base))
-    wkey = "topup" if p["kind"] == "top-up" else "nightly"
-    weight, measured = weight_of(gitdir, os.path.join(root, "agent_repo.conf"), wkey)
+    weight, measured = weight_of(gitdir, os.path.join(root, "agent_repo.conf"), "nightly")
     me = os.getpid()
     wt = os.path.join(gitdir, SCRATCH)
     log = os.path.join(gitdir, "agent_nightly.log")
@@ -1240,15 +1153,13 @@ def do_run(cwd, nightly=False):
         drop_reservation(me, blocking=False)
         atomic_write(status_path(gitdir), json.dumps({"started": base["started"], "commit": commit,
                                                       "finished": now().strftime(FMT), "result": "stopped",
-                                                      "failed": [], "last_green": base["last_green"],
-                                                      "kind": base["kind"], "full_green": carry,
-                                                      "full_finished": base["full_finished"]}))
+                                                      "failed": [], "last_green": base["last_green"]}))
         os._exit(128 + signum)
 
     for sig in STOP_SIGNALS:
         signal.signal(sig, on_stop)
     need = weight[1] if weight else 0
-    code, output, missing = 0, "", []
+    code, output = 0, ""
     try:
         while True:
             ok, why = wait_room(need, entry(me, need, "the nightly", "test", measured))
@@ -1271,41 +1182,19 @@ def do_run(cwd, nightly=False):
                     output, code = "cannot make the scratch worktree: " + added.stdout, 128
                 else:
                     link_deps(root, wt)
-                    began, mb, code, output, missing = time.time(), 0, 0, "", []
-                    for path, one in cmds:
-                        if path == "top-up":
-                            # Safe in a shell and in one call: every planned test file has a plain name
-                            # (TEST_FILE) or was in the green full run, fill_safe makes each path one quoted word,
-                            # and the probe proved each .py file loads with tests before the one call.
-                            loaded = []
-                            for t in p["tests"]:
-                                why_not = probe(wt, t) if t.endswith(".py") else ""
-                                if why_not:
-                                    missing.append(why_not)
-                                    code = code or 1
-                                else:
-                                    loaded.append(t)
-                            if not loaded:
-                                continue
-                            one = fill_safe(one, loaded)
-                        with open(log, "wb") as out_fh:
-                            rc, peak, stop = run_monitored(one, need, shell=True, cwd=wt, stdin=subprocess.DEVNULL,
-                                                           stdout=out_fh, stderr=subprocess.STDOUT)
-                        mb = max(mb, peak)
-                        with open(log, encoding="utf-8", errors="replace") as fh:
-                            part = fh.read()
-                        output += part
-                        if stop is not None:
-                            break
-                        rc = exit_code(rc) if rc is not None and rc < 0 else rc
-                        if path is not None and rc != 0 and not failed_tests(part):
-                            missing.append("top-up: related_cmd exit %s" % rc)
-                        code = code or rc
+                    began = time.time()
+                    with open(log, "wb") as out_fh:
+                        code, mb, stop = run_monitored(cmd, need, shell=True, cwd=wt, stdin=subprocess.DEVNULL,
+                                                       stdout=out_fh, stderr=subprocess.STDOUT)
                     try:
                         with locked():
-                            write_weight(gitdir, wkey, int(round(time.time() - began)), mb)
+                            write_weight(gitdir, "nightly", int(round(time.time() - began)), mb)
                     except OSError:
                         pass
+                    with open(log, encoding="utf-8", errors="replace") as fh:
+                        output = fh.read()
+                    if code is not None and code < 0:
+                        code = exit_code(code)
             except OSError as exc:
                 output, code = str(exc), 127
             finally:
@@ -1322,18 +1211,12 @@ def do_run(cwd, nightly=False):
             fh.write(output[-200000:])
     except OSError:
         pass
-    exit_name = "top-up exit %d" if p["kind"] == "top-up" else "full_cmd exit %d"
-    failed = [] if code == 0 else ((failed_tests(output) + missing) or [exit_name % code])
+    failed = [] if code == 0 else (failed_tests(output) or ["full_cmd exit %d" % code])
     stamp = now().strftime(FMT)
-    final = {"started": base["started"], "commit": commit, "finished": stamp, "full_finished": base["full_finished"],
+    final = {"started": base["started"], "commit": commit, "finished": stamp,
              "result": "green" if code == 0 else "red", "failed": failed,
-             "last_green": commit if code == 0 else base["last_green"], "kind": p["kind"]}
-    if p["kind"] == "top-up":
-        final.update(full_green=p["base"], tests=p["tests"])  # a red top-up still stands on the green full run
-    else:
-        final["full_green"] = commit if code == 0 else ""     # a red full run ends the chain
-        final["full_finished"] = stamp
-    if code != 0 and p["kind"] == "full":                     # a selection miss is a finding of a full run only
+             "last_green": commit if code == 0 else base["last_green"]}
+    if code != 0:
         try:
             record_misses(root, gitdir, prev, failed, commit, stamp)
         except Exception:
@@ -1342,23 +1225,19 @@ def do_run(cwd, nightly=False):
     return 0
 
 
-def start(cwd, wait, nightly=False):
+def start(cwd, wait):
     root, gitdir = main_root(cwd), common_dir(cwd)
     if not full_cmd(root):
         print("NIGHTLY: no full_cmd in agent_repo.conf of %s, nothing to run" % root)
         return 0
     if wait:
-        return do_run(cwd, nightly)
+        return do_run(cwd)
     if running(read_status(gitdir)):
         print("NIGHTLY: already running")
         return 0
-    subprocess.Popen([sys.executable, os.path.abspath(__file__), "run"] + (["--nightly"] if nightly else []), cwd=cwd, stdin=subprocess.DEVNULL,
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), "run"], cwd=cwd, stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    if nightly:
-        p = {"kind": "full", "why": "the automatic nightly is always the full run"}
-    else:
-        p = plan(root, read_status(gitdir))
-    print("NIGHTLY: started in the background (%s: %s)" % ("top-up" if p["kind"] == "top-up" else "full run", p["why"]))
+    print("NIGHTLY: started in the background")
     return 0
 
 
@@ -1432,397 +1311,33 @@ def tip_of(root):
             or git(root, "rev-parse", "HEAD"))
 
 
+def version_only(root, old, new):
+    """True when two versions of plugin.json (commits old and new) differ only in the "version" value: the JSON
+    and every changed line."""
+    texts = [git(root, "show", "%s:.claude-plugin/plugin.json" % c) for c in (old, new)]
+    try:
+        a, b = json.loads(texts[0]), json.loads(texts[1])
+    except ValueError:
+        return False
+    if not (isinstance(a, dict) and isinstance(b, dict)
+            and isinstance(a.pop("version", None), str) and isinstance(b.pop("version", None), str)):
+        return False
+    import difflib
+    changed = [l for l in difflib.ndiff(texts[0].splitlines(), texts[1].splitlines()) if l[:2] in ("- ", "+ ")]
+    return a == b and all('"version"' in l for l in changed)
+
+
 def released_commits(root):
     """The commits a green nightly may have run on for a release: the tip of the working branch, and its parent
     when the tip only bumps the plugin version (a nightly started after the bump runs on the tip)."""
     tip = tip_of(root)
     if not tip:
         return []
-    changes = raw_diff(root, tip + "^", tip) or []
-    if (len(changes) == 1 and changes[0][5] == PLUGIN_JSON and changes[0][4] == "M"
-            and changes[0][0] == changes[0][1] == "100644" and version_only(root, changes[0][2], changes[0][3])):
+    files = git(root, "diff", "--name-only", tip + "^", tip).splitlines()
+    if files == [".claude-plugin/plugin.json"] and version_only(root, tip + "^", tip):
         parent = git(root, "rev-parse", tip + "^")
         return [tip] + ([parent] if parent else [])
     return [tip]
-
-
-# ------------------------------------------------------------------ the top-up (requirements/release-check-loosen.md)
-# After a green FULL run on G, the commits G..tip are small when every file they change is text (.md), a mock page
-# (mock/), a test file (tests/test_*.py) or the version line of .claude-plugin/plugin.json. Decided from git alone:
-# no option, no environment variable, no caller can make a change small. Anything not named is code.
-
-SHA = re.compile(r"^[0-9a-f]{40}$")
-TEST_FILE = re.compile(r"^tests/test_\w+\.py$", re.ASCII)     # a plain name only: anything else is code
-PLUGIN_JSON = ".claude-plugin/plugin.json"
-NO_FILE = "0" * 6
-
-
-def git_rc(root, *args):
-    """(ok, stdout) of one git call; ok is False on any failure (never read as "no change")."""
-    try:
-        res = subprocess.run(["git", "-C", root] + list(args), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                             timeout=120)
-    except (OSError, subprocess.SubprocessError):
-        return False, ""
-    return res.returncode == 0, res.stdout.decode("utf-8", "surrogateescape")
-
-
-def is_commit(root, sha):
-    return isinstance(sha, str) and bool(SHA.match(sha)) and git_rc(root, "cat-file", "-e", sha + "^{commit}")[0]
-
-
-def is_ancestor(root, a, b):
-    return git_rc(root, "merge-base", "--is-ancestor", a, b)[0]
-
-
-def raw_diff(root, a, b):
-    """[(old mode, new mode, old blob, new blob, status, path)] of a..b, renames split into a delete and an add;
-    None when git cannot compare them."""
-    ok, out = git_rc(root, "diff", "--raw", "-z", "--no-renames", "--no-abbrev", "--no-ext-diff", a, b)
-    if not ok:
-        return None
-    parts, found, i = out.split("\0"), [], 0
-    while i + 1 < len(parts):
-        head = parts[i].lstrip(":").split()
-        if len(head) != 5:
-            return None
-        found.append(tuple(head) + (parts[i + 1],))
-        i += 2
-    return found
-
-
-def version_only(root, old_blob, new_blob):
-    """True when two plugin.json blobs differ only in the "version" value (the JSON and every changed line)."""
-    texts = []
-    for blob in (old_blob, new_blob):
-        ok, body = git_rc(root, "cat-file", "blob", blob)
-        if not ok:
-            return False
-        texts.append(body)
-    try:
-        old, new = json.loads(texts[0]), json.loads(texts[1])
-    except ValueError:
-        return False
-    if not (isinstance(old, dict) and isinstance(new, dict)
-            and isinstance(old.pop("version", None), str) and isinstance(new.pop("version", None), str)):
-        return False
-    import difflib
-    changed = [l for l in difflib.ndiff(texts[0].splitlines(), texts[1].splitlines()) if l[:2] in ("- ", "+ ")]
-    return old == new and all('"version"' in l for l in changed)
-
-
-def frontmatter(root, blob):
-    """The frontmatter block of a .md blob (the lines from the first line --- to the next ---), None when unreadable."""
-    ok, body = git_rc(root, "cat-file", "blob", blob)
-    if not ok:
-        return None
-    lines = body.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return []
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            return lines[:i + 1]
-    return lines                                   # no closing line: the whole file counts as frontmatter
-
-
-def not_small(root, change):
-    """"" when one changed file is small, else why it is code."""
-    old_mode, new_mode, old_blob, new_blob, status, path = change
-    modes = {old_mode, new_mode} - {NO_FILE}
-    if status not in ("A", "M", "D"):
-        return "%s is code (git status %s)" % (path, status)
-    if modes != {"100644"}:
-        if "120000" in modes:
-            return "%s is a symlink (code)" % path
-        if "160000" in modes:
-            return "%s is a submodule (code)" % path
-        return "%s has a file mode change (%s -> %s, code)" % (path, old_mode, new_mode)
-    if path.endswith(".md") and path.startswith(("agents/", "skills/")):
-        if status != "M":                    # an agent or a skill that comes or goes is configuration
-            return "%s is %s (an agent or skill file: code)" % (path, "added" if status == "A" else "deleted")
-        if frontmatter(root, old_blob) != frontmatter(root, new_blob):
-            return "%s changes its frontmatter (configuration Claude Code reads: code)" % path
-        return ""
-    if path.endswith(".md") or path.startswith("mock/"):
-        return ""
-    if TEST_FILE.match(path):
-        return "%s was deleted (a check went away)" % path if status == "D" else ""
-    if path == PLUGIN_JSON:
-        if status == "M" and version_only(root, old_blob, new_blob):
-            return ""
-        return "%s changes more than the version line (code)" % path
-    return "%s is code" % path
-
-
-def small_since(root, base, tip):
-    """(small, why, changed test files) for the commits base..tip: the files base..tip bring (a merge counts by
-    these), and every non-merge commit between, one by one. why names the first code file."""
-    if not (is_commit(root, base) and is_commit(root, tip)):
-        return False, "no green full run to stand on", []
-    if not is_ancestor(root, base, tip):
-        return False, "the green full run %s is not an ancestor of %s" % (base[:7], tip[:7]), []
-    net = raw_diff(root, base, tip)
-    if net is None:
-        return False, "git cannot compare %s with %s" % (base[:7], tip[:7]), []
-    for change in net:
-        why = not_small(root, change)
-        if why:
-            return False, why, []
-    ok, out = git_rc(root, "rev-list", "--reverse", "--parents", "%s..%s" % (base, tip))
-    if not ok:
-        return False, "git cannot list the commits %s..%s" % (base[:7], tip[:7]), []
-    for line in out.splitlines():
-        shas = line.split()
-        if len(shas) > 2:
-            continue                                        # a merge: counted by the files base..tip bring
-        if len(shas) < 2:
-            return False, "the commit %s has no parent (code)" % shas[0][:7], []
-        each = raw_diff(root, shas[1], shas[0])
-        if each is None:
-            return False, "git cannot read the commit %s" % shas[0][:7], []
-        for change in each:
-            why = not_small(root, change)
-            if why:
-                return False, "%s in the commit %s" % (why, shas[0][:7]), []
-    tests = sorted(c[5] for c in net if c[4] in ("A", "M") and TEST_FILE.match(c[5]))
-    return True, "", tests
-
-
-def conf_at(root, commit):
-    """The key=value lines of agent_repo.conf as committed at commit (the last value of a key wins)."""
-    ok, body = git_rc(root, "show", "%s:agent_repo.conf" % commit)
-    found = {}
-    for line in body.splitlines() if ok else []:
-        if "=" in line and not line.strip().startswith("#"):
-            key, value = line.split("=", 1)
-            found[key.strip()] = value.strip()
-    return found
-
-
-def guard_tests(conf):
-    return [g.strip() for g in conf.get("guard_tests", "").split(",") if g.strip()]
-
-
-PICKED = {}
-PICK_TREE = re.compile(r"^%s_pick_(\d+)$" % SCRATCH)
-
-
-def clean_picks(root):
-    """Remove every picker tree whose pid is dead (a run killed during the pick); never one whose pid lives."""
-    gitdir = common_dir(root)
-    try:
-        names = os.listdir(gitdir)
-    except OSError:
-        return
-    for name in names:
-        m = PICK_TREE.match(name)
-        if m and not pid_alive(m.group(1)):
-            drop_scratch(root, os.path.join(gitdir, name))
-    git(root, "worktree", "prune")
-
-
-TEXT_READER = re.compile(r"^tests/test_[^/]+\.py$")
-
-
-def text_named(root, tip, changed):
-    """The test files of the tests folder (at tip) whose source names a changed text file: its path, its base name,
-    or its folder as a glob (<folder>/*.md, <parent>/*/<base name>). Plain text search, no import."""
-    ok, out = git_rc(root, "ls-tree", "-r", "-z", "--name-only", tip, "tests/")
-    tests = [t for t in out.split("\0") if TEXT_READER.match(t)] if ok else []
-    needles = set()
-    for path in changed:
-        base, folder = os.path.basename(path), os.path.dirname(path)
-        needles.update([path, base])
-        if folder:
-            needles.add("%s/*%s" % (folder, os.path.splitext(path)[1]))
-            if os.path.dirname(folder):
-                needles.add("%s/*/%s" % (os.path.dirname(folder), base))
-    found = []
-    for t in tests:
-        ok, body = git_rc(root, "cat-file", "blob", "%s:%s" % (tip, t))
-        if ok and any(n in body for n in needles):
-            found.append(t)
-    return sorted(found)
-
-
-def related_picked(root, base, tip):
-    """The light related tests of the files base..tip, picked by the same picker a task's RELATED TESTS block uses
-    (agent_level.py check --base <G> --json, in a scratch checkout of tip); None when the picker fails."""
-    key = (base, tip)
-    if key in PICKED:
-        return PICKED[key]
-    clean_picks(root)
-    gitdir = common_dir(root)
-    wt = os.path.join(gitdir, SCRATCH + "_pick_%d" % os.getpid())
-    got = None
-    try:
-        drop_scratch(root, wt)
-        if git_rc(root, "worktree", "add", "--detach", wt, tip)[0]:
-            res = subprocess.run([sys.executable, os.path.join(HERE, "agent_level.py"), wt, "check", "--base", base,
-                                  "--json"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                 universal_newlines=True, timeout=300)
-            if res.returncode == 0:
-                data = json.loads(res.stdout)
-                rel = data.get("related") if isinstance(data, dict) else None
-                if isinstance(rel, list) and all(isinstance(t, str) for t in rel):
-                    got = sorted(rel)
-    except (OSError, ValueError, subprocess.SubprocessError):
-        got = None
-    finally:
-        drop_scratch(root, wt)
-    PICKED[key] = got
-    return got
-
-
-def topup_tests(root, base, tip, changed):
-    """The top-up's files in order: the guard tests, the changed test files, the related tests; None when the
-    picker fails."""
-    picked = related_picked(root, base, tip)
-    if picked is None:
-        return None
-    diff = raw_diff(root, base, tip) or []
-    texts = [c[5] for c in diff if c[5].endswith(".md") or c[5].startswith("mock/")]
-    run = []
-    for t in guard_tests(conf_at(root, tip)) + changed + picked + text_named(root, tip, texts):
-        if t not in run:
-            run.append(t)
-    return run
-
-
-TOPUP_MAX_SHARE = 0.5      # a top-up whose planned files weigh more than this share of the full run is not run
-
-
-def timings_at(root, tip):
-    """{test file stem: seconds} from tests/timings.txt as committed at tip (the file run2.py deals the full run
-    by); {} when the repo has none."""
-    ok, body = git_rc(root, "show", "%s:tests/timings.txt" % tip)
-    found = {}
-    for line in body.splitlines() if ok else []:
-        parts = line.split()
-        if len(parts) >= 3 and not line.startswith("#"):
-            try:
-                found[parts[-1]] = float(parts[0])
-            except ValueError:
-                pass
-    return found
-
-
-def too_slow(root, tip, run):
-    """"" or why a top-up of these files would not be faster: their summed seconds (a file with no timing counts as
-    the median, as run2.py deals it) above TOPUP_MAX_SHARE of the summed seconds of every file."""
-    times = timings_at(root, tip)
-    if not times:
-        return ""
-    vals = sorted(times.values())
-    median = vals[len(vals) // 2]
-    planned = sum(times.get(os.path.splitext(os.path.basename(t))[0], median) for t in run)
-    full = sum(vals)
-    if planned > full * TOPUP_MAX_SHARE:
-        return "the top-up would not be faster (%d of %d s)" % (round(planned), round(full))
-    return ""
-
-
-def full_stamp(st):
-    """When the last FULL run finished ("" when unknown): a top-up or a stopped run carries it on."""
-    if not st:
-        return ""
-    if st.get("kind") == "top-up" or st.get("result") in ("stopped", "running"):
-        return st.get("full_finished", "")
-    return st.get("finished", "") if st.get("result") in ("green", "red") else ""
-
-
-def full_base(st):
-    """(G, why): the green FULL run the next top-up may stand on, from the last record; "" and why when none."""
-    if st and st.get("result") == "running":
-        st = st.get("prev") if isinstance(st.get("prev"), dict) else None
-    none = "no green full run to stand on (the last full run was red, or none ran)"
-    if not st:
-        return "", none
-    if "kind" not in st and "full_green" not in st:           # a record from before the top-up: a full run
-        commit = st.get("commit")
-        return (commit, "") if st.get("result") == "green" and isinstance(commit, str) and SHA.match(commit) \
-            else ("", none)
-    g = st.get("full_green")
-    if not g:
-        return "", none
-    if not isinstance(g, str) or not SHA.match(g):
-        return "", "the status file is not valid (full_green %r)" % (g,)
-    return g, ""
-
-
-def invalid(root, st):
-    """"" when a finished record holds together, else why not. A forged or half-written record is refused."""
-    commit = st.get("commit")
-    if not is_commit(root, commit):
-        return "the commit %r is not a full commit of this repo" % (commit,)
-    kind = st.get("kind")
-    if kind is None and "full_green" not in st:
-        return ""                                            # a record from before the top-up: a full run
-    if kind == "full":
-        if st.get("result") == "green" and st.get("full_green") != commit:
-            return "a green full run stands on its own commit, not %r" % (st.get("full_green"),)
-        return ""
-    if kind != "top-up":
-        return "unknown kind %r" % (kind,)
-    g = st.get("full_green")
-    if not is_commit(root, g):
-        return "the top-up names no green full run (%r)" % (g,)
-    if g == commit:
-        return "the top-up stands on itself"
-    ok, why, tests = small_since(root, g, commit)
-    if not ok:
-        return "the top-up on %s stands on %s, but %s" % (commit[:7], g[:7], why)
-    run = topup_tests(root, g, commit, tests)
-    if run is None:
-        return "the related test picker failed for %s..%s" % (g[:7], commit[:7])
-    need = sorted(set(run))
-    ran = st.get("tests")
-    if not isinstance(ran, list) or sorted(set(ran)) != need:
-        return "the top-up ran %s, the rule needs %s" % (ran, need)
-    return ""
-
-
-def plan(root, st, tip=None):
-    """{"kind": "full"|"top-up", "base": G, "tests": [...], "why": ...} for the tip of the working branch."""
-    tip = tip or tip_of(root)
-    rec = st.get("prev") if st and st.get("result") == "running" else st
-    if isinstance(rec, dict) and rec.get("result") in ("green", "red"):
-        bad = invalid(root, rec)
-        if bad:
-            return {"kind": "full", "base": "", "tests": [], "why": "the status file is not valid: " + bad}
-    g, why = full_base(st)
-    if not g:
-        return {"kind": "full", "base": "", "tests": [], "why": why}
-    if g == tip:
-        return {"kind": "full", "base": "", "tests": [], "why": "nothing changed since the green full run on %s" % g[:7]}
-    conf = conf_at(root, tip)
-    if not conf.get("related_cmd"):
-        return {"kind": "full", "base": "", "tests": [], "why": "no related_cmd in agent_repo.conf to run a top-up"}
-    ok, why, tests = small_since(root, g, tip)
-    if not ok:
-        return {"kind": "full", "base": "", "tests": [], "why": why}
-    run = topup_tests(root, g, tip, tests)
-    if run is None:
-        return {"kind": "full", "base": "", "tests": [], "why": "the related test picker failed"}
-    if not run:
-        return {"kind": "full", "base": "", "tests": [], "why": "no guard tests and no changed test file to run"}
-    slow = too_slow(root, tip, run)
-    if slow:
-        return {"kind": "full", "base": "", "tests": [], "why": slow}
-    return {"kind": "top-up", "base": g, "tests": run,
-            "why": "only text, mock pages or tests changed since the green full run on %s" % g[:7]}
-
-
-def need_line(p):
-    if p["kind"] == "top-up":
-        return "a top-up is enough (%s): it runs %s" % (p["why"], ", ".join(p["tests"]))
-    return "the full run is needed: %s" % p["why"]
-
-
-def kind_of(st):
-    if st.get("kind") == "top-up":
-        return "top-up over %s" % str(st.get("full_green"))[:7]
-    return "full run"
 
 
 def release_ok(cwd):
@@ -1835,22 +1350,18 @@ def release_ok(cwd):
         print("NIGHTLY: release not ok: no commit to release; %s" % fix)
         return 1
     if not st or st.get("result") not in ("green", "red"):
-        print("NIGHTLY: release not ok: no finished nightly; %s; %s" % (need_line(plan(root, st)), fix))
-        return 1
-    bad = invalid(root, st)
-    if bad:
-        print("NIGHTLY: release not ok: the status file is not valid: %s; the full run is needed; %s" % (bad, fix))
+        print("NIGHTLY: release not ok: no finished nightly; %s" % fix)
         return 1
     if st.get("commit") not in accept:
-        print("NIGHTLY: release not ok: the last nightly ran on %s, the commit released is %s; %s; %s"
-              % (str(st.get("commit"))[:7], target[:7], need_line(plan(root, st)), fix))
+        print("NIGHTLY: release not ok: the last nightly ran on %s, the commit released is %s; %s"
+              % (str(st.get("commit"))[:7], target[:7], fix))
         return 1
     target = st.get("commit")
     if st.get("result") != "green":
-        print("NIGHTLY: release not ok: the nightly on %s is red (%s, %s); fix it, then %s"
-              % (target[:7], kind_of(st), ", ".join(st.get("failed", [])[:3]), fix))
+        print("NIGHTLY: release not ok: the nightly on %s is red (%s); fix it, then %s"
+              % (target[:7], ", ".join(st.get("failed", [])[:3]), fix))
         return 1
-    print("NIGHTLY: release ok: green on the commit released %s (%s)" % (target[:7], kind_of(st)))
+    print("NIGHTLY: release ok: green on the commit released %s" % target[:7])
     return 0
 
 
@@ -1878,7 +1389,7 @@ def failures(cwd):
     green, head = st.get("last_green", ""), st.get("commit", "")
     for test in st.get("failed", []):
         merge, task, req = "-", "-", "-"
-        if green and green != head and not test.startswith(("full_cmd exit", "top-up exit")):
+        if green and green != head and not test.startswith("full_cmd exit"):
             short, subject = find_merge(root, test, green, head, gitdir)
             merge = ("%s %s" % (short, subject)).strip()
             m = re.match(r"^Merge (?:branch |pull request )?'?([^\s']+)", subject)
@@ -1914,17 +1425,13 @@ def main(argv):
         return room_main(argv, cwd)
     if argv and argv[0] in ("run", "--start", "--release-ok", "--failures") and not need_stored(main_root(cwd)):
         return 1
-    if argv and argv[0] == "run" and all(a == "--nightly" for a in argv[1:]):
-        return do_run(cwd, "--nightly" in argv[1:])
+    if argv and argv[0] == "run":
+        return do_run(cwd)
     if not argv or argv[0] == "--status":
-        st = read_status(common_dir(cwd))
-        clean_picks(main_root(cwd))
-        print(status_line(st))
-        print(needed_line(main_root(cwd), st))
+        print(status_line(read_status(common_dir(cwd))))
         return 0
-    if argv[0] == "--start" and all(a in ("--wait", "--nightly") for a in argv[1:]):
-        # the one option is --nightly, and it can only make the run FULL; nothing makes a run smaller
-        return start(cwd, "--wait" in argv[1:], "--nightly" in argv[1:])
+    if argv[0] == "--start":
+        return start(cwd, "--wait" in argv[1:])
     if argv[0] == "--due":
         return 0 if due(cwd) else 1
     if argv[0] == "--release-ok":
@@ -1935,7 +1442,7 @@ def main(argv):
         return misses(cwd)
     if argv[0] == "--failures":
         return failures(cwd)
-    sys.stderr.write("usage: agent-nightly.sh --start [--wait] [--nightly] | --status | --due | --release-ok | --misses | "
+    sys.stderr.write("usage: agent-nightly.sh --start [--wait] | --status | --due | --release-ok | --misses | "
                      "--failures\n")
     return 2
 
