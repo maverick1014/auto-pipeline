@@ -27,7 +27,7 @@ _Avoid_: Helper for a worker or deputy
 **Peer**: the main manager of another repo, found as `<other repo folder> Manager` in ListAgents.
 
 ## Work units
-**Task**: one todo line: a name, size, estimate and its check blocks.
+**Task**: one todo line: a name, size, estimate (the number `estimate` prints), owner and its check blocks.
 **Task instance**: a task's record from `todo add` on: opened time, checks, stage; it stays when the target changes.
 **Slice**: the part of a feature one worker builds; one worker = one slice.
 **Fast lane**: the path of a small task: one fast-lane deputy, no task manager.

@@ -30,7 +30,7 @@ description: Main manager only. After a task manager reports DONE PASS, send the
    terminal handle: <term_...>   (orca only, leave empty in plain and cloud)
    todo done arguments: --work <actual> --wait <wait> --bounces <n> --workers <n> --mock <yes|no> --lane <full|fast> --type <t> --tests <n> --adds <n>
    ```
-   The numbers come from the report's TIME and FACTS lines (actual = agent work only). A number you do not know → leave that option out, never guess.
+   The numbers come from the report's TIME and FACTS lines (actual = agent work only). `todo done` measures the work itself; a typed `--work` is kept apart as typed= and never wins. A number you do not know → leave that option out, never guess.
    The guard (`bin/agent-guard.sh`) records the merge deputy under the task and, only with the "Rules: Todo before agent" setting on, refuses it when the task line is no longer open, so the todo line stays open until the deputy's own `todo done`.
 5. On `MERGE PASS`: `git log --oneline -2`, `git worktree list`, `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh show`. All clean → report to the human in H3 shape.
    The merged task leaves `agent-watch.sh --all` by itself (its worktree line goes); no watch to stop.
