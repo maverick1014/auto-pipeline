@@ -348,5 +348,102 @@ class TestOwnerPoints(TopUpCase):
         self.assertFalse(self.small(g)[0])
 
 
+@tn.only_own
+class TestReviewFixes(TopUpCase):
+    """The reviewer's attacks on dd5aa00: A (file names reach a shell), B (too few tests for text), C (--due),
+    D (plugin.json beyond the version on the tip), E (a red top-up is no selection miss)."""
+
+    def test_a_names_that_are_not_plain_are_code(self):
+        g = self.git("rev-parse", "HEAD")
+        made = os.path.join(self.repo.base, "made")
+        for rel in ("tests/test_x;true.py", "tests/test_g .py", "tests/test_$(touch %s).py" % "made"):
+            with self.subTest(rel=rel):
+                self.git("reset", "-q", "--hard", g)
+                self.commit({rel: FAILING}, "odd name")
+                ok, why, _ = self.small(g)
+                self.assertFalse(ok, rel)
+                self.assertIn(rel, why)
+        self.assertFalse(os.path.exists(made))
+
+    def test_a_odd_names_get_no_green_top_up(self):
+        self.full_green()
+        self.commit({"tests/test_x;true.py": PASSING, "tests/test_y.py": FAILING}, "attack")
+        r = self.release_ok()
+        self.assertIn("the full run is needed", r.stdout)
+        self.assertIn("tests/test_x;true.py", r.stdout)
+        st = self.start()
+        self.assertEqual((st["kind"], st["result"]), ("full", "red"), st)
+
+    def test_a_each_path_is_one_shell_word(self):
+        scratch = os.path.join(self.repo.base, "sh")
+        os.makedirs(scratch)
+        for name in ("tests/a;true.py", "tests/a b.py", "tests/$(touch made).py", "tests/a'b.py"):
+            with self.subTest(name=name):
+                for cmd in ("printf '%s\\n' {tests}", "printf '%s\\n' {modules}", "printf '%s\\n'"):
+                    line = agent_nightly.fill_safe(cmd, [name])
+                    out = subprocess.run(line, shell=True, cwd=scratch, capture_output=True, text=True).stdout
+                    self.assertEqual(len(out.splitlines()), 1, (line, out))
+        self.assertEqual(os.listdir(scratch), [], "nothing was executed")
+
+    def test_a_a_planned_file_that_runs_no_test_makes_the_top_up_red(self):
+        self.commit({"agent_repo.conf": "version=1\nfull_cmd=python3 -m unittest discover -s tests -t .\n"
+                                        "related_cmd=python3 -m unittest {modules}\n"
+                                        "guard_tests=tests/test_a.py,tests/test_none.py\n",
+                     "tests/test_none.py": "import unittest\n"}, "a guard with no test")
+        self.full_green()
+        self.commit({"README.md": "# z\n"}, "text")
+        st = self.start()
+        self.assertEqual((st["kind"], st["result"]), ("top-up", "red"), st)
+        self.assertTrue(any("tests/test_none.py" in f for f in st["failed"]), st)
+
+    def test_b_the_related_tests_of_a_text_file_run_in_the_top_up(self):
+        self.commit({"docs/guide.md": "a\n",
+                     "tests/test_guide.py": "import unittest\n\n\nclass G(unittest.TestCase):\n"
+                                            "    def test_short(self):\n"
+                                            "        with open('docs/guide.md') as fh:\n"
+                                            "            self.assertLessEqual(len(fh.read().splitlines()), 3)\n"},
+                    "guide")
+        self.full_green()
+        self.commit({"docs/guide.md": "a\nb\nc\nd\ne\n"}, "longer guide")
+        st = self.start()
+        self.assertEqual((st["kind"], st["result"]), ("top-up", "red"), st)
+        self.assertIn("tests/test_guide.py", st["tests"])
+        self.assertEqual(self.release_ok().returncode, 1)
+
+    def test_b_this_repo_guards_the_rule_structure(self):
+        with open(os.path.join(HERE, "..", "agent_repo.conf")) as fh:
+            line = [l for l in fh.read().splitlines() if l.startswith("guard_tests=")][-1]
+        self.assertIn("tests/test_rules_structure.py", line.split("=", 1)[1].split(","))
+
+    def test_c_due_counts_full_runs_only(self):
+        self.nightly("--start", "--wait", env=self.env(AGENT_FAKE_NOW="2026-11-25 10:00"))
+        os.remove(self.mark)
+        self.commit({"README.md": "# d\n"}, "text")
+        late = self.env(AGENT_FAKE_NOW="2026-11-25 22:30")
+        self.nightly("--start", "--wait", env=late)
+        self.assertEqual(self.status()["kind"], "top-up")
+        self.assertEqual(self.nightly("--due", env=self.env(AGENT_FAKE_NOW="2026-11-25 23:00")).returncode, 0,
+                         "a top-up after the hour is not that night's full run")
+
+    def test_d_the_tip_counts_as_its_parent_only_for_the_version(self):
+        self.full_green()
+        g = self.git("rev-parse", "HEAD")
+        for body in ('{"name": "q", "version": "0.2.0"}\n', '{"name": "q", "version": "0.1.0"}\n'):
+            with self.subTest(body=body):
+                self.git("reset", "-q", "--hard", g)
+                self.commit({".claude-plugin/plugin.json": body}, "plugin.json")
+                self.assertEqual(self.release_ok().returncode, 1)
+        self.git("reset", "-q", "--hard", g)
+        self.commit({".claude-plugin/plugin.json": '{"name": "p", "version": "0.2.0"}\n'}, "bump")
+        self.assertEqual(self.release_ok().returncode, 0)
+
+    def test_e_a_red_top_up_is_no_selection_miss(self):
+        self.full_green()
+        self.commit({"tests/test_x.py": FAILING}, "red test")
+        st = self.start()
+        self.assertEqual((st["kind"], st["result"]), ("top-up", "red"), st)
+        self.assertEqual(self.misses_file(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

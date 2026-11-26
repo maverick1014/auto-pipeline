@@ -15,6 +15,7 @@ import math
 import os
 import re
 import resource
+import shlex
 import shutil
 import signal
 import socket
@@ -898,7 +899,8 @@ def due(cwd):
         return False
     if st and st.get("result") == "stopped":
         st = None                                       # a stopped run is not done (C20)
-    t, last = now(), last_stamp(st)
+    t = now()
+    last = parse(full_stamp(st)) if st and ("kind" in st or "full_green" in st) else last_stamp(st)   # full runs only
     hour_at = t.replace(hour=number("nightly_hour", 22), minute=0, second=0, microsecond=0)
     if t >= hour_at and (last is None or last < hour_at):
         return True
@@ -950,6 +952,17 @@ def fill(cmd, tests):
     """related_cmd with {tests} and {modules} filled; the paths are added when it has no slot."""
     paths = " ".join(tests)
     modules = " ".join(os.path.splitext(t)[0].replace("/", ".") for t in tests)
+    if "{tests}" not in cmd and "{modules}" not in cmd:
+        return (cmd + " " + paths).strip()
+    return cmd.replace("{tests}", paths).replace("{modules}", modules)
+
+
+def fill_safe(cmd, tests):
+    """fill() for a shell: every path and every module is one shlex-quoted word, so no file name can split the
+    command, add one, or run $(...); {tests} -> the quoted paths, {modules} -> the quoted dotted modules, no slot ->
+    the quoted paths appended."""
+    paths = " ".join(shlex.quote(t) for t in tests)
+    modules = " ".join(shlex.quote(os.path.splitext(t)[0].replace("/", ".")) for t in tests)
     if "{tests}" not in cmd and "{modules}" not in cmd:
         return (cmd + " " + paths).strip()
     return cmd.replace("{tests}", paths).replace("{modules}", modules)
@@ -1157,9 +1170,12 @@ def do_run(cwd, nightly=False):
     base = {"started": now().strftime(FMT), "commit": commit, "finished": "", "result": "running", "failed": [],
             "last_green": (prev or {}).get("last_green", ""), "pid": os.getpid(), "prev": prev,
             "kind": p["kind"], "full_green": carry}
+    base["full_finished"] = full_stamp(prev)
+    cmds = [(None, cmd)]
     if p["kind"] == "top-up":
         base["tests"] = p["tests"]
-        cmd = fill(conf_at(root, commit).get("related_cmd", ""), p["tests"])
+        rcmd = conf_at(root, commit).get("related_cmd", "")
+        cmds = [(t, fill_safe(rcmd, [t])) for t in p["tests"]]      # one run per planned file, each path quoted
     print("NIGHTLY: %s on %s: %s" % ("top-up" if p["kind"] == "top-up" else "full run", commit[:7], p["why"]))
     sys.stdout.flush()
     atomic_write(status_path(gitdir), json.dumps(base))
@@ -1180,13 +1196,14 @@ def do_run(cwd, nightly=False):
         atomic_write(status_path(gitdir), json.dumps({"started": base["started"], "commit": commit,
                                                       "finished": now().strftime(FMT), "result": "stopped",
                                                       "failed": [], "last_green": base["last_green"],
-                                                      "kind": base["kind"], "full_green": carry}))
+                                                      "kind": base["kind"], "full_green": carry,
+                                                      "full_finished": base["full_finished"]}))
         os._exit(128 + signum)
 
     for sig in STOP_SIGNALS:
         signal.signal(sig, on_stop)
     need = weight[1] if weight else 0
-    code, output = 0, ""
+    code, output, missing = 0, "", []
     try:
         while True:
             ok, why = wait_room(need, entry(me, need, "the nightly", "test", measured))
@@ -1209,19 +1226,31 @@ def do_run(cwd, nightly=False):
                     output, code = "cannot make the scratch worktree: " + added.stdout, 128
                 else:
                     link_deps(root, wt)
-                    began = time.time()
-                    with open(log, "wb") as out_fh:
-                        code, mb, stop = run_monitored(cmd, need, shell=True, cwd=wt, stdin=subprocess.DEVNULL,
-                                                       stdout=out_fh, stderr=subprocess.STDOUT)
+                    began, mb, code, output, missing = time.time(), 0, 0, "", []
+                    for path, one in cmds:
+                        with open(log, "wb") as out_fh:
+                            rc, peak, stop = run_monitored(one, need, shell=True, cwd=wt, stdin=subprocess.DEVNULL,
+                                                           stdout=out_fh, stderr=subprocess.STDOUT)
+                        mb = max(mb, peak)
+                        with open(log, encoding="utf-8", errors="replace") as fh:
+                            part = fh.read()
+                        output += part
+                        if stop is not None:
+                            break
+                        rc = exit_code(rc) if rc is not None and rc < 0 else rc
+                        if path is not None:                       # the top-up: this planned file must have run
+                            ran = re.findall(r"^Ran (\d+) tests? in", part, re.M)
+                            if rc != 0 and not failed_tests(part):
+                                missing.append("top-up: %s did not run (exit %s)" % (path, rc))
+                            elif ran and int(ran[-1]) == 0 or "NO TESTS RAN" in part:
+                                missing.append("top-up: %s ran no test" % path)
+                                rc = rc or 5
+                        code = code or rc
                     try:
                         with locked():
                             write_weight(gitdir, wkey, int(round(time.time() - began)), mb)
                     except OSError:
                         pass
-                    with open(log, encoding="utf-8", errors="replace") as fh:
-                        output = fh.read()
-                    if code is not None and code < 0:
-                        code = exit_code(code)
             except OSError as exc:
                 output, code = str(exc), 127
             finally:
@@ -1239,16 +1268,17 @@ def do_run(cwd, nightly=False):
     except OSError:
         pass
     exit_name = "top-up exit %d" if p["kind"] == "top-up" else "full_cmd exit %d"
-    failed = [] if code == 0 else (failed_tests(output) or [exit_name % code])
+    failed = [] if code == 0 else ((failed_tests(output) + missing) or [exit_name % code])
     stamp = now().strftime(FMT)
-    final = {"started": base["started"], "commit": commit, "finished": stamp,
+    final = {"started": base["started"], "commit": commit, "finished": stamp, "full_finished": base["full_finished"],
              "result": "green" if code == 0 else "red", "failed": failed,
              "last_green": commit if code == 0 else base["last_green"], "kind": p["kind"]}
     if p["kind"] == "top-up":
         final.update(full_green=p["base"], tests=p["tests"])  # a red top-up still stands on the green full run
     else:
         final["full_green"] = commit if code == 0 else ""     # a red full run ends the chain
-    if code != 0:
+        final["full_finished"] = stamp
+    if code != 0 and p["kind"] == "full":                     # a selection miss is a finding of a full run only
         try:
             record_misses(root, gitdir, prev, failed, commit, stamp)
         except Exception:
@@ -1352,8 +1382,9 @@ def released_commits(root):
     tip = tip_of(root)
     if not tip:
         return []
-    files = git(root, "diff", "--name-only", tip + "^", tip).splitlines()
-    if files == [".claude-plugin/plugin.json"]:
+    changes = raw_diff(root, tip + "^", tip) or []
+    if (len(changes) == 1 and changes[0][5] == PLUGIN_JSON and changes[0][4] == "M"
+            and changes[0][0] == changes[0][1] == "100644" and version_only(root, changes[0][2], changes[0][3])):
         parent = git(root, "rev-parse", tip + "^")
         return [tip] + ([parent] if parent else [])
     return [tip]
@@ -1365,7 +1396,7 @@ def released_commits(root):
 # no option, no environment variable, no caller can make a change small. Anything not named is code.
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
-TEST_FILE = re.compile(r"^tests/test_[^/]+\.py$")
+TEST_FILE = re.compile(r"^tests/test_\w+\.py$", re.ASCII)     # a plain name only: anything else is code
 PLUGIN_JSON = ".claude-plugin/plugin.json"
 NO_FILE = "0" * 6
 
@@ -1516,6 +1547,59 @@ def guard_tests(conf):
     return [g.strip() for g in conf.get("guard_tests", "").split(",") if g.strip()]
 
 
+PICKED = {}
+
+
+def related_picked(root, base, tip):
+    """The light related tests of the files base..tip, picked by the same picker a task's RELATED TESTS block uses
+    (agent_level.py check --base <G> --json, in a scratch checkout of tip); None when the picker fails."""
+    key = (base, tip)
+    if key in PICKED:
+        return PICKED[key]
+    gitdir = common_dir(root)
+    wt = os.path.join(gitdir, SCRATCH + "_pick_%d" % os.getpid())
+    got = None
+    try:
+        drop_scratch(root, wt)
+        if git_rc(root, "worktree", "add", "--detach", wt, tip)[0]:
+            res = subprocess.run([sys.executable, os.path.join(HERE, "agent_level.py"), wt, "check", "--base", base,
+                                  "--json"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                 universal_newlines=True, timeout=300)
+            if res.returncode == 0:
+                data = json.loads(res.stdout)
+                rel = data.get("related") if isinstance(data, dict) else None
+                if isinstance(rel, list) and all(isinstance(t, str) for t in rel):
+                    got = sorted(rel)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        got = None
+    finally:
+        drop_scratch(root, wt)
+    PICKED[key] = got
+    return got
+
+
+def topup_tests(root, base, tip, changed):
+    """The top-up's files in order: the guard tests, the changed test files, the related tests; None when the
+    picker fails."""
+    picked = related_picked(root, base, tip)
+    if picked is None:
+        return None
+    run = []
+    for t in guard_tests(conf_at(root, tip)) + changed + picked:
+        if t not in run:
+            run.append(t)
+    return run
+
+
+def full_stamp(st):
+    """When the last FULL run finished ("" when unknown): a top-up or a stopped run carries it on."""
+    if not st:
+        return ""
+    if st.get("kind") == "top-up" or st.get("result") in ("stopped", "running"):
+        return st.get("full_finished", "")
+    return st.get("finished", "") if st.get("result") in ("green", "red") else ""
+
+
 def full_base(st):
     """(G, why): the green FULL run the next top-up may stand on, from the last record; "" and why when none."""
     if st and st.get("result") == "running":
@@ -1557,7 +1641,10 @@ def invalid(root, st):
     ok, why, tests = small_since(root, g, commit)
     if not ok:
         return "the top-up on %s stands on %s, but %s" % (commit[:7], g[:7], why)
-    need = sorted(set(guard_tests(conf_at(root, commit)) + tests))
+    run = topup_tests(root, g, commit, tests)
+    if run is None:
+        return "the related test picker failed for %s..%s" % (g[:7], commit[:7])
+    need = sorted(set(run))
     ran = st.get("tests")
     if not isinstance(ran, list) or sorted(set(ran)) != need:
         return "the top-up ran %s, the rule needs %s" % (ran, need)
@@ -1583,10 +1670,9 @@ def plan(root, st, tip=None):
     ok, why, tests = small_since(root, g, tip)
     if not ok:
         return {"kind": "full", "base": "", "tests": [], "why": why}
-    run = []
-    for t in guard_tests(conf) + tests:
-        if t not in run:
-            run.append(t)
+    run = topup_tests(root, g, tip, tests)
+    if run is None:
+        return {"kind": "full", "base": "", "tests": [], "why": "the related test picker failed"}
     if not run:
         return {"kind": "full", "base": "", "tests": [], "why": "no guard tests and no changed test file to run"}
     return {"kind": "top-up", "base": g, "tests": run,

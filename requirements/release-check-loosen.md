@@ -37,6 +37,12 @@ A green top-up is recorded on the tip together with the full run it stands on ("
 
 - The automatic nightly stays a FULL run, always (it is the net): its callers (the watch's housekeep pass, the session start) call `agent-nightly.sh --start --nightly`; `--nightly` can only make a run full, never smaller. A `--start` without it (the release path) picks top-up or full by the rule.
 - The frontmatter of a `.md` under `agents/` or `skills/` (the lines between the first two `---` lines) is configuration Claude Code reads: a change inside it is code, a change only below it is text; adding or deleting such a file is code.
+- Review fixes (2026-11-26, the reviewer's attacks on dd5aa00):
+  - A. A test file is small only with a plain name (`tests/test_<letters, digits, _>.py`); any other name is code. The top-up runs each planned file as its own command, every path one shell-quoted word, and a planned file that did not run or ran no test makes it red.
+  - B. The top-up runs the guard tests + the changed test files + the light related tests of every changed file, picked by the RELATED TESTS picker (`agent_level.py check --base <G> --json`); `tests/test_rules_structure.py` joins `guard_tests` here.
+  - C. `--due` counts FULL runs only: a top-up never stands in for the night's full run.
+  - D. The version-only tip counts as its parent only when plugin.json changes the version alone (the same version check).
+  - E. A selection miss is a finding of a full run only; a red top-up is a red run with its failing tests.
 
 ## Examples (the failing tests come from these)
 
