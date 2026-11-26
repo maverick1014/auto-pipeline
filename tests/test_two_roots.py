@@ -97,7 +97,16 @@ class TestPluginRootWrites(_TestPluginRootFixture, RootsCase):
         self.assertEqual(left, [])
 
 
-class TestProjectFromCwd(RootsCase):
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one plain start for the two readers
+class TestProjectFromCwdReads(RootsCase):
+    """The two tests that start the project from its own folder and only read."""
+
+    def setUp(self):
+        super().setUp()
+        # the line the first test writes again (same bytes) before its start
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("alpha | big | the open task\n")
+
     def test_the_project_files_are_counted(self):
         with open(self.repo.path("agent_todo.txt"), "w") as fh:
             fh.write("alpha | big | the open task\n")
@@ -106,6 +115,14 @@ class TestProjectFromCwd(RootsCase):
                                                     self.repo.plugin), out)
         self.assertIn("agent_todo.txt: 1 lines", out)
 
+    def test_the_lock_lands_in_the_project_git_dir(self):
+        self.assertOk(self.start())
+        self.assertTrue(os.path.exists(self.repo.path(".git", "agent_main.lock")))
+        self.assertFalse(os.path.exists(
+            self.repo.plugin_path(".git", "agent_main.lock")))
+
+
+class TestProjectFromCwd(RootsCase):
     def test_the_cap_comes_from_configure(self):
         self.repo.set_conf("max_usage_percent", "30")
         out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "40"}))
@@ -117,16 +134,22 @@ class TestProjectFromCwd(RootsCase):
         out = self.assertOk(self.start(cwd=sub))
         self.assertIn("PROJECT: %s | " % self.repo.dir, out)
 
-    def test_the_lock_lands_in_the_project_git_dir(self):
-        self.assertOk(self.start())
-        self.assertTrue(os.path.exists(self.repo.path(".git", "agent_main.lock")))
-        self.assertFalse(os.path.exists(
-            self.repo.plugin_path(".git", "agent_main.lock")))
+
+def hook_json(cwd, source="startup"):
+    return json.dumps({"cwd": cwd, "session_id": "s1", "source": source})
 
 
-class TestProjectFromHookStdin(RootsCase):
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one start for the two readers of one other project
+class TestProjectFromHookStdinReads(RootsCase):
+    def setUp(self):
+        super().setUp()
+        self.other = RootsCase.second_project(self)
+
+    def second_project(self, name="other", cap=None):
+        return self.other   # made once in the set-up
+
     def hook_json(self, cwd, source="startup"):
-        return json.dumps({"cwd": cwd, "session_id": "s1", "source": source})
+        return hook_json(cwd, source)
 
     def test_stdin_cwd_picks_the_project(self):
         other = self.second_project()
@@ -142,6 +165,11 @@ class TestProjectFromHookStdin(RootsCase):
                                                     "agent_main.lock")))
         self.assertFalse(os.path.exists(self.repo.path(".git",
                                                        "agent_main.lock")))
+
+
+class TestProjectFromHookStdin(RootsCase):
+    def hook_json(self, cwd, source="startup"):
+        return hook_json(cwd, source)
 
     def test_the_configure_cap_holds_for_that_project_too(self):
         other = self.second_project(cap=25)
@@ -170,9 +198,22 @@ class TestProjectFromHookStdin(RootsCase):
         self.assertIn("PROJECT: %s | " % self.repo.dir, out)
 
 
-class TestProjectWorktree(RootsCase):
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one start in the worktree for the two readers
+class TestProjectWorktreeReads(RootsCase):
     """Started inside a git worktree of the project, the shared files still
     belong to the project's main repo. Only agent_state.txt is local."""
+
+    def setUp(self):
+        super().setUp()
+        worktree = self.repo.detach_scripts_to_worktree()
+        # what the two tests write (same bytes) before their start
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("alpha | big | the open task\n")
+        with open(os.path.join(worktree, "agent_state.txt"), "w") as fh:
+            fh.write("STATE-OF-THE-WORKTREE\n")
+        with open(self.repo.path("agent_state.txt"), "w") as fh:
+            fh.write("STATE-OF-THE-MAIN-REPO\n")
+        self.repo.detach_scripts_to_worktree = lambda: worktree   # made once, here
 
     def test_shared_files_come_from_the_main_repo(self):
         worktree = self.repo.detach_scripts_to_worktree()
@@ -181,12 +222,6 @@ class TestProjectWorktree(RootsCase):
         out = self.assertOk(self.start(cwd=worktree))
         self.assertIn("PROJECT: %s | " % self.repo.dir, out)
         self.assertIn("agent_todo.txt: 1 lines", out)
-
-    def test_agent_file_writes_into_the_main_repo(self):
-        worktree = self.repo.detach_scripts_to_worktree()
-        self.assertOk(self.repo.run("agent-file.sh", "idea", "add", "from-wt",
-                                    cwd=worktree))
-        self.assertIn("from-wt", self.repo.read("agent_ideas.txt"))
 
     def test_state_file_is_the_worktrees_own(self):
         worktree = self.repo.detach_scripts_to_worktree()
@@ -197,6 +232,17 @@ class TestProjectWorktree(RootsCase):
         out = self.assertOk(self.start(cwd=worktree))
         self.assertIn("  STATE-OF-THE-WORKTREE", out)
         self.assertNotIn("STATE-OF-THE-MAIN-REPO", out)
+
+
+class TestProjectWorktree(RootsCase):
+    """Started inside a git worktree of the project, the shared files still
+    belong to the project's main repo. Only agent_state.txt is local."""
+
+    def test_agent_file_writes_into_the_main_repo(self):
+        worktree = self.repo.detach_scripts_to_worktree()
+        self.assertOk(self.repo.run("agent-file.sh", "idea", "add", "from-wt",
+                                    cwd=worktree))
+        self.assertIn("from-wt", self.repo.read("agent_ideas.txt"))
 
     def test_the_lock_is_shared_between_worktrees(self):
         """One main manager per repo (W10): the lock lives in the shared git dir."""
@@ -267,28 +313,16 @@ class TestSettingsFromAnywhere(RootsCase):
         self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
 
 
-class TestProjectNotSetUp(RootsCase):
-    """A project that has not run agent-init.sh yet is the first thing the
-    plugin meets. Nothing may fail silently there: the scripts fall back to
-    their built-in defaults, and the one script that needs a real file says so.
-
-    The repo turns the plugin on itself, which is what makes it this plugin's
-    business at all. agent-start.sh then sets it up on the spot; every other
-    script still meets a project with no agent.conf and has to cope.
-    """
-
+class _NotSetUpCase(RootsCase):
     def setUp(self):
         super().setUp()
         os.remove(self.repo.path("agent_todo.txt"))   # settings-configure: the set-up mark
         self.repo.enable_plugin()
 
-    def test_agent_start_sets_it_up_and_then_runs_normally(self):
-        out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "90"}))
-        self.assertIn("first run, created the task files", out)
-        self.assertIn("(cap 80%) -> OVER CAP", out)
-        self.assertIn("QUIZ:", out)
-        self.assertTrue(os.path.exists(self.repo.path("agent_todo.txt")))
-        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
+
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # the readers: each call once
+class TestProjectNotSetUpReads(_NotSetUpCase):
+    """The tests of TestProjectNotSetUp that only run read-only scripts."""
 
     def test_agent_resume_runs(self):
         result = self.repo.run("agent-resume.sh", "--dry-run")
@@ -296,10 +330,6 @@ class TestProjectNotSetUp(RootsCase):
                          "exit %d, stdout %r, stderr %r"
                          % (result.returncode, result.stdout, result.stderr))
         self.assertIn("=== resume ===", result.stdout)
-
-    def test_agent_file_still_writes(self):
-        self.assertOk(self.repo.run("agent-file.sh", "idea", "add", "no-conf"))
-        self.assertIn("no-conf", self.repo.read("agent_ideas.txt"))
 
     def test_agent_settings_shows_the_defaults(self):
         result = self.repo.run("agent-settings.sh")
@@ -318,7 +348,30 @@ class TestProjectNotSetUp(RootsCase):
                                     % (script, result.returncode))
 
 
-class TestPlainDirectory(RootsCase):
+class TestProjectNotSetUp(_NotSetUpCase):
+    """A project that has not run agent-init.sh yet is the first thing the
+    plugin meets. Nothing may fail silently there: the scripts fall back to
+    their built-in defaults, and the one script that needs a real file says so.
+
+    The repo turns the plugin on itself, which is what makes it this plugin's
+    business at all. agent-start.sh then sets it up on the spot; every other
+    script still meets a project with no agent.conf and has to cope.
+    """
+
+    def test_agent_start_sets_it_up_and_then_runs_normally(self):
+        out = self.assertOk(self.start(env={"AGENT_FAKE_RAM": "90"}))
+        self.assertIn("first run, created the task files", out)
+        self.assertIn("(cap 80%) -> OVER CAP", out)
+        self.assertIn("QUIZ:", out)
+        self.assertTrue(os.path.exists(self.repo.path("agent_todo.txt")))
+        self.assertFalse(os.path.exists(self.repo.path("agent.conf")))
+
+    def test_agent_file_still_writes(self):
+        self.assertOk(self.repo.run("agent-file.sh", "idea", "add", "no-conf"))
+        self.assertIn("no-conf", self.repo.read("agent_ideas.txt"))
+
+
+class _PlainCase(RootsCase):
     """A directory that is not a git repo at all.
 
     roots_read documents a fallback for it: PROJECT_ROOT becomes the directory
@@ -338,28 +391,19 @@ class TestPlainDirectory(RootsCase):
                 fh.write('{"enabledPlugins": {"auto-pipeline@auto-pipeline": true}}')
         return path
 
-    def test_roots_read_returns_and_falls_back(self):
-        plain = self.plain()
-        probe = self.repo.write_bin_script("probe.sh", (
-            "#!/usr/bin/env bash\nset -eu\n"
-            '. "$(dirname "$0")/agent-roots.sh"\n'
-            'roots_read "$1"\n'
-            'echo "REACHED $PROJECT_ROOT $STATE_DIR"\n'))
-        self.assertTrue(probe)
-        result = self.repo.run("probe.sh", plain)
-        self.assertEqual(result.returncode, 0,
-                         "exit %d, stderr %r" % (result.returncode, result.stderr))
-        self.assertIn("REACHED %s %s" % (plain, plain), result.stdout)
 
-    def test_agent_file_works_there(self):
-        plain = self.plain()
-        result = self.repo.run("agent-file.sh", "idea", "add", "plain-dir",
-                               cwd=plain)
-        self.assertEqual(result.returncode, 0,
-                         "exit %d, stdout %r, stderr %r"
-                         % (result.returncode, result.stdout, result.stderr))
-        with open(os.path.join(plain, "agent_ideas.txt")) as fh:
-            self.assertIn("plain-dir", fh.read())
+@shared_fixture(guard=REPO_BASE, remember_repo=True)   # one start and one resume per folder for the readers
+class TestPlainDirectory(_PlainCase):
+    """The tests that only start or read in a plain folder (the folders are made
+    once in the set-up)."""
+
+    def setUp(self):
+        super().setUp()
+        self.folders = {("plain", True): _PlainCase.plain(self),
+                        ("untouched", False): _PlainCase.plain(self, "untouched", enabled=False)}
+
+    def plain(self, name="plain", enabled=True):
+        return self.folders[(name, enabled)]
 
     def test_agent_start_works_there(self):
         plain = self.plain()
@@ -404,6 +448,33 @@ class TestPlainDirectory(RootsCase):
             text = fh.read()
         self.assertNotIn("set +e", text,
                          "the fallback belongs in agent-roots.sh, not here")
+
+
+class TestPlainDirectoryWrites(_PlainCase):
+    """The tests of TestPlainDirectory that write into the plugin or the folder: one repo each."""
+
+    def test_roots_read_returns_and_falls_back(self):
+        plain = self.plain()
+        probe = self.repo.write_bin_script("probe.sh", (
+            "#!/usr/bin/env bash\nset -eu\n"
+            '. "$(dirname "$0")/agent-roots.sh"\n'
+            'roots_read "$1"\n'
+            'echo "REACHED $PROJECT_ROOT $STATE_DIR"\n'))
+        self.assertTrue(probe)
+        result = self.repo.run("probe.sh", plain)
+        self.assertEqual(result.returncode, 0,
+                         "exit %d, stderr %r" % (result.returncode, result.stderr))
+        self.assertIn("REACHED %s %s" % (plain, plain), result.stdout)
+
+    def test_agent_file_works_there(self):
+        plain = self.plain()
+        result = self.repo.run("agent-file.sh", "idea", "add", "plain-dir",
+                               cwd=plain)
+        self.assertEqual(result.returncode, 0,
+                         "exit %d, stdout %r, stderr %r"
+                         % (result.returncode, result.stdout, result.stderr))
+        with open(os.path.join(plain, "agent_ideas.txt")) as fh:
+            self.assertIn("plain-dir", fh.read())
 
 
 class TestResumeFromAnywhere(RootsCase):

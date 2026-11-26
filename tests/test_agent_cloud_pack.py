@@ -3,6 +3,8 @@
 requirements/plugin-slim.md. One class per feature. Older task contracts: git log -p of this file.
 """
 
+import atexit
+import hashlib
 import json
 import os
 import re
@@ -142,6 +144,78 @@ def session_start_commands(settings):
     return out
 
 
+_PACK_MEMO = {}
+_BASE_MARK = "\0BASE\0"
+
+
+def _tree_key(root, skip_git=False):
+    """One hash of every folder, file name, mode and byte under root."""
+    digest = hashlib.sha1()
+    for dirpath, dirnames, filenames in os.walk(root):
+        if skip_git and dirpath == root:
+            dirnames[:] = [d for d in dirnames if d != ".git"]
+        dirnames.sort()
+        digest.update(b"D" + os.path.relpath(dirpath, root).encode() + b"\0")
+        for name in sorted(filenames):
+            full = os.path.join(dirpath, name)
+            mode = os.lstat(full).st_mode
+            data = os.readlink(full).encode() if stat.S_ISLNK(mode) else read_bytes(full)
+            digest.update(b"F%s\0%o\0%d\0" % (name.encode(), stat.S_IMODE(mode), len(data)))
+            digest.update(data)
+    return digest.hexdigest()
+
+
+def _outside_key(base, target):
+    """_tree_key of the temp folder without the repo (source copy, home)."""
+    digest = hashlib.sha1()
+    for dirpath, dirnames, filenames in os.walk(base):
+        if dirpath == base:
+            dirnames[:] = [d for d in dirnames if os.path.join(base, d) != target]
+        dirnames.sort()
+        digest.update(b"D" + os.path.relpath(dirpath, base).encode() + b"\0")
+        for name in sorted(filenames):
+            data = read_bytes(os.path.join(dirpath, name))
+            digest.update(name.encode() + b"\0" + data)
+    return digest.hexdigest()
+
+
+def _capture(root):
+    """(folders, {path: (bytes, mode)}) of root without .git; None when there is a symlink."""
+    dirs, files = [], {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        if dirpath == root:
+            dirnames[:] = [d for d in dirnames if d != ".git"]
+        for name in dirnames:
+            full = os.path.join(dirpath, name)
+            if os.path.islink(full):
+                return None
+            dirs.append(os.path.relpath(full, root))
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            if os.path.islink(full):
+                return None
+            files[os.path.relpath(full, root)] = (read_bytes(full), stat.S_IMODE(os.lstat(full).st_mode))
+    return dirs, files
+
+
+def _lay_down(root, dirs, files):
+    for name in os.listdir(root):
+        if name != ".git":
+            full = os.path.join(root, name)
+            if os.path.isdir(full) and not os.path.islink(full):
+                shutil.rmtree(full)
+            else:
+                os.remove(full)
+    for rel in dirs:
+        os.makedirs(os.path.join(root, rel), exist_ok=True)
+    for rel, (data, mode) in files.items():
+        full = os.path.join(root, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as fh:
+            fh.write(data)
+        os.chmod(full, mode)
+
+
 from sharedrepo import shared_fixture  # noqa: E402
 
 
@@ -222,11 +296,43 @@ class PackCase(unittest.TestCase):
     # ---- running ----
 
     def pack(self, *args, target=None, cwd=None):
+        """Run the pack. A run on this repo (default target and folder) is made
+        for real once per process for each distinct start state (source files,
+        repo files, arguments); a later test that starts from the same state
+        gets the same files and the same output laid down again (_PACK_MEMO)."""
+        plain = target is None and cwd is None
         target = self.target if target is None else target
         argv = [self.s("bin", "agent-cloud-pack.sh")]
         if target != "":
             argv.append(target)
-        return subprocess.run(argv + list(args), cwd=cwd or self.base,
+        if not plain:
+            return self._pack_run(argv + list(args), cwd)
+        key = (_tree_key(self.src), _tree_key(self.target, skip_git=True), tuple(args))
+        hit = _PACK_MEMO.get(key)
+        if hit is not None:
+            _lay_down(self.target, hit["dirs"], hit["files"])
+            return subprocess.CompletedProcess(
+                argv + list(args), hit["code"],
+                hit["stdout"].replace(_BASE_MARK, self.base),
+                hit["stderr"].replace(_BASE_MARK, self.base))
+        outside = _outside_key(self.base, self.target)
+        git_dir = _tree_key(self.t(".git"))
+        result = self._pack_run(argv + list(args), cwd)
+        after = _capture(self.target)
+        # a run that wrote anywhere else (source, home, .git), or left this
+        # temp folder's name in a file, is not replayed: every test runs it
+        if (after is not None and _outside_key(self.base, self.target) == outside
+                and _tree_key(self.t(".git")) == git_dir
+                and _tree_key(self.src) == key[0]
+                and not any(self.base.encode() in data for data, _ in after[1].values())):
+            _PACK_MEMO[key] = {
+                "dirs": after[0], "files": after[1], "code": result.returncode,
+                "stdout": result.stdout.replace(self.base, _BASE_MARK),
+                "stderr": result.stderr.replace(self.base, _BASE_MARK)}
+        return result
+
+    def _pack_run(self, argv, cwd):
+        return subprocess.run(argv, cwd=cwd or self.base,
                               env=self.env(), capture_output=True, text=True,
                               input="", timeout=120)
 
@@ -832,11 +938,25 @@ class TestFailsLoudly(PackCase):
         self.assertIn("settings.json", result.stdout + result.stderr)
 
 
+_ONE_SENTENCE = {}
+
+
 class TestOneSentenceInstall(PackCase):
     """The acceptance test: a plain clone of this repo, one line, done."""
 
     def setUp(self):
         super().setUp()
+        kept = _ONE_SENTENCE.get("run")
+        if kept is not None:
+            # the clone and the one-line install ran for real in the first test of
+            # the process; this test gets the repo it left, and the same answer
+            shutil.rmtree(self.target)
+            shutil.copytree(os.path.join(kept["dir"], "target"), self.target, symlinks=True)
+            self.result = subprocess.CompletedProcess(
+                kept["args"], kept["code"],
+                kept["stdout"].replace(_BASE_MARK, self.base),
+                kept["stderr"].replace(_BASE_MARK, self.base))
+            return
         self.stage = os.path.join(self.base, "stage")
         os.makedirs(self.stage)
         listed = subprocess.run(
@@ -861,6 +981,13 @@ class TestOneSentenceInstall(PackCase):
         self.result = subprocess.run(["bash", "-c", line], cwd=self.target,
                                      env=self.env(), capture_output=True,
                                      text=True, input="", timeout=180)
+        keep = tempfile.mkdtemp(prefix="cloud_pack_one_")
+        atexit.register(shutil.rmtree, keep, True)
+        shutil.copytree(self.target, os.path.join(keep, "target"), symlinks=True)
+        _ONE_SENTENCE["run"] = {
+            "dir": keep, "args": self.result.args, "code": self.result.returncode,
+            "stdout": self.result.stdout.replace(self.base, _BASE_MARK),
+            "stderr": self.result.stderr.replace(self.base, _BASE_MARK)}
 
     def test_it_sets_the_repo_up(self):
         self.assertOk(self.result)
