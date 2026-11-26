@@ -6,6 +6,7 @@ W14. Todo board
 - One script, no agent: `bin/agent-file.sh board`. Show its table as printed, every row, then the decide section (H3)
 - Main manager: the whole repo. Task manager or Helper: `board --self`, its own task and its workers only. Subagents never
 - Rows: open tasks, waits on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines. Each: task, what in a few words, status, where, est, work, wait, progress, done by
+- One row per task: agents under a task (deputy, merge deputy, reviewer, worker, its task manager pane) show as ` · N agents` on its row, never as rows; one with no todo row keeps its own
 - A task's owner shows as `[<name>]` after its name
 - Status of a wait: `waiting <who> · <what> · waited <n>`, held `hold · <what> · waited <n>`, queued `queue · after <task>`; no stage, no wait: not started. Time cells `-` (not started keeps est)
 - Sort: waiting on the owner, running, waiting on others, queued and not started, held, OWNER TODO, parked questions last; oldest first in each group
