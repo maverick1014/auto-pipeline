@@ -4996,7 +4996,7 @@ function renderFloorSign(){
   } else {
     const t = terrOf(cur), th = themeOf(cur), tag = floorTag(cur), reno = renovating(cur);
     h = '<span class="fno">' + esc(tag.floor) + '</span><i class="rc" style="--rc:' + terrColor(cur) + '"></i><span class="frn">' + esc(t.name) + '</span>' +
-      '<span class="frs">' + esc(reno ? i18n('office.renovating') : th.name) + '</span><span class="fpc">' + tag.people + ' ' + esc(i18n('office.people')) + '</span>' +
+      '<span class="frs">' + esc(reno ? i18n('office.renovating') : th.name) + ' ·</span><span class="fpc">' + tag.people + ' ' + esc(i18n('office.people')) + '</span>' +
       (reno ? '' : '<button class="fedit" id="fEdit" type="button">' + esc(i18n('office.renovate')) + '</button>');
     title = th.why ? i18n('office.designBy') + th.why : '';
   }
