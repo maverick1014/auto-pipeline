@@ -33,6 +33,11 @@ A green top-up is recorded on the tip together with the full run it stands on ("
 - A merge commit counts by the files it brings in against the green commit (`git diff --name-only G tip`), so a merge of a text-only branch is small and a merge that brings code is not.
 - `--status` says which kind the last run was.
 
+## Main manager's decisions (2026-11-26, after the first build)
+
+- The automatic nightly stays a FULL run, always (it is the net): its callers (the watch's housekeep pass, the session start) call `agent-nightly.sh --start --nightly`; `--nightly` can only make a run full, never smaller. A `--start` without it (the release path) picks top-up or full by the rule.
+- The frontmatter of a `.md` under `agents/` or `skills/` (the lines between the first two `---` lines) is configuration Claude Code reads: a change inside it is code, a change only below it is text; adding or deleting such a file is code.
+
 ## Examples (the failing tests come from these)
 
 - Green full run on G; one commit changes `README.md` and `rules/time.md`: `--release-ok` refuses and says a top-up is enough; `--start` runs the guard tests only; green: `--release-ok` passes on the tip.

@@ -415,7 +415,7 @@ class TestC18ConnectedMachineFirst(Nightly):
         e = {"AGENT_FAKE_NOW": "2026-11-25 23:00", "CLAUDE_PID": str(os.getpid()), "AGENT_FAKE_HOST": "pc2"}
         e.update(self.env())
         r = self.repo.run("agent-start.sh", stdin='{"cwd": "%s", "source": "startup"}' % self.repo.dir, env=e)
-        self.assertIn("NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start there", r.stdout)
+        self.assertIn("NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start --nightly there", r.stdout)
         time.sleep(2)
         self.assertEqual(self.status(), {})
 
@@ -483,7 +483,7 @@ class TestC23(Machines):
     def test_a_reachable_paired_machine_runs_it(self):
         self.pair(reachable=True)
         r = self.start_session()
-        self.assertIn("NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start there", r.stdout)
+        self.assertIn("NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start --nightly there", r.stdout)
         time.sleep(2)
         self.assertEqual(self.status(), {})
 

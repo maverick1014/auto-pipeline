@@ -304,5 +304,49 @@ class TestStrict(TopUpCase):
         self.assertEqual((self.status()["commit"], self.status()["kind"]), (g, "full"), "the full record stays")
 
 
+@tn.only_own
+class TestOwnerPoints(TopUpCase):
+    """Main manager 2026-11-26: the automatic nightly is always FULL; frontmatter of agents/ and skills/ is code."""
+
+    def test_the_nightly_path_is_full_and_the_release_path_a_top_up(self):
+        self.full_green()
+        self.commit({"README.md": "# n\n"}, "text")
+        r = self.nightly("--start", "--wait", "--nightly", env=self.env())
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.status()["kind"], "full", self.status())
+        self.assertTrue(os.path.exists(self.mark), "the nightly ran the full suite")
+        os.remove(self.mark)
+        self.commit({"README.md": "# n2\n"}, "text 2")
+        self.assertEqual(self.start()["kind"], "top-up")
+        self.assertFalse(os.path.exists(self.mark))
+
+    def test_the_automatic_callers_say_nightly(self):
+        with open(os.path.join(BIN, "agent_housekeep.py")) as fh:
+            self.assertIn('[script, "--start", "--nightly"]', fh.read())
+        with open(os.path.join(BIN, "agent-start.sh")) as fh:
+            self.assertIn('agent-nightly.sh" --start --nightly', fh.read())
+
+    def test_frontmatter_of_agents_and_skills_is_code(self):
+        self.commit({"agents/x.md": "---\nname: x\nmodel: opus\n---\nbody\n",
+                     "skills/y/SKILL.md": "---\nname: y\ndescription: d\n---\nbody\n"}, "agent files")
+        g = self.git("rev-parse", "HEAD")
+        self.commit({"agents/x.md": "---\nname: x\nmodel: sonnet\n---\nbody\n"}, "model")
+        ok, why, _ = self.small(g)
+        self.assertFalse(ok)
+        self.assertIn("agents/x.md", why)
+        self.assertIn("frontmatter", why)
+        self.git("reset", "-q", "--hard", g)
+        self.commit({"skills/y/SKILL.md": "---\nname: y\ndescription: d\n---\nbody 2\nmore\n"}, "body")
+        self.assertEqual(self.small(g)[0], True, self.small(g))
+        self.git("reset", "-q", "--hard", g)
+        self.commit({"skills/z/SKILL.md": "---\nname: z\n---\nbody\n"}, "new skill")
+        ok, why, _ = self.small(g)
+        self.assertFalse(ok)
+        self.assertIn("skills/z/SKILL.md", why)
+        self.git("reset", "-q", "--hard", g)
+        self.commit({}, "drop agent", delete=["agents/x.md"])
+        self.assertFalse(self.small(g)[0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1135,8 +1135,9 @@ class RunLock:
             return False
 
 
-def do_run(cwd):
-    """The foreground run: lock, gate, command (monitored), status, misses. Exit 0 whatever the result."""
+def do_run(cwd, nightly=False):
+    """The foreground run: lock, gate, command (monitored), status, misses. Exit 0 whatever the result.
+    nightly: started by the automatic nightly path: always the full run (it can only make a run bigger)."""
     root, gitdir = main_root(cwd), common_dir(cwd)
     cmd = full_cmd(root)
     if not cmd:
@@ -1150,6 +1151,8 @@ def do_run(cwd):
     prev = st.get("prev") if st.get("result") == "running" else st
     commit = tip_of(root)
     p = plan(root, prev, commit)                       # full or top-up: from git and the last record alone
+    if nightly:
+        p = {"kind": "full", "base": "", "tests": [], "why": "the automatic nightly is always the full run"}
     carry = p["base"] if p["kind"] == "top-up" else full_base(prev)[0]
     base = {"started": now().strftime(FMT), "commit": commit, "finished": "", "result": "running", "failed": [],
             "last_green": (prev or {}).get("last_green", ""), "pid": os.getpid(), "prev": prev,
@@ -1254,19 +1257,21 @@ def do_run(cwd):
     return 0
 
 
-def start(cwd, wait):
+def start(cwd, wait, nightly=False):
     root, gitdir = main_root(cwd), common_dir(cwd)
     if not full_cmd(root):
         print("NIGHTLY: no full_cmd in agent_repo.conf of %s, nothing to run" % root)
         return 0
     if wait:
-        return do_run(cwd)
+        return do_run(cwd, nightly)
     if running(read_status(gitdir)):
         print("NIGHTLY: already running")
         return 0
-    subprocess.Popen([sys.executable, os.path.abspath(__file__), "run"], cwd=cwd, stdin=subprocess.DEVNULL,
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), "run"] + (["--nightly"] if nightly else []), cwd=cwd, stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     p = plan(root, read_status(gitdir))
+    if nightly:
+        p = {"kind": "full", "why": "the automatic nightly is always the full run"}
     print("NIGHTLY: started in the background (%s: %s)" % ("top-up" if p["kind"] == "top-up" else "full run", p["why"]))
     return 0
 
@@ -1419,6 +1424,20 @@ def version_only(root, old_blob, new_blob):
     return old == new and all('"version"' in l for l in changed)
 
 
+def frontmatter(root, blob):
+    """The frontmatter block of a .md blob (the lines from the first line --- to the next ---), None when unreadable."""
+    ok, body = git_rc(root, "cat-file", "blob", blob)
+    if not ok:
+        return None
+    lines = body.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return []
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return lines[:i + 1]
+    return lines                                   # no closing line: the whole file counts as frontmatter
+
+
 def not_small(root, change):
     """"" when one changed file is small, else why it is code."""
     old_mode, new_mode, old_blob, new_blob, status, path = change
@@ -1431,6 +1450,12 @@ def not_small(root, change):
         if "160000" in modes:
             return "%s is a submodule (code)" % path
         return "%s has a file mode change (%s -> %s, code)" % (path, old_mode, new_mode)
+    if path.endswith(".md") and path.startswith(("agents/", "skills/")):
+        if status != "M":                    # an agent or a skill that comes or goes is configuration
+            return "%s is %s (an agent or skill file: code)" % (path, "added" if status == "A" else "deleted")
+        if frontmatter(root, old_blob) != frontmatter(root, new_blob):
+            return "%s changes its frontmatter (configuration Claude Code reads: code)" % path
+        return ""
     if path.endswith(".md") or path.startswith("mock/"):
         return ""
     if TEST_FILE.match(path):
@@ -1669,15 +1694,16 @@ def main(argv):
         return room_main(argv, cwd)
     if argv and argv[0] in ("run", "--start", "--release-ok", "--failures") and not need_stored(main_root(cwd)):
         return 1
-    if argv and argv[0] == "run":
-        return do_run(cwd)
+    if argv and argv[0] == "run" and all(a == "--nightly" for a in argv[1:]):
+        return do_run(cwd, "--nightly" in argv[1:])
     if not argv or argv[0] == "--status":
         st = read_status(common_dir(cwd))
         print(status_line(st))
         print(needed_line(main_root(cwd), st))
         return 0
-    if argv[0] == "--start" and all(a == "--wait" for a in argv[1:]):     # no option chooses the kind of run
-        return start(cwd, "--wait" in argv[1:])
+    if argv[0] == "--start" and all(a in ("--wait", "--nightly") for a in argv[1:]):
+        # the one option is --nightly, and it can only make the run FULL; nothing makes a run smaller
+        return start(cwd, "--wait" in argv[1:], "--nightly" in argv[1:])
     if argv[0] == "--due":
         return 0 if due(cwd) else 1
     if argv[0] == "--release-ok":
@@ -1688,7 +1714,7 @@ def main(argv):
         return misses(cwd)
     if argv[0] == "--failures":
         return failures(cwd)
-    sys.stderr.write("usage: agent-nightly.sh --start [--wait] | --status | --due | --release-ok | --misses | "
+    sys.stderr.write("usage: agent-nightly.sh --start [--wait] [--nightly] | --status | --due | --release-ok | --misses | "
                      "--failures\n")
     return 2
 

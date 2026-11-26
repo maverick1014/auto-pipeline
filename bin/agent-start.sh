@@ -1055,7 +1055,7 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
       nl_note=$(printf '%s\n' "$nl_out" | grep '^NIGHTLY:' | head -n 1) || nl_note=""
       [ -n "$(printf '%s\n' "$nl_out" | grep -v '^NIGHTLY:' | grep -v '^[[:space:]]*$')" ] && nl_conn=yes
       if [ "$nl_conn" = yes ]; then
-        NIGHTLY_LINE="NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start there"
+        NIGHTLY_LINE="NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start --nightly there"
       else
       [ -z "$nl_note" ] || NIGHTLY_LINE="$nl_note"
       # C3 (section 43): only with room for the nightly's weight; else one line and nothing starts
@@ -1067,11 +1067,11 @@ w, _ = n.weight_of(n.common_dir(os.getcwd()), os.path.join(n.main_root(os.getcwd
 print(w[1] if w else 0)' "$PLUGIN_ROOT/bin" 2>/dev/null </dev/null) || nl_mb=0
       case "$nl_mb" in ''|*[!0-9]*) nl_mb=0;; esac
       if ( cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-room.sh" check "$nl_mb" ) >/dev/null 2>&1 </dev/null; then
-        ( cd "$PROJECT_ROOT" && nohup "$PLUGIN_ROOT/bin/agent-nightly.sh" --start >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
+        ( cd "$PROJECT_ROOT" && nohup "$PLUGIN_ROOT/bin/agent-nightly.sh" --start --nightly >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
       else
         nl_host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
         NIGHTLY_LINE="${NIGHTLY_LINE:+$NIGHTLY_LINE
-}NIGHTLY: due, no room on $nl_host: start it where there is room (W7): agent-nightly.sh --start"
+}NIGHTLY: due, no room on $nl_host: start it where there is room (W7): agent-nightly.sh --start --nightly"
       fi
       fi
     fi
