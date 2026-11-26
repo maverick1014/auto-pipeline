@@ -69,6 +69,9 @@ R5. Task files
 - The housekeep pass never closes a todo line: it flags one whose branch is merged into the working branch or the production branch
 - A stale todo line is flagged too: no worktree line, no open wait, quiet longer than the interval of W8
 - All four `agent_*.txt` files are written only through `bin/agent-file.sh`. No agent for that, it costs tokens
+- Where they live (requirements/agent-files.md): every agent file is git-ignored in the main checkout. The finished records and the estimate model, and by the setting "Team: Task files in git" the ideas and the todo, go onto the data branch (setting "Team: Data branch", default ap-data) and are pushed at once by the script that writes them; the repo value in `agent_repo.conf` wins over a member's setting; cloud keeps them in the tree
+- A repo that still tracks them: `agent-file.sh files move` in the main checkout (content kept, a copy in the git folder); `files sync` merges the newest data by hand
+- A shared todo: a task is worked (dispatch, stage, done, merge, approval words) only by its owner, its assignee (`todo assign`, the owner only) or, with the setting "Team: Who may take a task" anyone, its taker (`todo take`)
 - `agent_completed.txt` is never deleted, trimmed or cleaned (every clean-up skips it); only on an explicit owner order
 
 R6. Ideas file
@@ -184,6 +187,7 @@ R8. Check blocks
   - Rollback: back to the last green commit; BUILD + RELATED TESTS of the reverted files; a database change follows its written rollback plan
   - Research only (no diff): no blocks; the report is the deliverable
 - Repo facts live in the committed `agent_repo.conf`, written by init and kept by agents; a human may edit it, never has to: core paths, guard tests, test commands, the edge list, real-data access
+- The team values live there too and win over a member's Configure: task_files, task_take, data_branch
 - After each bug fix the fixing agent asks "which example would have shown it" and adds one line with `agent-file.sh edge add "<text>"` when the list lacks it
 - Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed
 - A requirement table copies its defaults from the released template and lists every changed default for the owner

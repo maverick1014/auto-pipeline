@@ -1068,6 +1068,7 @@ class TestTheRuleText(unittest.TestCase):
 
     def test_the_repo_facts_name_the_team_values(self):
         text = read(os.path.join(ROOT, "PRINCIPLES.md"))
-        line = [l for l in text.splitlines() if l.startswith("- Repo facts live in the committed `agent_repo.conf`")][0]
+        lines = text.splitlines()
+        at = [n for n, l in enumerate(lines) if l.startswith("- Repo facts live in the committed `agent_repo.conf`")][0]
         for key in ("task_files", "task_take", "data_branch"):
-            self.assertIn(key, line)
+            self.assertIn(key, lines[at + 1])

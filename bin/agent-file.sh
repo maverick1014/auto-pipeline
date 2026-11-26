@@ -28,6 +28,8 @@
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
 #   agent-file.sh idea keep <n>                                -> line n gets " | kept <date>": still wanted, never a housekeep suspect again
 #   agent-file.sh files show                                  -> "files: task_files=<v> task_take=<v> place=<ap-data|tree>", then "<file>: local" or "<file>: in git" per agent file
+#   agent-file.sh todo assign <task> <name>                   -> shared todo, the owner only: " | assignee <name>", committed, pushed
+#   agent-file.sh todo take <task>                            -> shared todo, task_take=anyone: " | taken <me>", pushed at once; refused when another took it
 #   agent-file.sh files sync                                  -> fetch origin ap-data, merge it into the files in git, commit, push (agent_share.py)
 #   agent-file.sh files move                                  -> main checkout only: every tracked agent file leaves the code branch (copy kept in <git dir>/agent-files-kept), ignore lines written, the files in git go onto ap-data; second run changes nothing
 #   agent-file.sh files set <task_files|task_take|task_place|data_branch> <value>   -> the fact in agent_repo.conf (one code-branch commit of that file); task_files then runs files move (and writes the missing task_files, task_take, data_branch values); data_branch on a branch that holds code (e.g. main) needs an origin (else refused, one line); its files live under .ap-data/ and are pushed on top of the remote tip, no local ref or checkout moves; on the production branch one line says a commit there can start a deploy
@@ -274,6 +276,19 @@ share_exit() {
   exit "$rc"
 }
 case "${1:-}" in files|show|time|data|repos|estimate|backtest|eta) ;; *) trap share_exit EXIT;; esac
+
+# a shared todo (agent_share.py): the newest data before a decision (quiet, a failed fetch never blocks), and who may work a task
+share_pull() {
+  case "$(conf_fact task_files)" in local|ideas) return 0;; esac
+  [ -e "$ROOT/.git" ] && command -v python3 >/dev/null 2>&1 || return 0
+  python3 "$(dirname "$0")/agent_share.py" "$ROOT" pull >/dev/null 2>&1 || true
+}
+share_gate() {   # share_gate <task>: refuse (stderr, exit 1) a task of a shared todo this person may not work
+  local msg
+  case "$(conf_fact task_files)" in local|ideas) return 0;; esac
+  [ -n "$(first "$TODO" "$1")" ] && command -v python3 >/dev/null 2>&1 || return 0
+  msg=$(python3 "$(dirname "$0")/agent_share.py" "$ROOT" may-work "$1" 2>/dev/null) || { printf '%s\n' "$msg" >&2; exit 1; }
+}
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -913,6 +928,8 @@ todo_stage() {
   fi
   val="$stage${frac:+ $frac}"
   if [ "$(cd "$STATE_DIR" 2>/dev/null && pwd -P)" != "$(cd "$PROJECT_ROOT" 2>/dev/null && pwd -P)" ]; then wt_here=1; fi
+  share_pull
+  share_gate "$name"
   line=$(first "$TODO" "$name")
   if [ -z "$line" ] && [ -z "$wt_here" ]; then refuse "no todo line named: $name"; fi
   if [ -n "$line" ]; then
@@ -1091,6 +1108,7 @@ board_run() {
     sec=$((10#$sec))
   fi
   command -v python3 >/dev/null 2>&1 || refuse "board: python3 is needed and was not found"
+  share_pull
   lang=$(setting language 2>/dev/null) || lang=en
   case "$lang" in zh) ;; *) lang=en;; esac
   host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
@@ -1154,6 +1172,7 @@ checks_py() {
 next_run() {
   local cap nums
   [ $# -eq 0 ] || refuse "next: takes nothing after it"
+  share_pull
   cap=$(conf_num max_usage_percent 1 100) || cap=80
   if nums=$(cd "$PROJECT_ROOT" && "$(dirname "$0")/agent-room.sh" numbers 2>/dev/null </dev/null) && [ "$(printf '%s\n' "$nums" | wc -w | tr -d ' ')" -eq 4 ]; then
     checks_py next $nums "$cap"
@@ -1242,6 +1261,7 @@ case "${1:-}:${2:-}" in
   todo:done)
     need 3 "$@"; name="$3"; line=$(first "$TODO" "$name")
     [ -n "$line" ] || { echo "no todo line named: $name" >&2; exit 1; }
+    share_gate "$name"
     shift 3
     case "${1:-}" in --*) ;; *) [ $# -eq 0 ] || shift;; esac   # the "<result>" text is not stored
     dreset; d_files=; d_lines=
@@ -1295,6 +1315,14 @@ case "${1:-}:${2:-}" in
     shift; next_run "$@";;
   edge:add)
     shift 2; checks_py edge-add "$@";;
+  todo:take)
+    [ $# -eq 3 ] || refuse "todo take: usage: todo take <task>"
+    command -v python3 >/dev/null 2>&1 || refuse "todo take: python3 is needed and was not found"
+    exec python3 "$(dirname "$0")/agent_share.py" "$ROOT" take "$3";;
+  todo:assign)
+    [ $# -eq 4 ] || refuse "todo assign: usage: todo assign <task> <name>"
+    command -v python3 >/dev/null 2>&1 || refuse "todo assign: python3 is needed and was not found"
+    exec python3 "$(dirname "$0")/agent_share.py" "$ROOT" assign "$3" "$4";;
   todo:stage)
     shift 2; todo_stage "$@";;
   todo:beat)

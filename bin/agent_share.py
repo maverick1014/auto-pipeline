@@ -10,6 +10,9 @@ CLI: agent_share.py <project root> <cmd> ...
   move                       take the agent files out of the code branch, put the in-git ones on ap-data
   name                       the git user name of the project root ("" when none)
   place                      "data <branch>" or "tree"
+  may-work <task>            the refusal text (exit 1) when the person may not work the task of a shared todo
+  pull                       quiet sync before a decision (shared todo only)
+  take <task> | assign <task> <name>    todo take / todo assign (the todo in git)
 
 Facts live in agent_repo.conf ("key=value", "key = value" reads the same):
   task_files = local (default) | ideas | ideas,todo      task_take = owner (default) | anyone
@@ -22,6 +25,7 @@ The in-git files: agent_completed.txt and agent_estimate.txt always; agent_ideas
 task_files names them; agent_worktree.txt never. Python 3.9, stdlib only. Git's own words never reach the output.
 """
 
+import contextlib
 import datetime
 import os
 import re
@@ -354,6 +358,173 @@ def active(root):
     return place(root)[0] == "data" and is_repo(root)
 
 
+# ------------------------------------------------------------------ who may work a shared task
+
+
+def clean_name(text):
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+
+
+def same_person(a, b):
+    """Two names are one person when their cleaned forms are equal (lower case, runs of other characters one "-")."""
+    return clean_name(a) == clean_name(b) and clean_name(a) != ""
+
+
+def todo_shared(root):
+    return facts(root)["task_files"] == "ideas,todo"
+
+
+def field_value(line, prefix):
+    """The value of the field "<prefix> <value>" after the third field of a todo line (it ends at the next " | ")."""
+    for f in (line or "").split(" | ")[3:]:
+        if f.startswith(prefix + " "):
+            return f[len(prefix) + 1:].strip()
+    return None
+
+
+def may_work(root, line):
+    """None when the person may work the task of this todo line, else the refusal text. A local todo: always None."""
+    if not line or not todo_shared(root):
+        return None
+    task = task_name(line)
+    me = name(root)
+    taken, assignee, owner = field_value(line, "taken"), field_value(line, "assignee"), field_value(line, "owner")
+    if taken:
+        return None if same_person(me, taken) else "%s was taken by %s" % (task, taken)
+    if assignee:
+        return None if same_person(me, assignee) else "%s is assigned to %s" % (task, assignee)
+    if owner:
+        if facts(root)["task_take"] == "owner":
+            return None if same_person(me, owner) else "%s belongs to %s; ask them to assign it" % (task, owner)
+        return "%s is free: take it first (agent-file.sh todo take %s)" % (task, task)
+    return None
+
+
+def todo_line(root, task):
+    for line in lines_of(read_file(root, "agent_todo.txt")):
+        if task_name(line) == task:
+            return line
+    return None
+
+
+def quietly(fn, *args):
+    with open(os.devnull, "w") as dn, contextlib.redirect_stdout(dn):
+        return fn(*args)
+
+
+def pull(root):
+    """Before a decision: when the todo is in git, a quiet sync (short timeout). A failure = the local file."""
+    try:
+        if not todo_shared(root) or not active(root) or not has_origin(root):
+            return
+        os.environ.setdefault("AGENT_SHARE_TIMEOUT", "10")
+        quietly(sync, root, "files sync", False)
+    except Exception:
+        pass
+
+
+def cmd_may_work(root, task):
+    text = may_work(root, todo_line(root, task))
+    if text:
+        say(text)
+        return 1
+    return 0
+
+
+def put_todo_line(root, task, new):
+    parts = (read_file(root, "agent_todo.txt") or "").split("\n")
+    for i, l in enumerate(parts):
+        if task_name(l) == task and l != "":
+            parts[i] = new
+            break
+    write_file(os.path.join(root, "agent_todo.txt"), "\n".join(parts))
+
+
+def with_field(line, prefix, value):
+    """LINE with the field "<prefix> <value>" written (replaced after the third field, else appended)."""
+    fields = line.split(" | ")
+    for i in range(3, len(fields)):
+        if fields[i].startswith(prefix + " "):
+            fields[i] = "%s %s" % (prefix, value)
+            return " | ".join(fields)
+    return line + " | %s %s" % (prefix, value)
+
+
+def refuse_todo(text):
+    sys.stderr.write(text + "\n")
+    return 1
+
+
+def cmd_assign(root, task, who):
+    if not todo_shared(root):
+        return refuse_todo("todo assign: the todo is local (task_files is not ideas,todo): assign needs task_files=ideas,todo")
+    if not who.strip() or " | " in who or "\n" in who:
+        return refuse_todo("todo assign: the name must not be empty or hold \" | \" or a line break")
+    pull(root)
+    line = todo_line(root, task)
+    if line is None:
+        return refuse_todo("todo assign: no todo line named: %s" % task)
+    owner = field_value(line, "owner")
+    if owner and not same_person(name(root), owner):
+        return refuse_todo("%s belongs to %s; only the owner assigns" % (task, owner))
+    put_todo_line(root, task, with_field(line, "assignee", who.strip()))
+    commit(root, "todo assign %s" % task)
+    say("todo assign: %s -> %s" % (task, who.strip()))
+    return 0
+
+
+def take_guard(task, me, state):
+    """Called with the remote tip before a sync of a failed push: another taker there = the local line becomes
+    the remote's line. True when that happened."""
+    def guard(root, remote):
+        text = blob(root, remote, (DIR if on_code_branch(root) else "") + "agent_todo.txt")
+        line = None
+        for l in lines_of(text):
+            if task_name(l) == task:
+                line = l
+                break
+        who = field_value(line, "taken") if line else None
+        if who and not same_person(who, me):
+            state["lost"] = who
+            put_todo_line(root, task, line)
+            return True
+        return False
+    return guard
+
+
+def cmd_take(root, task):
+    if not todo_shared(root):
+        return refuse_todo("todo take: the todo is local (task_files is not ideas,todo): take needs task_files=ideas,todo")
+    pull(root)
+    line = todo_line(root, task)
+    if facts(root)["task_take"] == "owner":
+        owner = field_value(line, "owner") if line else None
+        return refuse_todo("todo take: task_take is owner; ask %s to assign it" % (owner or "the owner"))
+    if line is None:
+        return refuse_todo("todo take: no todo line named: %s" % task)
+    me = name(root)
+    taken, assignee = field_value(line, "taken"), field_value(line, "assignee")
+    if taken:
+        if same_person(me, taken):
+            say("todo take: %s is already yours" % task)
+            return 0
+        return refuse_todo("todo take: %s was taken by %s" % (task, taken))
+    if assignee and not same_person(me, assignee):
+        return refuse_todo("todo take: %s is assigned to %s" % (task, assignee))
+    put_todo_line(root, task, with_field(line, "taken", me))
+    state = {}
+    guard = take_guard(task, me, state)
+    announce(root)
+    if on_code_branch(root):
+        code_cycle(root, "todo take %s" % task, guard=guard)
+    elif commit_core(root, "todo take %s" % task):
+        publish(root, guard=guard)
+    if state.get("lost"):
+        return refuse_todo("todo take: %s was taken by %s" % (task, state["lost"]))
+    say("todo take: %s is yours" % task)
+    return 0
+
+
 # ------------------------------------------------------------------ files
 
 
@@ -435,22 +606,36 @@ def why_text(r):
     return line
 
 
-def publish(root):
-    """Push ap-data. A push refused because origin moved: sync, push again. Any other failure: one line."""
+def remote_moved(root):
+    """Fetch origin's data branch and compare: True when its tip holds something the local tip lacks."""
+    if not fetch(root):
+        return False
+    remote, local = tip(root, remote_ref(root)), tip(root)
+    return bool(remote) and remote != local and not ancestor(root, remote, local)
+
+
+def publish(root, guard=None):
+    """Push ap-data. A push that failed while a fetch shows the remote moved (git's words alone are not the test):
+    sync, push again. Any other failure: one line. GUARD(root, remote tip) is asked before each sync; a true
+    answer ends the loop after one sync and one push. True when the push went through."""
     if not has_origin(root) or not tip(root):
-        return
+        return True
     for turn in range(ROUNDS):
         r = run(root, "push", "-q", "origin", "%s:refs/heads/%s" % (local_ref(root), branch(root)), timeout=timeout_s())
         if r.ok:
-            return
-        if MOVED.search(r.err) and turn < ROUNDS - 1:
+            return True
+        if turn < ROUNDS - 1 and (remote_moved(root) or MOVED.search(r.err)):
+            if guard and guard(root, tip(root, remote_ref(root))):
+                sync_core(root, "sync")
+                return publish(root)
             sync_core(root, "sync")
             continue
         say("%s: not pushed (%s); the next write pushes it" % (branch(root), why_text(r)))
-        return
+        return False
+    return False
 
 
-def code_cycle(root, message, force=()):
+def code_cycle(root, message, force=(), guard=None):
     """A write or a sync on a branch that holds code. The remote tip is fetched (refs/auto-pipeline/remote/<b>);
     theirs = its .ap-data/ files, base = the data of the last remote commit this clone synced with or pushed
     (refs/auto-pipeline/data-base/<b>), ours = the working copies. The merge goes into the working copies; when it
@@ -468,6 +653,8 @@ def code_cycle(root, message, force=()):
         if not remote:
             say("%s: not pushed (origin has no %s yet); the next write pushes it" % (b, b))
             return new_done
+        if guard:
+            guard(root, remote)
         base = tip(root, bref)
         t_remote, t_base = commit_time(root, remote), commit_time(root, base)
         now = int(datetime.datetime.now().timestamp())
@@ -1090,6 +1277,15 @@ def main(argv):
         return 0
     if cmd == "move":
         return move(root)
+    if cmd == "may-work":
+        return cmd_may_work(root, rest[0]) if rest else 2
+    if cmd == "pull":
+        pull(root)
+        return 0
+    if cmd == "take":
+        return cmd_take(root, rest[0]) if len(rest) == 1 else 2
+    if cmd == "assign":
+        return cmd_assign(root, rest[0], rest[1]) if len(rest) == 2 else 2
     if cmd == "name":
         say(name(root))
         return 0

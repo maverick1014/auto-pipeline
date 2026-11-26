@@ -317,6 +317,15 @@ def cmd_owner_words(ctx, a):
     store_words(ctx, task, "publish", None, quote, means, question, typed, when, relayed)
 
 
+def work_refusal(ctx, line):
+    """The refusal text when this person may not work the task of this todo line (a shared todo), else None."""
+    try:
+        import agent_share
+        return agent_share.may_work(ctx["root"], line if isinstance(line, str) else " | ".join(line))
+    except ImportError:
+        return None
+
+
 def cmd_todo_target(ctx, a):
     """todo target <task> production --owner-quote Q --means M [--question X] [--time T] [--relayed-from <folder>]:
     the owner's yes after the task was added (FIX ORDER 1 R2). Same checks and record as todo add --target production."""
@@ -326,6 +335,9 @@ def cmd_todo_target(ctx, a):
     name, target, rest = a[0], a[1], a[2:]
     todo = Todo(ctx["root"])
     f = need_line(todo, name)
+    why = work_refusal(ctx, f)
+    if why:
+        raise Refuse(why)
     if target != "production":
         raise Refuse("todo target: only production is set this way (got: %s)" % target)
     opts, i = {}, 0
@@ -406,6 +418,9 @@ def cmd_todo_checks(ctx, a):
     cur = field_of(f, "checks")
     old = [x.strip() for x in cur.split(",")] if cur else []
     if rest and rest[0] == "--remove":
+        why = work_refusal(ctx, f)
+        if why:
+            raise Refuse(why)
         opts, i = {}, 0
         while i < len(rest):
             if rest[i] in ("--remove", "--owner-quote", "--means", "--question", "--time", "--relayed-from") and i + 1 < len(rest):
@@ -998,6 +1013,10 @@ def cmd_gate(ctx, a):
             i += 2
         else:
             raise Refuse("checks gate: unknown or incomplete option: %s" % rest[i], 2)
+    why = work_refusal(ctx, Todo(ctx["root"]).fields(task) or "")
+    if why:
+        print("GATE REFUSED %s: %s" % (task, why))
+        sys.exit(1)
     print_owner_words(ctx, task, opts.get("--dir", ""), opts, Todo(ctx["root"]).fields(task))
     if "--dir" not in opts:
         raise Refuse("checks gate: --dir <path> is needed", 2)

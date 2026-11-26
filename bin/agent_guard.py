@@ -629,6 +629,37 @@ def quiet_todo(ctx):
     return opens or set()
 
 
+def share_module():
+    here = os.path.dirname(os.path.abspath(__file__))
+    old = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agent_share
+        return agent_share
+    finally:
+        sys.dont_write_bytecode = old
+
+
+def share_pull(main):
+    """A shared todo: the newest data first (quiet, short timeout, a failure = the local file)."""
+    try:
+        share_module().pull(main)
+    except Exception:
+        pass
+
+
+def work_block(ctx, task):
+    """"board guard: <text>" when this person may not work the task of a shared todo, else None."""
+    try:
+        agent_share = share_module()
+        text = agent_share.may_work(ctx["main"], agent_share.todo_line(ctx["main"], task))
+    except Exception:
+        return None
+    return "board guard: %s" % text if text else None
+
+
 def decide_agent(ctx, desc, stype):
     base = base_type(stype)
     kind_t = TYPE_KINDS.get(base, "agent")
@@ -643,6 +674,8 @@ def decide_agent(ctx, desc, stype):
         if pd:
             return Decision(pd[1], pd[0] if (pd[0] == own or pd[0] in opens) else own, pd[2])
         return Decision(kind_t, first if (first == own or first in opens) else own, desc)
+    if role == "main":
+        share_pull(ctx["main"])
     opens, why = read_todo(ctx["main"])
     if role == "free":
         if pd:
@@ -660,11 +693,11 @@ def decide_agent(ctx, desc, stype):
     ro = base in READ_ONLY
     if pd:
         if pd[0] in opens:
-            return Decision(pd[1], pd[0], pd[2])
+            return Decision(pd[1], pd[0], pd[2], block=work_block(ctx, pd[0]))
         if not ro:
             return Decision(pd[1], pd[0], pd[2], block=not_open_msg(desc, pd[0]))
     elif first in opens:
-        return Decision(kind_t, first, desc)
+        return Decision(kind_t, first, desc, block=work_block(ctx, first))
     if ro:
         return Decision(kind_t, "%s Manager" % folder_name, desc)
     return Decision(kind_t, "%s Manager" % folder_name, desc,
@@ -705,6 +738,8 @@ def decide_pane(ctx, title):
         if src in ("T1", "T2") and (task == own or task in quiet_todo(ctx)):
             return Decision(kind, task, title)
         return Decision(kind, own, title)
+    if role == "main":
+        share_pull(ctx["main"])
     opens, why = read_todo(ctx["main"])
     if role == "free":
         if src in ("T1", "T2"):
@@ -720,13 +755,13 @@ def decide_pane(ctx, title):
         return Decision("pane", folder_name, title, warn=warn)
     if src in ("T1", "T2"):
         if task in opens:
-            return Decision(kind, task, title)
+            return Decision(kind, task, title, block=work_block(ctx, task))
         if unknown:
             return Decision(kind, task, title)
         return Decision(kind, task, title, block='board guard: pane "%s" names %s, which is not an open todo task. '
                         'Run agent-file.sh todo add "%s" ... first.' % (q(title), task, task))
     if src == "T4" and task in opens:
-        return Decision("pane", task, title)
+        return Decision("pane", task, title, block=work_block(ctx, task))
     if unknown:
         return Decision("pane", "%s Manager" % main_name, title)
     return Decision("pane", folder_name, title,
