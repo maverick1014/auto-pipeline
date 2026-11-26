@@ -196,6 +196,32 @@ def base_kind(obj, has_result):
     return None
 
 
+COMMAND_TAG = re.compile(r"<(command-name|command-message|command-args)>(.*?)</\1>\s*", re.S)
+
+
+def command_args(obj, has_result, text):
+    """The <command-args> text of a slash command the human typed ("" when empty); None when OBJ is not one.
+
+    Exact shape only: a user record, no isMeta, not a sidechain, no tool result, userType external, origin absent
+    or human, promptSource absent, typed or queued, and the text is just the three command tags (each once)."""
+    if (obj.get("type") != "user" or flag(obj, "isMeta") or flag(obj, "isSidechain") or has_result
+            or "toolUseResult" in obj or obj.get("userType") != "external"):
+        return None
+    origin = obj.get("origin")
+    if "origin" in obj and not (isinstance(origin, dict) and origin.get("kind") == "human"):
+        return None
+    if "promptSource" in obj and obj.get("promptSource") not in ("typed", "queued"):
+        return None
+    rest, found, pos = text.strip(), {}, 0
+    while pos < len(rest):
+        m = COMMAND_TAG.match(rest, pos)
+        if not m or m.group(1) in found:
+            return None
+        found[m.group(1)] = m.group(2)
+        pos = m.end()
+    return found.get("command-args", "") if found else None
+
+
 def agent_typed(cut_raw):
     for line in cut_raw.split("\n"):
         if line.strip():
@@ -335,9 +361,10 @@ def search(repo, quote, hours, whole=False, question=None):
                     continue
                 text, results, has_result = content_parts(obj.get("message"))
                 before = ""
+                args = command_args(obj, has_result, text)
                 if obj.get("type") == "assistant":
                     pending.append(text)
-                elif base_kind(obj, has_result) is None:
+                elif args is not None or base_kind(obj, has_result) is None:
                     before = "\n".join(pending)
                     pending = []
                 epoch = parse_ts(obj.get("timestamp") or "")
@@ -346,21 +373,27 @@ def search(repo, quote, hours, whole=False, question=None):
                 full = normalise(text + "\n" + results)
                 if find_quote(full, quote) < 0:
                     continue
-                kind = base_kind(obj, has_result)
+                kind = None if args is not None else base_kind(obj, has_result)
                 snip_text = full
+                prompt = text if args is None else args
+                if args is not None and find_quote(normalise(args), quote) < 0:
+                    kind = "other"
                 if kind is None:
-                    cut = cut_pasted(text)
-                    if agent_typed(cut):
+                    cut = cut_pasted(prompt)
+                    cut2 = cut_injected(cut)
+                    stray = "<pasted_content" in cut or "</pasted_content>" in cut
+                    if agent_typed(cut) or agent_typed(cut2):
                         kind = "agent-typed"
+                    elif injected_whole(cut2):
+                        kind = "injected"
+                    elif not stray and find_quote(normalise(cut2), quote) >= 0:
+                        kind, snip_text = "owner", normalise(cut2)
+                        if whole and snip_text != quote:
+                            kind = "longer"
+                    elif not stray and find_quote(normalise(cut), quote) >= 0:
+                        kind = "injected"
                     else:
-                        cut_norm = normalise(cut)
-                        if ("<pasted_content" not in cut and "</pasted_content>" not in cut
-                                and find_quote(cut_norm, quote) >= 0):
-                            kind, snip_text = "owner", cut_norm
-                            if whole and cut_norm != quote:
-                                kind = "longer"
-                        else:
-                            kind = "pasted"
+                        kind = "pasted"
                 hit = (epoch, mtime, path, snippet(snip_text, quote))
                 if (kind == "owner" and whole and question is not None
                         and not question_stands(question, before)):
