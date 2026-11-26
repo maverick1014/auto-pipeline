@@ -1412,7 +1412,7 @@ function cleanPlan(L){
   for (const k of Object.keys(PIECES)) { const n = items.filter(it => it.k === k).length; if (n < PIECES[k].min || n > PIECES[k].max) return null; }
   return { items };
 }
-const planMemo = new Map(), gridCache = new Map(), gridMemo = new Map(), agentSeatMemo = new Map();
+const layoutPlanMemo = new WeakMap(), defaultPlanMemo = new Map(), planMemo = new Map(), gridCache = new Map(), gridMemo = new Map(), agentSeatMemo = new Map(), agentSeatStore = new Map();
 /* the walk grid and the plans are read again once per tick, and when a person comes or goes */
 function clearPlans(){ gridMemo.clear(); planMemo.clear(); drawnMemo.clear(); agentSeatMemo.clear(); }
 /* planOf(terr) -> the floor's plan: its v 2 design's layout, else the default plan (one manager desk more than there are
@@ -1421,11 +1421,18 @@ function planOf(terr){
   let p = planMemo.get(terr);
   if (p) return p;
   const d = map.designs && map.designs[terr];
-  if (d && typeof d === 'object' && d.v === 2) p = cleanPlan(d.layout);
+  if (d && typeof d === 'object' && d.v === 2) {   // the same plan object for the same saved layout (agentSeatsOf, planInfo and overflowCells key on it)
+    const lay = d.layout;
+    if (lay && typeof lay === 'object') { p = layoutPlanMemo.get(lay); if (p === undefined) { p = cleanPlan(lay); layoutPlanMemo.set(lay, p); } }
+    else p = cleanPlan(lay);
+  }
   if (!p) {
     let h = 0;
     for (const c of citizens) if (!c.gone && c.terr === terr && c.role === 'helper') h++;
-    p = defaultPlan(deskCount(terr), Math.min(3, Math.max(1, h)), terr && map.territories.some(q => q.id === terr) ? themeOf(terr).decor : []);
+    const nTm = deskCount(terr), nH = Math.min(3, Math.max(1, h)), decor = terr && map.territories.some(q => q.id === terr) ? themeOf(terr).decor : [];
+    const key = nTm + '|' + nH + '|' + decor.join(',');   // the default plan is a function of these: one object while they stay
+    p = defaultPlanMemo.get(key);
+    if (!p) { if (defaultPlanMemo.size > 40) defaultPlanMemo.clear(); p = defaultPlan(nTm, nH, decor); defaultPlanMemo.set(key, p); }
   }
   planMemo.set(terr, p);
   return p;
@@ -1661,10 +1668,11 @@ function subBadge(rowId){
 function plateLayout(items, opts){
   const n = items.length, order = [], out = new Array(n), blocks = (opts && opts.blocks) || [], bd = opts && opts.bounds, shown = [];
   if (bd) for (const it of items) {
+    if (it.x < bd.l || it.x > bd.r || it.y < bd.t || it.y > bd.b) { it.off = true; continue; }   // the head is off screen: no plate, not moved
     it.x = Math.max(bd.l + it.w / 2, Math.min(bd.r - it.w / 2, it.x));
     it.y = Math.max(bd.t + it.h, Math.min(bd.b, it.y));
   }
-  for (let i = 0; i < n; i++) order.push(i);
+  for (let i = 0; i < n; i++) { if (items[i].off) { out[i] = 'none'; delete items[i].off; } else order.push(i); }
   order.sort((a, b) => ((items[b].pri || 0) - (items[a].pri || 0)) || (items[b].y - items[a].y) || (a - b));
   const box = (it, w) => [it.x - w / 2, it.y - it.h, it.x + w / 2, it.y];
   const hit = (q, b) => Math.min(q[2], b[2]) > Math.max(q[0], b[0]) && Math.min(q[3], b[3]) > Math.max(q[1], b[1]);
@@ -1676,6 +1684,16 @@ function plateLayout(items, opts){
     else out[i] = 'none';
   }
   return out;
+}
+/* plateName(c) -> the name on c's plate: a session's nameOf; an agent's description without the type its chip already says
+   ('' when the description is only its type; two alike keep nameOf's '#<id>' ending) */
+function plateName(c){
+  const n = nameOf(c);
+  if (!isSub(c)) return n;
+  const l = shortLabel(c.label, repoOf(c)) || c.label || '';
+  if (!l || !n.startsWith(l)) return n;
+  const rest = n.slice(l.length);
+  return rest.startsWith(' · ') ? rest.slice(3) : rest.trim();
 }
 /* platePri(f) -> how early a head tag is laid out: the selected one 3, the one under the pointer 2, a session or an area
    manager 1, an agent 0. f is a figure: { c } a person, { gv: { terr } } an area manager. */
@@ -1729,10 +1747,9 @@ function seatPlan(c){
   return spot(info.meet[Math.max(0, over.indexOf(c)) % info.meet.length]);
 }
 /* the free cells of a plan's walk grid, nearest to its meeting table first (overflow spots of the agents) */
-const overflowCellMemo = new Map();   // by the plan's pieces, like gridCache (planOf builds a new default plan every tick)
+const overflowCellMemo = new WeakMap();   // by the plan object (planOf hands out the same one while the floor does not change)
 function overflowCells(plan){
-  const key = JSON.stringify(plan.items);
-  let l = overflowCellMemo.get(key);
+  let l = overflowCellMemo.get(plan);
   if (l) return l;
   const g = gridOfItems(plan.items), tb = plan.items.find(it => it.k === 'meet') || { x:0, z:0 };
   l = [];
@@ -1742,8 +1759,7 @@ function overflowCells(plan){
     l.push({ x, z, d: Math.hypot(x - tb.x, z - tb.z), yaw: Math.atan2(tb.x - x, tb.z - z) });
   }
   l.sort((a, b) => a.d - b.d);
-  if (overflowCellMemo.size > 40) overflowCellMemo.clear();
-  overflowCellMemo.set(key, l);
+  overflowCellMemo.set(plan, l);
   return l;
 }
 /* agentSeatsOf(terr) -> Map(agent id -> { x, z, yaw }, floor-local): the seats of the drawn agents of one floor, worked out
@@ -1755,13 +1771,20 @@ function overflowCells(plan){
 function agentSeatsOf(terr){
   let m = agentSeatMemo.get(terr);
   if (m) return m;
+  const t = terrOf(terr), agents = [], sess = [], rests = o => o.idle || ((STATE[o.state] || [])[0] === 'rest');
+  const parts = [];   // what seatPlan reads for the floor's people: the key of the seats
+  for (const o of citizens) {
+    if (o.gone || o.terr !== terr) continue;
+    if (!isSub(o)) { sess.push(o); parts.push(o.id + (o.role === 'designer' ? (designerTours(o) ? 't' : 'd') : '') + (rests(o) ? 'r' : '')); }
+    else if (isDrawn(o)) { agents.push(o); parts.push(o.id + '+'); }
+  }
+  if (!t || !agents.length) { m = new Map(); agentSeatMemo.set(terr, m); agentSeatStore.delete(terr); return m; }
+  const plan = planOf(terr), sig = parts.join(','), kept = agentSeatStore.get(terr);
+  if (kept && kept.plan === plan && kept.sig === sig) { agentSeatMemo.set(terr, kept.m); return kept.m; }   // nobody joined, left or changed: the same seats
   m = new Map();
   agentSeatMemo.set(terr, m);
-  const t = terrOf(terr), agents = citizens.filter(o => !o.gone && o.terr === terr && isSub(o) && isDrawn(o));
-  if (!t || !agents.length) return m;
-  const plan = planOf(terr), info = planInfo(plan);
-  const sess = citizens.filter(o => !o.gone && o.terr === terr && !isSub(o)), byKey = new Map(), deskOf = new Map();
-  const rests = o => o.idle || ((STATE[o.state] || [])[0] === 'rest');
+  agentSeatStore.set(terr, { plan, sig, m });
+  const info = planInfo(plan), byKey = new Map(), deskOf = new Map();
   const used = new Set(), taken = [];
   let nOver = 0;
   for (const o of sess) {
@@ -4547,11 +4570,12 @@ function pinOv(f, st){
   const o = ensureOv(f), c = f.c, terr = f.gv ? f.gv.terr : '';
   const isSel = !!(selected && ((selected.t === 'c' && c && selected.id === c.id) || (selected.t === 'gov' && f.gv && (selected.terr || govTerr) === terr)));
   f.ring.visible = isSel;
-  const key = [c ? nameOf(c) : '', c ? c.role : 'governor', c ? plateWord(c) : '', isSel].join('|');
+  const key = [c ? plateName(c) : '', c ? c.role : 'governor', c ? plateWord(c) : '', isSel].join('|');
   if (o.tagKey !== key) {
     o.tagKey = key;
-    const word = c ? plateWord(c) : roleWord(f.role), nm = c ? nameOf(c) : '';
+    const word = c ? plateWord(c) : roleWord(f.role), nm = c ? plateName(c) : '';
     o.tag.innerHTML = '<span class="rolechip ' + ROLE_CLS[f.role] + '">' + esc(word) + '</span>' + (nm ? '<span class="nm">' + esc(nm) + '</span>' : '');
+    o.tag.title = c ? nameOf(c) : '';   // the full name (type included) on hover
     o.tag.classList.toggle('sel', isSel);
     o.tag.classList.remove('chip'); o.mDirty = true;   // the plate's widths are measured again (below), only now
   }
