@@ -411,6 +411,9 @@ def direct(root, wb, prod, task, branch, results=None):
             out("refused: %s does not exist (is the branch pushed?)" % ref)
             return 1
     own = set(run(root, "rev-list", "origin/" + branch, "^origin/" + prod)[1].split())
+    if not own:
+        out("refused: nothing to publish: %s has no commit on top of %s" % (branch, prod))
+        return 1
     shared = own & set(run(root, "rev-list", "refs/heads/" + wb, "^origin/" + prod)[1].split())
     if shared:
         out("%s carries commits of %s that are not in %s: branch it from %s" % (branch, wb, prod, prod))

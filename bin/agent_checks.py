@@ -1102,6 +1102,10 @@ def cmd_gate(ctx, a):
             lines.append("%s: pass (by %s)" % (b, r[1]))
             if b in BUILDER_BLOCKS and not lowb:
                 notes.append("note: builder unknown: %s by %s accepted" % (b, r[1]))
+    if not own and git_line(d, "rev-parse", "--verify", "-q", "%s^{commit}" % base):
+        notes.append("nothing to publish: %s has no commit on top of %s"
+                     % (opts.get("--branch") or git_line(d, "rev-parse", "--abbrev-ref", "HEAD"), base))
+        refused.append("nothing to publish")
     shared_line = shared_commits_line(ctx, f, d, opts.get("--branch"))
     if shared_line:
         notes.append(shared_line)
