@@ -231,7 +231,29 @@ def snippet(text, quote):
     return ("…" if start > 0 else "") + piece + ("…" if start + 80 < len(text) else "")
 
 
-def search(repo, quote, hours, whole=False):
+MARKS = re.compile(r"[*_`]")
+HEADING = re.compile(r"^[ \t]*#+[ \t]*", re.M)
+NUMBER_KEY = re.compile(r"\d+[.)]")
+
+
+def plain(text):
+    return normalise(MARKS.sub("", HEADING.sub("", text)))
+
+
+def question_stands(question, before):
+    """True when the question (or its numbered key line) is in the assistant text before the prompt."""
+    q = plain(question)
+    b = plain(before)
+    if q and q in b:
+        return True
+    if NUMBER_KEY.match(q):
+        end = q.find("?")
+        key = q[:end + 1] if end >= 0 else q
+        return key in b
+    return False
+
+
+def search(repo, quote, hours, whole=False, question=None):
     """-> (owner matches in window, owner matches older, other hits, folders).
 
     whole: only a prompt that equals the quote counts as an owner match; a longer owner prompt
@@ -249,11 +271,13 @@ def search(repo, quote, hours, whole=False):
                 pass
     files.sort(reverse=True)
     owner_in, owner_old, others = {}, [], []
+    unasked = []
     for mtime, path in files:
         try:
             fh = open(path, "r", encoding="utf-8", errors="replace")
         except OSError:
             continue
+        pending = []
         with fh:
             for raw in fh:
                 try:
@@ -262,10 +286,16 @@ def search(repo, quote, hours, whole=False):
                     continue
                 if not isinstance(obj, dict) or obj.get("type") not in ("user", "assistant"):
                     continue
+                text, results, has_result = content_parts(obj.get("message"))
+                before = ""
+                if obj.get("type") == "assistant":
+                    pending.append(text)
+                elif base_kind(obj, has_result) is None:
+                    before = "\n".join(pending)
+                    pending = []
                 epoch = parse_ts(obj.get("timestamp") or "")
                 if epoch is None or epoch > now + 60:
                     continue
-                text, results, has_result = content_parts(obj.get("message"))
                 full = normalise(text + "\n" + results)
                 if find_quote(full, quote) < 0:
                     continue
@@ -285,6 +315,10 @@ def search(repo, quote, hours, whole=False):
                         else:
                             kind = "pasted"
                 hit = (epoch, mtime, path, snippet(snip_text, quote))
+                if (kind == "owner" and whole and question is not None
+                        and not question_stands(question, before)):
+                    unasked.append(hit)
+                    continue
                 if kind == "owner":
                     if epoch >= cutoff:
                         key = minute_of(epoch)
@@ -296,19 +330,21 @@ def search(repo, quote, hours, whole=False):
                 else:
                     others.append((kind,) + hit)
     inside = sorted(owner_in.values(), key=lambda h: (h[0], h[1]), reverse=True)
-    return inside, owner_old, others, folders
+    return inside, owner_old, others, folders, unasked
 
 
 def article(kinds):
     return "an" if kinds[0][0] in "aeiou" else "a"
 
 
-def reason(inside_unused, owner_old, others, folders, repo, hours):
+def reason(unasked, owner_old, others, folders, repo, hours):
     longer = [o for o in others if o[0] == "longer"]
     others = [o for o in others if o[0] != "longer"]
     if not folders:
         homes = ", ".join(shown(h) for h in config_homes())
         return "no transcript for %s on this machine (looked in: %s)" % (repo, homes)
+    if unasked:
+        return "the question is not in the assistant message before that prompt"
     if owner_old:
         newest = max(owner_old, key=lambda h: h[0])
         return "older than %dh (newest %s)" % (hours, minute_of(newest[0]))
@@ -382,10 +418,11 @@ def run_common(repo, quote, question=None):
     short = w < min_chars
     if short and question is None:
         return None, "quote too short (%d < %d): %s" % (w, min_chars, short_hint())
-    inside, old, others, folders = search(repo, quote, hours, whole=short)
+    inside, old, others, folders, unasked = search(repo, quote, hours, whole=short,
+                                                   question=question if short else None)
     if inside:
         return inside, None
-    return None, reason(None, old, others, folders, repo, hours)
+    return None, reason(unasked, old, others, folders, repo, hours)
 
 
 def verify(argv):
