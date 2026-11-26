@@ -27,6 +27,9 @@ R5. Task files
 - The repo value in `agent_repo.conf` wins over a member's setting
 - Cloud keeps them in the tree
 - A repo that still tracks them stays as before (no data branch) until `agent-file.sh files move` in the main checkout (content kept, a copy in the git folder); `files sync` merges the newest data by hand
+- Kept copies (moved repo): every agent file has one in the git folder, refreshed on every write
+- A missing working copy is restored from its kept copy, with one line
+- A working copy changed outside the scripts: a write first saves the old kept copy under a stamped name and warns; `agent-file.sh files restore <file>` puts it back
 - A shared todo: a task is worked (dispatch, stage, done, merge, approval words) only by its owner, its assignee (`todo assign`, the owner only) or, with the setting "Team: Who may take a task" anyone, its taker (`todo take`)
 - `agent_completed.txt` is never deleted, trimmed or cleaned (every clean-up skips it); only on an explicit owner order
 

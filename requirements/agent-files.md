@@ -32,6 +32,7 @@ Owner, 2026-11-26, his words:
 - "In git" = the script that writes the file also commits it to the DATA BRANCH `ap-data` of the repo and pushes it at once. The data branch holds only agent files; it is written with git plumbing (as `bin/agent_release.py` writes the release branch), never checked out, never merged into a code branch, so it causes no merge conflict with code, no deploy and no stale copy. `git log ap-data` is the history: who finished, added, took or assigned what.
 - Why not the code branch: each person works on his own working branch (`ap-main-<name>`), so a todo committed there is seen by the others only after a publish; and a commit on the production branch starts a deploy. The owner's case 3 needs the status the moment a task is taken.
 - A push that fails (offline, refused) never blocks the work: the commit stays, the next write pushes it; the command says so in one line.
+- Kept copies: in a moved repo every agent file has a kept copy in the git folder, refreshed on every write; a missing working copy is restored from it; before a write goes over a working copy changed outside the scripts, the old kept copy is saved under a stamped name (`files restore <file>` puts it back).
 - Before a file in git is read for a decision (offer a task, take, assign, start, the board in a shared repo) the data branch is fetched and merged into the local file: finished records and ideas by union (no line is lost), todo lines by task name (the newest change of a task wins; a finished task is dropped).
 - Cloud: a cloud session can push only its own branch, so there the pack keeps the task files tracked in the tree and committed with the work, as today.
 
@@ -72,6 +73,7 @@ One more fact in `agent_repo.conf`: `task_take = owner` (default) or `anyone`.
 
 - One command, run in the main checkout, takes a repo from "tracked and changed" to its mode: every agent file is taken out of the code branch with its content kept (a copy goes into the git folder first), the ignore lines are written, and the files that are in git by section 2 go onto the data branch (created when missing, pushed). It prints what it did per file. Run twice, the second run changes nothing.
 - In another clone of that repo the same command settles the pull: a local file removed upstream keeps its content there too.
+- A repo that still tracks an agent file is not moved: it behaves as before (no data branch, no commit, push or fetch for the agent files, no kept copy) until `files move`; the start says so in one line.
 - Setup in a new repo writes the ignore lines for every agent file and no team facts: the person's Configure is the default (section 2, Settings); the command that turns sharing on writes them.
 - THIS repo is moved by the main manager in the main checkout after the merge. The task branch must not delete, untrack or commit this repo's own `agent_*.txt` files: a merge into a checkout that has changed them would be refused.
 
