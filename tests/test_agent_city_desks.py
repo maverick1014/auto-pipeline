@@ -562,7 +562,7 @@ class TestPlateBoundsAndPanels(unittest.TestCase):
         self.assertEqual(out["modes"][1], "full", "a plate clear of the panel")
         self.assertEqual(out["modes"][0], "none", "every spot of its chip meets the panel")
         self.assertEqual(out["modes"][2], "full", "the selected one always shows in full (fix round 2) ...")
-        self.assertEqual(round(out["items"][2]["y"]), 342, "... moved straight down below the panel, the least move")
+        self.assertEqual(round(out["items"][2]["y"]), 280, "... moved the least way out of the panel (fix round 3: any way; here up 20 px)")
         self.assertEqual(overlapping(boxes_of(out["items"], out["modes"]) + [tuple(block)]), [], "no plate meets the panel")
 
     def test_without_opts_as_before(self):
@@ -925,6 +925,43 @@ class TestOpenWindowsArePanels(unittest.TestCase):
         for sel in ("#floorSign", "#rail", "#rail-tab", "#follow", "#proto", "#lift", ".cam", "#win", "#win-tab", "#ask", "#dPop"):
             with self.subTest(sel=sel):
                 self.assertIn(sel, src)
+
+
+class TestSelectedFindsAFreeSpot(unittest.TestCase):
+    """Fix round 3 (my live check at 500x713 with a person selected): the selected plate sat under the detail window's
+    sheet (it covers the stage's lower part edge to edge, so down, left and right are all closed), and the hovered plate
+    stayed wedged between the follow bar and the lift (each way out of one panel ran into the other). Now a pri >= 2 plate
+    takes the nearest free spot to where it starts (its head, or px, py) in any direction: inside the bounds, meeting no
+    panel and no plate laid out before it in this step (2 px gap)."""
+
+    def run_layout(self, items, blocks):
+        return sim("const items = __payload.items; __out = { modes: plateLayout(items, { bounds: { l: 0, t: 0, r: 468, b: 583 }, blocks: __payload.blocks }), items };",
+                   {"items": items, "blocks": blocks}, required=("plateLayout",))
+
+    def test_up_out_of_a_bottom_sheet(self):
+        sheet = [8, 319, 460, 575]
+        out = self.run_layout([{"x": 170, "y": 352, "w": 160, "wChip": 32, "h": 22, "pri": 3}], [sheet])
+        self.assertEqual(out["modes"], ["full"])
+        b = boxes_of(out["items"], out["modes"])[0]
+        self.assertEqual(overlapping([b, tuple(sheet)]), [], "not under the sheet: %s" % (b,))
+        self.assertLessEqual(b[3], 319.01, "above it")
+
+    def test_out_of_a_corner_between_two_panels(self):
+        follow, lift = [42, 58, 264, 83], [392, 12, 456, 186]
+        out = self.run_layout([{"x": 330, "y": 84, "w": 205, "wChip": 52, "h": 22, "pri": 2}], [follow, lift])
+        self.assertEqual(out["modes"], ["full"])
+        b = boxes_of(out["items"], out["modes"])[0]
+        self.assertEqual(overlapping([b, tuple(follow), tuple(lift)])[:2], [], "clear of both: %s" % (b,))
+        self.assertTrue(b[0] >= -0.01 and b[2] <= 468.01 and b[1] >= -0.01 and b[3] <= 583.01, "inside: %s" % (b,))
+
+    def test_the_hovered_one_clear_of_the_selected_and_the_panels(self):
+        sheet = [8, 319, 460, 575]
+        items = [{"x": 170, "y": 352, "w": 160, "wChip": 32, "h": 22, "pri": 3},
+                 {"x": 200, "y": 300, "w": 180, "wChip": 32, "h": 22, "pri": 2}]
+        out = self.run_layout(items, [sheet])
+        self.assertEqual(out["modes"], ["full", "full"])
+        bx = boxes_of(out["items"], out["modes"])
+        self.assertEqual(overlapping(bx + [tuple(sheet)]), [])
 
 
 class TestAgentOnItsParentsFloor(unittest.TestCase):
