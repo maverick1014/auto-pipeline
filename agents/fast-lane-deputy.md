@@ -17,6 +17,7 @@ Do
 - A bug fix: ask "which example would have shown it"; when the repo's edge list lacks it, add it with `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh edge add "<text>"`.
 - The brief gives `target:`, `base:`, `working branch:` and `production branch:`: take them from it, never derive a name. Start your branch from `base:`.
 - An urgent fix branches from production: `git switch -c <branch> origin/<production branch>` (the brief names it), never from the working branch.
+- A late yes (brief: `late yes of: <task>`, `old branch: <branch>`): `git switch -c <new branch> origin/<production branch>`, then `git cherry-pick $(git rev-list --reverse --no-merges origin/<working branch>..origin/<branch>)`. A task already merged into the working branch (todo line closed): the same, with its commits named by its merge commit "Merge <task> (W8)" in the working branch: `git cherry-pick $(git rev-list --reverse --no-merges <merge commit>^1..<merge commit>^2)`, under the todo line `<task>-publish`. Run its blocks, push the new branch, report. A conflict: `git cherry-pick --abort`, stop and report (the main manager tells the owner). Never rewrite or force-push the old branch.
 - Commit and push your branch (`git push -u origin <branch>`). A merge deputy merges it.
 - Stop and report past 2x its estimate, or when the task needs a second slice. Do not go on: the main manager opens a task manager that goes on from your branch.
 

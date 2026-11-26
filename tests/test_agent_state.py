@@ -187,6 +187,35 @@ class TestStateAdd(TrimCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
 
 
+class TestGuessedTime(TrimCase):
+    """approval-design G (requirements/check-blocks.md section 53 G): a guessed clock time in the text gets one
+    warning line; the line is still stored (never a refusal)."""
+
+    def add(self, text):
+        r = self.af("state", "add", text)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return [l for l in (r.stdout + r.stderr).splitlines() if "the stamp is the time" in l]
+
+    def test_a_digit_replaced_by_x_warns_once_and_is_stored(self):
+        for text, guess in (("DECIDED at 18:0x: merge first", "18:0x"), ("owner said 1x:45 go", "1x:45"),
+                            ("seen 18:xx today", "18:xx"), ("two guesses 09:3x and ~11:45", "09:3x")):
+            with self.subTest(text=text):
+                warns = self.add(text)
+                self.assertEqual(warns, ['state add: warning: "%s" looks guessed; the stamp is the time' % guess])
+                self.assertEqual(self.state_lines()[-1], "%s | %s" % (text, NOW))
+
+    def test_a_tilde_clock_warns(self):
+        for text, guess in (("finished ~11:45", "~11:45"), ("finished ~ 11:45", "~ 11:45")):
+            with self.subTest(text=text):
+                self.assertEqual(self.add(text), ['state add: warning: "%s" looks guessed; the stamp is the time' % guess])
+
+    def test_a_real_time_or_other_x_does_not_warn(self):
+        for text in ("the run ended at 18:05", "mask 0x1f is fine", "HEARTBEAT t: step 3 of 7, work 24m, 2x faster",
+                     "est 30m x 2 = 60m"):
+            with self.subTest(text=text):
+                self.assertEqual(self.add(text), [])
+
+
 class TestAnswerStamp(TrimCase):
     def test_questions_answer_stamps_its_answer_line(self):
         self.write_state(["QUESTION: rules ok? | %s" % YOUNG])

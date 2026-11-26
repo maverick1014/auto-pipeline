@@ -46,8 +46,8 @@ Cloud sessions (claude.ai/code): the agent handles them with cloud-pack. Nothing
 | `/auto-pipeline:question` | List the questions waiting for you and take your answers. |
 | `/auto-pipeline:close-case` | Settle one finished case, or wrap up the whole repo. |
 | `/auto-pipeline:clean-up` | List rubbish docs and outdated lines, remove only what you say yes to. |
-| `/auto-pipeline:test-slim` | Measure the tests of a repo, merge duplicates and make the slow ones cheaper, with an audit that no check is lost. |
-| `/auto-pipeline:md-slim` | Keep the files agents read short and exact: one term per concept, the technical term instead of a long description, a proof that no rule is lost. |
+| `/auto-pipeline:slim-test-case` | Measure the tests of a repo, merge duplicates and make the slow ones cheaper, with an audit that no check is lost. |
+| `/auto-pipeline:slim-markdown` | Keep the files agents read short and exact: one term per concept, the technical term instead of a long description, a proof that no rule is lost. |
 | `/auto-pipeline:teacher-teach-me` | Ask anything about this repo. A friendly teacher explains it in very simple words, from a separate agent, so your current chat goes on undisturbed. |
 | `/auto-pipeline:city` | Start the agent city visualiser and print its URL. |
 
@@ -62,6 +62,7 @@ You can also just type a keyword instead of the command (case does not matter):
 | `/auto-pipeline:close-case` | close case, 收尾 |
 | `/auto-pipeline:clean-up` | clean up files, 清理文件 |
 | `/auto-pipeline:city` | open city, 看 agent |
+| `/auto-pipeline:teacher-teach-me` | teach me, explain to me, can you explain, 教我, 解释一下, 给我讲讲 |
 
 ## Change settings
 

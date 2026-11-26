@@ -1,5 +1,5 @@
 """Tests of bin/agent_test_audit.py: after a test merge, every test of before is still there
-(kept or moved) or removed with a twin named in the removed-checks table (the test-slim
+(kept or moved) or removed with a twin named in the removed-checks table (the slim-test-case
 skill, steps 4-6); and `ids` lists a folder's Python unittest ids, now or at a git ref.
 
 requirements/test-slim.md. One class per feature.

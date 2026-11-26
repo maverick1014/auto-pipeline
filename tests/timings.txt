@@ -41,3 +41,4 @@
 0.9	6	test_run2
 0.3	454	test_rules_text
 0.0	7	test_sharedrepo
+54.8	1	test_check_blocks_demo
