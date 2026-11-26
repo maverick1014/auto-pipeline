@@ -22,7 +22,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from citypage import const_object, run_sim, script_function_source, text_zh, js_value  # noqa: E402
+import re  # noqa: E402
+from citypage import const_object, run_sim, script_function_source, text_zh, js_value, rule, media_block  # noqa: E402
 import agent_city as ac  # noqa: E402
 
 
@@ -439,12 +440,18 @@ class TestTag(unittest.TestCase):
 
 # -- fix round (TELL 7fba8777, the UI CHECK on the laptop) ---------------------------------------------------------
 #
-# plateLayout(items) -> one mode per item, in input order: 'full' | 'chip' | 'none'. An item is a name plate on screen:
-# { x, y (its bottom centre, px), w (full plate width), wChip (the role chip alone), h, pri (higher first: the selected
-# person, then the one under the pointer, then the rest) }. Equal pri: the one lower on screen (larger y, nearer the
-# viewer) first, then input order. Its box: full -> [x - w/2, y - h, x + w/2, y], chip -> the same with wChip. The first
-# item in that order is always 'full'; each next one is 'full' when its full box meets no box already shown, else 'chip'
-# when its chip box meets none, else 'none' (the full plate comes back on hover or tap). No two shown boxes overlap.
+# plateLayout(items, opts) -> one mode per item, in input order: 'full' | 'chip' | 'none'. An item is a name plate on
+# screen: { x, y (its head: the plate's bottom centre, px), w (full plate width), wChip (the role chip alone), h, pri (the
+# selected person 3, the hovered 2, a session or area manager 1, an agent 0), wd, hd (its doing line, optional) }. Order:
+# higher pri first; equal pri: the one lower on screen (larger y, nearer the viewer) first, then input order.
+# Fix round 2 (main manager, UI CHECK 2): every person keeps at least a chip when there is room; a plate is hidden only
+# when even its chip would truly overlap one laid out before it; the hovered or selected person always shows in full.
+#   1. pri >= 2: 'full' first; a panel (opts.blocks) in the way moves it the least way out (down, left or right).
+#   2. every other one: its chip over its head, else nudged left or right by 0.6 chip widths, else one row up (h + 2);
+#      the first spot that meets no panel and no box laid out before; none fits -> 'none'.
+#   3. in order, a chip becomes 'full' when its full box (with its doing line) over its head meets no panel and no other
+#      box laid out. With opts.bounds each box is first kept inside the bounds by its own width (a chip stays over its
+#      head); a head outside the bounds is 'none' and not moved. Each item's x, y end at its final box's bottom centre.
 
 def boxes_of(items, modes):
     out = []
@@ -483,14 +490,16 @@ class TestPlateLayout(unittest.TestCase):
         self.assertTrue(set(modes) <= {"full", "chip", "none"}, modes)
         self.assertEqual(overlapping(boxes_of(items, modes)), [])
         first = max(range(30), key=lambda i: (items[i]["pri"], items[i]["y"], -i))
-        self.assertEqual(modes[first], "full", "the first in order always shows in full")
+        self.assertNotEqual(modes[first], "none", "the first in order always keeps at least its chip")
 
     def test_the_selected_one_is_full_in_a_pile(self):
         items = [{"x": 500, "y": 400, "w": 150, "wChip": 32, "h": 22, "pri": 0} for _ in range(8)]
         items[5]["pri"] = 2
-        modes = layout(items)
-        self.assertEqual(modes[5], "full")
-        self.assertEqual([m for i, m in enumerate(modes) if i != 5], ["none"] * 7, "a pile: one plate only")
+        out = sim("const items = __payload.items; __out = { modes: plateLayout(items), items };", {"items": items},
+                  required=("plateLayout",))
+        self.assertEqual(out["modes"][5], "full")
+        self.assertEqual(overlapping(boxes_of(out["items"], out["modes"])), [], "a pile: nothing overlaps the selected one")
+        self.assertGreaterEqual(out["modes"].count("none"), 5, "a true pile hides the rest")
 
     def test_apart_all_full(self):
         items = [{"x": 100 + 300 * i, "y": 300, "w": 180, "wChip": 32, "h": 22, "pri": 0} for i in range(5)]
@@ -549,8 +558,9 @@ class TestPlateBoundsAndPanels(unittest.TestCase):
                  {"x": 150, "y": 300, "w": 160, "wChip": 32, "h": 22, "pri": 3}]
         out = self.run_layout(items, {"bounds": {"l": 0, "t": 0, "r": 390, "b": 844}, "blocks": [block]})
         self.assertEqual(out["modes"][1], "full", "a plate clear of the panel")
-        self.assertEqual(out["modes"][0], "none", "full and chip both meet the panel")
-        self.assertEqual(out["modes"][2], "none", "the selected one too: a panel is never covered")
+        self.assertEqual(out["modes"][0], "none", "every spot of its chip meets the panel")
+        self.assertEqual(out["modes"][2], "full", "the selected one always shows in full (fix round 2) ...")
+        self.assertEqual(round(out["items"][2]["y"]), 342, "... moved straight down below the panel, the least move")
         self.assertEqual(overlapping(boxes_of(out["items"], out["modes"]) + [tuple(block)]), [], "no plate meets the panel")
 
     def test_without_opts_as_before(self):
@@ -605,11 +615,12 @@ class TestDoingLineFollowsThePlate(unittest.TestCase):
     (its box is the chip alone); syncFigs shows the doing line only over a 'full' plate, at the plate's moved spot."""
 
     def test_the_doing_line_is_part_of_the_full_box(self):
-        items = [{"x": 300, "y": 300, "w": 120, "wChip": 32, "h": 22, "pri": 0, "wd": 200, "hd": 20},
+        items = [{"x": 300, "y": 300, "w": 120, "wChip": 32, "h": 22, "pri": 2, "wd": 200, "hd": 20},
                  {"x": 300, "y": 270, "w": 120, "wChip": 32, "h": 22, "pri": 0, "wd": 0, "hd": 0}]
-        out = sim("__out = plateLayout(__payload.items, { bounds: { l: 0, t: 0, r: 1440, b: 713 }, blocks: [] });",
+        out = sim("const items = __payload.items; __out = { modes: plateLayout(items, { bounds: { l: 0, t: 0, r: 1440, b: 713 }, blocks: [] }), items };",
                   {"items": items}, required=("plateLayout",))
-        self.assertEqual(out, ["full", "none"], "the second plate sits where the first one's doing line is")
+        self.assertEqual(out["modes"], ["full", "chip"])
+        self.assertLessEqual(out["items"][1]["y"], 258.01, "its chip moved up, clear of the hovered one's doing line")
 
     def test_a_doing_line_wider_than_its_plate(self):
         items = [{"x": 300, "y": 300, "w": 120, "wChip": 32, "h": 22, "pri": 0, "wd": 300, "hd": 20},
@@ -628,6 +639,127 @@ class TestDoingLineFollowsThePlate(unittest.TestCase):
         for bit in ("doing", "wd", "hd"):
             with self.subTest(bit=bit):
                 self.assertIn(bit, src, "syncFigs lays out the doing line with its plate")
+
+
+TEAM_AGENTS = [agent("s:t", "task-manager", up=GOV, label="task-manager", task="team-floor"),
+               agent("w1", "worker", up="s:t", task="city-agents-at-desks Worker 1: seats"),
+               agent("w2", "worker", up="s:t", task="city-agents-at-desks Worker 2: plates"),
+               agent("rv", "other", up="s:t", label="reviewer", task="city-agents-at-desks PR REVIEW"),
+               agent("md", "merge-deputy", up="s:t", task="city-agents-at-desks merge")]
+# the panels over the floor view as the page lays them out (stage coordinates), measured headless on the live page:
+# viewport 500x713 -> stage 468x583; viewport 390x844 -> stage 358x714 (floor sign, rail tab, badge, lift, 4 camera buttons)
+PANELS = {468: (583, [[42, 12, 268, 54], [0, 12, 32, 91], [12, 545, 112, 571], [392, 12, 456, 186], [286, 533, 324, 571],
+                      [330, 533, 368, 571], [374, 533, 412, 571], [418, 533, 456, 571]]),
+          358: (714, [[42, 12, 268, 54], [0, 12, 32, 91], [12, 676, 112, 702], [282, 12, 346, 186], [176, 664, 214, 702],
+                      [220, 664, 258, 702], [264, 664, 302, 702], [308, 664, 346, 702]])}
+
+
+class TestTeamFloorEveryoneShows(unittest.TestCase):
+    """Fix round 2, item 1 (UI CHECK 2: the reviewer had no plate at about 500 px and on the phone page). The click path's
+    team floor (a manager, two workers, a reviewer, a merge deputy), projected as the page's default view on the stage of
+    a 500x713 and a 390x844 window with the page's panels: every one shows a plate or a chip, none hidden, nothing
+    overlaps or meets a panel; hovering any one of them shows its full plate."""
+
+    def test_five_plates_or_chips_and_hover_gives_full(self):
+        out = sim(PROJECT_JS + r"""
+snap(__payload.view, __payload.agents);
+settle(40);
+const ppl = live().filter(c => isDrawn(c) && c.at === c.terr);
+const res = {};
+for (const [W, H, panels] of __payload.sizes) {
+  const base = plateItems(W, H).map((o, i) => Object.assign(o, { pri: platePri({ c: ppl[i] }) }));
+  const opts = { bounds: { l: 4, t: 4, r: W - 4, b: H - 4 }, blocks: panels };
+  const items = base.map(o => Object.assign({}, o)), modes = plateLayout(items, opts);
+  const hov = base.map((_, i) => { const its = base.map((o, j) => Object.assign({}, o, { pri: j === i ? 2 : o.pri }));
+    const m = plateLayout(its, opts); return { mode: m[i], items: its, modes: m }; });
+  res[W] = { items, modes, hov, panels };
+}
+__out = res;
+""", {"view": view(), "agents": TEAM_AGENTS, "sizes": [[w, PANELS[w][0], PANELS[w][1]] for w in (468, 358)]},
+            required=REQUIRED + ("plateLayout", "platePri", "FOV"))
+        for w in ("468", "358"):
+            with self.subTest(stage=w):
+                r = out[w]
+                self.assertEqual(len(r["modes"]), 5)
+                self.assertEqual(r["modes"].count("none"), 0, "every one keeps a plate or a chip: %s" % r["modes"])
+                bx = boxes_of(r["items"], r["modes"])
+                self.assertEqual(overlapping(bx), [])
+                self.assertEqual([b for b in bx for q in r["panels"] if overlapping([b, tuple(q)])], [], "no panel covered")
+                for i, h in enumerate(r["hov"]):
+                    self.assertEqual(h["mode"], "full", "hovering person %d shows its full plate" % i)
+                    self.assertEqual(overlapping(boxes_of(h["items"], h["modes"])), [])
+
+
+class TestFloorSignCount(unittest.TestCase):
+    """Fix round 2, item 3 (UI CHECK 2: the floor tag was cut at narrow widths, '还没装…', and below 720 px the count was
+    not shown at all). The count '<n> 人' has its own element (.fpc) that never shrinks; the note (.frs: the design or
+    renovating text) gives way first; the floor name may shrink too. The live check at 390 and 500 is in the report."""
+
+    def test_the_count_has_its_own_element(self):
+        src = script_function_source("renderFloorSign") or ""
+        self.assertIn("fpc", src)
+        self.assertIn("office.people", src)
+
+    def test_the_count_never_shrinks(self):
+        decl = re.sub(r"\s+", "", rule(".floorsign .fpc"))
+        self.assertIn("flex-shrink:0", decl)
+        self.assertIn("white-space:nowrap", decl)
+
+    def test_the_note_and_the_name_give_way(self):
+        note = re.sub(r"\s+", "", rule(".floorsign .frs"))
+        for bit in ("min-width:0", "overflow:hidden", "text-overflow:ellipsis", "white-space:nowrap"):
+            with self.subTest(bit=bit):
+                self.assertIn(bit, note)
+        self.assertIn("min-width:0", re.sub(r"\s+", "", rule(".floorsign .frn")))
+
+    def test_narrow_screens_keep_the_count(self):
+        m = re.sub(r"\s+", "", media_block("(max-width:720px)"))
+        self.assertNotRegex(m, r"\.floorsign\.fpc\{[^}]*display:none")
+        self.assertNotIn(".floorsign .fpc{display:none", media_block("(max-width:720px)"))
+
+
+class TestPlateNameShort(unittest.TestCase):
+    """Fix round 2, item 2 (main manager's decision): an agent's plate drops the leading task name when its description
+    starts with one (a kebab-case word such as 'city-agents-at-desks' followed by more text): '审查员 · PR REVIEW',
+    '合并副手 · merge', '工人 · Worker 1 · seats'. plateName(c, true), the hovered or selected plate, keeps the whole
+    description; the tag's title keeps nameOf."""
+
+    def test_short_and_long_forms(self):
+        agents = [agent("s:t", "task-manager", up=GOV, label="city-x Task Manager", task="city-x"),
+                  agent("rv", "other", up=GOV, label="reviewer", task="city-agents-at-desks PR REVIEW"),
+                  agent("md", "merge-deputy", up=GOV, label="merge-deputy", task="city-agents-at-desks merge"),
+                  agent("w1", "worker", up="s:t", label="worker", task="city-agents-at-desks Worker 1: seats"),
+                  agent("e1", "other", up="s:t", label="Explore", task="find the hook"),
+                  agent("p1", "other", up=GOV, label="reviewer", task="PR REVIEW of the plates"),
+                  agent("o1", "worker", up="s:t", label="worker", task="city-x"),
+                  agent("c1", "other", up=GOV, label="check-deputy", task="city-y UI CHECK"),
+                  agent("c2", "other", up=GOV, label="check-deputy", task="city-y UI CHECK")]
+        out = sim(r"""
+snap(__payload.view, __payload.agents);
+settle(2);
+const ids = ['rv', 'md', 'w1', 'e1', 'p1', 'o1', 'c1', 'c2'];
+__out = { short: ids.map(id => plateName(byId(id))), long: ids.map(id => plateName(byId(id), true)),
+          tm: [plateName(byId('s:t')), plateName(byId('s:t'), true), nameOf(byId('s:t'))] };
+""", {"view": view(), "agents": agents}, required=REQUIRED + ("plateName",))
+        sh = dict(zip(["rv", "md", "w1", "e1", "p1", "o1", "c1", "c2"], out["short"]))
+        lg = dict(zip(["rv", "md", "w1", "e1", "p1", "o1", "c1", "c2"], out["long"]))
+        self.assertEqual(sh["rv"], "PR REVIEW")
+        self.assertEqual(sh["md"], "merge")
+        self.assertEqual(sh["w1"], "Worker 1 · seats")
+        self.assertEqual(sh["e1"], "find the hook", "no task name in front: kept")
+        self.assertEqual(sh["p1"], "PR REVIEW of the plates", "no task name in front: kept")
+        self.assertEqual(sh["o1"], "city-x", "a task name alone stays")
+        self.assertNotEqual(sh["c1"], sh["c2"])
+        self.assertTrue(sh["c1"].startswith("UI CHECK") and sh["c2"].startswith("UI CHECK"), (sh["c1"], sh["c2"]))
+        self.assertEqual(lg["rv"], "city-agents-at-desks PR REVIEW", "the hover plate keeps the whole description")
+        self.assertEqual(lg["md"], "city-agents-at-desks merge")
+        self.assertEqual(lg["e1"], "find the hook")
+        self.assertEqual(out["tm"][0], out["tm"][2], "a session: nameOf, both forms")
+        self.assertEqual(out["tm"][1], out["tm"][2])
+
+    def test_the_plate_picks_the_form(self):
+        src = script_function_source("pinOv") or ""
+        self.assertRegex(src, r"plateName\(\s*c\s*,", "pinOv asks for the long form when the plate is hovered or selected")
 
 
 class TestSeatCache(unittest.TestCase):
