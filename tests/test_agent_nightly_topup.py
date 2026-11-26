@@ -505,5 +505,50 @@ class TestReviewFixes3(TopUpCase):
         self.assertEqual(agent_nightly.text_named(self.repo.dir, g, ["requirements/x.md"]), [])
 
 
+CONF = ("version=1\nfull_cmd=python3 -m unittest discover -s tests -t .\nrelated_cmd=%s\n"
+        "guard_tests=tests/test_a.py\n")
+
+
+@tn.only_own
+class TestOneRunNeverSlower(TopUpCase):
+    """Decision (c): the top-up is one related_cmd call over every planned file, and no top-up when it would not be
+    faster than the full run (tests/timings.txt)."""
+
+    def test_a_all_planned_files_go_into_one_command_each_one_word(self):
+        argv = os.path.join(self.repo.base, "argv.json")
+        cmd = ("python3 -c \"import sys, json; open(%r, 'a').write(json.dumps(sys.argv[1:]) + '\\\\n')\" {tests}"
+               " && python3 -m unittest {modules}" % argv)
+        self.commit({"agent_repo.conf": CONF % cmd}, "fake runner")
+        self.full_green()
+        self.commit({"tests/test_p.py": PASSING, "tests/test_q.py": FAILING}, "two tests")
+        st = self.start()
+        self.assertEqual((st["kind"], st["result"]), ("top-up", "red"), st)
+        with open(argv) as fh:
+            calls = [json.loads(l) for l in fh.read().splitlines()]
+        self.assertEqual(calls, [["tests/test_a.py", "tests/test_p.py", "tests/test_q.py"]])
+        self.assertIn("test_x_red", self.nightly("--failures", env=self.env()).stdout)
+
+    def timed(self, a, x, mark):
+        self.commit({"tests/timings.txt": "# seconds\ttests\tfile\n%s\t1\ttest_a\n%s\t1\ttest_x\n%s\t1\ttest_mark\n"
+                                          % (a, x, mark)}, "timings")
+        self.full_green()
+        self.commit({"tests/test_x.py": x_test("ok") + "# t\n"}, "test change")
+
+    def test_b_above_half_of_the_full_run_is_the_full_run(self):
+        self.timed(10, 10, 10)
+        r = self.release_ok()
+        self.assertIn("the full run is needed: the top-up would not be faster (20 of 30 s)", r.stdout)
+        self.assertEqual(self.start()["kind"], "full")
+
+    def test_b_half_or_below_is_a_top_up(self):
+        self.timed(10, 5, 15)
+        self.assertEqual(self.start()["kind"], "top-up")
+
+    def test_b_no_timing_file_is_a_top_up(self):
+        self.full_green()
+        self.commit({"tests/test_x.py": x_test("ok") + "# t\n"}, "test change")
+        self.assertEqual(self.start()["kind"], "top-up")
+
+
 if __name__ == "__main__":
     unittest.main()

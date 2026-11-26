@@ -1219,7 +1219,7 @@ def do_run(cwd, nightly=False):
     if p["kind"] == "top-up":
         base["tests"] = p["tests"]
         rcmd = conf_at(root, commit).get("related_cmd", "")
-        cmds = [(t, fill_safe(rcmd, [t])) for t in p["tests"]]      # one run per planned file, each path quoted
+        cmds = [("top-up", rcmd)]       # one related_cmd call over every planned file that passes the probe
     print("NIGHTLY: %s on %s: %s" % ("top-up" if p["kind"] == "top-up" else "full run", commit[:7], p["why"]))
     sys.stdout.flush()
     atomic_write(status_path(gitdir), json.dumps(base))
@@ -1272,12 +1272,21 @@ def do_run(cwd, nightly=False):
                     link_deps(root, wt)
                     began, mb, code, output, missing = time.time(), 0, 0, "", []
                     for path, one in cmds:
-                        if path is not None and path.endswith(".py"):
-                            why_not = probe(wt, path)           # the tool's own proof, not the test's output
-                            if why_not:
-                                missing.append(why_not)
-                                code = code or 1
+                        if path == "top-up":
+                            # Safe in a shell and in one call: every planned test file has a plain name
+                            # (TEST_FILE) or was in the green full run, fill_safe makes each path one quoted word,
+                            # and the probe proved each .py file loads with tests before the one call.
+                            loaded = []
+                            for t in p["tests"]:
+                                why_not = probe(wt, t) if t.endswith(".py") else ""
+                                if why_not:
+                                    missing.append(why_not)
+                                    code = code or 1
+                                else:
+                                    loaded.append(t)
+                            if not loaded:
                                 continue
+                            one = fill_safe(one, loaded)
                         with open(log, "wb") as out_fh:
                             rc, peak, stop = run_monitored(one, need, shell=True, cwd=wt, stdin=subprocess.DEVNULL,
                                                            stdout=out_fh, stderr=subprocess.STDOUT)
@@ -1289,7 +1298,7 @@ def do_run(cwd, nightly=False):
                             break
                         rc = exit_code(rc) if rc is not None and rc < 0 else rc
                         if path is not None and rc != 0 and not failed_tests(part):
-                            missing.append("top-up: %s did not run (exit %s)" % (path, rc))
+                            missing.append("top-up: related_cmd exit %s" % rc)
                         code = code or rc
                     try:
                         with locked():
@@ -1679,6 +1688,39 @@ def topup_tests(root, base, tip, changed):
     return run
 
 
+TOPUP_MAX_SHARE = 0.5      # a top-up whose planned files weigh more than this share of the full run is not run
+
+
+def timings_at(root, tip):
+    """{test file stem: seconds} from tests/timings.txt as committed at tip (the file run2.py deals the full run
+    by); {} when the repo has none."""
+    ok, body = git_rc(root, "show", "%s:tests/timings.txt" % tip)
+    found = {}
+    for line in body.splitlines() if ok else []:
+        parts = line.split()
+        if len(parts) >= 3 and not line.startswith("#"):
+            try:
+                found[parts[-1]] = float(parts[0])
+            except ValueError:
+                pass
+    return found
+
+
+def too_slow(root, tip, run):
+    """"" or why a top-up of these files would not be faster: their summed seconds (a file with no timing counts as
+    the median, as run2.py deals it) above TOPUP_MAX_SHARE of the summed seconds of every file."""
+    times = timings_at(root, tip)
+    if not times:
+        return ""
+    vals = sorted(times.values())
+    median = vals[len(vals) // 2]
+    planned = sum(times.get(os.path.splitext(os.path.basename(t))[0], median) for t in run)
+    full = sum(vals)
+    if planned > full * TOPUP_MAX_SHARE:
+        return "the top-up would not be faster (%d of %d s)" % (round(planned), round(full))
+    return ""
+
+
 def full_stamp(st):
     """When the last FULL run finished ("" when unknown): a top-up or a stopped run carries it on."""
     if not st:
@@ -1763,6 +1805,9 @@ def plan(root, st, tip=None):
         return {"kind": "full", "base": "", "tests": [], "why": "the related test picker failed"}
     if not run:
         return {"kind": "full", "base": "", "tests": [], "why": "no guard tests and no changed test file to run"}
+    slow = too_slow(root, tip, run)
+    if slow:
+        return {"kind": "full", "base": "", "tests": [], "why": slow}
     return {"kind": "top-up", "base": g, "tests": run,
             "why": "only text, mock pages or tests changed since the green full run on %s" % g[:7]}
 

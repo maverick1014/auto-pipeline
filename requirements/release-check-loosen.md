@@ -47,6 +47,9 @@ A green top-up is recorded on the tip together with the full run it stands on ("
   - 1. Before a planned test file runs, the tool loads it itself (unittest discovery on that one file, in the scratch tree) and needs its own line back: a nonce sent on stdin, read after the load, plus the test count; no line, a load failure or 0 tests: red (`could not be loaded`, `holds no test`). The test's own output is never the proof.
   - 2. Every picker tree `agent_nightly_wt_pick_<pid>` whose pid is dead is removed before a pick and on `--status`; `--start --nightly` never runs the picker.
   - 3. The top-up also runs every tests/test_*.py whose source names a changed text file (its path, its base name, `<folder>/*<ext>`, `<parent>/*/<base name>`); plain text search, and the record check needs this set too.
+- Decision (c) on the speed (2026-11-26):
+  - One run in parallel: after the per-file probe, the top-up runs every planned file in ONE `related_cmd` call, each path one quoted word; the exit code decides, the failing tests are read from the output.
+  - Never slower than the full run: with `tests/timings.txt`, planned seconds above half (`TOPUP_MAX_SHARE`) of the summed seconds of every file: no top-up, "the full run is needed: the top-up would not be faster (<n> of <m> s)"; no timing data: no such check.
 
 ## Examples (the failing tests come from these)
 
