@@ -164,15 +164,15 @@ class TestTheCore(unittest.TestCase):
                          ["core has 1301 words, at most 1300"])
 
 
-# answer bd1ecc18 (1): the rules block the start prints (the core, the output rules
-# from "E1. Shape", the PATHS line, the longest READ NOW line) stays under 9,500
-# characters with a 120-character plugin path; tests/test_agent_start.py
+# answer bd1ecc18 (1), fix order 7841e72f C: the rules block the start prints (the core,
+# the output rules from "E1. Shape", the PATHS line, the longest READ NOW line) stays
+# under 9,700 characters with a 200-character plugin path; tests/test_agent_start.py
 # TestTheRealSizes measures the real output.
-BLOCK_CAP = 9500
-LONGEST_PATH = "/" + "p" * 119
+BLOCK_CAP = 9700                   # fix order 7841e72f C
+LONGEST_PATH = "/" + "p" * 199     # a 200-character plugin path
 READ_LINES = [  # the READ NOW lines of tests/test_agent_start.py
     "READ NOW (main manager): rules/human.md, rules/routing.md, rules/approval.md, rules/checks.md, "
-    "rules/branches.md, rules/worktrees.md, rules/watch.md",
+    "rules/branches.md, rules/worktrees.md, rules/watch.md, rules/files.md",
     "READ NOW (task manager): rules/tests.md, rules/checks.md, rules/watch.md, rules/context.md, rules/resources.md",
     "READ NOW (human-direct session): rules/roles.md, then rules/tests.md, rules/checks.md, rules/watch.md, "
     "rules/context.md, rules/resources.md",
@@ -269,6 +269,12 @@ class TestTheCodes(unittest.TestCase):
 
 
 class TestTheGlossary(unittest.TestCase):
+
+    def test_a_connected_machine_is_a_paired_orca_machine(self):
+        # requirement section 2 item 9, fix order 7841e72f B: the "inferred" mark is gone
+        lines = [l for l in read("GLOSSARY.md").splitlines() if l.startswith("**Connected machine**:")]
+        self.assertEqual(lines, ["**Connected machine**: another machine paired in Orca that can take jobs; "
+                                 "placement tries it first."])
 
     def test_a_term_is_defined_once(self):
         self.assertEqual(term_problems(read("GLOSSARY.md")), [])

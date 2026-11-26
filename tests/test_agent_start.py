@@ -118,7 +118,8 @@ QUESTION_FILES = {
     35: ["rules/routing.md"], 36: ["PRINCIPLES.md"],
 }
 MAIN_READS = ["rules/human.md", "rules/routing.md", "rules/approval.md", "rules/checks.md",
-              "rules/branches.md", "rules/worktrees.md", "rules/watch.md"]
+              "rules/branches.md", "rules/worktrees.md", "rules/watch.md",
+              "rules/files.md"]   # fix order 7841e72f E: the docs, task files and ideas file are its daily work
 TASK_READS = ["rules/tests.md", "rules/checks.md", "rules/watch.md", "rules/context.md",
               "rules/resources.md"]
 SECOND_READS = ["rules/roles.md"] + TASK_READS
@@ -129,7 +130,7 @@ def role_questions(reads):
             if any(f == "PRINCIPLES.md" or f in reads for f in files)]
 
 
-MAIN_QUESTIONS = role_questions(MAIN_READS)      # 28
+MAIN_QUESTIONS = role_questions(MAIN_READS)      # 30
 TASK_QUESTIONS = role_questions(TASK_READS)      # 15
 SECOND_QUESTIONS = role_questions(SECOND_READS)  # 17
 
@@ -560,7 +561,7 @@ class TestQuizStillWorks(StartCase):
 
     def test_all_right_is_a_pass(self):
         out = self.assertOk(self.start("--answer", self.ANSWERS))
-        self.assertIn("28/28 PASS", out)
+        self.assertIn("30/30 PASS", out)
 
     def test_one_wrong_is_a_fail(self):
         result = self.start("--answer", self.ANSWERS.replace("1A", "1B"))
@@ -578,7 +579,10 @@ class TestQuizPerRole(StartCase):
         return self.assertOk(self.start("--quiz", *args, **kwargs))
 
     def test_the_counts(self):
-        self.assertEqual((len(MAIN_QUESTIONS), len(TASK_QUESTIONS), len(SECOND_QUESTIONS)), (28, 15, 17))
+        self.assertEqual((len(MAIN_QUESTIONS), len(TASK_QUESTIONS), len(SECOND_QUESTIONS)), (30, 15, 17))
+        self.assertIn(9, MAIN_QUESTIONS)
+        self.assertIn(11, MAIN_QUESTIONS)
+        self.assertNotIn(4, MAIN_QUESTIONS + TASK_QUESTIONS + SECOND_QUESTIONS)   # the mock rule: not at start
 
     def test_the_main_manager_is_asked_its_set(self):
         self.assertEqual(asked(self.quiz("--role", "main")), MAIN_QUESTIONS)
@@ -618,32 +622,85 @@ class TestQuizPerRole(StartCase):
         self.assertIn("Q5. You are one of four agents. You changed files under api/auth/. "
                       "Which tests do you run?", self.quiz("--role", "task"))
 
-    def test_each_role_passes_with_the_same_answers(self):
-        for role, n in (("main", 28), ("task", 15), ("second", 17)):
+    def only(self, questions, drop=()):
+        return " ".join(t for t in self.ANSWERS.split() if int(t[:-1]) in questions and t not in drop)
+
+    def test_each_role_passes_with_its_own_set(self):
+        # fix order 7841e72f A: --answer grades the session's OWN role (the start's role), never the caller's pick
+        for role, env, n in (("main", {}, 30), ("task", {"AGENT_ROLE": "task-manager"}, 15), ("second", None, 17)):
             with self.subTest(role=role):
-                out = self.assertOk(self.start("--answer", self.ANSWERS, "--role", role))
+                if env is None:
+                    self.live_lock()
+                    env = {}
+                out = self.assertOk(self.start("--answer", self.ANSWERS, env=env))
                 self.assertEqual(self.lines(out), ["QUIZ RESULT: %d/%d PASS" % (n, n), "You may start work."])
 
+    def live_lock(self):
+        holder = subprocess.Popen(["sleep", "60"])
+        self.addCleanup(holder.kill)
+        with open(self.repo.path(".git", "agent_main.lock"), "w") as fh:
+            fh.write("%d 2026-11-26 10:00 sess-x -\n" % holder.pid)
+
+    def test_a_main_manager_cannot_pass_with_the_task_managers_set(self):
+        # the bypass the review found: --answer '<the 15>' --role task gave 15/15 PASS and the marker
+        env = {"CLAUDE_CODE_SESSION_ID": "sess-bypass"}
+        r = self.start("--answer", self.only(TASK_QUESTIONS), "--role", "task", env=env)
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertEqual(len(self.lines(r.stdout)), 1, r.stdout)
+        self.assertIn("main manager", r.stdout)
+        self.assertIn("30", r.stdout)
+        self.assertNotIn("PASS", r.stdout)
+        self.assertFalse(os.path.exists(self.repo.path(".git", "agent_quiz_sess-bypass")))
+        # without --role the same answers are graded on the main manager's 30
+        r = self.start("--answer", self.only(TASK_QUESTIONS), env=env)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("QUIZ RESULT: 12/30 FAIL", r.stdout)
+        self.assertFalse(os.path.exists(self.repo.path(".git", "agent_quiz_sess-bypass")))
+
+    def test_answer_role_all_is_refused_too(self):
+        r = self.start("--answer", self.ANSWERS, "--role", "all")
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertNotIn("PASS", r.stdout)
+
+    def test_the_own_role_named_is_accepted(self):
+        out = self.assertOk(self.start("--answer", self.ANSWERS, "--role", "task", env={"AGENT_ROLE": "task-manager"}))
+        self.assertIn("15/15 PASS", out)
+
+    def test_a_task_manager_cannot_pass_with_a_smaller_or_other_set(self):
+        r = self.start("--answer", self.ANSWERS, "--role", "second", env={"AGENT_ROLE": "task-manager"})
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("task manager", r.stdout)
+        self.assertIn("15", r.stdout)
+
+    def test_the_printed_set_does_not_tell_to_answer_with_role(self):
+        # --role is for printing a set only
+        out = self.quiz("--role", "task")
+        line = [l for l in out.splitlines() if "--answer" in l][0]
+        self.assertNotIn("--role", line)
+
     def test_only_the_roles_answers_are_needed(self):
-        only = " ".join(t for t in self.ANSWERS.split() if int(t[:-1]) in TASK_QUESTIONS)
-        out = self.assertOk(self.start("--answer", only, "--role", "task"))
+        out = self.assertOk(self.start("--answer", self.only(TASK_QUESTIONS), env={"AGENT_ROLE": "task-manager"}))
         self.assertIn("15/15 PASS", out)
 
     def test_a_missing_answer_is_wrong(self):
-        only = " ".join(t for t in self.ANSWERS.split() if int(t[:-1]) in TASK_QUESTIONS and t != "27B")
-        r = self.start("--answer", only, "--role", "task")
+        r = self.start("--answer", self.only(TASK_QUESTIONS, drop=("27B",)), env={"AGENT_ROLE": "task-manager"})
         self.assertEqual(r.returncode, 1)
         self.assertIn("Q27: re-read rules/checks.md", r.stdout)
 
     def test_a_wrong_answer_on_the_worktree_rule_names_its_file(self):
         # section 4: prints "re-read rules/worktrees.md"
-        r = self.start("--answer", self.ANSWERS.replace("14C", "14A"), "--role", "main")
+        r = self.start("--answer", self.ANSWERS.replace("14C", "14A"))
         self.assertEqual(r.returncode, 1)
-        self.assertIn("QUIZ RESULT: 27/28 FAIL", r.stdout)
+        self.assertIn("QUIZ RESULT: 29/30 FAIL", r.stdout)
         self.assertIn("Q14: re-read rules/worktrees.md", r.stdout)
 
+    def test_a_wrong_answer_on_the_files_rule_names_its_file(self):
+        # fix order 7841e72f E: Q9 and Q11 (rules/files.md) are the main manager's again
+        r = self.start("--answer", self.ANSWERS.replace("11D", "11A"))
+        self.assertIn("Q11: re-read rules/files.md", r.stdout)
+
     def test_a_wrong_answer_names_files_never_a_rule_code(self):
-        r = self.start("--answer", self.ANSWERS.replace("1A", "1B").replace("6C", "6A"), "--role", "main")
+        r = self.start("--answer", self.ANSWERS.replace("1A", "1B").replace("6C", "6A"))
         self.assertIn("Q1: re-read PRINCIPLES.md", r.stdout)
         self.assertIn("Q6: re-read rules/cross-repo.md, rules/approval.md", r.stdout)
         self.assertNotRegex(r.stdout, r"\b(?:[PRWHSE]\d+)\)|\((?:[PRWHSE]\d+)\b")
@@ -1354,8 +1411,27 @@ LEVEL_WORDS = re.compile(r"(?i)(\brisk types?\b|(?-i:\btype [A-D]\b)|\b[A-D] = (
                          r"\btodo level\b|--declared\b|\bRAISE\b|REQUIRED TYPE|\blevel [0-4]\b|\(R8 check)")
 
 
+def answer_as(case, q, answers):
+    """--answer in a session whose own role is asked question q (main, else task manager, else human-direct)."""
+    if q in MAIN_QUESTIONS:
+        return case.repo.run("agent-start.sh", "--answer", answers)
+    if q in TASK_QUESTIONS:
+        return case.repo.run("agent-start.sh", "--answer", answers, env={"AGENT_ROLE": "task-manager"})
+    holder = subprocess.Popen(["sleep", "60"])
+    case.addCleanup(holder.kill)
+    with open(case.repo.path(".git", "agent_main.lock"), "w") as fh:
+        fh.write("%d 2026-11-26 10:00 sess-x -\n" % holder.pid)
+    try:
+        return case.repo.run("agent-start.sh", "--answer", answers)
+    finally:
+        os.remove(case.repo.path(".git", "agent_main.lock"))
+
+
 class TestQuiz(ScriptCase):
     script = "agent-start.sh"
+
+    def answer_as(self, q, answers):
+        return answer_as(self, q, answers)
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz", "--role", "all"))
@@ -1378,8 +1454,8 @@ class TestQuiz(ScriptCase):
     def test_36_and_the_new_key_passes(self):
         out = self.quiz()
         self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 36)
-        r = self.repo.run("agent-start.sh", "--answer", ANSWERS, "--role", "all")
-        self.assertIn("QUIZ RESULT: 36/36 PASS", r.stdout)
+        r = self.repo.run("agent-start.sh", "--answer", ANSWERS)
+        self.assertIn("QUIZ RESULT: 30/30 PASS", r.stdout)
 
     def test_the_approval_questions_name_their_rule(self):
         # approval-design (section 53 D): the cases live in R8, the quick check in P1
@@ -1390,7 +1466,9 @@ class TestQuiz(ScriptCase):
                 if wrong == good:
                     continue
                 with self.subTest(wrong=wrong):
-                    r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong), "--role", "all")
+                    # fix order 7841e72f A: graded on the session's own role: Q7 in a task manager, Q18 in a
+                    # human-direct session, the rest in the main manager
+                    r = self.answer_as(int(good[:-1]), ANSWERS.replace(good, wrong))
                     self.assertEqual(r.returncode, 1)
                     self.assertIn("Q%s: re-read %s" % (good[:-1], ", ".join(QUESTION_FILES[int(good[:-1])])), r.stdout)
 
@@ -1404,7 +1482,7 @@ class TestQuiz(ScriptCase):
         for wrong in ("27A", "27C", "28A", "28D"):
             with self.subTest(wrong=wrong):
                 good = "27B" if wrong.startswith("27") else "28B"
-                r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong), "--role", "all")
+                r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong))
                 self.assertEqual(r.returncode, 1)
                 self.assertIn("Q%s: re-read %s" % (wrong[:2], ", ".join(QUESTION_FILES[int(wrong[:2])])), r.stdout)
 
@@ -1432,12 +1510,16 @@ class TestQuiz(ScriptCase):
 # A repo not set up: the output part only (=== rules/output.md === and E1-E4).
 # Once per session and source, like the start part (its own marker).
 
-RULES_BLOCK_CAP = 9500
-PATH_ROOM = 120
+RULES_BLOCK_CAP = 9700   # fix order 7841e72f C: a margin under Claude Code's hard 10,000
+PATH_ROOM = 200          # tested as if the plugin path were 200 characters
+START_PART_CAP = 2000    # bytes: the start part holds no rule text
+# The human-direct start part on a busy project is over START_PART_CAP since before this task (2,216 bytes at
+# 47d12a8: its ROLE text is never cut by the CAP logic; 2,327 now with the longer RULES line): its own cap.
+SECOND_START_CAP = 2400
 OUTPUT_HEAD = "=== rules/output.md ==="
 PATHS_LINE = "PATHS: rules/*.md, GLOSSARY.md and NOTICE.md are under %s/"
 READ_MAIN = ("READ NOW (main manager): rules/human.md, rules/routing.md, rules/approval.md, rules/checks.md, "
-             "rules/branches.md, rules/worktrees.md, rules/watch.md")
+             "rules/branches.md, rules/worktrees.md, rules/watch.md, rules/files.md")
 READ_TASK = ("READ NOW (task manager): rules/tests.md, rules/checks.md, rules/watch.md, rules/context.md, "
              "rules/resources.md")
 READ_SECOND = ("READ NOW (human-direct session): rules/roles.md, then rules/tests.md, rules/checks.md, "
@@ -1610,9 +1692,9 @@ class TestTheTwoEntries(RulesCase):
 
 
 class TestTheRealSizes(RulesCase):
-    """answer bd1ecc18 (1): per entry and per role, the longest real output (the
-    real files, a busy project) stays under RULES_BLOCK_CAP characters, with room
-    for a PATH_ROOM-character plugin path."""
+    """answer bd1ecc18 (1), fix order 7841e72f C: per entry and per role, the real output (the real files, a
+    busy project). The rules block stays under RULES_BLOCK_CAP characters as if the plugin path were PATH_ROOM
+    characters; the start part keeps START_PART_CAP bytes (the human-direct startup: SECOND_START_CAP)."""
 
     def setUp(self):
         super().setUp()
@@ -1637,16 +1719,48 @@ class TestTheRealSizes(RulesCase):
 
     def test_the_rules_block_per_role(self):
         for role, env in self.roles():
-            with self.subTest(role=role):
-                out = self.rules(sid="s-size-" + role, env=self.env_of(role, env))
-                self.assertLessEqual(as_if_path(out, self.repo.plugin), RULES_BLOCK_CAP, len(out))
+            for source in ("startup", "compact"):
+                with self.subTest(role=role, source=source):
+                    out = self.rules(source, sid="s-size-%s-%s" % (role, source), env=self.env_of(role, env))
+                    size = as_if_path(out, self.repo.plugin)
+                    self.assertLessEqual(size, RULES_BLOCK_CAP,
+                                         "rules block of %s is %d characters (%d real, plugin path %d characters)"
+                                         % (role, size, len(out), len(self.repo.plugin)))
 
     def test_the_start_part_per_role(self):
         for role, env in self.roles():
             for source in ("startup", "compact"):
                 with self.subTest(role=role, source=source):
                     out = self.start_hook(source, sid="s-part-%s-%s" % (role, source), env=self.env_of(role, env))
-                    self.assertLessEqual(as_if_path(out, self.repo.plugin), RULES_BLOCK_CAP, len(out))
+                    cap = SECOND_START_CAP if (role, source) == ("second", "startup") else START_PART_CAP
+                    self.assertLessEqual(len(out.encode()), cap, "start part of %s %s is %d bytes"
+                                         % (role, source, len(out.encode())))
+                    self.assertNotIn("# PRINCIPLES", out)
+
+
+class TestNoOutputRules(RulesCase):
+    """fix order 7841e72f D (the twin of the old test_principles_without_section_e_prints_nothing_extra): a
+    plugin without rules/output.md prints no output block, the hook does not fail, and RULES and QUIZ stay the
+    last two lines of the start part."""
+
+    def setUp(self):
+        super().setUp()
+        os.remove(self.repo.plugin_path("rules", "output.md"))
+
+    def test_by_hand(self):
+        r = self.repo.run("agent-start.sh")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn(OUTPUT_HEAD, r.stdout)
+        self.assertNotIn("E1. Shape", r.stdout)
+        lines = self.lines(pointer_part(r.stdout))
+        self.assertEqual(lines[-2], RULES_LINE % self.repo.plugin)
+        self.assertTrue(lines[-1].startswith("QUIZ: "), lines[-1])
+        self.assertEqual(self.lines(r.stdout)[-1], READ_MAIN)
+
+    def test_the_rules_entry(self):
+        r = self.repo.run("agent-start.sh", "--rules", stdin=self.hook_json("startup", "s-no-out"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, read("PRINCIPLES.md") + self.paths_line() + "\n" + READ_MAIN + "\n")
 
 
 class TestARepoNotSetUp(unittest.TestCase):
@@ -2814,14 +2928,14 @@ class TestTheQuiz(ScriptCase):
 
     def test_c_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer",
-                                          self.ANSWERS, "--role", "all"))
-        self.assertIn("QUIZ RESULT: 36/36 PASS", out)
+                                          self.ANSWERS))
+        self.assertIn("QUIZ RESULT: 30/30 PASS", out)
 
     def test_another_letter_fails_and_names_w8(self):
         for wrong in ("24A", "24B", "24D"):
             with self.subTest(wrong=wrong):
                 result = self.repo.run("agent-start.sh", "--answer",
-                                       self.ANSWERS.replace("24C", wrong), "--role", "all")
+                                       self.ANSWERS.replace("24C", wrong))
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("Q24: re-read rules/worktrees.md", result.stdout)
 
@@ -3260,20 +3374,20 @@ class TestQuiz36(ScriptCase):
         self.assertIn("human", options[2])
 
     def test_all_pass(self):
-        out = self.assertOk(self.repo.run("agent-start.sh", "--answer", ANSWERS, "--role", "all"))
-        self.assertIn("QUIZ RESULT: 36/36 PASS", out)
+        out = self.assertOk(self.repo.run("agent-start.sh", "--answer", ANSWERS))
+        self.assertIn("QUIZ RESULT: 30/30 PASS", out)
 
     def test_wrong_letters_name_the_rule(self):
         for good, rule_code, wrongs in (("25B", "R8", ("25A", "25C", "25D")),   # the release run (R8), check-blocks section 27
                                         ("26C", "W17", ("26A", "26B", "26D"))):
             for wrong in wrongs:
                 with self.subTest(wrong=wrong):
-                    r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong), "--role", "all")
+                    r = self.repo.run("agent-start.sh", "--answer", ANSWERS.replace(good, wrong))
                     self.assertEqual(r.returncode, 1)
                     self.assertIn("Q%s: re-read %s" % (good[:2], ", ".join(QUESTION_FILES[int(good[:2])])), r.stdout)
 
     def test_the_old_34_answers_no_longer_pass(self):
-        r = self.repo.run("agent-start.sh", "--answer", ANSWERS[:-8], "--role", "all")
+        r = self.repo.run("agent-start.sh", "--answer", ANSWERS[:-8])
         self.assertEqual(r.returncode, 1)
 
     def test_usage_and_readme_say_36(self):
@@ -3309,18 +3423,18 @@ class TestQuiz34(ScriptCase):
         self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 36)
 
     def test_b_passes(self):
-        out = self.assertOk(self.repo.run("agent-start.sh", "--answer", self.ANSWERS, "--role", "all"))
-        self.assertIn("QUIZ RESULT: 36/36 PASS", out)
+        out = self.assertOk(self.repo.run("agent-start.sh", "--answer", self.ANSWERS))
+        self.assertIn("QUIZ RESULT: 30/30 PASS", out)
 
     def test_another_letter_fails_and_names_w10(self):
         for wrong in ("18A", "18B", "18C"):
             with self.subTest(wrong=wrong):
-                result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS.replace("18D", wrong), "--role", "all")
+                result = answer_as(self, 18, self.ANSWERS.replace("18D", wrong))   # Q18: a human-direct session's
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("Q18: re-read rules/setup.md, rules/roles.md", result.stdout)
 
     def test_the_old_33_answers_no_longer_pass(self):
-        result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS.replace(" 34C", ""), "--role", "all")
+        result = self.repo.run("agent-start.sh", "--answer", self.ANSWERS.replace(" 34C", ""))
         self.assertEqual(result.returncode, 1)
         self.assertIn("Q34: re-read rules/approval.md", result.stdout)
 
