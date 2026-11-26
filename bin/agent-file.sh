@@ -13,7 +13,7 @@
 #   agent-file.sh todo checks "<name>" --remove <BLOCK> --owner-quote "<words>" [--time <t>]
 #                                                             -> only on a verified owner order (agent-owner-order.sh verify): the block leaves the field, the line gets " | removed <BLOCK> <date time>"
 #   agent-file.sh todo builder "<name>" <who>                 -> field " | builder <who>" (replaced in place; a comma list is fine)
-#   agent-file.sh todo est "<name>" <minutes> [--guess <m>]   -> est (and guess) replaced in place; prints "todo est: <name> <old>m -> <new>m"
+#   agent-file.sh todo est "<name>" <minutes> [--guess <m>]   -> est (and guess) replaced in place; the first est stays as " | est0 <m>m", the sum of every +<m> as " | added <m>m"; prints "todo est: <name> <old>m -> <new>m"
 #   agent-file.sh check "<task>" "<BLOCK>" pass|fail --by <who> --evidence "<text>"
 #                                                             -> agent_state.txt of this folder: "CHECK <task> <BLOCK>: pass | by <who> | at <sha12> | <evidence> | <date time>" (OWNER SIGN allowed; [--commit <sha>], default HEAD of this folder)
 #   agent-file.sh checks gather "<task>" --dir <path>         -> appends the task's CHECK lines of <path>/agent_state.txt to the main repo's agent_state.txt (lines already there skipped); prints "checks gather: <task> <n> lines"
@@ -66,7 +66,12 @@
 #
 # todo done also closes the queue wait of every open line whose " | after <name>" field is that task, drops the after field, and prints "released: <line name>" per line.
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
-#   work = agent minutes. wait = minutes spent waiting (mock gate, owner, suite run). Never mixed.
+#   work = agent minutes, MEASURED: minutes(started, now) - max(0, W - n) (n = the " after <n>m waited" of the started field), else
+#   clock - W when the line has an opened time; W = closed waits + the open wait up to now (--wait <m> given: the larger). Never below 0.
+#   No time on the line: the typed --work, else "-". The typed --work is kept as typed=<m>, never as the label. A typed --work over
+#   the clock: one warning line on stderr, the line moves as usual. wait = W. Work and wait are never mixed.
+#   est0 = the " | est0 <m>m" field, else est; added = the " | added <m>m" field, else "-". stages, slices, built come from the
+#   " | stage log" field (todo stage): stages=<stage>:<m>,... slices=<m>,... built=<m> ("-" when there is no log).
 #   <t> is one of: page server script docs cloud app data mixed.
 #   est comes from the todo line. clock = minutes from "opened" to now. repo = folder name of the main repo.
 #   files and lines (lines = added + deleted) are counted only when asked, in the main repo:
@@ -77,13 +82,15 @@
 #   It prints "todo done: <name>" and "TIME DATA: <n> of 30" (finished tasks that have a work number).
 #   No --type or no --lane: one warning line on stderr ("todo done: warning: no --type --lane given (...)"), exit 0.
 #   --guess <m> (whole number, 1 or more; anywhere after "todo add") adds the field " | guess <m>m" after est; done copies it to guess=<m>.
+#   An est equal to --guess is refused (one line on stderr naming --why, exit 1, nothing written) unless --why "<reason>" is given;
+#   --why adds " | why <reason>" right after guess (an empty reason, " | " or a line break: refused; needs --guess).
 #   --level <A-D>: old callers only (levels are gone, use --checks) (old 0-4 accepted, stored as a letter; anywhere after "todo add") adds " | level <A-D>" right after guess (else after est, else after the what); done copies it to level=<A-D>.
 #   todo level "<name>" <A-D>: old callers only; sets it in place, every other field stays; prints "todo level: <name> <old> -> <new>" ("-" for none) or "todo level: <name> already type <new>" (writes nothing).
 #     A lower type, no such line, a bad or missing type: refused (one line on stderr, exit 1, nothing written).
 #   Then the retrain, only when due: one line "estimate retrain: ...", never the table. A failure never stops todo done.
 #
 # The line in agent_completed.txt (keys in this order, "-" when not known):
-#   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n> guess=<m> level=<n>
+#   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n> guess=<m> level=<n> typed=<m> est0=<m> added=<m> built=<m> stages=<s:m,...> slices=<m,...>
 #   level = the risk type from the todo line's "level <A-D>" field (an old line may hold 0-4), "-" when none. An older block has no level key (read as "-").
 #   An old line ("est <n>m actual <n>m") has no data block.
 #
@@ -103,6 +110,7 @@
 #   Prints "wrote: <the new line>" and "TIME DATA: <n> of 30". --dry-run prints "would write: <the new line>" only.
 #
 # data: read-only. Columns: repo name date type lane mock est work wait clock bounces workers files lines tests adds guess.
+#   data --what adds est0 typed built stages slices after guess, then what.
 #   An old line gives est and clock, "-" elsewhere. The repo column is the data block's repo, else the folder name.
 #   Repos, in this order, the same repo (real path) once:
 #     1. this repo
@@ -179,6 +187,8 @@
 #   exit 1, nothing written): no todo line of that name, an empty text, " | " or a line break in it, too many arguments.
 # todo stage <name> <stage> [<i>/<m>]: (first stage: a line with no stage and no started field also gets " | started <date>[ after <n>m waited]"
 #   right before the stage field; n = closed waited <m>m + an open wait up to now, no " after " when 0; never added or changed later.)
+#   A new value (new stage or new <i>/<m>) also adds the entry "<value> <m>" to " | stage log <entry>, <entry>, ..." right before the
+#   started field (else the stage field); m = the work minutes at now as todo done counts them (the first stage: 0).
 #   The stage field of the todo line, " | stage <stage>[ <i>/<m>] since <date>" (one atomic
 #   write, replaced in place, once). A new <i>/<m> of the same stage keeps its "since" (todo line and STAGE line); a new
 #   stage name sets since = now and drops the " | waited in stage <n>m" field. The stages: brief register mock tests workers verify push report e2e merge. <i>/<m> only
@@ -216,7 +226,7 @@
 set -eu
 TIME_DATA_GOAL=30
 DATA_TYPES="page server script docs cloud app data mixed"
-DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess level"
+DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess level typed est0 added built stages slices"
 OPT_CMD="todo done"   # the prefix of a refusal from done_opts; backfill sets it to "backfill"
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
@@ -259,11 +269,76 @@ minutes_between() {
 dreset() {
   d_repo=-; d_type=-; d_lane=-; d_mock=-; d_est=-; d_work=-; d_wait=-; d_clock=-
   d_bounces=-; d_workers=-; d_files=-; d_lines=-; d_tests=-; d_adds=-; d_guess=-; d_level=-
+  d_typed=-; d_est0=-; d_added=-; d_built=-; d_stages=-; d_slices=-
 }
 dblock() {
-  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s guess=%s level=%s' \
+  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s guess=%s level=%s typed=%s est0=%s added=%s built=%s stages=%s slices=%s' \
     "$d_repo" "$d_type" "$d_lane" "$d_mock" "$d_est" "$d_work" "$d_wait" "$d_clock" \
-    "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds" "$d_guess" "$d_level"
+    "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds" "$d_guess" "$d_level" \
+    "$d_typed" "$d_est0" "$d_added" "$d_built" "$d_stages" "$d_slices"
+}
+# todo_times "<todo line>" [<typed wait>]: t_clock, t_wait (W), t_work from the times on the line ("-" when unknown). Like the board:
+# work = minutes(started, now) - max(0, W - n), else clock - W (opened); W = closed waits + the open wait up to now, or the typed wait when larger.
+todo_times() {
+  local m
+  IFS=$'\t' read -r t_opened t_started t_before t_closed t_wo <<< "$(printf '%s\n' "$1" | awk -F' \\| ' '
+    function ok(x) { return x ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]$/ }
+    { o = s = wo = "-"; b = 0; w = 0
+      for (i = 4; i <= NF; i++) {
+        if (o == "-" && $i ~ /^opened / && ok(substr($i, 8, 16))) o = substr($i, 8, 16)
+        else if (s == "-" && $i ~ /^started / && ok(substr($i, 9, 16))) {
+          s = substr($i, 9, 16)
+          if ($i ~ / after [0-9]+m waited$/) { x = $i; sub(/^.* after /, "", x); b = x + 0 }
+        }
+        else if (wo == "-" && $i ~ /^waiting [^ ]+ since / && ok(substr($i, index($i, " since ") + 7, 16))) wo = substr($i, index($i, " since ") + 7, 16)
+        else if ($i ~ /^waited [0-9]+m$/) w = substr($i, 8) + 0
+      }
+      printf "%s\t%s\t%s\t%s\t%s\n", o, s, b, w, wo; exit }')"
+  t_wait=$t_closed
+  if [ "$t_wo" != - ]; then m=$(minutes_between "$t_wo" "$NOW"); t_wait=$((t_wait + ${m:-0})); fi
+  if [ -n "${2:-}" ] && [ "$2" != - ] && [ $((10#$2)) -gt "$t_wait" ]; then t_wait=$((10#$2)); fi
+  t_clock=-; t_work=-
+  if [ "$t_opened" != - ]; then m=$(minutes_between "$t_opened" "$NOW"); [ -z "$m" ] || t_clock=$m; fi
+  if [ "$t_started" != - ]; then
+    m=$(minutes_between "$t_started" "$NOW"); m=${m:-0}
+    m=$((m - (t_wait > t_before ? t_wait - t_before : 0)))
+    t_work=$((m > 0 ? m : 0))
+  elif [ "$t_clock" != - ]; then
+    m=$((t_clock - t_wait)); t_work=$((m > 0 ? m : 0))
+  fi
+}
+# stage_facts "<todo line>" <work>: d_stages d_slices d_built from the " | stage log" field ("-" when there is none)
+stage_facts() {
+  local log out
+  d_stages=-; d_slices=-; d_built=-
+  log=$(printf '%s\n' "$1" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage log /) { print substr($i, 11); exit } }')
+  [ -n "$log" ] || return 0
+  IFS=$'\t' read -r d_stages d_slices d_built <<< "$(printf '%s\n' "$log" | awk -v done="$2" '
+    { n = split($0, e, ", ")
+      for (k = 1; k <= n; k++) {
+        m[k] = e[k]; sub(/^.* /, "", m[k]); m[k] += 0
+        v = e[k]; sub(/ [0-9]+$/, "", v)
+        w[k] = v; sub(/ .*$/, "", w[k]); f[k] = v; if (index(v, " ")) sub(/^[^ ]* /, "", f[k]); else f[k] = ""
+      }
+      for (k = 1; k <= n; k++) {
+        if (k > 1 && w[k] == w[k - 1]) continue
+        end = done; for (j = k + 1; j <= n; j++) if (w[j] != w[k]) { end = m[j]; break }
+        if (end == "-" || end == "") end = m[k]
+        d = end - m[k]; if (d < 0) d = 0
+        if (!(w[k] in dur)) order[++no] = w[k]
+        dur[w[k]] += d
+      }
+      st = ""; for (k = 1; k <= no; k++) st = st (k > 1 ? "," : "") order[k] ":" dur[order[k]]
+      fm = ""; sl = ""
+      for (k = 1; k <= n; k++) if (w[k] == "workers") {
+        if (fm == "") fm = m[k]
+        if (f[k] ~ /^[0-9]+\/[0-9]+$/) { i = f[k]; sub(/\/.*$/, "", i); i += 0
+          if (!(i in seen)) { seen[i] = 1; if (i >= 1) sl = sl (sl == "" ? "" : ",") (m[k] - fm) } }
+      }
+      b = ""
+      for (k = 1; k <= n && b == ""; k++) if (w[k] == "report") b = m[k]
+      for (k = 1; k <= n && b == ""; k++) if (w[k] == "e2e") b = m[k]
+      printf "%s\t%s\t%s\n", (st == "" ? "-" : st), (sl == "" ? "-" : sl), (b == "" ? "-" : b) }')"
 }
 # dkey "<line>" <key>: that key of the line's data block (can be "-"); nothing when the line has no block
 dkey() {
@@ -415,7 +490,7 @@ backfill_name() {
 
 # --- data
 DATA_FMT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %5s\n'
-DATA_FMT_WHAT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %5s %s\n'   # data --what: one more column
+DATA_FMT_WHAT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %5s %5s %5s %5s %s %s %s\n'   # data --what: est0 typed built stages slices, then what
 DATA_WHAT=
 DATA_SEEN="
 "
@@ -468,7 +543,8 @@ $rp
       esac
       printf "$DATA_FMT_WHAT" "${d_repo// /_}" "${name// /_}" "${date// /_}" "${d_type:--}" "${d_lane:--}" "${d_mock:--}" \
         "${d_est:--}" "${d_work:--}" "${d_wait:--}" "${d_clock:--}" "${d_bounces:--}" "${d_workers:--}" \
-        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}" "${d_guess:--}" "${what:--}"
+        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}" "${d_guess:--}" "${d_est0:--}" "${d_typed:--}" \
+        "${d_built:--}" "${d_stages:--}" "${d_slices:--}" "${what:--}"
     else
       printf "$DATA_FMT" "${d_repo// /_}" "${name// /_}" "${date// /_}" "${d_type:--}" "${d_lane:--}" "${d_mock:--}" \
         "${d_est:--}" "${d_work:--}" "${d_wait:--}" "${d_clock:--}" "${d_bounces:--}" "${d_workers:--}" \
@@ -501,7 +577,7 @@ data_run() {
     case "$a" in --what) DATA_WHAT=1;; *) set -- "$@" "$a";; esac
   done
   if [ -n "$DATA_WHAT" ]; then
-    printf "$DATA_FMT_WHAT" repo name date type lane mock est work wait clock bounces workers files lines tests adds guess what
+    printf "$DATA_FMT_WHAT" repo name date type lane mock est work wait clock bounces workers files lines tests adds guess est0 typed built stages slices what
   else
     printf "$DATA_FMT" repo name date type lane mock est work wait clock bounces workers files lines tests adds guess
   fi
@@ -852,7 +928,7 @@ todo_beat() {
 # todo_stage <name> <stage> [<i>/<m>]
 STAGE_WORDS="brief register mock tests workers verify push report e2e merge"
 todo_stage() {
-  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here= csince tsince keep started wn wo
+  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here= csince tsince keep started wn wo swork
   [ -n "$name" ] || refuse "todo stage: needs a todo name"
   [ -n "$stage" ] || refuse "todo stage: needs a stage"
   case " $STAGE_WORDS " in *" $stage "*) ;; *) refuse "todo stage: the stage is one of: $STAGE_WORDS (got: $stage)";; esac
@@ -873,27 +949,42 @@ todo_stage() {
   line=$(first "$TODO" "$name")
   if [ -z "$line" ] && [ -z "$wt_here" ]; then refuse "no todo line named: $name"; fi
   if [ -n "$line" ]; then
-    cur=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage /) { sub(/^stage /, "", $i); sub(/ since .*$/, "", $i); print $i; exit } }')
+    cur=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage / && $i !~ /^stage log /) { sub(/^stage /, "", $i); sub(/ since .*$/, "", $i); print $i; exit } }')
     if [ "$cur" != "$val" ]; then
       tsince=$NOW; keep=0; started=
-      if [ -z "$cur" ] && ! printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^(stage |started )/) exit 0; exit 1 }'; then
+      if [ -z "$cur" ] && ! printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if (($i ~ /^stage / && $i !~ /^stage log /) || $i ~ /^started /) exit 0; exit 1 }'; then
         wn=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^waited [0-9]+m$/) { print substr($i, 8) + 0; exit } }')
         wn=${wn:-0}
         wo=$(printf '%s\n' "$line" | sed -n 's/.* | waiting [^ ]* since \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
         if [ -n "$wo" ]; then m=$(minutes_between "$wo" "$NOW"); wn=$((wn + ${m:-0})); fi
         started="started $NOW"
         if [ "$wn" -gt 0 ]; then started="$started after ${wn}m waited"; fi
+        swork=0
+      else
+        todo_times "$line"; swork=$t_work; [ "$swork" != - ] || swork=0
       fi
       if [ "${cur%% *}" = "$stage" ]; then
-        csince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage /) { if (sub(/^.* since /, "", $i)) print $i; exit } }')
+        csince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage / && $i !~ /^stage log /) { if (sub(/^.* since /, "", $i)) print $i; exit } }')
         if [ -n "$csince" ]; then tsince=$csince; keep=1; fi
       fi
-      NEW="stage $val since $tsince" STARTED="$started" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v keep="$keep" '
+      NEW="stage $val since $tsince" STARTED="$started" ENTRY="$val $swork" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v keep="$keep" '
         $1 == k && !hit {
-          hit = 1; wi = 0
-          for (i = 4; i <= NF; i++) if (!wi && $i ~ /^stage /) wi = i
+          hit = 1; wi = 0; li = 0; si = 0
+          for (i = 4; i <= NF; i++) {
+            if (!li && $i ~ /^stage log /) li = i
+            else if (!wi && $i ~ /^stage /) wi = i
+            if (!si && $i ~ /^started /) si = i
+          }
           if (wi) $wi = ENVIRON["NEW"]
           else { if (ENVIRON["STARTED"] != "") $(NF + 1) = ENVIRON["STARTED"]; $(NF + 1) = ENVIRON["NEW"] }
+          if (li) $li = $li ", " ENVIRON["ENTRY"]
+          else {   # the log goes right before the started field, else right before the stage field
+            at = 0
+            for (i = 4; i <= NF; i++) if (!at && $i ~ /^started /) at = i
+            if (!at) for (i = 4; i <= NF; i++) if (!at && $i ~ /^stage / && $i !~ /^stage log /) at = i
+            for (i = NF; i >= at; i--) $(i + 1) = $i
+            $at = "stage log " ENVIRON["ENTRY"]
+          }
           if (!keep) {
             n = 0
             for (i = 1; i <= NF; i++) if (!(i >= 4 && ($i ~ /^waited in stage [0-9]+m$/ || $i ~ /^beat /))) out[++n] = $i
@@ -1146,11 +1237,15 @@ case "${1:-}:${2:-}" in
     [ $# -ge 2 ] || usage
     helper_join "$2";;
   todo:add)
-    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""
+    shift 2; guess=""; why=""; haswhy=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
       if [ "$1" = "--guess" ]; then
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
         guess=$((10#$2)); shift 2
+      elif [ "$1" = "--why" ]; then
+        [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: --why needs a reason"
+        if bad_text "$2"; then refuse "todo add: the --why value must not hold \" | \" or a line break"; fi
+        why=$2; haswhy=1; shift 2
       elif [ "$1" = "--level" ]; then
         level=$(risk_type "${2:-}"); [ -n "$level" ] || refuse "todo add: --level wants one of A B C D (got: ${2:-nothing})"
         shift 2
@@ -1178,6 +1273,10 @@ case "${1:-}:${2:-}" in
     done
     set -- todo add ${rest[@]+"${rest[@]}"}
     need 5 "$@"
+    if [ -n "$haswhy" ] && [ -z "$guess" ]; then refuse "todo add: --why goes with --guess"; fi
+    if [ -n "$guess" ] && [ -z "$why" ] && is_num "${6:-}" && [ "${#6}" -le 9 ] && [ $((10#$6)) -eq "$guess" ]; then
+      refuse "todo add: est $((10#$6)) is the --guess; give the number the estimate printed, or --why \"<reason>\""
+    fi
     if [ "$target" = production ]; then   # the direct path is bound to the owner's words, verified at once (F1)
       checks_py owner-words "$3" "$oquote" "$otime" || exit 1
     elif [ -n "$oquote$otime" ]; then refuse "todo add: --owner-quote and --time belong to --target production"
@@ -1187,6 +1286,7 @@ case "${1:-}:${2:-}" in
     what="$5"
     [ -n "${6:-}" ] && what="$5 | est ${6}m"
     [ -z "$guess" ] || what="$what | guess ${guess}m"
+    [ -z "$why" ] || what="$what | why $why"
     [ -z "$level" ] || what="$what | level $level"
     [ -z "$checks" ] || what="$what | checks $checks"
     [ -z "$scope" ] || what="$what | scope $scope"
@@ -1211,6 +1311,20 @@ case "${1:-}:${2:-}" in
     opened=$(printf '%s\n' "$line" | sed -n 's/.*opened \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
     clock=; [ -z "$opened" ] || clock=$(minutes_between "$opened" "$NOW")
     d_repo=$(repo_name "$ROOT"); d_est=${est:--}; d_clock=${clock:--}
+    d_typed=$d_work                                # the typed --work is kept as typed, the label is measured
+    todo_times "$line" "$d_wait"
+    if [ "$t_work" != - ]; then
+      d_work=$t_work; d_wait=$t_wait
+      if [ "$d_typed" != - ] && [ "$d_clock" != - ] && [ $((10#$d_typed)) -gt "$d_clock" ]; then
+        echo "todo done: warning: --work ${d_typed}m is more than the clock ${d_clock}m; work ${d_work}m is stored, the typed number is kept as typed=$((10#$d_typed))" >&2
+      fi
+    fi
+    [ "$d_typed" = - ] || d_typed=$((10#$d_typed))
+    d_est0=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^est0 [0-9]+m$/) {v = $i; sub(/^est0 /, "", v); sub(/m$/, "", v); print v; exit}}')
+    d_est0=${d_est0:-$d_est}
+    d_added=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^added [0-9]+m$/) {v = $i; sub(/^added /, "", v); sub(/m$/, "", v); print v; exit}}')
+    d_added=${d_added:--}
+    stage_facts "$line" "$d_work"
     d_guess=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^guess [0-9]+m$/) {v = $i; sub(/^guess /, "", v); sub(/m$/, "", v); print v; exit}}')
     d_guess=${d_guess:--}
     d_level=$(todo_line_level "$line"); d_level=${d_level:--}

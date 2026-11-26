@@ -29,7 +29,7 @@ LIKE_LINE = re.compile(
     r"^like (\S+): (\d+)m work \((\S+), (fast|full), mock (yes|no), (\d{4}-\d\d-\d\d)\)$")
 TASK_ROW = re.compile(
     r"^task (\S+) work (\d+) guess (?:\d+|-) estimator (\d+) \((\d+)-(\d+)\) "
-    r"blend \d+ \(\d+-\d+\) blend\+repo \d+ \(\d+-\d+\) rubric (\d+)$")
+    r"blend \d+ \(\d+-\d+\) blend\+repo \d+ \(\d+-\d+\) fit \d+ \(\d+-\d+\) rubric (\d+)$")   # estimate-improve B6: the fit part
 
 
 def row_re(label, has_range=True):
@@ -706,7 +706,7 @@ BLEND_WHY = re.compile(
 
 TASK_ROW3 = re.compile(
     r"^task (\S+) work (\d+) guess (\d+|-) estimator (\d+) \((\d+)-(\d+)\) "
-    r"blend (\d+) \((\d+)-(\d+)\) blend\+repo (\d+) \((\d+)-(\d+)\) rubric (\d+)$")
+    r"blend (\d+) \((\d+)-(\d+)\) blend\+repo (\d+) \((\d+)-(\d+)\) fit \d+ \(\d+-\d+\) rubric (\d+)$")
 
 
 TARGET = re.compile(r"^target within 30% (\d+)%: (?:(\d+)%, gap (\d+) points|met \((\d+)%\))$")

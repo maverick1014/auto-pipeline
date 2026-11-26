@@ -20,8 +20,10 @@ B6  The fit: a log-space fit with a slope, in place of the fixed 50/50 blend whe
     part A); fewer than 30 of them: that row's fit estimate is the blend's. No guess on the row: the no-guess fit, fewer than 30 pairs: the estimator.
     Its range: the 20th and 80th percentile of label / fit estimate of the scored rows before it (fewer than
     10: the blend's range).
-    Winner: "fit" only when its spread (as in the measure line) is strictly lower than the spread of the
-    winner by today's rules; else today's winner. `--tasks` rows get " fit <f> (<lo>-<hi>)" right after
+    Winner (winner_of(methods, rows), the backtest rows): "fit" only when at least one scored row was really
+    fitted (30 or more triples before it, row["fitted"]) and its spread (as in the measure line, 2 decimals)
+    is strictly lower than the spread of the blend row, of the blend+repo row (the requirement: it must beat
+    the blend) and of the winner by today's rules; else today's winner. `--tasks` rows get " fit <f> (<lo>-<hi>)" right after
     the blend+repo part.
     retrain: a first version may be "fit". A check where the winner is fit and the current version is not:
     the fit is kept only when its backtest spread is strictly lower than the spread of the current version's
@@ -143,6 +145,48 @@ class TestFitFunction(unittest.TestCase):
 
 
 # ---------------------------------------------------------------- B6 the backtest and the winner
+
+def fake_rows(rubric, blend, fit, repo=None, est=200, work=100):
+    """Backtest rows of 10 tasks of work 100, the estimates of each method given as a list (or one number)."""
+    def col(v, i):
+        x = v[i] if isinstance(v, list) else v
+        return (x, x, x)
+    rows = []
+    for i in range(10):
+        rows.append({"task": {"work": work, "todo": None, "name": "t%d" % i}, "est": col(est, i),
+                     "blend": col(blend, i), "repo": col(blend if repo is None else repo, i),
+                     "fit": col(fit, i), "rubric": col(rubric, i), "fitted": True})
+    return rows
+
+
+class TestWinnerRule(unittest.TestCase):
+    """Today's winner here is the rubric (60% within 30%); its spread is 0.54."""
+
+    def setUp(self):
+        self.m = load()
+        self.rubric = [100] * 6 + [300] * 4
+
+    def winner(self, rows):
+        return self.m.winner_of(self.m.method_scores(rows), rows)
+
+    def test_a_fit_between_the_blend_and_the_winner_does_not_win(self):
+        # the blend is steady (spread 0.00), the fit wobbles a little (0.08): it beats the rubric, not the blend
+        rows = fake_rows(self.rubric, 140, [120] * 5 + [140] * 5)
+        self.assertEqual(self.winner(rows), "rubric")
+
+    def test_a_fit_equal_to_the_blend_does_not_win(self):
+        self.assertEqual(self.winner(fake_rows(self.rubric, 140, 100)), "rubric")
+
+    def test_a_fit_below_both_wins(self):
+        rows = fake_rows(self.rubric, [70] * 5 + [140] * 5, [120] * 5 + [140] * 5, repo=[60] * 5 + [150] * 5)
+        self.assertEqual(self.winner(rows), "fit")
+
+    def test_no_fitted_row_no_fit(self):
+        rows = fake_rows(self.rubric, [70] * 5 + [140] * 5, 100)
+        for r in rows:
+            r["fitted"] = False
+        self.assertEqual(self.winner(rows), "rubric")
+
 
 class TestFitInBacktest(EstimateCase):
 

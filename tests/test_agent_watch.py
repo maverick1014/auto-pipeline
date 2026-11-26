@@ -598,7 +598,7 @@ class TestStageCarry(WatchCase):
                          ["stage feat: tests", "stage feat: workers 1/2"])
         line = self.todo_line()
         self.assertIn(" | stage workers 1/2 since ", line)
-        self.assertEqual(line.count(" | stage "), 1, line)
+        self.assertEqual(len(re.findall(r" \| stage (?!log )", line)), 1, line)   # estimate-improve: the stage log is another field
         return text
 
     def test_local_stage_is_carried_to_the_todo_line(self):
