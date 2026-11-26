@@ -183,6 +183,38 @@ class TestNightly(NetCase):
         self.git("commit", "-q", "-m", "more code")
         self.assertEqual(self.nightly("--release-ok").returncode, 1, "HEAD moved after the nightly")
 
+    def test_the_tip_counts_as_its_parent_only_for_a_version_only_bump(self):
+        # release-check-loosen KEEP 1: a tip that changes another key of plugin.json is not its parent
+        self.nightly("--start", "--wait")
+        g = self.git("rev-parse", "HEAD")
+        for body in ('{"name": "q", "version": "0.2.0"}\n', '{"name": "q", "version": "0.1.0"}\n'):
+            with self.subTest(body=body):
+                self.git("reset", "-q", "--hard", g)
+                self.put({".claude-plugin/plugin.json": body})
+                self.git("commit", "-q", "-am", "plugin.json")
+                self.assertEqual(self.nightly("--release-ok").returncode, 1)
+        self.git("reset", "-q", "--hard", g)
+        self.put({".claude-plugin/plugin.json": '{"name": "p", "version": "0.2.0"}\n'})
+        self.git("commit", "-q", "-am", "bump")
+        self.assertEqual(self.nightly("--release-ok").returncode, 0)
+
+    def test_a_red_full_run_through_run2_names_its_failing_test(self):
+        # release-check-loosen KEEP 2: run2.py prints FAIL/ERROR lines indented
+        with open(os.path.join(os.path.dirname(BIN), "tests", "run2.py")) as fh:
+            runner = fh.read()
+        self.put({"agent_repo.conf": "version=1\nfull_cmd=python3 tests/run2.py\n"
+                                     "related_cmd=python3 tests/run2.py {tests}\n",
+                  "tests/run2.py": runner,
+                  "tests/test_q.py": "import unittest\n\n\nclass X(unittest.TestCase):\n"
+                                     "    def test_x_red(self):\n        self.fail('red')\n"})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "run2 and a red test")
+        self.nightly("--start", "--wait")
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertTrue(any("test_x_red" in f for f in st["failed"]), st)
+        self.assertIn("test_x_red", self.nightly("--failures").stdout)
+
     def test_due(self):
         late = {"AGENT_FAKE_NOW": "2026-11-25 23:00"}
         self.assertEqual(self.nightly("--due", env=late).returncode, 0)
