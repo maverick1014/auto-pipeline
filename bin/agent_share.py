@@ -37,6 +37,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import agent_conf  # noqa: E402
+
 AGENT_FILES = ("agent_todo.txt", "agent_ideas.txt", "agent_worktree.txt", "agent_completed.txt",
                "agent_estimate.txt")
 UNION_FILES = ("agent_completed.txt", "agent_ideas.txt")
@@ -342,32 +344,11 @@ def in_git_files(root):
     return [n for n in AGENT_FILES if n in names]
 
 
-def name(root):
-    """The one name of the person: git user.name (spaces kept), else the login name."""
-    given = run(root, "config", "user.name").out.strip()
-    if given:
-        return given
-    try:
-        import getpass
-        return getpass.getuser().strip()
-    except Exception:
-        return ""
-
-
 def active(root):
     return place(root)[0] == "data" and is_repo(root)
 
 
 # ------------------------------------------------------------------ who may work a shared task
-
-
-def clean_name(text):
-    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
-
-
-def same_person(a, b):
-    """Two names are one person when their cleaned forms are equal (lower case, runs of other characters one "-")."""
-    return clean_name(a) == clean_name(b) and clean_name(a) != ""
 
 
 def todo_shared(root):
@@ -387,15 +368,15 @@ def may_work(root, line):
     if not line or not todo_shared(root):
         return None
     task = task_name(line)
-    me = name(root)
+    me = agent_conf.user_name(root)
     taken, assignee, owner = field_value(line, "taken"), field_value(line, "assignee"), field_value(line, "owner")
     if taken:
-        return None if same_person(me, taken) else "%s was taken by %s" % (task, taken)
+        return None if agent_conf.same_person(me, taken) else "%s was taken by %s" % (task, taken)
     if assignee:
-        return None if same_person(me, assignee) else "%s is assigned to %s" % (task, assignee)
+        return None if agent_conf.same_person(me, assignee) else "%s is assigned to %s" % (task, assignee)
     if owner:
         if facts(root)["task_take"] == "owner":
-            return None if same_person(me, owner) else "%s belongs to %s; ask them to assign it" % (task, owner)
+            return None if agent_conf.same_person(me, owner) else "%s belongs to %s; ask them to assign it" % (task, owner)
         return "%s is free: take it first (agent-file.sh todo take %s)" % (task, task)
     return None
 
@@ -465,7 +446,7 @@ def cmd_assign(root, task, who):
     if line is None:
         return refuse_todo("todo assign: no todo line named: %s" % task)
     owner = field_value(line, "owner")
-    if owner and not same_person(name(root), owner):
+    if owner and not agent_conf.same_person(agent_conf.user_name(root), owner):
         return refuse_todo("%s belongs to %s; only the owner assigns" % (task, owner))
     put_todo_line(root, task, with_field(line, "assignee", who.strip()))
     commit(root, "todo assign %s" % task)
@@ -484,7 +465,7 @@ def take_guard(task, me, state):
                 line = l
                 break
         who = field_value(line, "taken") if line else None
-        if who and not same_person(who, me):
+        if who and not agent_conf.same_person(who, me):
             state["lost"] = who
             put_todo_line(root, task, line)
             return True
@@ -502,14 +483,14 @@ def cmd_take(root, task):
         return refuse_todo("todo take: task_take is owner; ask %s to assign it" % (owner or "the owner"))
     if line is None:
         return refuse_todo("todo take: no todo line named: %s" % task)
-    me = name(root)
+    me = agent_conf.user_name(root)
     taken, assignee = field_value(line, "taken"), field_value(line, "assignee")
     if taken:
-        if same_person(me, taken):
+        if agent_conf.same_person(me, taken):
             say("todo take: %s is already yours" % task)
             return 0
         return refuse_todo("todo take: %s was taken by %s" % (task, taken))
-    if assignee and not same_person(me, assignee):
+    if assignee and not agent_conf.same_person(me, assignee):
         return refuse_todo("todo take: %s is assigned to %s" % (task, assignee))
     put_todo_line(root, task, with_field(line, "taken", me))
     state = {}
@@ -1215,7 +1196,7 @@ def move(root):
     owner_note = ""
     if "agent_todo.txt" in shared:
         text = read_file(root, "agent_todo.txt") or ""
-        who = name(root)
+        who = agent_conf.user_name(root)
         todo = lines_of(text)
         open_lines = [l for l in todo if " | owner " not in l]
         if open_lines and not who:
@@ -1287,7 +1268,7 @@ def main(argv):
     if cmd == "assign":
         return cmd_assign(root, rest[0], rest[1]) if len(rest) == 2 else 2
     if cmd == "name":
-        say(name(root))
+        say(agent_conf.user_name(root))
         return 0
     if cmd == "place":
         kind, branch = place(root)

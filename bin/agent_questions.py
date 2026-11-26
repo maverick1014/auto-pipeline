@@ -328,15 +328,6 @@ def public(q, with_file=True):
     return d
 
 
-def user_name(root):
-    """git config user.name of the project root, trimmed; "" for none."""
-    try:
-        r = subprocess.run(["git", "-C", root, "config", "user.name"], capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return r.stdout.strip() if r.returncode == 0 else ""
-
-
 def render_text(data, lang):
     mark = WORDS[lang]["recmark"]
     out = ["QUESTIONS: %d" % data["count"]]
@@ -602,12 +593,9 @@ def cmd_park_add(c, args):
         fields.append("option %s: %s" % (LETTERS[j], o))
     if rec:
         fields.append("rec " + rec)
-    try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import agent_share
-        name = agent_share.name(c.root)
-    except Exception:
-        name = user_name(c.root)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import agent_conf
+    name = agent_conf.user_name(c.root)
     if name and " | " not in name and "\n" not in name:
         fields.append("by " + name)
     line = "PARKED: " + " | ".join(fields)

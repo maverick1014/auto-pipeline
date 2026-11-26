@@ -657,7 +657,9 @@ class Ex5TheCloudPackSharesBoth(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.base, True)
         self.src = os.path.join(self.base, "src")
         os.makedirs(self.src)
-        for part in ("bin", "skills", "agents", "hooks", ".claude-plugin", "PRINCIPLES.md"):
+        # the same source parts as tests/test_agent_cloud_pack.py (md-slim-principles-2: rules/, GLOSSARY.md, NOTICE.md)
+        for part in ("bin", "skills", "agents", "hooks", ".claude-plugin", "PRINCIPLES.md", "rules", "GLOSSARY.md",
+                     "NOTICE.md"):
             full = os.path.join(ROOT, part)
             if os.path.isdir(full):
                 shutil.copytree(full, os.path.join(self.src, part),
