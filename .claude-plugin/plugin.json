@@ -149,6 +149,33 @@
       "min": 1,
       "max": 240,
       "default": 30
+    },
+    "task_files": {
+      "type": "string",
+      "title": "Team: Task files in git",
+      "description": "Which task files are shared through git besides the finished records: local (none), ideas, or ideas,todo. A value in the repo's agent_repo.conf wins.",
+      "options": [
+        "local",
+        "ideas",
+        "ideas,todo"
+      ],
+      "default": "local"
+    },
+    "task_take": {
+      "type": "string",
+      "title": "Team: Who may take a task",
+      "description": "In a shared todo, who may work a task: owner (only the owner or the one assigned) or anyone (take it first). The repo value in agent_repo.conf wins.",
+      "options": [
+        "owner",
+        "anyone"
+      ],
+      "default": "owner"
+    },
+    "data_branch": {
+      "type": "string",
+      "title": "Team: Data branch",
+      "description": "Branch for the shared agent files; the repo value wins. Any branch works, production too: then they live under .ap-data/ there, it needs an origin, and a commit can start a deploy.",
+      "default": "ap-data"
     }
   }
 }

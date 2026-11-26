@@ -958,6 +958,10 @@ ORDER = [
     ("clear_quiet_min", "Context: Auto clear after quiet (min)", "number", 30),
     ("city_port", "City: City port", "number", 4777),
     ("city_idle_min", "City: City auto close (min)", "number", 30),
+    # owner 2026-11-26 (agent-files, TELL 3a14d2f4 and 50d02f90): the person's default; a repo value wins
+    ("task_files", "Team: Task files in git", "string", "local"),
+    ("task_take", "Team: Who may take a task", "string", "owner"),
+    ("data_branch", "Team: Data branch", "string", "ap-data"),
 ]
 
 
@@ -974,6 +978,7 @@ CONSTANTS = {
     "unused_pane_min": 30,  # check-blocks slice 8: the sweep closes a pane that never got a prompt, idle over it
     "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024,   # check-blocks section 15 (owner 1A)
     "verify_box_min": 15,   # check-blocks section 19/21: the run or browser check time box
+    "share_net_timeout_s": 15, "share_offline_min": 5,   # agent-files fix order 1 D: one network timeout, the offline marker
 }
 
 

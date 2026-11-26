@@ -50,6 +50,7 @@ R8. Check blocks
   - Rollback: back to the last green commit; BUILD + RELATED TESTS of the reverted files; a database change follows its written rollback plan
   - Research only (no diff): no blocks; the report is the deliverable
 - Repo facts live in the committed `agent_repo.conf`, written by init and kept by agents; a human may edit it, never has to: core paths, guard tests, test commands, the edge list, real-data access
+- The team values live there too and win over a member's Configure: task_files, task_take, data_branch
 - After each bug fix the fixing agent asks "which example would have shown it" and adds one line with `agent-file.sh edge add "<text>"` when the list lacks it
 - Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed
 - A requirement table copies its defaults from the released template and lists every changed default for the owner

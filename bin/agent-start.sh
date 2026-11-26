@@ -86,6 +86,7 @@ drop_human_direct() {
   wt="$PROJECT_ROOT/agent_worktree.txt"; tmp="$wt.tmp"
   [ -f "$wt" ] || return 0
   awk -v p="$PROJECT_CWD" -F' \\| ' '!($1 == p && $2 == "task manager, human-direct")' "$wt" > "$tmp" && mv "$tmp" "$wt"
+  keep_worktree_copy
   return 0
 }
 
@@ -777,6 +778,7 @@ announce_human_direct() {
     '!($1 == p && $2 == "task manager, human-direct")' "$wt" > "$tmp"
   printf '%s\n' "$PROJECT_CWD | task manager, human-direct | task: (ask the human) | since $NOW" >> "$tmp"
   mv "$tmp" "$wt"
+  keep_worktree_copy
 }
 
 print_role_and_project() {
@@ -910,8 +912,8 @@ print_mode_lines() {
     *) rk=task_manager;;
   esac
   python3 "$pyp/agent_conf.py" you "$rk" "$ME" 2>/dev/null </dev/null || true
-  PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
-for w in a.warnings(): print(w)' 2>/dev/null </dev/null || true
+  PYTHONPATH="$pyp" python3 -c 'import sys, agent_conf as a
+for w in a.warnings() + a.shared_lines(sys.argv[1]): print(w)' "$PROJECT_ROOT" 2>/dev/null </dev/null || true
   printf '%s' "$MIGRATE_TEXT"
   python3 "$pyp/agent_update.py" sync "$STATE_DIR" "$PROJECT_ROOT" 2>/dev/null </dev/null || true
   if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ] || [ "$role" = second ]; }; then
@@ -922,6 +924,29 @@ for w in a.warnings(): print(w)' 2>/dev/null </dev/null || true
     python3 "$pyp/agent_update.py" apply "$au" >/dev/null 2>&1 </dev/null || true
     "$PLUGIN_ROOT/bin/agent-settings.sh" statusline refresh >/dev/null 2>&1 </dev/null || true
   fi
+  return 0
+}
+
+# moved: no agent file tracked in the main checkout and the ignore line agent_completed.txt (grep first, git only when it is there)
+files_moved() {
+  grep -qx 'agent_completed.txt' "$PROJECT_ROOT/.gitignore" 2>/dev/null || return 1
+  [ -z "$(git -C "$PROJECT_ROOT" ls-files -- agent_todo.txt agent_ideas.txt agent_worktree.txt agent_completed.txt agent_estimate.txt 2>/dev/null)" ]
+}
+# keep_worktree_copy: this script wrote agent_worktree.txt; in a moved repo its kept copy follows (agent-files-kept)
+keep_worktree_copy() {
+  local gd
+  [ -e "$PROJECT_ROOT/.git" ] && files_moved || return 0
+  gd=$(git -C "$PROJECT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
+  [ -n "$gd" ] && [ -f "$PROJECT_ROOT/agent_worktree.txt" ] || return 0
+  mkdir -p "$gd/agent-files-kept" 2>/dev/null && cp -p "$PROJECT_ROOT/agent_worktree.txt" "$gd/agent-files-kept/agent_worktree.txt" 2>/dev/null
+  return 0
+}
+# print_not_moved_line: ONE line in a set up git repo whose files are still on the code branch
+print_not_moved_line() {
+  [ -e "$PROJECT_ROOT/.git" ] && [ -f "$PROJECT_ROOT/agent_todo.txt" ] || return 0
+  grep -Eq '^[[:space:]]*task_place[[:space:]]*=[[:space:]]*tree[[:space:]]*$' "$PROJECT_ROOT/agent_repo.conf" 2>/dev/null && return 0
+  files_moved && return 0
+  echo "AGENT FILES: still on the code branch in this repo; $PLUGIN_ROOT/bin/agent-file.sh files move moves them to the data branch (the owner decides)"
   return 0
 }
 
@@ -942,6 +967,7 @@ print_normal_lines() {
       sed 's/^/  /' "$PROJECT_ROOT/$name"
     fi
   done
+  print_not_moved_line
   return 0
 }
 

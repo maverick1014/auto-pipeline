@@ -33,8 +33,14 @@
 #                                     overwritten
 #   agent_*.txt, .secrets/,
 #   AGENTS.md                        from running the packed agent-init.sh
-#   .gitignore                       the task-file lines, plus the pack's
-#                                     own __pycache__ line, each once
+#   agent_repo.conf                  from the same run, then task_files=ideas,todo
+#                                     and task_place=tree (bin/agent_share.py set):
+#                                     a cloud session pushes only its own branch, so
+#                                     the task files stay tracked in the tree and are
+#                                     committed with the work, no data branch
+#   .gitignore                       the pack's own __pycache__ line; the five
+#                                     agent_*.txt lines init wrote are taken out
+#                                     again (agent_share.py ignore), each once
 #
 # A cloud session runs the defaults: no settings file is written or committed
 # (settings live in /plugin -> Installed -> auto-pipeline -> Configure on a
@@ -302,6 +308,12 @@ PY
 # the relative path. ----
 INIT_OUT=$("$PACK/bin/agent-init.sh" --no-branch "$TARGET") || die "agent-init.sh"
 
+# ---- a cloud session can push only its own branch: the task files are shared (ideas and todo) and stay tracked
+# in the tree, committed with the work. The facts go in agent_repo.conf, then the five ignore lines init added go. ----
+python3 "$PACK/bin/agent_share.py" "$TARGET" set task_files ideas,todo --no-commit --no-move >/dev/null || die "task_files"
+python3 "$PACK/bin/agent_share.py" "$TARGET" set task_place tree --no-commit >/dev/null || die "task_place"
+python3 "$PACK/bin/agent_share.py" "$TARGET" ignore || die "ignore lines"
+
 # ---- show agent-init.sh's file lines and its cloud Setup-script hint, but
 # not the permission JSON block or the two lines asking the human to paste
 # it: the pack merges those rules into .claude/settings.json itself, below,
@@ -459,7 +471,7 @@ fi
 
 echo
 echo "Commit and push so a cloud session can read this:"
-echo "  git add .claude CLAUDE.md AGENTS.md agent_*.txt .gitignore"
+echo "  git add .claude CLAUDE.md AGENTS.md agent_*.txt agent_repo.conf .gitignore"
 echo "  git commit -m 'auto-pipeline: lay the cloud pack'"
 echo "  git push"
 echo

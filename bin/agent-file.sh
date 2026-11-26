@@ -27,6 +27,19 @@
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
 #   agent-file.sh idea keep <n>                                -> line n gets " | kept <date>": still wanted, never a housekeep suspect again
+#   agent-file.sh files show                                  -> "files: task_files=<v> task_take=<v> place=<ap-data|tree>", then "<file>: local" or "<file>: in git" per agent file
+#   agent-file.sh todo assign <task> <name>                   -> shared todo, the owner only: " | assignee <name>", committed, pushed
+#   agent-file.sh todo take <task>                            -> shared todo, task_take=anyone: " | taken <me>", pushed at once; refused when another took it
+#   agent-file.sh files sync                                  -> fetch origin ap-data, merge it into the files in git, commit, push (agent_share.py)
+#   agent-file.sh files move                                  -> main checkout only: every tracked agent file leaves the code branch (copy kept in <git dir>/agent-files-kept), ignore lines written, the files in git go onto ap-data; second run changes nothing
+#   agent-file.sh files restore <file> [<saved name> | --list]  -> a saved copy (default the newest) becomes the working copy; the current one is saved first (undo: restore it by name); --list shows the saved copies, newest first; none is ever deleted
+#   agent-file.sh files set <task_files|task_take|task_place|data_branch> <value>   -> the fact in agent_repo.conf (one code-branch commit of that file); task_files then runs files move (and writes the missing task_files, task_take, data_branch values); data_branch on a branch that holds code (e.g. main) needs an origin (else refused, one line); its files live under .ap-data/ and are pushed on top of the remote tip, no local ref or checkout moves; on the production branch one line says a commit there can start a deploy
+#
+# Files in git (place data, the default): agent_completed.txt and agent_estimate.txt always, agent_ideas.txt and agent_todo.txt when
+#   agent_repo.conf says task_files=ideas or ideas,todo. A run that changes one of them ends with one commit on the data branch ap-data
+#   (git plumbing, HEAD and the index never move; message = the command words, e.g. "todo done t") and a push of origin ap-data at once.
+#   A push that fails never fails the command: one line "ap-data: not pushed (<why>); the next write pushes it". Place tree (cloud): nothing is committed here.
+#   idea add writes "by <git user.name>" (no name: the role); idea list shows "[<name>]" before a line that carries a name.
 #   agent-file.sh worktree set "<path>" "<module>" "<status>" -> agent_worktree.txt (add or replace)
 #   agent-file.sh worktree rm  "<path>"                       -> agent_worktree.txt
 #   agent-file.sh helper-task "<Task Name>"                   -> the task of THIS human-direct Helper session: its name becomes "<repo> Helper - <Task Name>"
@@ -39,6 +52,7 @@
 #   agent-file.sh todo cross "<name>" <repo>                  -> the todo line says the other repo of a two-repo task: " | cross <repo>" (replaced in place, else appended)
 #   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] [--guess <m>] "<what>"   -> work minutes, range, like tasks
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
+#   agent-file.sh estimate-queue                              -> queues one estimator run and starts its background runner (agent_share after a sync that brought finished records); never waits
 #   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
 #                                                             -> an older plugin than installed: one line "retrain skipped: <running> is older than installed <newest>", nothing changes
 #   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next; with neither --step nor --work-so-far the numbers are the board's "Done by" cell (p50 and p85 from the history, agent_forecast.py); with one of them, the old rule
@@ -242,7 +256,119 @@ t = os.path.realpath(tempfile.gettempdir()); r = os.path.realpath(sys.argv[1])
 sys.exit(0 if r == t or r.startswith(t.rstrip("/") + "/") else 1)' "$ROOT" 2>/dev/null
 }
 if fake_clock_ok; then NOW=$AGENT_FAKE_NOW; else NOW=$(date '+%Y-%m-%d %H:%M'); fi; WHO=${AGENT_ROLE:-main}
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+# a moved repo (no agent file tracked, the ignore line agent_completed.txt): the kept copies in <git common dir>/agent-files-kept.
+# A repo that still tracks an agent file is not moved: nothing here runs for it (grep first, git ls-files only when the line is there).
+AF_FIVE="agent_todo.txt agent_ideas.txt agent_worktree.txt agent_completed.txt agent_estimate.txt"
+KEPT_DIR=""; KEPT_SNAP=""
+kept_snap() { local f; for f in $AF_FIVE; do [ -f "$ROOT/$f" ] && echo "$f $(cksum < "$ROOT/$f")"; done; return 0; }
+kept_readonly() {   # a command that never writes one of the five agent files
+  case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*|show:*|time:*|idea:list|files:*) return 0;; esac
+  return 1
+}
+kept_save() {   # kept_save <file>: keep the old kept copy as <file>.before-<time>[-n] before anything is written, say it, sweep
+  local f=$1 k="$KEPT_DIR/$1" stamp n=0 dst old i=0
+  stamp=$(date '+%Y%m%d-%H%M%S'); dst="$KEPT_DIR/$f.before-$stamp"
+  while [ -e "$dst" ]; do n=$((n+1)); dst="$KEPT_DIR/$f.before-$stamp-$n"; done
+  if cp "$k" "$dst" 2>/dev/null; then
+    echo "WARNING: $ROOT/$f differs from its kept copy (changed outside the scripts); the old kept copy is saved as $dst; put it back with: agent-file.sh files restore $f" >&2
+    # sweep: older than 7 days, except the newest 5 by mtime
+    while IFS= read -r old; do
+      i=$((i+1))
+      [ "$i" -gt 5 ] || continue
+      [ -n "$(find "$old" -mtime +7 2>/dev/null)" ] && rm -f "$old"
+    done < <(cd "$KEPT_DIR" && ls -t -- "$f".before-* 2>/dev/null | sed "s|^|$KEPT_DIR/|")
+  else
+    echo "WARNING: $ROOT/$f differs from its kept copy $k (changed outside the scripts); the old kept copy could not be saved" >&2
+  fi
+  return 0
+}
+kept_start() {   # restore a missing working copy from its kept copy; say (never touch) one that differs
+  local gd f k
+  [ -e "$ROOT/.git" ] && grep -qx 'agent_completed.txt' "$ROOT/.gitignore" 2>/dev/null || return 0
+  [ -z "$(git -C "$ROOT" ls-files -- $AF_FIVE 2>/dev/null)" ] || return 0
+  gd=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
+  [ -n "$gd" ] || return 0
+  KEPT_DIR="$gd/agent-files-kept"
+  for f in $AF_FIVE; do
+    k="$KEPT_DIR/$f"
+    [ -f "$k" ] || continue
+    if [ ! -e "$ROOT/$f" ]; then
+      cp -p "$k" "$ROOT/$f" 2>/dev/null && echo "restored $f from $k" >&2
+    elif ! cmp -s "$k" "$ROOT/$f"; then
+      case "${1:-}:${2:-}" in files:restore) continue;; esac
+      if kept_readonly "$@"; then
+        echo "WARNING: $ROOT/$f differs from its kept copy $k (changed outside the scripts); left as it is" >&2
+      else
+        kept_save "$f" "$@"
+      fi
+    fi
+  done
+  KEPT_SNAP=$(kept_snap)
+  return 0
+}
+kept_end() {     # a run that ended 0 copies each of the five files it changed to its kept copy
+  local f now
+  [ -n "$KEPT_DIR" ] || return 0
+  now=$(kept_snap)
+  mkdir -p "$KEPT_DIR" 2>/dev/null || return 0
+  for f in $AF_FIVE; do
+    [ -f "$ROOT/$f" ] || continue
+    printf '%s\n' "$KEPT_SNAP" | grep -qxF "$f $(cksum < "$ROOT/$f")" && continue
+    cp -p "$ROOT/$f" "$KEPT_DIR/$f.tmp.$$" 2>/dev/null && mv "$KEPT_DIR/$f.tmp.$$" "$KEPT_DIR/$f"
+  done
+  return 0
+}
+kept_start "$@"
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+
+# the files in git (agent_share.py): a snapshot before and after, one commit on the data branch when a run changed them.
+# Bash only (no python start when nothing changed): the facts are read from agent_repo.conf with grep and sed.
+conf_fact() { { grep -E "^[[:space:]]*$1[[:space:]]*=" "$ROOT/agent_repo.conf" 2>/dev/null || true; } | tail -n 1 | sed 's/^[^=]*=//; s/[[:space:]]//g'; }
+share_files() {
+  local tf; [ -n "$KEPT_DIR" ] || return 0   # not moved: no snapshot, no commit
+  [ "$(conf_fact task_place)" != tree ] || return 0
+  tf=$(conf_fact task_files)
+  printf '%s\n' agent_completed.txt agent_estimate.txt
+  # no repo fact: the person's Configure setting may say more, so watch both (agent_share.py commit decides)
+  case "$tf" in ideas) echo agent_ideas.txt;; ideas,todo|'') echo agent_ideas.txt; echo agent_todo.txt;; esac
+}
+share_snap() { local f; for f in $(share_files); do [ -f "$ROOT/$f" ] && echo "$f $(cksum < "$ROOT/$f")"; done; return 0; }
+share_msg() {
+  case "${1:-}" in
+    idea) case "${2:-}" in add) echo "idea add";; *) echo "idea ${2:-} ${3:-}";; esac;;
+    todo) echo "todo ${2:-} ${3:-}";;
+    *) echo "${1:-run}";;
+  esac
+}
+SHARE_MSG=$(share_msg "$@" | sed 's/ *$//')
+SHARE_SNAP=$(share_snap)
+SHARE_COMMITS=1
+share_exit() {
+  local rc=$?
+  trap - EXIT
+  if [ "$rc" -eq 0 ]; then
+    kept_end
+    if [ "$SHARE_COMMITS" = 1 ] && [ -n "$SHARE_SNAP$(share_snap)" ] && [ "$(share_snap)" != "$SHARE_SNAP" ]; then
+      command -v python3 >/dev/null 2>&1 && python3 "$(dirname "$0")/agent_share.py" "$ROOT" commit "$SHARE_MSG" || true
+    fi
+  fi
+  exit "$rc"
+}
+case "${1:-}" in files) ;; *) trap share_exit EXIT;; esac
+case "${1:-}" in show|time|data|repos|estimate|estimate-queue|backtest|eta) SHARE_COMMITS=0;; esac
+
+# a shared todo (agent_share.py): the newest data before a decision (quiet, a failed fetch never blocks), and who may work a task
+share_pull() {
+  case "$(conf_fact task_files)" in local|ideas) return 0;; esac
+  [ -e "$ROOT/.git" ] && command -v python3 >/dev/null 2>&1 || return 0
+  python3 "$(dirname "$0")/agent_share.py" "$ROOT" pull >/dev/null 2>&1 || true
+}
+share_gate() {   # share_gate <task>: refuse (stderr, exit 1) a task of a shared todo this person may not work
+  local msg
+  case "$(conf_fact task_files)" in local|ideas) return 0;; esac
+  [ -n "$(first "$TODO" "$1")" ] && command -v python3 >/dev/null 2>&1 || return 0
+  msg=$(python3 "$(dirname "$0")/agent_share.py" "$ROOT" may-work "$1" 2>/dev/null) || { printf '%s\n' "$msg" >&2; exit 1; }
+}
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -1013,6 +1139,8 @@ todo_stage() {
   fi
   val="$stage${frac:+ $frac}"
   if [ "$(cd "$STATE_DIR" 2>/dev/null && pwd -P)" != "$(cd "$PROJECT_ROOT" 2>/dev/null && pwd -P)" ]; then wt_here=1; fi
+  share_pull
+  share_gate "$name"
   line=$(first "$TODO" "$name")
   if [ -z "$line" ] && [ -z "$wt_here" ]; then refuse "no todo line named: $name"; fi
   if [ -n "$line" ]; then
@@ -1226,6 +1354,7 @@ board_run() {
     sec=$((10#$sec))
   fi
   command -v python3 >/dev/null 2>&1 || refuse "board: python3 is needed and was not found"
+  share_pull
   lang=$(setting language 2>/dev/null) || lang=en
   case "$lang" in zh) ;; *) lang=en;; esac
   host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
@@ -1289,6 +1418,7 @@ checks_py() {
 next_run() {
   local cap nums
   [ $# -eq 0 ] || refuse "next: takes nothing after it"
+  share_pull
   cap=$(conf_num max_usage_percent 1 100) || cap=80
   if nums=$(cd "$PROJECT_ROOT" && "$(dirname "$0")/agent-room.sh" numbers 2>/dev/null </dev/null) && [ "$(printf '%s\n' "$nums" | wc -w | tr -d ' ')" -eq 4 ]; then
     checks_py next $nums "$cap"
@@ -1387,6 +1517,7 @@ case "${1:-}:${2:-}" in
   todo:done)
     need 3 "$@"; name="$3"; line=$(first "$TODO" "$name")
     [ -n "$line" ] || { echo "no todo line named: $name" >&2; exit 1; }
+    share_gate "$name"
     shift 3
     case "${1:-}" in --*) ;; *) [ $# -eq 0 ] || shift;; esac   # the "<result>" text is not stored
     dreset; d_files=; d_lines=
@@ -1456,6 +1587,14 @@ case "${1:-}:${2:-}" in
     shift; next_run "$@";;
   edge:add)
     shift 2; checks_py edge-add "$@";;
+  todo:take)
+    [ $# -eq 3 ] || refuse "todo take: usage: todo take <task>"
+    command -v python3 >/dev/null 2>&1 || refuse "todo take: python3 is needed and was not found"
+    exec python3 "$(dirname "$0")/agent_share.py" "$ROOT" take "$3";;
+  todo:assign)
+    [ $# -eq 4 ] || refuse "todo assign: usage: todo assign <task> <name>"
+    command -v python3 >/dev/null 2>&1 || refuse "todo assign: python3 is needed and was not found"
+    exec python3 "$(dirname "$0")/agent_share.py" "$ROOT" assign "$3" "$4";;
   todo:stage)
     shift 2; todo_stage "$@";;
   todo:beat)
@@ -1470,6 +1609,14 @@ case "${1:-}:${2:-}" in
     shift; questions_run "$@";;
   state:*)
     shift; state_run "$@";;
+  files:*)
+    command -v python3 >/dev/null 2>&1 || refuse "files: python3 is needed and was not found"
+    case "${2:-}" in
+      show|sync|move|set|restore) ;;
+      *) usage;;
+    esac
+    shift
+    exec python3 "$(dirname "$0")/agent_share.py" "$ROOT" "$@";;
   todo:drop)
     need 5 "$@"; line=$(first "$TODO" "$3")
     [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }
@@ -1482,10 +1629,18 @@ case "${1:-}:${2:-}" in
     checks_py task-end drop "$3" || true        # its removals and stored owner words end (G2, G4)
     echo "todo dropped: $3";;
   idea:add)
-    need 3 "$@"; append "$IDEAS" "$3 | $NOW | by $WHO"
+    need 3 "$@"; by=$(python3 "$(dirname "$0")/agent_share.py" "$ROOT" name 2>/dev/null | head -n 1 || true)
+    append "$IDEAS" "$3 | $NOW | by ${by:-$WHO}"
     echo "idea added";;
   idea:list)
-    [ -s "$IDEAS" ] && cat -n "$IDEAS" || echo "(empty)";;
+    if [ -s "$IDEAS" ]; then
+      awk '{ tag = ""
+             if (match($0, / \| by [^|]+( \| kept [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])?$/)) {
+               x = substr($0, RSTART); sub(/^ \| by /, "", x); sub(/ \| kept [0-9-]+$/, "", x); sub(/[ \t]+$/, "", x)
+               if (x !~ /^(main|task-manager|task_manager|manager|worker|deputy|helper|fast-lane-deputy|merge-deputy|interior-designer)$/) tag = "[" x "] "
+             }
+             printf "%6d\t%s%s\n", NR, tag, $0 }' "$IDEAS"
+    else echo "(empty)"; fi;;
   idea:rm)
     need 3 "$@"; n="$3"
     case "$n" in ''|*[!0-9]*) echo "no idea number $n" >&2; exit 1;; esac
@@ -1591,6 +1746,8 @@ case "${1:-}:${2:-}" in
     repos_list;;
   estimate-runner:*)
     est_runner;;
+  estimate-queue:*)
+    est_after_done; exit 0;;
   estimate:*|backtest:*|retrain:*)
     cmd="$1"; shift
     if [ "$cmd" = retrain ] && stale_skip; then exit 0; fi

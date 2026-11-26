@@ -128,9 +128,9 @@ class TestParkOldForm(QCase):
         out = self.af("park", "add", "which DB for reports?").stdout
         self.assertEqual(out.splitlines()[0], "parked: which DB for reports?")
         self.assertEqual(out.splitlines()[1], "id: " + pid("project", "which DB for reports?", NOW))
-        self.assertEqual(self.state_text(), "PARKED: which DB for reports? | project | since %s\n" % NOW)
+        self.assertEqual(self.state_text(), "PARKED: which DB for reports? | project | since %s | by t\n" % NOW)
         self.af("park", "add", "keep the old API?", "alpha")
-        self.assertIn("PARKED: keep the old API? | alpha | since %s\n" % NOW, self.state_text())
+        self.assertIn("PARKED: keep the old API? | alpha | since %s | by t\n" % NOW, self.state_text())
 
     def test_an_old_line_is_a_question_with_no_fields(self):
         self.state("PARKED: 城市要不要做夜景模式？ | city-polish | since 2026-10-28 10:15")
@@ -153,7 +153,7 @@ class TestParkNewForm(QCase):
                          "PARKED: merge both PRs? | beta | since %s | sub 2 PRs · both green"
                          " | fact 为什么现在: 两个都过了浏览器检查 | fact 依据: #305 #306 绿"
                          " | fact 现在: 都在等合并 | option A: 两个都合并 | option B: 只合并 #305"
-                         " | option C: 都不合并 | rec A\n" % NOW)
+                         " | option C: 都不合并 | rec A | by t\n" % NOW)
         q = self.qjson()["questions"][0]
         self.assertEqual(q["title"], "merge both PRs?")
         self.assertEqual(q["sub"], "2 PRs · both green")
@@ -171,7 +171,7 @@ class TestParkNewForm(QCase):
 
     def test_rec_by_option_text_and_the_task_left_out(self):
         self.af("park", "add", "poll every?", "--options", "30 s|60 s", "--rec", "60 S")
-        self.assertTrue(self.state_text().rstrip("\n").endswith(" | option A: 30 s | option B: 60 s | rec B"),
+        self.assertTrue(self.state_text().rstrip("\n").endswith(" | option A: 30 s | option B: 60 s | rec B | by t"),
                         self.state_text())
         q = self.qjson()["questions"][0]
         self.assertEqual(q["task"], "project")
@@ -179,7 +179,7 @@ class TestParkNewForm(QCase):
 
     def test_rec_without_options_is_a_fact(self):
         self.af("park", "add", "6 digits or 8?", "join", "--rec", "6 digits")
-        self.assertIn(" | fact 建议: 6 digits\n", self.state_text())
+        self.assertIn(" | fact 建议: 6 digits | by t\n", self.state_text())
         q = self.qjson()["questions"][0]
         self.assertEqual((q["facts"], q["options"]), ([["建议", "6 digits"]], []))
 
@@ -222,7 +222,7 @@ class TestParkRmId(QCase):
         out = self.af("park", "rm", "--id", pid("alpha", "second?", "2026-11-04 11:00")).stdout
         self.assertTrue(out.startswith("parked 2 removed: second?"), out)
         self.assertEqual(self.state_text(), "Brief: you are the task manager.\nSTEP 3 done.\n"
-                         "PARKED: first? | alpha | since 2026-11-04 10:00\n")
+                         "PARKED: first? | alpha | since 2026-11-04 10:00 | by t\n")
         self.af("park", "rm", "1")
         self.assertEqual(self.state_text(), "Brief: you are the task manager.\nSTEP 3 done.\n")
 
@@ -355,7 +355,7 @@ class TestSources(_TestSourcesFixture, SourcesCase):
         six = lines[lines.index(heads[5]):]
         self.assertEqual(six[:7], [
             "6. [%s] beta · parked · since %s" % (pid("beta", "merge both PRs?", NOW), NOW),
-            "   merge both PRs?",
+            "   merge both PRs? [t]",   # agent-files: the author's git name
             "   为什么现在: 两个都过了浏览器检查",
             "   依据: #305 #306 绿",
             "   A. 两个都合并 (建议)",
@@ -391,7 +391,7 @@ class TestSourcesWrites(_TestSourcesFixture, SourcesCase):
     def test_a_sub_line(self):
         self.af("park", "add", "with a sub?", "omega", "--sub", "2 repos")
         out = self.qtext()
-        at = out.splitlines().index("   with a sub?")
+        at = out.splitlines().index("   with a sub? [t]")
         self.assertEqual(out.splitlines()[at + 1], "   — 2 repos")
 
 

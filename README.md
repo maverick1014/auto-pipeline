@@ -68,4 +68,7 @@ You can also just type a keyword instead of the command (case does not matter):
 
 Settings change only in /plugin -> Installed -> auto-pipeline -> Configure. `/auto-pipeline:settings` shows them and never changes them.
 
+The task files (`agent_todo.txt`, `agent_ideas.txt`, ...) are local by default: git-ignored, never committed; the finished records go to the data branch `ap-data`.
+To share the ideas and the todo with your team: the Configure settings "Team: Task files in git", "Who may take a task" and "Data branch", or `agent-file.sh files set task_files ideas,todo` (an older repo first runs `agent-file.sh files move`).
+
 Built by Maverick.

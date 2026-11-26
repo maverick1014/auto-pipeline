@@ -48,7 +48,7 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 - Builders never verify their own work: they ship a click path, someone who did not build it drives the UI (W5)
 - Never fail silently: blocked, ambiguous, refused or broken is said at once (E2)
 - `agent_*.txt` are written only through `bin/agent-file.sh` (R5)
-- Never `git reset --hard` in the main checkout: it wipes the uncommitted agent_*.txt (W8)
+- Never `git reset --hard` in the main checkout: it wipes uncommitted work, and the agent_*.txt of a repo not moved yet (W8)
 - Mechanical work (settings, file lines, cleanup) → a script, never an agent (S9)
 
 ## S8. Memory is the file
