@@ -312,8 +312,8 @@ class TestPrinciplesW13CloseCase(unittest.TestCase):
 
     def test_the_quiz_still_has_twenty_nine_questions(self):
         text = read("bin", "agent-start.sh")
-        # test-levels (2026-11-20): Q38 and Q39 (R8)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 39)
+        # test-levels (2026-11-20): Q38 and Q39 (R8); approval-design: Q40-Q44
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 44)
 
 
 class TestCloseCaseSkill(unittest.TestCase):
@@ -1092,10 +1092,12 @@ class TestPrinciplesW12OwnerRelay(unittest.TestCase):
 
     def test_g1_still_ask_line(self):
         line = self.one("verified owner words")
-        for words in ("name the action", "final yes", "production included",
-                      "do not name that action"):
+        # approval-design (section 53 E): he is read by the approval cases of R8, not by words that name the action
+        for words in ("approval cases", "final yes", "production included", "one question"):
             with self.subTest(words=words):
                 self.assertIn(words, line)
+        self.assertNotIn("name the action", line)
+        self.assertNotIn("name that action", line)
 
     def test_g1_floor_still_applies(self):
         self.assertIn("floor", self.w12.lower())
@@ -1598,7 +1600,8 @@ class TestPrinciplesR8(unittest.TestCase):
                  "STATE LONG", "OWNER TODO", "QUESTIONS PAGE", "OWNER ORDER", "REPO TASK",   # report words
                  "GATE PASS", "GATE REFUSED", "CHECK PASS", "CHECK FAIL", "MERGE PASS", "MERGE FAIL",
                  "WATCH SIGNAL", "WATCH STALL", "WATCH LOST", "WATCH ROOM", "AUTO CLEAR",
-                 "MODE MISMATCH"}                                               # mode-match, W16
+                 "MODE MISMATCH",                                               # mode-match, W16
+                 "OWNER WORDS"}                                                 # approval-design: the gate's stored pair lines
         unknown = sorted(n for n in found if n not in NAMES and n not in extra)
         self.assertEqual(unknown, [], "names in PRINCIPLES.md that are no block: %s" % unknown)
 
