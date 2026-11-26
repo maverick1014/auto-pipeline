@@ -217,8 +217,8 @@ class TestDAHangingRemoteCostsOneTimeout(FilesCase):
         # (the network is skipped), whatever the time each took
         began = time.time()
         r1 = self.af("idea", "add", "first", env={"AGENT_SHARE_TIMEOUT": "1"})
-        # the timeout cut the call: the remote hangs 60 s, a run that waited it out would take 60 s or more
-        self.assertLess(time.time() - began, 30, r1.stdout + r1.stderr)
+        # the 1 s timeout cut the call: under 10 s, below the 15 s default (share_net_timeout_s) and the 60 s hang
+        self.assertLess(time.time() - began, 10, r1.stdout + r1.stderr)
         self.assertEqual(len(self.hang_calls()), 1, "one call, one timeout: %s %s" % (r1.stdout, r1.stderr))
         self.assertTrue(os.path.exists(os.path.join(git_dir(self.dir), "agent_share_offline")))
         r2 = self.af("idea", "add", "second", env={"AGENT_SHARE_TIMEOUT": "1"})

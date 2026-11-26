@@ -283,11 +283,12 @@ Both runs measured per test inside the normal run (a wrapper around run2.py's ru
 
 - Ids: `bin/agent_test_audit.py --before <ids at ea020e2> --after <ids here>`: 5373 -> 5380, kept 5359, moved 14 (11 two_roots and 3 init tests into reader/writer classes, names unchanged), removed with twin 0, AUDIT PASS (also against the ids at 2aae0b3).
 - Loader counts: 5422 -> 5429; +2 test_agent_release, +5 test_run2, every other file the same count.
-- Assertions (AST of every assert call, per test method, against the merged base): 20 of 24 changed files identical. The four others:
+- Assertions (AST of every assert call, per test method, against the merged base): 19 of 24 changed files identical. The five others:
 
 | File::test | Before | After | Why |
 |---|---|---|---|
-| test_agent_files_fix1::TestDAHangingRemoteCostsOneTimeout.test_one_timeout_then_the_network_is_skipped | first command < 5 s, second < 2 s (red at 5.17 s under load) | the hanging remote is called exactly once by the first command and not by the second; the first ends in < 30 s against a 60 s hang (timeout 1 s) | fragile test: same facts, not machine speed |
+| test_agent_files_fix1::TestDAHangingRemoteCostsOneTimeout.test_one_timeout_then_the_network_is_skipped | first command < 5 s, second < 2 s (red at 5.17 s under load) | the hanging remote is called exactly once by the first command and not by the second; the first ends in < 10 s at a 1 s timeout (below the 15 s default and the 60 s hang) | fragile test: same facts, not machine speed |
+| test_agent_cleanup::TestUnreachable.test_a_hang_never_hangs_the_sweep | elapsed < 20 s at a 3 s cut-off | elapsed < 7 s at a 1 s cut-off | the bound scales with the cut-off (about 6 cut calls either way): see the table below |
 | test_agent_level::TestKinds.test_rule_files, test_ci_and_test_config; TestTypesPerPart.test_a_component_file_is_b | one project and one check per path | one project and one check for all paths, each path's own FILE line asserted (same expected kind), plus "path is listed" | batching, as ShapeCase in test-slim-2 |
 | test_agent_release (2 new) | - | TestBehindTheLiveRelease | fragile test, below |
 | test_run2 (5 new) | - | TestDirectTools, TestClassSeconds | the two runner levers |
@@ -297,11 +298,30 @@ Both runs measured per test inside the normal run (a wrapper around run2.py's ru
 - test_agent_release::TestRealRepo.test_dry_run_on_this_repo read the live origin/release: a release made during the run (or after the branch was cut) made a lower version red. Now (real_repo_verdict) a release tip built from a commit HEAD does not contain allows a lower version; one built from a commit HEAD contains is still red (2 fixture tests).
 - test_agent_files_fix1 (above).
 
+### Changed set-ups, waits and bounds (assert calls unchanged)
+
+| File::test or class | Before | After | Why it still proves the same |
+|---|---|---|---|
+| test_agent_cleanup::TestUnreachable.test_a_hang_never_hangs_the_sweep | AGENT_CLEANUP_TIMEOUT 3 s, elapsed < 20 s | 1 s, elapsed < 7 s | the bound scales with the cut-off: about 6 cut calls either way (one call measured: 1.3 s) |
+| test_agent_city_server::TestGovWatch.test_server_gone | watcher max wait 20 s | 3 s | it asserts exit 0 only: a watcher whose server is gone retries until its max wait, then ends |
+| test_agent_city_server::TestBudget.test_log_is_rotated_and_no_line_is_lost | sleep 0.15 s x 10 between batches | poll until the client has seen each batch | the same batches in the same order; no line may be lost either way |
+| test_agent_city_server (several) | sleeps waiting for a state (governors, terminal lines) | polls with the old sleep as deadline | the state is asserted as before; the waits that prove nothing happens stay |
+| test_agent_autoclear::TestWaiter | the fake 30 s pause 0.3 s | 0.05 s | test_it_pauses_after_each_typed_text keeps 3 x 1 s with >= 2.0 |
+| test_agent_autoclear (waiter classes) | fake pause 1 s; 'nothing happens' waits 3 s / 2 s; 'ready took >= 2 s' holds 3 s | 0.3 s; 1.5 s; 2.2 s | the waits cover at least as many waiter rounds as before (2.5 vs 2.3 and 1.5); whole-second SECONDS still sees 2 |
+| test_agent_housekeep (in-process tests) | the real agent-nightly.sh after --apply | a stub that answers 'not due' (exit 1) | the real one also answers 'not due' in these fixtures; no housekeep test is about the nightly; @real_shell tests keep the real one |
+| test_agent_file, test_agent_board, test_agent_statusline, test_agent_estimate (own classes), test_agent_resume | todo done / resume with the cleanup sweep and the detached estimate runner | AGENT_CLEANUP_DONE=1 and the runner's lock held by the test | none of these tests is about them; the wiring is tested in test_agent_cleanup (TestTodoDoneWiring, TestResumeWiring) and the runner in test_agent_estimate_learn and test_agent_files_fix1 |
+| test_agent_files_fix3::RestoreCase | time.sleep(1.1) before a new saved copy | the existing copies and the todo made 2 s older (os.utime) | the order is by mtime (ns), names get a -n suffix on a clash |
+| test_agent_file replay | - | an identical verb run on an identical state (project files, refs, .git/agent_* state files, arguments, env, fake clock) is replayed after the first real one | the same output, exit code and written files; a run that changed a ref is never replayed |
+
 ### Found and fixed on the way
 
 - The first AFTER run: slice 12's EstimateCase speed-ups reached subclasses in test_agent_estimate_learn (4 tests waited 120 s for a background runner whose lock the test held) and test_agent_version (the stale-retrain guard skipped in-process): the speed-ups now apply to the file's own classes only. Every other changed base class was checked against its users in other files.
 - Taken back from worker changes: threads inside a test (the runner's CPU cap), a lock hold cut from 4 s to 3.6 s against a >= 3.0 s assertion, a plugin folder linked to the per-minute template (can dangle), one production-path refusal moved off the real agent-promote.sh, a `sleep 3000` lock holder (now ends with its test process).
 - The CLT python had written the bytecode of every temp project under ~/Library/Caches/com.apple.python (about 130,000 folders, 5.8 GB on pc2); test runs no longer add to it. The folder itself was not touched.
+
+### Accepted: fast paths for the core scripts (main manager, FIX ORDER 1, TELL e425dcb8)
+
+In-process calls, replays of identical runs and shared start runs are accepted for the core scripts, on one floor: for every verb, every flag and every exit code at least one test keeps the real command line (the REAL_SHELL / @real_shell / @real_command_line sets of each file). The PR REVIEW checked every fast path against the real command line in an instrumented run, and the files in reversed, shuffled and alone orders. A fast path that a base class gives its subclasses applies to the classes of its own file only.
 
 ### Left, and why
 

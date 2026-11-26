@@ -1136,9 +1136,10 @@ class TestUnreachable(RemoteCase):
     def test_a_hang_never_hangs_the_sweep(self):
         self.repo.set_orca_env_state(self.ENV, "hang")
         started = time.time()
-        # test-slim-3: a 1 s cut-off per orca call (test env: 3) against the stub's 60 s hang
+        # test-slim-3: a 1 s cut-off per orca call (test env: 3) against the stub's 60 s hang; the bound scales
+        # with it (was 20 s at 3 s: about 6 cut calls; now 7 s at 1 s: still about 6)
         out = self.ok("--apply", timeout=40, env={"AGENT_CLEANUP_TIMEOUT": "1"})
-        self.assertLess(time.time() - started, 20)
+        self.assertLess(time.time() - started, 7)
         self.assertIn("%s unreachable, not checked" % self.ENV,
                       self.lines(out))
 

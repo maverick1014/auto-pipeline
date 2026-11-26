@@ -50,7 +50,23 @@ class PromoteCase(ScriptCase):
         if (key in PROMOTE_REAL or kw.get("env") or set(kw) - {"env", "cwd"}
                 or os.path.exists(os.path.join(self.repo.dir, "bin", "agent-release.sh"))):
             return self.repo.run("agent-promote.sh", *args, **kw)
-        return self.repo.run_py("agent_promote", *args, **kw)
+        return self.promote_in_process(args, kw)
+
+    def promote_in_process(self, args, kw):
+        """agent_promote.main with this repo's own plugin modules: what it imports (agent_conf, agent_nightly,
+        agent_state, agent_checks) is loaded from this test's plugin copy, never from another test's folder,
+        and the process's modules and sys.path are put back afterwards (as the watch tests do)."""
+        mine = lambda k: k.startswith("agent_") and "__inproc_" not in k
+        saved = {k: sys.modules.pop(k) for k in [k for k in sys.modules if mine(k)]}
+        before_path = list(sys.path)
+        sys.path.insert(0, self.repo.plugin_bin)
+        try:
+            return self.repo.run_py("agent_promote", *args, **kw)
+        finally:
+            sys.path[:] = before_path
+            for k in [k for k in sys.modules if mine(k)]:
+                sys.modules.pop(k, None)
+            sys.modules.update(saved)
 
     # test-slim: check and checks gate/gather are Python (agent_checks.py): run in this process with the roots
     # and clock agent-file.sh hands over; the tests named in REAL_SHELL keep the real command line.

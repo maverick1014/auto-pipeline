@@ -272,9 +272,6 @@ class TestClassSeconds(unittest.TestCase):
         timings = load_run2().read_timings(out_file)
         self.assertEqual(sorted(timings), sorted(rows))
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestDirectTools(unittest.TestCase):
     """test-slim-3 (tests/fasttools.py): on macOS the test run finds git and python3
@@ -324,3 +321,6 @@ class TestDirectTools(unittest.TestCase):
                         "print(json.dumps([direct_tools(), os.environ.get('AGENT_TEST_TOOLS'),"
                         " os.environ.get('PYTHONPYCACHEPREFIX')]))")
         self.assertEqual(__import__("json").loads(out), [None, None, None])
+
+if __name__ == "__main__":
+    unittest.main()

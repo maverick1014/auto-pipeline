@@ -71,6 +71,9 @@ class FilesCase(ScriptCase):
         r = self.repo
         self.origin = os.path.join(r.base, "origin.git")
         self.gitdir = os.path.join(r.dir, ".git")
+        # the runtime setting lives in this test's own config dir (<base>/no-claude-config), outside the copy below:
+        # set it on both paths
+        r.set_conf("runtime", "plain")
         # test-slim-3: the project below is built once a minute per process; a test gets a copy (the remote
         # URL is the one absolute path in it: set again)
         snap = _FILES_SNAP["dir"]
@@ -83,7 +86,6 @@ class FilesCase(ScriptCase):
             shutil.copytree(os.path.join(snap, "origin.git"), self.origin, symlinks=True)
             git(r.dir, "remote", "set-url", "origin", self.origin)
             return
-        r.set_conf("runtime", "plain")
         subprocess.run(["git", "init", "-q", "--bare", self.origin],
                        check=True, capture_output=True)
         git(r.dir, "add", "-A")

@@ -46,16 +46,19 @@ def quiet_done(repo):
 # test-slim-3: a run of one of these verbs on a project that looks exactly like one an earlier test had (same files,
 # same refs, same arguments, same fake clock) gives the same output and writes the same files. The process runs
 # it once and replays the rest: the same stdout, stderr and exit code, the same files written. Only verbs that
-# read the files of the project and the fake clock, nothing from git but its refs.
+# read the files of the project and the fake clock, and from git only its refs and its agent_* state files
+# (.git/agent_task_blocks.json of todo add --checks, .git/agent_owner_words.json of --owner-quote, ...): those are
+# part of the state compared and of the writes replayed.
 REPLAY_VERBS = (("backfill",), ("todo", "add"), ("todo", "stage"), ("todo", "wait"), ("idea", "keep"))
 _REPLAY = {}
 _TOKEN = b"\0BASE\0"
 
 
 def _project_state(base):
-    """(files, git) of one test folder: every file outside plugin/, stubbin/, .git/ and the *.log files, by
-    relative path, content with the folder name replaced; git: HEAD, packed-refs and the ref files, with a
-    mark when a worktree, a kept copy or a hook-made folder is there (then nothing is replayed)."""
+    """(files, git) of one test folder: every file outside plugin/, stubbin/, .git/ and the *.log files, plus
+    the agent_* files at the top of each .git (state the scripts keep there), by relative path, content with the
+    folder name replaced; git: HEAD, packed-refs and the ref files, with a mark when a worktree, a kept copy or a
+    hook-made folder is there (then nothing is replayed)."""
     files, git = {}, {}
     here = base.encode()
     for folder, dirs, names in os.walk(base):
@@ -72,6 +75,11 @@ def _project_state(base):
                     full = os.path.join(sub, ref)
                     with open(full, "rb") as fh:
                         git[os.path.relpath(full, base)] = fh.read()
+            for name in sorted(os.listdir(top)):
+                full = os.path.join(top, name)
+                if name.startswith("agent_") and os.path.isfile(full):
+                    with open(full, "rb") as fh:
+                        files[os.path.join(rel, ".git", name)] = fh.read().replace(here, _TOKEN)
             for odd in ("worktrees", "agent-files-kept"):
                 if os.path.exists(os.path.join(top, odd)):
                     git[os.path.join(rel, ".git", odd)] = b"odd"
