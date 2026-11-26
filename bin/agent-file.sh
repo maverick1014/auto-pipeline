@@ -32,6 +32,7 @@
 #   agent-file.sh todo take <task>                            -> shared todo, task_take=anyone: " | taken <me>", pushed at once; refused when another took it
 #   agent-file.sh files sync                                  -> fetch origin ap-data, merge it into the files in git, commit, push (agent_share.py)
 #   agent-file.sh files move                                  -> main checkout only: every tracked agent file leaves the code branch (copy kept in <git dir>/agent-files-kept), ignore lines written, the files in git go onto ap-data; second run changes nothing
+#   agent-file.sh files restore <file> [<saved name> | --list]  -> a saved copy (default the newest) becomes the working copy; the current one is saved first (undo: restore it by name); --list shows the saved copies, newest first; none is ever deleted
 #   agent-file.sh files set <task_files|task_take|task_place|data_branch> <value>   -> the fact in agent_repo.conf (one code-branch commit of that file); task_files then runs files move (and writes the missing task_files, task_take, data_branch values); data_branch on a branch that holds code (e.g. main) needs an origin (else refused, one line); its files live under .ap-data/ and are pushed on top of the remote tip, no local ref or checkout moves; on the production branch one line says a commit there can start a deploy
 #
 # Files in git (place data, the default): agent_completed.txt and agent_estimate.txt always, agent_ideas.txt and agent_todo.txt when

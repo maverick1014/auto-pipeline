@@ -33,6 +33,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -482,35 +483,76 @@ def keep(root, *names):
         pass
 
 
-def cmd_restore(root, name):
-    """The newest saved copy of NAME (by mtime) becomes the working copy and the kept copy; committed like a write."""
+def saved_copies(root, name):
+    """The saved copies of NAME as (mtime, file name, path), newest first."""
+    out = []
+    try:
+        for n in os.listdir(kept_dir(root)):
+            p = os.path.join(kept_dir(root), n)
+            if n.startswith(name + ".before-") and os.path.isfile(p):
+                out.append((os.path.getmtime(p), n, p))
+    except OSError:
+        pass
+    return sorted(out, reverse=True)
+
+
+def cmd_restore(root, name, arg=None):
+    """A saved copy of NAME (the newest by default, or the one named, or --list) becomes the working copy and the
+    kept copy; the current working copy is saved first as a new saved copy (never swept); committed like a write."""
     if name not in AGENT_FILES:
         sys.stderr.write("files restore: %s is not one of the agent files\n" % name)
         return 1
     if not moved(root):
         sys.stderr.write("files restore: this repo is not moved, there are no kept copies\n")
         return 1
-    saved = []
-    try:
-        for n in os.listdir(kept_dir(root)):
-            if n.startswith(name + ".before-"):
-                p = os.path.join(kept_dir(root), n)
-                saved.append((os.path.getmtime(p), n, p))
-    except OSError:
-        pass
-    if not saved:
+    saved = saved_copies(root, name)
+    if arg == "--list":
+        for _, n, p in saved:
+            try:
+                with open(p, "rb") as f:
+                    lines = len(f.read().splitlines())
+            except OSError:
+                lines = 0
+            say("%s %d lines" % (n, lines))
+        return 0
+    if arg is not None:
+        base = os.path.basename(arg)
+        if os.path.dirname(arg) and os.path.realpath(os.path.dirname(arg)) != os.path.realpath(kept_dir(root)):
+            base = ""
+        hit = [x for x in saved if x[1] == base]
+        if not hit:
+            sys.stderr.write("files restore: no saved copy %s of %s\n" % (arg, name))
+            return 1
+        path = hit[0][2]
+    elif saved:
+        path = saved[0][2]
+    else:
         sys.stderr.write("files restore: no saved copy of %s\n" % name)
         return 1
-    path = sorted(saved)[-1][2]
+    work = os.path.join(root, name)
+    new = None
     try:
+        if os.path.isfile(work):
+            os.makedirs(kept_dir(root), exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            new = os.path.join(kept_dir(root), "%s.before-%s" % (name, stamp))
+            i = 0
+            while os.path.exists(new):
+                i += 1
+                new = os.path.join(kept_dir(root), "%s.before-%s-%d" % (name, stamp, i))
+            shutil.copy2(work, new)
         tmp = os.path.join(root, "%s.tmp.%d" % (name, os.getpid()))
         shutil.copyfile(path, tmp)
-        os.replace(tmp, os.path.join(root, name))
+        os.replace(tmp, work)
     except OSError as e:
         sys.stderr.write("files restore: %s\n" % e)
         return 1
     keep(root, name)
-    say("restored %s from %s" % (name, path))
+    if new:
+        say("restored %s from %s; the copy before it is saved as %s (undo: agent-file.sh files restore %s %s)"
+            % (name, path, new, name, os.path.basename(new)))
+    else:
+        say("restored %s from %s; there was no working copy, nothing saved" % (name, path))
     try:
         commit(root, "files restore " + name)
     except Exception:
@@ -1457,7 +1499,7 @@ def main(argv):
     if cmd == "move":
         return move(root)
     if cmd == "restore":
-        return cmd_restore(root, rest[0]) if len(rest) == 1 else 2
+        return cmd_restore(root, rest[0], rest[1] if len(rest) == 2 else None) if len(rest) in (1, 2) else 2
     if cmd == "may-work":
         return cmd_may_work(root, rest[0]) if rest else 2
     if cmd == "pull":
