@@ -954,7 +954,7 @@ const k = __payload.k;
 const at = (f, i) => { const move = f < 8 ? 0 : (f - 7) * 10; return [[200, 212, 188][i] + move, 300]; };
 let last = null; const trace = [];
 for (let f = 0; f < 20; f++) {
-  const items = base.map((o, i) => { const h = at(f, i), it = Object.assign({}, o, { x: h[0], y: h[1], pri: i === k && f >= 3 ? 2 : 0 });
+  const items = base.map((o, i) => { const h = at(f, i), it = Object.assign({}, o, { x: h[0], y: h[1], pri: i === k && f >= 3 ? 2 : 0, keep: i === k && f >= 3 });
     if (last && last.modes[i] !== 'none') Object.assign(it, { px: last.items[i].x, py: last.items[i].y, hx0: last.heads[i][0], hy0: last.heads[i][1] });
     return it; });
   const heads = items.map(o => [o.x, o.y]);
@@ -976,6 +976,86 @@ __out = trace;
                 moved = out[f]["spot"][0] - out[f - 1]["spot"][0]
                 self.assertAlmostEqual(moved, out[f]["head"][0] - out[f - 1]["head"][0], delta=1.0,
                                        msg="frame %d follows its head: %s" % (f, out[f]))
+
+
+RUN_JS = r"""
+// frame by frame as syncFigs feeds it (the reviewer's probes p7 / p7b): every plate shown last frame carries px, py, hx0,
+// hy0; no keep flag (the pointer rests on no plate); blocks and pri per frame
+const hit = (a, b) => Math.min(a[2], b[2]) - Math.max(a[0], b[0]) > .01 && Math.min(a[3], b[3]) - Math.max(a[1], b[1]) > .01;
+function run(n, people, opts){
+  let last = null; const tr = [];
+  for (let f = 0; f < n; f++) {
+    const items = people.map((p, i) => { const h = p.head(f), it = { x: h[0], y: h[1], w: p.w || 160, wChip: 40, h: 22, pri: p.pri(f) };
+      if (last && last.modes[i] !== 'none') Object.assign(it, { px: last.items[i].x, py: last.items[i].y, hx0: last.heads[i][0], hy0: last.heads[i][1] });
+      return it; });
+    const heads = items.map(o => [o.x, o.y]), o = opts(f), modes = plateLayout(items, o);
+    let onPanel = 0, off = 0;
+    items.forEach((it, i) => { if (modes[i] === 'none') return; const w = modes[i] === 'full' ? it.w : it.wChip, b = [it.x - w / 2, it.y - it.h, it.x + w / 2, it.y];
+      for (const q of o.blocks) if (hit(b, q)) onPanel++;
+      if (b[0] < o.bounds.l - .01 || b[1] < o.bounds.t - .01 || b[2] > o.bounds.r + .01 || b[3] > o.bounds.b + .01) off++; });
+    last = { items, modes, heads };
+    tr.push({ heads, spots: items.map(o => [o.x, o.y]), modes, onPanel, off });
+  }
+  return tr;
+}
+const ease = (a, b, f, k) => a + (b - a) * (1 - Math.pow(1 - k, Math.max(0, f)));
+"""
+
+
+class TestPlateBackOverItsHead(unittest.TestCase):
+    """Fix round 6 (PR REVIEW pass 6; the main manager's rule that ends this loop): every frame a selected or hovered plate
+    starts from its HEAD and moves the least way only if that spot is out of bounds, on a panel or on the other pri >= 2
+    plate. The one exception: the hovered person while the pointer rests on its own plate (keep) keeps its spot moved by
+    its head's motion. So a plate pushed aside comes back over its head as soon as the head is clear (the probes A-E)."""
+
+    def scenes(self):
+        k = sim(r"""
+const items = [200, 212, 188].map(x => ({ x, y: 300, w: 160, wChip: 40, h: 22, pri: 0 }));
+const m = plateLayout(items, { bounds: { l: 4, t: 4, r: 1436, b: 709 }, blocks: [] });
+__out = [0, 1, 2].filter(i => m[i] === 'chip' && Math.abs(items[i].x - [200, 212, 188][i]) + Math.abs(items[i].y - 300) > .5)[0];
+""", {}, required=("plateLayout",))
+        return sim(RUN_JS + r"""
+const out = {}, B = { l: 4, t: 4, r: 354, b: 710 }, sheet = [8, 319, 350, 706], BIG = { l: 4, t: 4, r: 1436, b: 709 };
+const end = tr => { const L = tr[tr.length - 1]; return { head: L.heads, plate: L.spots, modes: L.modes, onPanel: tr.filter(t => t.onPanel).length, off: tr.filter(t => t.off).length }; };
+{ const k = 1 - Math.exp(-6 / 60);   // A. phone: selected low, the sheet opens, the camera brings the head up to y 165
+  out.A = end(run(123, [{ head: f => [180, f < 3 ? 520 : ease(520, 165, f - 3, k)], pri: f => f < 3 ? 1 : 3, w: 200 }], f => ({ bounds: B, blocks: f < 3 ? [] : [sheet] }))); }
+{ const k = __payload.k;   // B. a selection that starts from a nudged chip, then walks 100 px
+  out.B = end(run(60, [0, 1, 2].map(i => ({ head: f => [[200, 212, 188][i] + (f >= 10 ? (f - 10) * 2 : 0), 300], pri: f => (f >= 3 && i === k) ? 3 : 0 })), f => ({ bounds: BIG, blocks: [] })));
+  out.B.k = k; }
+// C. selected 0 and hovered 1 side by side; the selection ends at frame 10; 1 stays hovered (pointer not on its plate) and walks
+out.C = end(run(80, [{ head: f => [300, 300], pri: f => f < 10 ? 3 : 1 }, { head: f => [330 + (f >= 20 ? (f - 20) : 0), 305], pri: f => 2 }], f => ({ bounds: BIG, blocks: [] })));
+{ const sign = [42, 12, 268, 54];   // D. a selected plate under the floor sign walks up-left into its corner and off the left edge
+  out.D = end(run(150, [{ head: f => [200 - f * 1.5, 60 - f * 0.3], pri: f => 3 }], f => ({ bounds: B, blocks: [sign] }))); }
+{ const k = 1 - Math.exp(-6 / 60), win = [1000, 60, 1430, 700];   // E. desktop: selected on the right, the window opens, the head eases to x 520
+  out.E = end(run(123, [{ head: f => [f < 3 ? 1200 : ease(1200, 520, f - 3, k), 400], pri: f => f < 3 ? 1 : 3, w: 200 }], f => ({ bounds: BIG, blocks: f < 3 ? [] : [win] }))); }
+__out = out;
+""", {"k": k}, required=("plateLayout",))
+
+    @classmethod
+    def setUpClass(cls):
+        cls.out = cls.scenes(cls)
+
+    def assert_over(self, scene, i=0):
+        r = self.out[scene]
+        h, p = r["head"][i], r["plate"][i]
+        self.assertLess(abs(h[0] - p[0]) + abs(h[1] - p[1]), 1.0, "%s: plate %s, head %s" % (scene, p, h))
+
+    def test_A_phone_sheet(self):
+        self.assert_over("A")
+        self.assertEqual((self.out["A"]["onPanel"], self.out["A"]["off"]), (0, 0))
+
+    def test_E_desktop_window(self):
+        self.assert_over("E")
+        self.assertEqual((self.out["E"]["onPanel"], self.out["E"]["off"]), (0, 0))
+
+    def test_B_selection_from_a_nudged_chip(self):
+        self.assert_over("B", self.out["B"]["k"])
+
+    def test_C_hovered_after_the_selection_ends(self):
+        self.assert_over("C", 1)
+
+    def test_D_never_on_a_panel_or_off_screen(self):
+        self.assertEqual((self.out["D"]["onPanel"], self.out["D"]["off"]), (0, 0))
 
 
 class TestPlateGap(unittest.TestCase):
@@ -1009,7 +1089,8 @@ class TestPlateGap(unittest.TestCase):
 
 
 class TestHoveredChipKeepsItsSpot(unittest.TestCase):
-    """Fix round 3, item 3 (PR REVIEW pass 3): a chip nudged aside or a row up jumped back over its head when hovered, out
+    """Fix round 6: only an item with keep (the hovered person while the pointer rests on its own plate) uses px, py.
+    Fix round 3, item 3 (PR REVIEW pass 3): a chip nudged aside or a row up jumped back over its head when hovered, out
     from under a still pointer, so the hover ended at once (flicker). An item may carry px, py: where its plate was laid
     out last frame, and hx0, hy0: where its head was then (fix round 4); a pri >= 2 item starts from px, py while its head
     has moved less than 1 px since, so its full plate covers the spot it was hovered in; else from its head."""
@@ -1030,6 +1111,7 @@ class TestHoveredChipKeepsItsSpot(unittest.TestCase):
         again[k]["pri"] = 2
         again[k]["px"], again[k]["py"] = first["items"][k]["x"], first["items"][k]["y"]
         again[k]["hx0"], again[k]["hy0"] = items[k]["x"], items[k]["y"]   # its head then: it has not moved since
+        again[k]["keep"] = True   # fix round 6: the pointer rests on its own plate (the one case that keeps its spot)
         out = sim("const items = __payload.items; __out = { modes: plateLayout(items, __payload.opts), items };",
                   {"items": again, "opts": opts}, required=("plateLayout",))
         self.assertEqual(out["modes"][k], "full")
