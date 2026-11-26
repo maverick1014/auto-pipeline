@@ -544,6 +544,19 @@ class TestOneRunNeverSlower(TopUpCase):
         self.timed(10, 5, 15)
         self.assertEqual(self.start()["kind"], "top-up")
 
+    def test_c_the_probe_sees_the_test_folder_as_discovery_does(self):
+        # measured on this repo: tests/test_agent_cloud_pack.py imports scripthelp plainly; the probe said
+        # "could not be loaded" although discovery of the tests folder loads it
+        d = os.path.join(self.repo.base, "probe")
+        os.makedirs(os.path.join(d, "tests"))
+        for rel, body in (("tests/__init__.py", ""), ("tests/helpmod.py", "X = 1\n"),
+                          ("tests/test_h.py", "from helpmod import X\n" + PASSING),
+                          ("tests/test_e.py", "import sys\nsys.exit(0)\n" + PASSING)):
+            with open(os.path.join(d, rel), "w") as fh:
+                fh.write(body)
+        self.assertEqual(agent_nightly.probe(d, "tests/test_h.py"), "")
+        self.assertEqual(agent_nightly.probe(d, "tests/test_e.py"), "top-up: tests/test_e.py could not be loaded")
+
     def test_b_no_timing_file_is_a_top_up(self):
         self.full_green()
         self.commit({"tests/test_x.py": x_test("ok") + "# t\n"}, "test change")

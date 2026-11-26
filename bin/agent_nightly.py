@@ -1153,6 +1153,7 @@ import os, sys, unittest
 out = os.fdopen(os.dup(1), "w")
 path = sys.argv[1]
 sys.path.insert(0, os.getcwd())
+sys.path.insert(0, os.path.dirname(os.path.abspath(path)))   # as `unittest discover -s <its folder>` does
 def flat(suite):
     for t in suite:
         if isinstance(t, unittest.TestSuite):
