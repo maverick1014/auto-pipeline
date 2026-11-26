@@ -978,6 +978,7 @@ CONSTANTS = {
     "unused_pane_min": 30,  # check-blocks slice 8: the sweep closes a pane that never got a prompt, idle over it
     "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024,   # check-blocks section 15 (owner 1A)
     "verify_box_min": 15,   # check-blocks section 19/21: the run or browser check time box
+    "share_net_timeout_s": 15, "share_offline_min": 5,   # agent-files fix order 1 D: one network timeout, the offline marker
 }
 
 

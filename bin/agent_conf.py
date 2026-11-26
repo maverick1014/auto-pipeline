@@ -108,6 +108,7 @@ CONSTANTS = {
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
     "check_budget_s": 60, "unused_pane_min": 30,
     "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024, "verify_box_min": 15,
+    "share_net_timeout_s": 15, "share_offline_min": 5,
 }
 
 BY_KEY = {s["key"]: s for s in SETTINGS}

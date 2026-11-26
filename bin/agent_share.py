@@ -30,6 +30,7 @@ import datetime
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 
@@ -57,10 +58,14 @@ TEAM_KEYS = ("task_files", "task_take", "data_branch")
 
 
 def timeout_s():
-    try:
-        return max(1, int(os.environ.get("AGENT_SHARE_TIMEOUT", "40")))
-    except ValueError:
-        return 40
+    """The one network timeout: share_net_timeout_s; AGENT_SHARE_TIMEOUT overrides it only under AGENT_TESTING=1."""
+    value = agent_conf.CONSTANTS.get("share_net_timeout_s", 15)
+    if os.environ.get("AGENT_TESTING") == "1":
+        try:
+            value = int(os.environ.get("AGENT_SHARE_TIMEOUT", value))
+        except ValueError:
+            pass
+    return max(1, int(value))
 
 
 # ------------------------------------------------------------------ git
@@ -123,6 +128,93 @@ def run_bytes(root, *args, input=None, env=None):
     except (subprocess.TimeoutExpired, OSError):
         return None
     return r.stdout if r.returncode == 0 else None
+
+
+OFFLINE_FILE = "agent_share_offline"
+NO_ANSWER = ("could not read from remote", "unable to access", "could not resolve host", "connection refused",
+             "connection timed out", "network is unreachable", "does not appear to be a git repository",
+             "operation timed out")
+_NET = {"down": False, "said": False}
+
+
+def offline_path(root):
+    return os.path.join(common_dir(root), OFFLINE_FILE)
+
+
+def hhmm(epoch):
+    return datetime.datetime.fromtimestamp(epoch).strftime("%H:%M")
+
+
+def no_answer(r):
+    """True when the remote gave no answer (a timeout, or git could not reach it). A refusal is an answer."""
+    low = r.err.lower()
+    if r.rc == 124 or any(w in low for w in NO_ANSWER):
+        return True
+    return r.rc == 128 and "couldn't find remote ref" not in low
+
+
+def net(root, *args, env=None, mult=1):
+    """A network git call: its own process group (killed whole on the timeout), one timeout, and the offline rules:
+    no call after a no-answer in this command, none while the marker is younger than share_offline_min. The
+    result has .offline (no answer, or skipped for it)."""
+    skipped = Res(125, "", "network skipped")
+    skipped.offline = True
+    if _NET["down"]:
+        return skipped
+    marker = offline_path(root)
+    minutes = agent_conf.CONSTANTS.get("share_offline_min", 5)
+    try:
+        stamp_t = os.stat(marker).st_mtime
+    except OSError:
+        stamp_t = None
+    if stamp_t is not None and datetime.datetime.now().timestamp() - stamp_t < minutes * 60:
+        _NET["down"] = True
+        if not _NET["said"]:
+            _NET["said"] = True
+            say("ap-data: origin did not answer at %s; the network is skipped until %s, the commits wait"
+                % (hhmm(stamp_t), hhmm(stamp_t + minutes * 60)))
+        return skipped
+    limit = timeout_s() * mult
+    try:
+        p = subprocess.Popen(["git", "-C", root] + list(args), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, env=env or base_env(), start_new_session=True)
+    except OSError as exc:
+        r = Res(127, "", str(exc))
+        r.offline = False
+        return r
+    try:
+        out, err = p.communicate(timeout=limit)
+        r = Res(p.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace"))
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        try:
+            p.communicate(timeout=3)
+        except (subprocess.TimeoutExpired, OSError, ValueError):
+            pass
+        r = Res(124, "", "timed out")
+    r.offline = no_answer(r) if not r.ok else False
+    if r.offline:
+        _NET["down"] = True
+        why = "timed out after %ds" % limit if r.rc == 124 else (first_line(r.err) or "no answer")
+        try:
+            with open(marker, "w") as fh:
+                fh.write("%s\n" % hhmm(datetime.datetime.now().timestamp()))
+            os.utime(marker, None)
+        except OSError:
+            pass
+        if not _NET["said"]:
+            _NET["said"] = True
+            say("ap-data: no answer from origin (%s); the network is skipped for %d minutes, the commits wait"
+                % (why, minutes))
+    else:
+        try:
+            os.remove(marker)
+        except OSError:
+            pass
+    return r
 
 
 def first_line(text):
@@ -246,6 +338,7 @@ PENDING_NS = "refs/auto-pipeline/data-pending/"
 def reset_cache():
     _BRANCH.clear()
     _KIND.clear()
+    _MOVED.clear()
 
 
 def wanted_branch(root):
@@ -344,8 +437,49 @@ def in_git_files(root):
     return [n for n in AGENT_FILES if n in names]
 
 
+_MOVED = {}
+IGNORE_MARK = "agent_completed.txt"
+
+
+def moved(root):
+    """True for a moved repo: the exact line agent_completed.txt in .gitignore (read first, cheap) and no agent file
+    tracked in the main checkout. A repo that still tracks one behaves as before the data branch existed."""
+    if root not in _MOVED:
+        text = read_file(root, ".gitignore")
+        ok = bool(text) and IGNORE_MARK in text.split("\n") and is_repo(root)
+        if ok:
+            ok = not run(root, "ls-files", "--", *AGENT_FILES).out.strip()
+        _MOVED[root] = ok
+    return _MOVED[root]
+
+
 def active(root):
-    return place(root)[0] == "data" and is_repo(root)
+    return place(root)[0] == "data" and is_repo(root) and moved(root)
+
+
+# ------------------------------------------------------------------ the kept copies
+
+
+def kept_dir(root):
+    return os.path.join(common_dir(root), "agent-files-kept")
+
+
+def keep(root, *names):
+    """Copy the working copies NAMES (default: the five) to <git common dir>/agent-files-kept/<file> in a moved
+    repo. A file that is not there is skipped."""
+    try:
+        if not moved(root):
+            return
+        target = kept_dir(root)
+        for n in names or AGENT_FILES:
+            src = os.path.join(root, n)
+            if os.path.isfile(src):
+                os.makedirs(target, exist_ok=True)
+                tmp = os.path.join(target, "%s.tmp.%d" % (n, os.getpid()))
+                shutil.copyfile(src, tmp)
+                os.replace(tmp, os.path.join(target, n))
+    except OSError:
+        pass
 
 
 # ------------------------------------------------------------------ who may work a shared task
@@ -398,7 +532,6 @@ def pull(root):
     try:
         if not todo_shared(root) or not active(root) or not has_origin(root):
             return
-        os.environ.setdefault("AGENT_SHARE_TIMEOUT", "10")
         quietly(sync, root, "files sync", False)
     except Exception:
         pass
@@ -419,6 +552,7 @@ def put_todo_line(root, task, new):
             parts[i] = new
             break
     write_file(os.path.join(root, "agent_todo.txt"), "\n".join(parts))
+    keep(root, "agent_todo.txt")
 
 
 def with_field(line, prefix, value):
@@ -496,7 +630,9 @@ def cmd_take(root, task):
     state = {}
     guard = take_guard(task, me, state)
     announce(root)
-    if on_code_branch(root):
+    if not active(root):
+        pass
+    elif on_code_branch(root):
         code_cycle(root, "todo take %s" % task, guard=guard)
     elif commit_core(root, "todo take %s" % task):
         publish(root, guard=guard)
@@ -602,9 +738,11 @@ def publish(root, guard=None):
     if not has_origin(root) or not tip(root):
         return True
     for turn in range(ROUNDS):
-        r = run(root, "push", "-q", "origin", "%s:refs/heads/%s" % (local_ref(root), branch(root)), timeout=timeout_s())
+        r = net(root, "push", "-q", "origin", "%s:refs/heads/%s" % (local_ref(root), branch(root)))
         if r.ok:
             return True
+        if r.offline:
+            return False
         if turn < ROUNDS - 1 and (remote_moved(root) or MOVED.search(r.err)):
             if guard and guard(root, tip(root, remote_ref(root))):
                 sync_core(root, "sync")
@@ -629,7 +767,8 @@ def code_cycle(root, message, force=(), guard=None):
         return False
     rref, bref, pref = REMOTE_NS + b, BASE_NS + b, PENDING_NS + b
     for turn in range(ROUNDS):
-        fetch_code(root)
+        if fetch_code(root).offline:
+            return new_done
         remote = tip(root, rref)
         if not remote:
             say("%s: not pushed (origin has no %s yet); the next write pushes it" % (b, b))
@@ -648,6 +787,7 @@ def code_cycle(root, message, force=(), guard=None):
             result = merge_file(n, b_text, work, r_text, ours_time, t_remote)
             if result != (work or "") and not (work is None and result == ""):
                 write_file(os.path.join(root, n), result)
+                keep(root, n)
                 if n == "agent_completed.txt" and set(lines_of(result)) - set(lines_of(work)):
                     new_done = True
             if result != "" or n in ents_r or n in force:
@@ -663,11 +803,13 @@ def code_cycle(root, message, force=(), guard=None):
             say("%s: not pushed (the commit could not be built); the next write pushes it" % b)
             return new_done
         run(root, "update-ref", pref, made)
-        r = run(root, "push", "-q", "origin", "%s:refs/heads/%s" % (made, b), timeout=timeout_s())
+        r = net(root, "push", "-q", "origin", "%s:refs/heads/%s" % (made, b))
         if r.ok:
             run(root, "update-ref", bref, made)
             run(root, "update-ref", rref, made)
             run(root, "update-ref", "-d", pref)
+            return new_done
+        if r.offline:
             return new_done
         fetch_code(root)
         moved = tip(root, rref)
@@ -680,7 +822,7 @@ def code_cycle(root, message, force=(), guard=None):
 
 def fetch_code(root):
     b = branch(root)
-    return run(root, "fetch", "-q", "origin", "+refs/heads/%s:%s%s" % (b, REMOTE_NS, b), timeout=timeout_s()).ok
+    return net(root, "fetch", "-q", "origin", "+refs/heads/%s:%s%s" % (b, REMOTE_NS, b))
 
 
 def build_code_commit(root, parent, replace, message):
@@ -798,7 +940,7 @@ def merge_file(file_name, base, ours, theirs, ours_time, theirs_time):
 def fetch(root):
     if not has_origin(root):
         return False
-    return run(root, "fetch", "-q", "origin", "+%s:%s" % (local_ref(root), remote_ref(root)), timeout=timeout_s()).ok
+    return net(root, "fetch", "-q", "origin", "+%s:%s" % (local_ref(root), remote_ref(root))).ok
 
 
 def sync_core(root, message):
@@ -830,6 +972,7 @@ def sync_core(root, message):
         result = merge_file(n, b_text, work, r_text, ours_time, t_remote)
         if result != (work or "") and not (work is None and result == ""):
             write_file(os.path.join(root, n), result)
+            keep(root, n)
             if n == "agent_completed.txt" and set(lines_of(result)) - set(lines_of(work)):
                 new_done = True
         if result != "" or n in new:
@@ -1129,6 +1272,7 @@ def move(root):
             if wrote:
                 say(team_line(wrote, "your Configure shares, the repo had no value"))
     kept_dir = os.path.join(common_dir(root), "agent-files-kept")
+    was_moved = moved(root)
     ts = stamp()
     changed = set()
     pulled = False
@@ -1136,7 +1280,7 @@ def move(root):
     # (1) the code branch's upstream is ahead: keep the content, pull, put the content back
     up = run(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
     if up.ok:
-        run(root, "fetch", "-q", timeout=timeout_s())
+        net(root, "fetch", "-q")
         ahead = run(root, "rev-list", "--count", "HEAD..@{upstream}").out.strip()
         if ahead.isdigit() and int(ahead) > 0:
             memory = {}
@@ -1150,7 +1294,7 @@ def move(root):
             for n in memory:
                 if tracked(root, n):
                     run(root, "checkout", "HEAD", "--", n)
-            r = run(root, "pull", "--no-rebase", "--no-edit", "-q", timeout=timeout_s() * 3, env=ident_env(root))
+            r = net(root, "pull", "--no-rebase", "--no-edit", "-q", mult=3, env=ident_env(root))
             for n, data in memory.items():
                 with open(os.path.join(root, n), "wb") as fh:
                     fh.write(data)
@@ -1171,6 +1315,7 @@ def move(root):
         changed.add(n)
     old_ignore = read_file(root, ".gitignore")
     ignored_changed = ignore(root)
+    _MOVED.pop(root, None)
     if ignored_changed:
         run(root, "add", "--", ".gitignore")
     committed = False
@@ -1187,6 +1332,7 @@ def move(root):
                     pass
             elif ignored_changed:
                 write_file(os.path.join(root, ".gitignore"), old_ignore)
+            _MOVED.pop(root, None)
             sys.stderr.write("files move: commit failed: %s\n" % why_text(r))
             return 1
         committed = True
@@ -1217,6 +1363,8 @@ def move(root):
         if before.get(n) != after.get(n):
             changed.add(n)
 
+    for n in (AGENT_FILES if not was_moved else sorted(changed)):
+        keep(root, n)
     for n in AGENT_FILES:
         state = "in git" if n in shared else "local"
         if n in changed:

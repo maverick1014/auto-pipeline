@@ -254,13 +254,50 @@ t = os.path.realpath(tempfile.gettempdir()); r = os.path.realpath(sys.argv[1])
 sys.exit(0 if r == t or r.startswith(t.rstrip("/") + "/") else 1)' "$ROOT" 2>/dev/null
 }
 if fake_clock_ok; then NOW=$AGENT_FAKE_NOW; else NOW=$(date '+%Y-%m-%d %H:%M'); fi; WHO=${AGENT_ROLE:-main}
+# a moved repo (no agent file tracked, the ignore line agent_completed.txt): the kept copies in <git common dir>/agent-files-kept.
+# A repo that still tracks an agent file is not moved: nothing here runs for it (grep first, git ls-files only when the line is there).
+AF_FIVE="agent_todo.txt agent_ideas.txt agent_worktree.txt agent_completed.txt agent_estimate.txt"
+KEPT_DIR=""; KEPT_SNAP=""
+kept_snap() { local f; for f in $AF_FIVE; do [ -f "$ROOT/$f" ] && echo "$f $(cksum < "$ROOT/$f")"; done; return 0; }
+kept_start() {   # restore a missing working copy from its kept copy; say (never touch) one that differs
+  local gd f k
+  [ -e "$ROOT/.git" ] && grep -qx 'agent_completed.txt' "$ROOT/.gitignore" 2>/dev/null || return 0
+  [ -z "$(git -C "$ROOT" ls-files -- $AF_FIVE 2>/dev/null)" ] || return 0
+  gd=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
+  [ -n "$gd" ] || return 0
+  KEPT_DIR="$gd/agent-files-kept"
+  for f in $AF_FIVE; do
+    k="$KEPT_DIR/$f"
+    [ -f "$k" ] || continue
+    if [ ! -e "$ROOT/$f" ]; then
+      cp -p "$k" "$ROOT/$f" 2>/dev/null && echo "restored $f from $k" >&2
+    elif ! cmp -s "$k" "$ROOT/$f"; then
+      echo "WARNING: $ROOT/$f differs from its kept copy $k (changed outside the scripts); left as it is" >&2
+    fi
+  done
+  KEPT_SNAP=$(kept_snap)
+  return 0
+}
+kept_end() {     # a run that ended 0 copies each of the five files it changed to its kept copy
+  local f now
+  [ -n "$KEPT_DIR" ] || return 0
+  now=$(kept_snap)
+  mkdir -p "$KEPT_DIR" 2>/dev/null || return 0
+  for f in $AF_FIVE; do
+    [ -f "$ROOT/$f" ] || continue
+    printf '%s\n' "$KEPT_SNAP" | grep -qxF "$f $(cksum < "$ROOT/$f")" && continue
+    cp -p "$ROOT/$f" "$KEPT_DIR/$f.tmp.$$" 2>/dev/null && mv "$KEPT_DIR/$f.tmp.$$" "$KEPT_DIR/$f"
+  done
+  return 0
+}
+kept_start
 case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the files in git (agent_share.py): a snapshot before and after, one commit on the data branch when a run changed them.
 # Bash only (no python start when nothing changed): the facts are read from agent_repo.conf with grep and sed.
 conf_fact() { { grep -E "^[[:space:]]*$1[[:space:]]*=" "$ROOT/agent_repo.conf" 2>/dev/null || true; } | tail -n 1 | sed 's/^[^=]*=//; s/[[:space:]]//g'; }
 share_files() {
-  local tf; [ -e "$ROOT/.git" ] || return 0
+  local tf; [ -n "$KEPT_DIR" ] || return 0   # not moved: no snapshot, no commit
   [ "$(conf_fact task_place)" != tree ] || return 0
   tf=$(conf_fact task_files)
   printf '%s\n' agent_completed.txt agent_estimate.txt
@@ -277,15 +314,20 @@ share_msg() {
 }
 SHARE_MSG=$(share_msg "$@" | sed 's/ *$//')
 SHARE_SNAP=$(share_snap)
+SHARE_COMMITS=1
 share_exit() {
   local rc=$?
   trap - EXIT
-  if [ "$rc" -eq 0 ] && [ -n "$SHARE_SNAP$(share_snap)" ] && [ "$(share_snap)" != "$SHARE_SNAP" ]; then
-    command -v python3 >/dev/null 2>&1 && python3 "$(dirname "$0")/agent_share.py" "$ROOT" commit "$SHARE_MSG" || true
+  if [ "$rc" -eq 0 ]; then
+    kept_end
+    if [ "$SHARE_COMMITS" = 1 ] && [ -n "$SHARE_SNAP$(share_snap)" ] && [ "$(share_snap)" != "$SHARE_SNAP" ]; then
+      command -v python3 >/dev/null 2>&1 && python3 "$(dirname "$0")/agent_share.py" "$ROOT" commit "$SHARE_MSG" || true
+    fi
   fi
   exit "$rc"
 }
-case "${1:-}" in files|show|time|data|repos|estimate|backtest|eta) ;; *) trap share_exit EXIT;; esac
+case "${1:-}" in files) ;; *) trap share_exit EXIT;; esac
+case "${1:-}" in show|time|data|repos|estimate|backtest|eta) SHARE_COMMITS=0;; esac
 
 # a shared todo (agent_share.py): the newest data before a decision (quiet, a failed fetch never blocks), and who may work a task
 share_pull() {
