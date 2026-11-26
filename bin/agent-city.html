@@ -1666,8 +1666,8 @@ function subBadge(rowId){
    none) }. opts.bounds { l, t, r, b }: every box is kept inside by its own width (a chip stays over its head); a head
    outside the bounds is 'none' and not moved. opts.blocks [[l, t, r, b], ...]: the panels, never covered. Order: higher
    pri first; equal pri: the larger y (nearer the viewer) first, then input order. Three steps:
-   1. pri >= 2: 'full' first, starting from where its plate was laid out last frame (px, py) when given and its head has moved
-      less than 1 px since (hx0, hy0: last frame's head), else from its head; a panel or an
+   1. pri >= 2: 'full' first, starting from where its plate was laid out last frame (px, py) when given, moved by what its head
+      moved since (hx0, hy0: last frame's head), else from its head; a panel or an
       earlier selected / hovered plate in the way: it takes the nearest free spot in any direction inside the bounds.
    2. everyone else: a chip over its head; else nudged left or right by 0.6 chip widths, else one row up (h + 2); the first
       spot that meets no panel and no box laid out before; none fits: 'none'.
@@ -1698,9 +1698,9 @@ function plateLayout(items, opts){
     if ((it.pri || 0) < 2) continue;
     const ew = fullW(it), eh = fullH(it);
     // it starts where its plate was laid out last frame (px, py), so a hovered chip stays under the pointer
-    // ... but only while its head stands still (hx0, hy0: the head of that frame); a head that moves takes its plate with it
-    const still = it.px != null && it.py != null && Math.abs(heads[i].x - (it.hx0 != null ? it.hx0 : heads[i].x)) < 1 && Math.abs(heads[i].y - (it.hy0 != null ? it.hy0 : heads[i].y)) < 1;
-    let p = clampTo(ew, eh, still ? it.px : heads[i].x, still ? it.py : heads[i].y);
+    // ... moved by exactly what its head moved since (hx0, hy0: last frame's head): it stays where it was put relative to its head
+    const kept = it.px != null && it.py != null;
+    let p = clampTo(ew, eh, kept ? it.px + (heads[i].x - (it.hx0 != null ? it.hx0 : heads[i].x)) : heads[i].x, kept ? it.py + (heads[i].y - (it.hy0 != null ? it.hy0 : heads[i].y)) : heads[i].y);
     const taken = c => blocks.some(q => hit(q, fullBox(it, c.x, c.y))) || boxes.some(q => q && hit(q, fullBox(it, c.x, c.y), GAP));   // the panels, and the selected / hovered laid out before (GAP apart)
     if (!inside(ew, eh, p) || taken(p)) {   // the nearest free spot, in any direction: candidates aligned with the edges of the panels and plates, and of the bounds
       const E = 1e-6, xs = [p.x], ys = [p.y];
