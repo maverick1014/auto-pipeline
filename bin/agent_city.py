@@ -2123,6 +2123,7 @@ class CityState:
 
         # -- world: territories, floors, persistence ----------------------
         self.world_path = world_path
+        self._ghost_checked_at = None   # monotonic time sweep_gone_floors last looked
         if world_path is None:
             self.world, self.notice = new_world(), None
         else:
@@ -2147,6 +2148,11 @@ class CityState:
             self.notice = (self.notice + "\n" + drop_notice) if self.notice else drop_notice
             print("agent_city: dropped %d territory(ies) with no repo (\"dir:\" identity)"
                   % len(dropped), file=sys.stderr)
+
+        # A floor whose local folder is gone is dropped here too (see _drop_gone_locked); the
+        # live-session test is moot at start: no session has had a line yet.
+        if self._drop_gone_locked():
+            dirty = True
 
         # The city is never empty: the dir the server was started from (its
         # git repo, or the plain folder itself) always has a territory, the
@@ -2333,6 +2339,53 @@ class CityState:
         with self.lock:
             known = {territory_id(i) for i in self.world["territories"]}
             return {tid: d for tid, d in self._designs.items() if tid in known}
+
+    GHOST_CHECK_SEC = 60.0
+
+    def _territory_live_locked(self, identity):
+        """Caller holds self.lock. True when IDENTITY's territory has a live session or citizen
+        (or a live lock holder): such a floor is never dropped."""
+        reducer = self.reducers.get(identity)
+        if reducer is not None and (reducer.sessions or reducer.agents or reducer.gov_sid is not None):
+            return True
+        return self._main(identity) is not None
+
+    def _drop_gone_locked(self):
+        """Caller holds self.lock. Drops every territory whose local folder is gone
+        (territory_folder_gone) and has nothing live (_territory_live_locked), except the start
+        territory: out of "territories", "order", "floors" and "gov_seen". Floor design files and
+        history stay. Saves and tells nobody: the caller does. Returns the identities dropped."""
+        gone = [i for i in self.world["territories"]
+                if i != getattr(self, "start_repo", None) and territory_folder_gone(i)
+                and not self._territory_live_locked(i)]
+        if not gone:
+            return []
+        for i in gone:
+            del self.world["territories"][i]
+        self.world["order"] = [i for i in self.world["order"] if i not in gone]
+        if isinstance(self.world.get("floors"), list):
+            self.world["floors"] = [i for i in self.world["floors"] if i not in gone]
+        seen = self.world.get("gov_seen")
+        if isinstance(seen, dict):
+            for i in gone:
+                seen.pop(i, None)
+        print("agent_city: dropped %d floor(s) whose folder is gone" % len(gone), file=sys.stderr)
+        return gone
+
+    def sweep_gone_floors(self, now):
+        """The recount loop calls this every tick; it looks at most once per GHOST_CHECK_SEC
+        (NOW: time.monotonic()). Floors whose folder is gone are dropped: world.json saved, every
+        page told (a "world" event, then a fresh snapshot, as set_floors does). Returns how many."""
+        with self.lock:
+            last = self._ghost_checked_at
+            if last is not None and now - last < self.GHOST_CHECK_SEC:
+                return 0
+            self._ghost_checked_at = now
+            gone = self._drop_gone_locked()
+            if gone:
+                self._emit_world_locked({"kind": "floors"})
+                self._broadcast(self._snapshot_locked())
+            return len(gone)
 
     def set_floors(self, ids):
         """The owner's ticks: IDS, a list of 1..64 territory ids (no repeat), are the floors, bottom first
@@ -5029,6 +5082,10 @@ def recount_loop(city, stop_event):
         except Exception as exc:
             print("agent_city: sweep_adding failed: %s" % exc, file=sys.stderr)
         try:
+            city.sweep_gone_floors(time.monotonic())
+        except Exception as exc:
+            print("agent_city: sweep_gone_floors failed: %s" % exc, file=sys.stderr)
+        try:
             city.sweep_history(time.time())
         except Exception as exc:
             print("agent_city: sweep_history failed: %s" % exc, file=sys.stderr)
@@ -5811,6 +5868,23 @@ def repo_name(identity):
     elif base.endswith(".git"):
         base = base[:-len(".git")]
     return base
+
+
+def territory_folder_gone(identity):
+    """The one place that decides a floor's folder is gone. The kinds of territory identity the city
+    knows: a git common dir path (".../shop/.git", or a bare ".../shop.git"; a worktree has its repo's),
+    a plain folder path (a repo-less folder, realpath), "dir:<name>" (old data, dropped at load), and the
+    demo office's "/demo/..." (never in world.json). Only an absolute path of this machine is checked:
+    True when its folder (repo_folder) no longer exists. "dir:" names, relative names, anything else
+    that is no absolute path, and "/demo/..." are never gone."""
+    if not isinstance(identity, str) or not identity or not os.path.isabs(identity):
+        return False
+    if identity == "/demo" or identity.startswith("/demo/"):
+        return False
+    try:
+        return not os.path.exists(repo_folder(identity))
+    except (OSError, ValueError):
+        return False
 
 
 def new_world():
