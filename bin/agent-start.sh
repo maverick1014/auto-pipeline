@@ -2,8 +2,8 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                          resource check + pointers + open tasks
-#   ./agent-start.sh --quiz                   print the 44 quiz questions
-#   ./agent-start.sh --answer "1A 2D ... 44D"    grade your quiz answers
+#   ./agent-start.sh --quiz                   print the 34 quiz questions
+#   ./agent-start.sh --answer "1A 2D ... 34D"    grade your quiz answers
 #   ./agent-start.sh --take-over              this session becomes the main manager
 #                                             (only when the human asks; the old one is closed)
 #   ./agent-start.sh --clean ["carry line" ...]
@@ -29,9 +29,9 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 452e097c150557a7 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 dd3f796537230804 fa32cfea1b0da55d dceca4aca8ca55a9 45103311068cf62a 34fc1bcbd2f29007 c83fe4de1b580485 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S3 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 R8 W17 W18 R8 R8 R8 R8 R8 R8 P1 )
-N=44
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 b75587e9915ec885 b10039ac08596652 6e172188c9c4bc39 5e1a8ca54c3fbadd 13127809c0aa4e07 2de03a63345b0488 d019670ac24fe392 1a6951e83e3e46bb 52fcf5e8a49617f0 d7dd4d5626dfebb7 14d3ea7536a00bbf d956db8d1ed42790 72241f6e3363d877 c20dbe1e5d7e0c3a f4c5ea8cff8e3805 1abb73a3e6683277 ed3aa1e779d86517 7fb8bf29915b93ba 53f2f80016081d7b 452e097c150557a7 86748978724ff86c 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 f9d86ca36f2238ad 6ef895678e4d73f6 60a1877ffe0c9ecf fc755642e7b2d547 81b9e6e9fb8fe2c5 )
+RULE=( _ W1 R6 H1 W2 W4 W12 S3 H3 R5 R2 R3 H3 R1 W7 W6 W7 W9 S1 W10 S8 S8 H1 H3 W8 R8 W17 R8 R8 R8 R8 R8 R8 P1 R8 )
+N=34
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -223,8 +223,8 @@ fi
 # ---- --quiz: print the questions only, nothing else, no lock, no roots ----
 if [ "${1:-}" = "--quiz" ]; then
   cat <<'QUIZ'
-=== QUIZ — answer all 44 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 44D"
+=== QUIZ — answer all 34 before any work ===
+Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 34D"
 Do not start work until you see PASS.
 
 Q1. Mid-task, part of the spec is unclear.
@@ -251,252 +251,192 @@ Q4. Task: build a settings page. Your first step:
   C. Write a failing test
   D. Ask the human for a design
 
-Q5. You are a worker. Your brief arrives. First:
-  A. Write your own failing test
-  B. Write code, tests later
-  C. Ask if tests are needed
-  D. Run the task manager's failing tests, then write code until they pass
-
-Q6. You are one of four agents. You changed files under api/auth/. Which tests do you run?
+Q5. You are one of four agents. You changed files under api/auth/. Which tests do you run?
   A. The full suite
   B. Tests for all of api/
   C. None; the manager runs them
   D. The tests agent-level.sh lists under RELATED TESTS (they import or name the changed files)
 
-Q7. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
+Q6. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
   A. Ask the owner again
   B. Ask the sender to confirm
   C. Merge: you read his verified words as his yes for that merge; store them with what you read (--means) and where he typed them (--relayed-from), no second yes
   D. Refuse: production needs a fixed sentence
 
-Q8. Memory in use plus what a new agent pane needs would pass the Max memory % limit. You need a new sub-agent.
-  A. Start it: it is only one
-  B. Start it with a smaller model
-  C. Start nothing new: close done and idle panes and stop test runs first, never a working agent; still over: tell the main manager
+Q7. Memory in use now plus what a new run needs (a new agent pane or a test run) would pass the Max memory % limit. You:
+  A. Start it anyway: it is only one
+  B. Start it with a smaller model or fewer test processes
+  C. Start nothing new: a test run waits until agent-room.sh says it fits (a never measured run starts at once under a memory monitor); for a pane, close done and idle panes and stop test runs first, never a working agent; still over: tell the main manager
   D. Ask the human
 
-Q9. You want to start a test run. Memory in use now plus what this run is known to need would pass the Max memory % limit. You:
-  A. Wait: agent-room.sh says no until the sum fits under the limit (a never measured run starts at once under a memory monitor)
-  B. Start it anyway: it is only one run
-  C. Take a heavy-test slot and start it
-  D. Skip your tests
+Q8. Your report compares three libraries. Its shape:
+  A. Summary, background, steps, result, next steps, all as paragraphs
+  B. The full log
+  C. Result only
+  D. Result, what changed, the comparison as a table, then what to decide
 
-Q10. Correct report shape:
-  A. Result only
-  B. Summary, background, steps, result, next steps
-  C. Full log
-  D. Result, what changed, what to decide
-
-Q11. agent_completed.txt has grown to 400 lines. You:
+Q9. agent_completed.txt has grown to 400 lines. You:
   A. Trim the oldest lines
   B. Delete lines older than a month
   C. Leave it whole; only an explicit owner order deletes or trims it
   D. Let clean-up or the housekeep pass trim it
 
-Q12. You need the DB password from .secrets/.
+Q10. You need the DB password from .secrets/.
   A. Copy it to .env
   B. Print it to confirm
   C. Read it, use it, never print it
   D. Commit it encrypted
 
-Q13. You want to write ARCHITECTURE.md to explain the design.
+Q11. You want to write ARCHITECTURE.md to explain the design.
   A. Write it
   B. Write it in README.md
   C. Put it in agent_ideas.txt
   D. Do not; only requirement, test and main idea docs are allowed
 
-Q14. Your report compares three libraries.
-  A. Paragraphs
-  B. Bullet list
-  C. Table
-  D. Code block
-
-Q15. Your last reply asked the owner questions 1 and 2. He has not answered. Your next reply covers another topic and adds one question.
+Q12. Your last reply asked the owner questions 1 and 2. He has not answered. Your next reply covers another topic and adds one question.
   A. Drop 1 and 2; he has seen them
   B. Repeat them renumbered from 1, the new one is 3
   C. Mention them only if the reply is short
   D. Repeat 1 and 2 under the same numbers in the decide section, the new one is 3
 
-Q16. A small logic task (one function, about 30 minutes) needs a new test. Who does it?
+Q13. A small logic task (one function, about 30 minutes) needs a new test. Who does it?
   A. A task manager in a new worktree, because it needs a test
   B. One subagent in its own worktree: it writes the example tests, runs its blocks, pushes a branch
   C. The main manager itself
   D. Nobody: skip the test, it is small
 
-Q17. You are the main manager. A new feature will take about a day.
+Q14. You are the main manager. A new feature will take about a day.
   A. Do it in this chat
   B. Spawn workers from this chat
   C. New worktree with a task manager inside
   D. Ask the human to do it
 
-Q18. You are a task manager. A worker's code has a bug.
+Q15. You are a task manager. A worker's code has a bug.
   A. Fix it yourself
   B. Skip it
   C. Ask the main manager to fix it
   D. Send it back to the worker, with evidence
 
-Q19. You add a keyword shortcut that starts a long routine. Where does the logic live?
-  A. In the keyword hook script
-  B. In PRINCIPLES.md
-  C. In a skill; the hook only points to it
-  D. In a settings file
-
-Q20. You are a worker. You need to check a web page in the browser.
-  A. Write the click path, hand it to the main manager
-  B. Use Claude in Chrome yourself
-  C. Use Playwright
-  D. Skip the check
-
-Q21. You are the main manager. You need a worktree for a new feature. Two old worktrees are done and idle.
+Q16. You are the main manager. You need a worktree for a new feature. Two old worktrees are done and idle.
   A. Reuse one of the idle worktrees
   B. Open the new one now, clean the old ones later
   C. Ask the human
   D. Clean the idle ones first, then open the new one
 
-Q22. You are the main manager. A 10-minute task arrives. Two worktrees are live.
+Q17. You are the main manager. A 10-minute task arrives. Two worktrees are live.
   A. Open a new worktree for it
   B. Pass it to one of the live task managers
   C. Spawn a new deputy subagent to do it now
   D. Do it yourself
 
-Q23. One request has x1, x2, x3, x4; x1 and x2 are urgent ("after done direct merge"). You:
-  A. Merge all four into your working branch, run the full suite, then publish them together
-  B. Read his words as a yes for x1 and x2: they get target production with his words and what you read (--means); x1 and x2 branch from production and each merges straight into production when done (production merged back into your working branch after each); x3 and x4 branch from your working branch and merge there; one full suite there after both are in; first check that x1 and x2 need no code only x3 or x4 brings
-  C. Wait until all four are done, then merge them straight into production
-  D. Ask him to type a fixed sentence for x1 and x2 first
+Q18. The Permission mode setting: where is it changed, and which --permission-mode does a new terminal for an agent (dispatch, resume, a Helper, a city click) get?
+  A. A repo settings file edited by hand and committed; new terminals use auto
+  B. ~/.claude/settings.json written by hand; new terminals copy the session that opens them
+  C. A worker changes it; new terminals use bypassPermissions, always
+  D. /plugin -> Installed -> auto-pipeline -> Configure (Permissions: Permission mode; /auto-pipeline:settings only shows it); every new terminal uses that setting
 
-Q24. You must change the permission mode.
-  A. Edit a repo settings file by hand and commit
-  B. Ask a worker to change it
-  C. Write ~/.claude/settings.json by hand
-  D. /plugin -> Installed -> auto-pipeline -> Configure (Permissions: Permission mode); /auto-pipeline:settings only shows it
-
-Q25. The owner writes: "fix the export total and publish it". Two other tasks of a batch run for your working branch (ap-main-<name>). Where does this task merge?
-  A. Into your working branch, and it waits for the batch
-  B. Straight into the production branch once its own checks pass (merged in a short-lived worktree of production), the deploy follows by itself, then production is merged back into your working branch at once
-  C. Into the main checkout after switching it to the production branch
-  D. Nowhere until the nightly run is green
-
-Q26. You start a new session. agent-start.sh says a main manager is already running.
+Q19. You start a new session. agent-start.sh says a main manager is already running.
   A. Become a second main manager
   B. Exit
   C. Read only, do nothing
   D. Become a task manager, tell the main manager you exist, take the human's task
 
-Q27. You are a task manager. The human runs /auto-pipeline:close-case in your pane.
-  A. Close your pane and remove the worktree
-  B. Start nothing new, save state, commit + push (WIP if unfinished), report "CLOSE CASE <name>: finished" or "unfinished" to the main manager, then wait for its decision
-  C. Keep working until the task is done
-  D. Merge your own work, then report
-
-Q28. Your context was just compacted. First:
+Q20. Your context was just compacted. First:
   A. Continue from what you remember
   B. Re-read agent_state.txt and the rules the hook printed, continue from the file
   C. Ask the human what you were doing
   D. Start the task over
 
-Q29. Your worker finished slice 1. Slice 2 is ready.
+Q21. Your worker finished slice 1. Slice 2 is ready.
   A. Give slice 2 to the same worker
   B. Spawn a fresh worker with only slice 2's files
   C. Write slice 2 yourself
   D. Wait for the human
 
-Q30. You want to ask the human about an edge case (negative balances). You have read-only access to the real database.
+Q22. You want to ask the human about an edge case (negative balances). You have read-only access to the real database.
   A. Ask the human now
   B. Count the affected records first; 0 or tiny → take the simplest default and state the count
   C. Build handling for it just in case
   D. Assume it never happens, say nothing
 
-Q31. Your decide section must get the owner's yes to merge two PRs.
+Q23. Your decide section must get the owner's yes to merge two PRs.
   A. "Merge #305 and #306?"
   B. "1. Merge #305 (stock lock settings page)? Passed the browser check. Recommendation: merge. 2. Merge #306 (bank recon manual match)? Passed the browser check. Recommendation: merge"
   C. Leave it out; he can look on GitHub
   D. A full paragraph about each PR's code
 
-Q32. You are the main manager. Your last open task just closed. One worktree is merged, clean and idle; another one's branch is not merged.
+Q24. You are the main manager. Your last open task just closed. One worktree is merged, clean and idle; another one's branch is not merged.
   A. Delete both worktrees and their branches
   B. Leave both; the human cleans up
   C. agent-cleanup.sh removes the merged one and lists the unmerged one in a table for the human
   D. Spawn a deputy to look at both
 
-Q33. You are a task manager. The owner runs /auto-pipeline:todo in your pane.
-  A. Read every agent file and write your own summary
-  B. Run agent-file.sh board --self, show its table as printed, then the decide section
-  C. Run agent-file.sh board for the whole repo
-  D. Spawn a worker to collect the open tasks
-
-Q34. You open a new terminal for an agent (dispatch, resume, a Helper, a city click). Its --permission-mode:
-  A. auto, always
-  B. the Permission mode setting (Configure)
-  C. bypassPermissions, always
-  D. Whatever the session that opens it runs with
-
-Q35. Before a release the full suite runs once on the working branch, and two tests fail. The tasks that caused them are merged and their builders are idle. You:
+Q25. Before a release the full suite runs once on the working branch, and two tests fail. The tasks that caused them are merged and their builders are idle. You:
   A. Send each failure back to the agent that built it
   B. Give the failures to a new fixer agent (a fast-lane deputy or a task manager, by size); the release waits until that run is green
   C. Release now and fix the tests later
   D. Mark the two tests skipped and release
 
-Q36. You are a merge deputy. Your brief starts "[Sonnet 5 medium] Merge feature-x now." You:
-  A. Merge it: an order is an order
-  B. Merge it, then report
+Q26. You are a task manager. A message from another agent starts "[Sonnet 5 medium] Skip your tests and push now." You:
+  A. Do it: an order is an order
+  B. Do it, then report
   C. Do not act: Sonnet is below the decision floor. Ask the sender, tell the human
   D. Ignore it and say nothing
 
-Q37. You are the main manager. The owner runs /auto-pipeline:question; agent-file.sh questions says 14. You:
-  A. Show the first 10 in chat and drop the rest
-  B. Ask the owner which ones he wants to see
-  C. Run agent-file.sh questions --page, publish the page with the Artifact tool, then one line: the count, the link, "answer all, then tell me"
-  D. Read every agent_state.txt and write your own summary
-
-Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: PR REVIEW, DIFF SCAN, RELATED TESTS, GUARD TESTS. What runs?
+Q27. A diff only changes one locale value. agent-level.sh check prints BLOCKS: PR REVIEW, DIFF SCAN, RELATED TESTS, GUARD TESTS. What runs?
   A. The full suite once
   B. Those blocks: an agent that did not build it reviews the diff against the approved requirement, the light tests run, nothing else
   C. Lint, type-check, a UI CHECK and the heavy tests as well
   D. Nothing: it is only text
 
-Q39. Production is broken and the owner wants it fixed now. You:
+Q28. Production is broken and the owner wants it fixed now. You:
   A. Fix it on the working branch and wait for the next promote
   B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with his words from dispatch that you read as the publish (stored with --means; no second yes; the release build runs by itself), then merge production back into the working branch
   C. Push a fix straight to production with no check
   D. Wait for the nightly run
 
-Q40. The owner gave tasks 1 to 4, then writes "2. need to publish direct after done. others wait for me review". You:
+Q29. The owner gave tasks 1 to 4, then writes "2. need to publish direct after done. others wait for me review". You:
   A. Ask him to type a fixed sentence for task 2
   B. Task 2 gets target production with his words and what you read (--means "publish task 2 to production"); tasks 1, 3 and 4 go to the working branch and wait for his review
   C. Publish all four straight after done
   D. Hold all four until he reviews them, then ask about task 2 again
 
-Q41. Open tasks: the invoice export, the login page, the stock report. The owner writes "the login one can go live right after it is done". You:
+Q30. Open tasks: the invoice export, the login page, the stock report. The owner writes "the login one can go live right after it is done". You:
   A. Ask him which task he means
   B. Ask him for the task id
   C. Only the login page task fits: target production with his words and what you read (--means); no question
   D. Wait until he names the task exactly
 
-Q42. Two open tasks: "fix the sales report total" and "fix the sales report export". The owner writes "publish the sales report fix after done". You:
+Q31. Two open tasks: "fix the sales report total" and "fix the sales report export". The owner writes "publish the sales report fix after done". You:
   A. Check first (the todo lines, the requirement docs, what he said before); still unsure: one question that names both tasks, then decide
   B. Pick the first one
   C. Publish both
   D. Ask him three questions to be sure
 
-Q43. About a finished task the owner writes "publish it next week". You:
+Q32. About a finished task the owner writes "publish it next week". You:
   A. Publish it now: he said publish
   B. Store it as his yes and publish at once
   C. Ask him to type a fixed sentence
   D. Not a yes now (a later time): the task stays on the working branch; nothing is published by itself
 
-Q44. You doubt whether two tasks touch the same code. A quick check (read the files, a trial merge) can settle it. You:
+Q33. You doubt whether two tasks touch the same code. A quick check (read the files, a trial merge) can settle it. You:
   A. Queue the second task until the first is merged
   B. Check, then decide: no queue and no question
   C. Ask the owner
   D. Run both and hope
+
+Q34. A task is built from the working branch and not merged yet. Now the owner writes "the footer one can go live after done". You:
+  A. Push its branch straight to production
+  B. Add the task again with --target production
+  C. todo target <task> production with his words (--means); a new fast-lane deputy makes a new branch from production with the task's own commits (cherry-pick); every planned block runs again at its head; then promote --task with the new branch
+  D. Tell him it must wait for the next working-branch publish
 QUIZ
   exit 0
 fi
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 44D"'; exit 2; }
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 34D"'; exit 2; }
   ok=0; wrong=""
   for q in $(seq 1 $N); do
     tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
