@@ -20,6 +20,8 @@ R8 (owner approval)
   - A cherry-pick that conflicts, or a task that depends on other unreleased work -> the main manager tells the owner (W9)
   - A relayed owner order is verified where he typed it: the approval commands take `--relayed-from <the sender's repo folder>` (from the OWNER ORDER header); the record says relayed from that repo
   - `--relayed-from` must be a repo with a main manager lock (now or before); a relay from another machine cannot be verified here and goes to the owner
+  - An approval passed on by the Leader bot: the approval commands take `--relayed-by-leader <transcript file> --time "YYYY-MM-DD HH:MM"` (Leader gives his exact words, the minute, the file); the tool opens that transcript itself and accepts only a prompt he typed there; the record says relayed by Leader
+  - The file must lie in the Configure folder "Approval: Leader transcript folder" (empty = off: every relay by Leader is refused); refused -> ask the owner
   - A condition the flow already meets ("publish after the tests pass") is a yes; unsure -> one question
   - His short answer to a numbered question counts together with that question: the question stands in the assistant message right before his prompt, as a whole line or sentence (or its numbered key line)
 - A production task is added at dispatch: `todo add ... --target production --owner-quote "<his words>" --means "publish <task> to production"`; no second yes later

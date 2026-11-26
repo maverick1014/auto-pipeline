@@ -78,10 +78,13 @@ def merge_in_progress(root):
     return run(root, "rev-parse", "-q", "--verify", "MERGE_HEAD")[0] == 0
 
 
-def verify(root, quote, when, question=None, relayed=None):
+def verify(root, quote, when, question=None, relayed=None, leader=None):
     """True when verify accepts; the typed minute is kept in verify.typed."""
     verify.typed = ""
-    cmd = [os.path.join(HERE, "agent-owner-order.sh"), "verify", "--repo", relayed or root, "--quote", quote]
+    if leader:
+        cmd = [os.path.join(HERE, "agent-owner-order.sh"), "verify", "--relayed-by-leader", leader, "--quote", quote]
+    else:
+        cmd = [os.path.join(HERE, "agent-owner-order.sh"), "verify", "--repo", relayed or root, "--quote", quote]
     if when:
         cmd += ["--time", when]
     if question:
@@ -95,7 +98,7 @@ def verify(root, quote, when, question=None, relayed=None):
         said = last_line(r.stdout) or last_line(r.stderr)
         out("refused: the owner's words were not verified%s" % (": " + said if said else ""))
         return False
-    m = re.match(r"OWNER ORDER verified \S+ (\d{4}-\d\d-\d\d \d\d:\d\d)\s*$", (r.stdout or "").split("\n", 1)[0])
+    m = re.match(r"OWNER ORDER verified .+ (\d{4}-\d\d-\d\d \d\d:\d\d)\s*$", (r.stdout or "").split("\n", 1)[0])
     verify.typed = m.group(1) if m else ""
     return True
 
@@ -106,6 +109,8 @@ def words_line(label, rec):
         text += ' | question: "%s"' % rec["question"]
     if rec.get("relayed_from"):
         text += " | relayed from %s" % rec["relayed_from"]
+    if rec.get("relayed_by_leader"):
+        text += " | relayed by Leader: %s" % rec["relayed_by_leader"]
     return text
 
 
@@ -260,10 +265,11 @@ def sync(root, wb, prod):
 
 # ------------------------------------------------------------------ publish (C36')
 
-def publish(root, wb, prod, quote, when, means, question=None, relayed=None):
-    if not verify(root, quote, when, question, relayed):
+def publish(root, wb, prod, quote, when, means, question=None, relayed=None, leader=None):
+    if not verify(root, quote, when, question, relayed, leader):
         return 1
-    rec = {"quote": quote, "means": means, "typed": verify.typed, "question": question, "relayed_from": relayed}
+    rec = {"quote": quote, "means": means, "typed": verify.typed, "question": question, "relayed_from": relayed,
+           "relayed_by_leader": leader}
     out(words_line("publish " + wb, rec))
     rc, kind = sync(root, wb, prod)
     if kind == "merged":
@@ -460,13 +466,13 @@ def direct(root, wb, prod, task, branch, results=None):
 
 # ------------------------------------------------------------------ main
 
-USAGE = ("usage: agent-promote.sh --owner-quote \"<words>\" --means \"<action>\" [--question \"<q>\"] [--time <t>] [--relayed-from <folder>] | --task \"<task>\" --branch <branch> "
+USAGE = ("usage: agent-promote.sh --owner-quote \"<words>\" --means \"<action>\" [--question \"<q>\"] [--time <t>] [--relayed-from <folder>] [--relayed-by-leader <transcript file>] | --task \"<task>\" --branch <branch> "
          "[--results <file>] | --sync\n")
 
 
 def parse(argv):
     opts, i = {}, 0
-    names = {"--owner-quote": "quote", "--means": "means", "--question": "question", "--time": "time", "--relayed-from": "relayed", "--task": "task", "--branch": "branch",
+    names = {"--owner-quote": "quote", "--means": "means", "--question": "question", "--time": "time", "--relayed-from": "relayed", "--relayed-by-leader": "leader", "--task": "task", "--branch": "branch",
              "--results": "results"}
     while i < len(argv):
         a = argv[i]
@@ -487,11 +493,12 @@ def main(argv):
             or ("task" in opts) != ("branch" in opts) or (opts.get("sync") and len(opts) > 1):
         sys.stderr.write(USAGE)
         return 2
-    if "task" in opts and ("quote" in opts or "time" in opts or "means" in opts or "question" in opts or "relayed" in opts):
+    if "task" in opts and ("quote" in opts or "time" in opts or "means" in opts or "question" in opts or "relayed" in opts
+                              or "leader" in opts):
         out("refused: the owner's words come from the task (todo add --target production --owner-quote), "
             "not from promote")
         return 1
-    quote = means = question = relayed = None
+    quote = means = question = relayed = leader = None
     if "task" not in opts and not opts.get("sync"):
         quote, means = opts["quote"].strip(), (opts.get("means") or "").strip()
         question = opts["question"].strip() if "question" in opts else None
@@ -507,6 +514,18 @@ def main(argv):
         if why:
             out("refused: " + why)
             return 1
+        if "leader" in opts and "relayed" in opts:
+            out("refused: --relayed-from and --relayed-by-leader are two sources; give one")
+            return 1
+        if "leader" in opts:
+            leader = opts["leader"].strip()
+            if not (opts.get("time") or "").strip():
+                out("refused: --relayed-by-leader needs --time \"YYYY-MM-DD HH:MM\" (the minute he typed, "
+                    "this machine's local time)")
+                return 1
+            if not os.path.isabs(leader) or "\n" in leader or "\r" in leader or " | " in leader:
+                out("refused: --relayed-by-leader wants an absolute file path (got: %s)" % (leader or "nothing"))
+                return 1
         if "relayed" in opts:
             relayed = opts["relayed"].strip()
             if not os.path.isabs(relayed) or "\n" in relayed or "\r" in relayed or " | " in relayed:
@@ -517,7 +536,7 @@ def main(argv):
             if why:
                 out("refused: " + why)
                 return 1
-    if opts.get("sync") and "relayed" in opts:
+    if opts.get("sync") and ("relayed" in opts or "leader" in opts):
         sys.stderr.write(USAGE)
         return 2
     cwd = os.getcwd()
@@ -532,7 +551,7 @@ def main(argv):
     if "task" in opts:
         return direct(root, wb, prod, opts["task"], opts["branch"],
                       os.path.abspath(opts["results"]) if opts.get("results") else None)
-    return publish(root, wb, prod, quote, opts.get("time"), means, question, relayed)
+    return publish(root, wb, prod, quote, opts.get("time"), means, question, relayed, leader)
 
 
 if __name__ == "__main__":
