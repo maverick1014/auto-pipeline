@@ -16,6 +16,7 @@ from scripthelp import ScriptCase  # noqa: E402
 import glob  # noqa: E402
 import signal  # noqa: E402
 import time  # noqa: E402
+import re  # noqa: E402
 
 
 PASSING = "import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        self.assertTrue(True)\n"
@@ -89,6 +90,14 @@ class RoomCase(NetCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return p
 
+    def assert_no_room(self, out, used, reserved, need, limit=8000):
+        """The "ROOM: no" line. batch-fix: a process held by hold() is a real `sleep`: its real RSS (C6: a reserved
+        job is counted by its reservation instead) comes off the fake used MB, 0 to a few MB by the machine's
+        state, so used may be up to 10 MB lower; reserved, need and limit are exact."""
+        m = re.search(r"ROOM: no: (\d+) MB in use \+ %d MB reserved \+ %d MB > %d MB" % (reserved, need, limit), out)
+        self.assertIsNotNone(m, out)
+        self.assertTrue(used - 10 <= int(m.group(1)) <= used, out)
+
     def jobs(self):
         if not os.path.exists(self.reserve):
             return []
@@ -114,7 +123,7 @@ class TestRoom(RoomCase):
         self.hold(2000)
         r = self.room("check", "3000")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("ROOM: no: 4000 MB in use + 2000 MB reserved + 3000 MB > 8000 MB", r.stdout)
+        self.assert_no_room(r.stdout, 4000, 2000, 3000)
 
     def test_a_dead_pid_frees_its_entry(self):
         dead = subprocess.Popen(["true"])
@@ -129,7 +138,7 @@ class TestRoom(RoomCase):
         self.assertEqual(self.room("check", "unknown").returncode, 0)
         r = self.room("check", "unknown", ram="85")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("ROOM: no: 8500 MB in use + 100 MB reserved + 0 MB > 8000 MB", r.stdout)
+        self.assert_no_room(r.stdout, 8500, 100, 0)
 
     def test_relief_stops_the_newest_unmeasured_test_run_never_an_agent(self):
         import time
@@ -313,7 +322,10 @@ class TestTestRun(RoomCase):
             self.assertEqual(fh.read(), before)
 
     def test_peak_mb_is_the_whole_process_tree(self):
-        child = "import os, time; b = os.urandom(60 * 1024 * 1024); time.sleep(3)"
+        # batch-fix: each child keeps touching its 60 MB for 4 s: an idle buffer is compressed or swapped out by
+        # macOS when the machine is short of memory, and its RSS (what the runner samples) falls to a few MB
+        child = ("import os, time\nb = bytearray(os.urandom(60 * 1024 * 1024))\nend = time.time() + 4\n"
+                 "while time.time() < end:\n    b[::4096] = bytes(len(b[::4096]))\n    time.sleep(0.1)\n")
         cmd = ("import subprocess, sys; ps = [subprocess.Popen([sys.executable, '-c', %r]) for _ in range(3)]; "
                "[p.wait() for p in ps]" % child)
         self.assertEqual(self.run_test("tree", "python3", "-c", cmd).returncode, 0)
@@ -433,10 +445,15 @@ class TestC4TestRunSignals(Room):
 
 class TestC6CountedOnce(Room):
     def test_a_reserved_running_job_is_not_counted_twice(self):
-        p = subprocess.Popen([sys.executable, "-c", "import os, time; b = os.urandom(300 * 1024 * 1024); "
-                                                    "time.sleep(30)"])
+        # the job touches its 300 MB every 0.1 s: an idle buffer is compressed or swapped out by macOS when the
+        # machine is short of memory, and its RSS (what C6 subtracts) falls to about 10 MB
+        p = subprocess.Popen([sys.executable, "-c",
+                              "import os, time\nb = bytearray(os.urandom(300 * 1024 * 1024))\nend = time.time() + 30\n"
+                              "while time.time() < end:\n    b[::4096] = bytes(len(b[::4096]))\n    time.sleep(0.1)\n"])
         self.addCleanup(p.kill)
-        time.sleep(2)
+        rss = lambda: int((subprocess.run(["ps", "-o", "rss=", "-p", str(p.pid)], capture_output=True,
+                                          text=True).stdout.strip() or "0"))
+        self.assertTrue(wait_until(lambda: rss() >= 290 * 1024, 20), "the job never held 290 MB: %d KB" % rss())
         self.room("reserve", str(p.pid), "300", "a build", "--kind", "build")
         r = self.room("check", "3900")                                   # 4000 - ~300 + 300 + 3900 <= 8000
         self.assertEqual(r.returncode, 0, r.stdout)

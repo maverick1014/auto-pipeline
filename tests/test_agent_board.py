@@ -745,8 +745,11 @@ class TestWholeRepo(BoardCase):
                     rows.append((full, st.st_size, st.st_mtime_ns))
             return sorted(rows)
         before = snapshot()
-        self.board()
-        self.board("--self", cwd=alpha)
+        # the board runs in this process (test-slim-2): its first import of the copy's bin/*.py would make Python
+        # itself write bin/__pycache__/*.pyc into the copy; that is the interpreter, not the board, so it is off here
+        with mock.patch.object(sys, "dont_write_bytecode", True):
+            self.board()
+            self.board("--self", cwd=alpha)
         self.assertEqual(snapshot(), before)
 
 
