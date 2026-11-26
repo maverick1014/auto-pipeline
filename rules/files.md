@@ -15,7 +15,7 @@ R4. No changelog
 
 R5. Task files
 - `agent_todo.txt` = open tasks only, always current
-- Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, guess, work, wait, clock, level (old tasks only, - for new ones), bounces, workers, files, lines, tests, adds
+- Done → agent_completed.txt: date, name, what, then one `data` block written by `agent-file.sh`: repo, type, lane, mock, est, work, wait, clock, bounces, workers, files, lines, tests, adds, guess, level (old tasks only, - for new ones), typed, est0, added, built, stages, slices, by (the git user name)
 - No test results in it, that is report material
 - No other task tracking
 - The housekeep pass never closes a todo line: it flags one whose branch is merged into the working branch or the production branch
@@ -44,7 +44,7 @@ Files:
 |---|---|---|
 | `agent_todo.txt` | `agent-file.sh todo add` / `todo done` | Every agent at start |
 | `agent_completed.txt` | `agent-file.sh todo done`, one data line per task | Human, `agent-file.sh time` |
-| `agent_estimate.txt` | `agent-file.sh retrain`, also `todo done` once a week | `agent-file.sh estimate` |
+| `agent_estimate.txt` | `agent-file.sh retrain`, also `todo done` in the background: first version at 30 clean tasks, then after every 10 new finished tasks | `agent-file.sh estimate` |
 | `agent_ideas.txt` | `agent-file.sh idea add` | Human, on his own time |
 | `agent_repo.conf` (committed, repo root) | `bin/agent-init.sh`, agents via `agent-file.sh edge add` | `agent-level.sh`, the merge gate, init |
 | `agent_worktree.txt` | `agent-file.sh worktree set` / `rm` | Main manager before every dispatch |

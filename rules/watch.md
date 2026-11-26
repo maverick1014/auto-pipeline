@@ -12,7 +12,7 @@ W15. Watch
 - DONE FAIL → the main manager reviews the report, then sends the task manager a fix order (where, what is seen, what is expected, evidence). Never merged, never closed silently
 - LOST (the watch cannot reach a machine or a pane) → wait one more sweep; still lost → tell the owner in one line with the machine and the task
 - Never redispatch a LOST task on another machine by itself
-- The watch carries a task's stage to the main repo from the newest STAGE line or HEARTBEAT step (0-7 = brief to report); the heartbeat's work minutes and text go to the board's progress cell
+- The watch carries a task's stage to the main repo from the newest STAGE line or HEARTBEAT step (0-7 = brief to report); the heartbeat's work minutes (computed) and text go to the progress cell
 - A manager at its idle prompt while its own background run goes (pane shows shells or monitors, or its newest state line says started, for watch_quiet_min) is not a stall
 - Long text to a task manager: `agent-file.sh tell <task> "<msg>"` (the block goes into its file, one pointer line to its pane, receipt checked)
 - Start and resume print the `agent-watch.sh --all` command when no watch runs

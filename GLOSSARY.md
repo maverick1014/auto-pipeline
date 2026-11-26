@@ -27,7 +27,7 @@ _Avoid_: Helper for a worker or deputy
 **Peer**: the main manager of another repo, found as `<other repo folder> Manager` in ListAgents.
 
 ## Work units
-**Task**: one todo line: a name, size, estimate and its check blocks.
+**Task**: one todo line: a name, size, estimate (the number `estimate` prints), owner and its check blocks.
 **Owner of a task**: the person who created the task: `owner <name>` on its todo line, the git user name of their clone; in a shared todo only they assign it (from bin/agent_share.py).
 **Assignee**: the person the owner of a task gave it to (`todo assign <task> <name>`, the field `assignee <name>`); only they work it then.
 **Take**: `todo take <task>`: with the setting "Team: Who may take a task" = anyone, a member claims a free task of a shared todo (the field `taken <name>`, pushed at once); the first push wins, the next taker is told who took it.
