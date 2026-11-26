@@ -370,6 +370,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .rolechip.agent{background:var(--rest-bg);color:var(--rest-ink)}
 .tagl.tag{display:inline-flex;align-items:center;gap:5px;background:var(--panel);color:var(--ink);border:1.5px solid var(--ink);border-radius:999px;padding:2px 9px 2px 6px;font:600 12px/1.25 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2);white-space:nowrap;pointer-events:auto;cursor:pointer}
 .tagl.tag .nm{max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.tagl.tag.chip .nm{display:none}
 .tagl.tag .wk{font:600 10.5px/1 var(--mono);background:var(--ink);color:var(--paper);padding:3px 6px;border-radius:6px}
 .tagl.tag.sel{background:var(--ink);color:var(--paper)}
 .tagl.tag.sel .wk{background:var(--paper);color:var(--ink)}
@@ -1651,14 +1652,36 @@ function subBadge(rowId){
   for (const c of subsOf(rowId)) { if (/deputy$/.test(c.role)) d++; else w++; }
   return [w ? 'worker ×' + w : '', d ? 'deputy ×' + d : ''].filter(Boolean).join(' · ');
 }
+/* plateLayout(items) -> 'full' | 'chip' | 'none' per item, in input order. An item is a name plate on screen { x, y (its
+   bottom centre, px), w (the full plate), wChip (the role chip alone), h, pri }. Higher pri first; equal pri: the larger y
+   (nearer the viewer) first, then input order. The first is always 'full'; each next one is 'full' when its full box meets
+   no box already shown, else 'chip' when its chip box meets none, else 'none'. No two shown boxes overlap. */
+function plateLayout(items){
+  const n = items.length, order = [], out = new Array(n), shown = [];
+  for (let i = 0; i < n; i++) order.push(i);
+  order.sort((a, b) => ((items[b].pri || 0) - (items[a].pri || 0)) || (items[b].y - items[a].y) || (a - b));
+  const box = (it, w) => [it.x - w / 2, it.y - it.h, it.x + w / 2, it.y];
+  const meets = b => { for (const q of shown) if (Math.min(q[2], b[2]) > Math.max(q[0], b[0]) && Math.min(q[3], b[3]) > Math.max(q[1], b[1])) return true; return false; };
+  for (const i of order) {
+    const it = items[i], full = box(it, it.w), chip = box(it, it.wChip);
+    if (!meets(full)) { shown.push(full); out[i] = 'full'; }
+    else if (!meets(chip)) { shown.push(chip); out[i] = 'chip'; }
+    else out[i] = 'none';
+  }
+  return out;
+}
 /* the area manager's chair, and the spot a visitor stands at across his desk (sim ground of territory t) */
 function hallStand(t){ const s = toSim(t, MGR_SEAT); s.yaw = MGR_SEAT.yaw; return s; }
 function callStand(t){ return toSim(t, MGR_VISIT); }
-/* the open office has one desk more than it has managers and drawn agents, at most 9 */
+/* the open office has one desk more than it has managers and drawn agents, at most 9 (and the desks agents hold) */
 function deskCount(terr){
-  let n = 0;
-  for (const c of citizens) if (!c.gone && c.terr === terr && (c.role === 'task-manager' || (isSub(c) && isDrawn(c)))) n++;
-  return Math.min(9, n + 1);
+  let n = 0, held = 0;
+  for (const c of citizens) {
+    if (c.gone || c.terr !== terr) continue;
+    if (c.role === 'task-manager') n++;
+    else if (isSub(c) && isDrawn(c)) { n++; if (c.held && c.held.k === 'desk' && c.held.i >= 0) held = Math.max(held, c.held.i + 1); }
+  }
+  return Math.min(9, Math.max(n + 1, held));   // never fewer desks than the ones agents still sit at
 }
 /* where c sits: { x, y } and { sx, sy } the point c sits or stands at (a pantry / meeting spot is its own spot), yaw how
    it looks there. A helper takes the assistant desks of the floor's plan, a task manager its manager desks (k = its
@@ -1733,25 +1756,47 @@ function agentSeatsOf(terr){
     if (d) { used.add(d); deskOf.set(o.id, d); }
     else if (!rests(o) && !(o.role === 'designer' && designerTours(o))) nOver++;
   }
-  const free = info.tm.concat(info.helper).filter(d => !used.has(d));
-  for (const d of info.tm.concat(info.helper)) taken.push({ x:d.sx, z:d.sz });
+  const all = info.tm.concat(info.helper), grid = gridOfItems(plan.items), claimed = new Set(), heldMeet = new Set(), pending = [];
+  for (const d of all) taken.push({ x:d.sx, z:d.sz });
   for (const d of info.meet) taken.push({ x:d.x, z:d.z });
-  let mi = nOver;   // the meeting places the sessions' overflow uses come first
+  const near = (a, b) => Math.abs(a.x - b.x) < .02 && Math.abs(a.z - b.z) < .02;
+  const give = (a, k, i, d) => { m.set(a.id, { x:d.x, z:d.z, yaw:d.yaw }); a.held = { k, i, x:d.x, z:d.z }; };
+  // an agent keeps the spot it was given while that spot is still in the plan and no session needs it (nobody moves when one leaves)
   for (const a of agents) {
+    const h = a.held;
+    let ok = false;
+    if (h && h.k === 'desk') {
+      const d = all.find(q => near({ x:q.sx, z:q.sz }, h));
+      if (d && !used.has(d) && !claimed.has(d)) { claimed.add(d); give(a, 'desk', info.tm.indexOf(d), { x:d.sx, z:d.sz, yaw:d.yaw }); ok = true; }
+    } else if (h && h.k === 'meet') {
+      const ix = info.meet.findIndex(q => near(q, h));
+      if (ix >= nOver && !heldMeet.has(ix)) { heldMeet.add(ix); give(a, 'meet', ix, info.meet[ix]); ok = true; }
+    } else if (h && h.k === 'cell' && !isBlocked(grid, cellIx(h.x), cellIx(h.z)) && !taken.some(r => Math.hypot(h.x - r.x, h.z - r.z) < MIN_GAP - 1e-6)) {
+      give(a, 'cell', -1, { x:h.x, z:h.z, yaw:h.yaw || 0 }); taken.push({ x:h.x, z:h.z }); ok = true;
+    }
+    if (!ok) pending.push(a);
+  }
+  // a new one: the free desk nearest its parent, else a free meeting place, else a free cell
+  for (const a of pending) {
     const pid = a.up || a.lead;
     let pp = MGR_SEAT;
     if (pid !== 'gov:' + terr) {
       const d = deskOf.get(pid), p = d ? null : byId(pid);
       pp = d ? { x:d.sx, z:d.sz } : p && !p.gone && !isSub(p) ? (q => ({ x:q.x - t.cx, z:q.y - t.cz }))(seatSpot(p)) : MGR_SEAT;
     }
-    let bi = -1, bd = 1e9;
-    for (let i = 0; i < free.length; i++) { const dd = Math.hypot(free[i].sx - pp.x, free[i].sz - pp.z); if (dd < bd) { bd = dd; bi = i; } }
-    if (bi >= 0) { const d = free.splice(bi, 1)[0]; m.set(a.id, { x:d.sx, z:d.sz, yaw:d.yaw }); continue; }
-    if (mi < info.meet.length) { const d = info.meet[mi++]; m.set(a.id, { x:d.x, z:d.z, yaw:d.yaw }); continue; }
-    const c = overflowCells(plan).find(q => !taken.some(r => Math.hypot(q.x - r.x, q.z - r.z) < MIN_GAP - 1e-6));
-    const d = c || info.meet[0];
-    taken.push({ x:d.x, z:d.z });
-    m.set(a.id, { x:d.x, z:d.z, yaw:d.yaw });
+    let best = null, bd = 1e9;
+    for (const d of all) {
+      if (used.has(d) || claimed.has(d)) continue;
+      const dd = Math.hypot(d.sx - pp.x, d.sz - pp.z);
+      if (dd < bd) { bd = dd; best = d; }
+    }
+    if (best) { claimed.add(best); give(a, 'desk', info.tm.indexOf(best), { x:best.sx, z:best.sz, yaw:best.yaw }); continue; }
+    let mi = nOver;
+    while (mi < info.meet.length && heldMeet.has(mi)) mi++;
+    if (mi < info.meet.length) { heldMeet.add(mi); give(a, 'meet', mi, info.meet[mi]); continue; }
+    const c = overflowCells(plan).find(q => !taken.some(r => Math.hypot(q.x - r.x, q.z - r.z) < MIN_GAP - 1e-6)) || { x:info.meet[0].x, z:info.meet[0].z, yaw:info.meet[0].yaw };
+    taken.push({ x:c.x, z:c.z });
+    give(a, 'cell', -1, c);
   }
   return m;
 }
@@ -3465,15 +3510,16 @@ function railCount(groups){
   return { active, you };
 }
 /* floorTag(terr) -> { floor: 'nF', repo, design, people, wait }: what a floor's tag outside and the lift panel show.
-   people = the area manager (when he is there) + the sessions on that floor (not gone); wait = how many of those
-   wait on the owner, their subagents' asks included. */
+   people = the area manager (when he is there) + the sessions on that floor + the agents drawn on it (not gone); wait =
+   how many of the area manager and the sessions wait on the owner, their subagents' asks included. */
 function floorTag(terr){
   const t = terrOf(terr);
   if (!t) return null;
   let people = 0, wait = 0;
   if (govsByTerr.has(terr) && governorAt(terr)) { people++; if (rowWaitsOnYou({ id: 'gov:' + terr })) wait++; }
   for (const c of citizens) {
-    if (c.gone || c.terr !== terr || isSub(c)) continue;
+    if (c.gone || c.terr !== terr) continue;
+    if (isSub(c)) { if (isDrawn(c)) people++; continue; }
     people++;
     if (rowWaitsOnYou({ id: c.id })) wait++;
   }
@@ -4492,12 +4538,19 @@ function pinOv(f, st){
     const word = c ? plateWord(c) : roleWord(f.role), nm = c ? nameOf(c) : '';
     o.tag.innerHTML = '<span class="rolechip ' + ROLE_CLS[f.role] + '">' + esc(word) + '</span>' + (nm ? '<span class="nm">' + esc(nm) + '</span>' : '');
     o.tag.classList.toggle('sel', isSel);
+    o.tag.classList.remove('chip'); o.mDirty = true;   // the plate's widths are measured again (below), only now
   }
   f.head.getWorldPosition(tmpV); tmpV.y += .72;
   const [sx, sy0] = projectV(tmpV);
   let y = sy0;
   const far = cam.dist > 17;
   pin(o.tag, sx, y, true); y -= 26;
+  if (o.mDirty) {   // measured once per change of the plate's content: the full plate, and the role chip alone
+    const nmEl = o.tag.querySelector('.nm');
+    o.wFull = o.tag.offsetWidth; o.hTag = o.tag.offsetHeight || 22;
+    o.wChip = nmEl ? Math.max(0, o.wFull - nmEl.offsetWidth - 5) : o.wFull;
+    o.mDirty = o.wFull === 0;
+  }
   const doing = !far && c && st.mood === 'busy' ? doingText(c) : '';
   if (doing) setText(o.doing, doing);
   pin(o.doing, sx, y, doing !== ''); if (doing) y -= 22;
@@ -4555,6 +4608,24 @@ function syncFigs(dt){
     poseFig(f, st, dt);
     f.g.updateMatrixWorld(true);
     pinOv(f, st);
+  }
+
+  // the head tags never overlap (plateLayout, once per frame): the selected person's first, then the one under the pointer
+  const items = [], ovs = [];
+  for (const f of figs.values()) {
+    const o = f.o;
+    if (!o || o.tag.hidden || !(o.wFull > 0)) continue;
+    const c = f.c, terr = f.gv ? f.gv.terr : '';
+    const isSel = !!(selected && ((selected.t === 'c' && c && selected.id === c.id) || (selected.t === 'gov' && f.gv && (selected.terr || govTerr) === terr)));
+    const isHov = !!(hovered && ((hovered.t === 'c' && c && hovered.id === c.id) || (hovered.t === 'gov' && f.gv && hovered.terr === terr)));
+    items.push({ x:o.tag._px, y:o.tag._py, w:o.wFull, wChip:o.wChip, h:o.hTag || 22, pri:isSel ? 2 : isHov ? 1 : 0 });
+    ovs.push(o);
+  }
+  const modes = plateLayout(items);
+  for (let i = 0; i < ovs.length; i++) {
+    const t = ovs[i].tag;
+    t.classList.toggle('chip', modes[i] === 'chip');
+    if (modes[i] === 'none') t.hidden = true;
   }
 }
 const DEMO_WORLD = {"v": 2, "repos": [{"id": "4d5d7e95", "name": "auto-pipeline", "here": true, "n": 0}, {"id": "8329562e", "name": "v4-plus", "here": true, "n": 1}, {"id": "7b94683e", "name": "v4-office", "here": true, "n": 2}, {"id": "0a8b5440", "name": "v3", "here": true, "n": 3}], "floors": ["4d5d7e95", "8329562e", "7b94683e"], "designs": {"8329562e": {"v": 1, "name": "\u6536\u94f6\u53f0\u98ce\u683c", "why": "POS \u6536\u94f6\u7684 repo", "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0", "desk": "#EFDAB5", "desk_leg": "#BBA27C", "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"}, "decor": ["cashier", "none", "goods"]}, "7b94683e": {"v": 2, "name": "\u6e05\u723d\u84dd\u767d", "why": "\u540e\u53f0\u529e\u516c\uff0c\u5e72\u51c0\u660e\u4eae", "colors": {"accent": "#3B82C4", "carpet": "#DDD6C7", "manager_floor": "#C9B79A", "pantry_floor": "#E3DED2", "desk": "#F4F7FB", "desk_leg": "#9FB3C8", "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"}, "materials": {"carpet": "wood", "manager_floor": "herringbone", "pantry_floor": "checker"}, "layout": {"items": [{"k": "tm", "x": -5.4, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -3.0, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -5.4, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -3.0, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -0.6, "z": 0.2, "yaw": 90}, {"k": "helper", "x": 3.4, "z": -1.2, "yaw": 0}, {"k": "helper", "x": 5.4, "z": -1.2, "yaw": 0}, {"k": "meet", "x": 3.8, "z": 3.6, "yaw": 0}, {"k": "plant", "x": -1.2, "z": -3.8, "yaw": 0, "s": 1}, {"k": "plant", "x": -0.8, "z": 5.4, "yaw": 0, "s": 0.8}, {"k": "decor", "id": "bookshelf", "x": -5.2, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "plants", "x": -1.6, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "clock", "x": 6.45, "z": 0.8, "yaw": 270}]}}}, "asked": ["8329562e", "7b94683e"]};
@@ -6593,6 +6664,24 @@ function pickAt(px, py){
   }
   return nearestPick(px, py, cands, PICK_PX);
 }
+/* hover: with no button down, the figure under the pointer is `hovered` (its full plate shows); looked up once per frame at most */
+let hoverAt = null;
+canvas.addEventListener('pointermove', e => {
+  if (e.buttons || pointers.size || view !== 'inside') return;
+  const r = canvas.getBoundingClientRect(), first = !hoverAt;
+  hoverAt = { x:e.clientX - r.left, y:e.clientY - r.top };
+  if (!first) return;
+  requestAnimationFrame(() => {
+    const q = hoverAt; hoverAt = null;
+    const hit = q && view === 'inside' && !pointers.size ? pickAt(q.x, q.y) : null, h = hit && hit.t ? hit : null;
+    if ((h ? h.t + (h.id || h.terr) : '') !== (hovered ? hovered.t + (hovered.id || hovered.terr) : '')) { hovered = h; needFrame = true; }
+  });
+});
+canvas.addEventListener('pointerleave', () => { if (hovered) { hovered = null; needFrame = true; } });
+ovRoot.addEventListener('pointerout', e => {
+  const tag = e.target.closest('[data-pick-t]');
+  if (tag && hovered && !(e.relatedTarget && tag.contains(e.relatedTarget))) { hovered = null; needFrame = true; }
+});
 canvas.addEventListener('pointerdown', e => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });

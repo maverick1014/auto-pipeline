@@ -2736,7 +2736,9 @@ __out = { waits: rowWaitsOnYou(row), count: railCount(railGroups()).you, tag: fl
 """, {"view": VIEW, "agents": agents, "t1": T1_office_page})
         self.assertTrue(out["waits"])
         self.assertEqual(out["count"], 1)
-        self.assertEqual(out["tag"], {"floor": "1F", "repo": "shop", "design": "还没装修", "people": 1, "wait": 1})
+        # city-agents-at-desks fix round (main manager's decision): the floor count counts every drawn character, the
+        # session and its drawn worker -> 2; the wait count stays the session's own (its agents' asks included)
+        self.assertEqual(out["tag"], {"floor": "1F", "repo": "shop", "design": "还没装修", "people": 2, "wait": 1})
 
 
 class TestSeats(unittest.TestCase):
