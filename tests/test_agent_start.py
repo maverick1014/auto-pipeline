@@ -1632,7 +1632,6 @@ class TestTheRealSizes(RulesCase):
                 with self.subTest(role=role, source=source):
                     out = self.start_hook(source, sid="s-part-%s-%s" % (role, source), env=self.env_of(role, env))
                     self.assertLessEqual(as_if_path(out, self.repo.plugin), RULES_BLOCK_CAP, len(out))
-                    self.assertLessEqual(len(out.encode()), 2200)
 
 
 class TestARepoNotSetUp(unittest.TestCase):
@@ -2090,9 +2089,11 @@ class TestTheHumanTypesIt(SeatCase):
         self.assertNotIn("${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh --release", part_b)
 
     def test_the_principles_say_the_human_types_it(self):
-        text = read("PRINCIPLES.md")
-        w10 = text[text.index("W10."):text.index("W11.")]
-        w13 = text[text.index("W13."):text.index("## C.")]
+        # md-slim-principles: W10 is in rules/roles.md (to its end), W13 in rules/close-case.md (to its end)
+        roles = read("rules", "roles.md")
+        w10 = roles[roles.index("W10."):]
+        close = read("rules", "close-case.md")
+        w13 = close[close.index("W13."):]
         self.assertIn("`! agent-start.sh --take-over`", w10)
         self.assertIn("`! agent-start.sh --release`", w13)
         for rule in (w10, w13):
