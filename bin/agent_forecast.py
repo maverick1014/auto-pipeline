@@ -136,18 +136,14 @@ def forecast(task, rows, draws=DRAWS, seed=SEED):
     rnd = random.Random(seed).random
     left = []
     if name in TAIL:
-        if name == "report":
-            for _ in range(draws):
-                left.append(ts[int(rnd() * nt)])
-        else:
-            built_work = task.get("built_work")
-            age = work - built_work if built_work is not None else 0
-            k = first_over(ts, age)
-            for _ in range(draws):
-                if k < nt:
-                    left.append(ts[k + int(rnd() * (nt - k))] - age)
-                else:
-                    left.append(ts[int(rnd() * nt)])
+        built_work = task.get("built_work")
+        age = max(0, work - built_work) if built_work is not None else 0
+        k = first_over(ts, age)
+        for _ in range(draws):
+            if k < nt:
+                left.append(ts[k + int(rnd() * (nt - k))] - age)
+            else:
+                left.append(1)      # past every past tail: due any minute, never a jump up with age
     else:
         k = first_over([est * q for q in qs], work)
         es_total = work / p if pace else None
@@ -164,7 +160,7 @@ def forecast(task, rows, draws=DRAWS, seed=SEED):
                 if k < nq:
                     total = est * qs[k + int(rnd() * (nq - k))]
                 else:
-                    total = work / p if pace else 2.0 * work
+                    total = work + max(1.0, est * (1 - (p or 0.0)))
             if es_total is not None:
                 total = max(total, es_total)
             build = max(0.0, total - work)
