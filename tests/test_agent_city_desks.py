@@ -895,6 +895,25 @@ class TestHoveredChipKeepsItsSpot(unittest.TestCase):
                 self.assertRegex(src, r"[{,]\s*%s\s*:" % key, "the items carry %s (last frame's spot)" % key)
 
 
+class TestHoverStaysWhenThePlateMoves(unittest.TestCase):
+    """Fix round 3 (my live check: with one person selected, hovering another one's plate either never showed it full or
+    flickered 11 times a second). When the hovered plate must move out of the selected one's way it leaves the still
+    pointer; the browser then fires pointerout towards the canvas, which cleared the hover, the plate went back under the
+    pointer, and so on. Now: a plate's pointerout clears the hover only when the pointer went to something that is neither
+    the canvas nor another plate (a panel, or off the page); the canvas changes the hover only on a real pointer move."""
+
+    def test_pointerout_towards_the_canvas_keeps_the_hover(self):
+        from citypage import listener_block
+        blk = listener_block(r"ovRoot", "pointerout") or ""
+        self.assertIn("relatedTarget", blk)
+        self.assertIn("canvas", blk, "the canvas under the pointer is no reason to drop the hover")
+
+    def test_the_canvas_hover_needs_a_real_move(self):
+        from citypage import listener_block
+        blk = listener_block(r"canvas", "pointermove") or ""
+        self.assertRegex(blk, r"movementX", "a pointermove with no movement (the page moved, not the pointer) changes nothing")
+
+
 class TestAgentOnItsParentsFloor(unittest.TestCase):
     """Fix round 3, item 5 (main manager's decision): an agent sits near its parent, so an agent whose own repo is another
     floor (its lines carry its own repo) is drawn on its parent's floor: at a desk there, counted there, not on its own."""
