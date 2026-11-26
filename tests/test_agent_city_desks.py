@@ -64,7 +64,11 @@ const seatOfId = id => loc(byId(id), seatSpot(byId(id)));
 const posOfId = id => loc(byId(id), byId(id));
 const deskSeats = terr => { const i = planInfo(planOf(terr)); return i.tm.concat(i.helper).map(d => ({ x: r2(d.sx), z: r2(d.sz) })); };
 const meetSeats = terr => planInfo(planOf(terr)).meet.map(d => ({ x: r2(d.x), z: r2(d.z) }));
-const blockedAt = (c, p) => { const t = floorOfC(c), g = gridFor(t.id); return !!isBlocked(g, cellIx(p.x - t.cx), cellIx(p.y - t.cz)); };
+// a spot on a blocked cell of the walk grid, unless it is one of the meeting places (the chairs at the table are inside
+// the table's blocked pad by design: sessions sit there today, so overflow agents may too)
+const blockedAt = (c, p) => { const t = floorOfC(c), g = gridFor(t.id), lx = p.x - t.cx, lz = p.y - t.cz;
+  if (planInfo(planOf(t.id)).meet.some(m => Math.hypot(m.x - lx, m.z - lz) < .02)) return false;
+  return !!isBlocked(g, cellIx(lx), cellIx(lz)); };
 const walking = c => !!(c.path && c.path.length);
 const live = () => citizens.filter(c => !c.gone);
 """
@@ -265,6 +269,9 @@ __out = { ids, drawn: ids.map(id => isDrawn(byId(id))), seats: ids.map(seatOfId)
         at_desk = [s for s in seats if any(same_spot(s, d) for d in desks)]
         at_meet = [s for s in seats if any(same_spot(s, m) for m in meet)]
         self.assertEqual((len(at_desk), len(at_meet)), (4, 2), seats)
+        # today's overflow order: the meeting places from the first (the 4 chairs, then the standing spots)
+        self.assertTrue(all(any(same_spot(s, m) for s in at_meet) for m in meet[:2]),
+                        "the first two meeting places, as for sessions today: %s of %s" % (at_meet, meet))
 
     def test_no_two_seats_overlap(self):
         seats = self.out["seats"]
