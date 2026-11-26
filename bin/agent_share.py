@@ -5,7 +5,7 @@ CLI: agent_share.py <project root> <cmd> ...
   show                       files: task_files=<v> task_take=<v> place=<ap-data|tree>, then one line per agent file
   commit "<message>"         the in-git files that differ from the tip of ap-data go into one commit on it, then push
   sync                       fetch origin ap-data, 3-way merge into the working copies, commit, push
-  set <key> <value> [--no-commit] [--no-move]    task_files | task_take | task_place
+  set <key> <value> [--no-commit] [--no-move]    task_files | task_take | task_place | data_branch
   ignore                     the five .gitignore lines by the place (data: present, tree: absent)
   move                       take the agent files out of the code branch, put the in-git ones on ap-data
   name                       the git user name of the project root ("" when none)
@@ -14,6 +14,10 @@ CLI: agent_share.py <project root> <cmd> ...
 Facts live in agent_repo.conf ("key=value", "key = value" reads the same):
   task_files = local (default) | ideas | ideas,todo      task_take = owner (default) | anyone
   task_place = data (default) | tree                     tree: the files stay in the code tree (the cloud pack)
+  data_branch = ap-data (default) | <a branch name>      a name git refuses, or a branch that holds code, is not used
+Each of task_files, task_take, data_branch: the repo value wins, else the person's Configure setting, else the default.
+files set task_files ideas|ideas,todo and files move (a Configure that shares, no repo task_files) write the missing
+three values into agent_repo.conf, one code-branch commit, one line. The repo's own commit hooks run.
 The in-git files: agent_completed.txt and agent_estimate.txt always; agent_ideas.txt and agent_todo.txt when
 task_files names them; agent_worktree.txt never. Python 3.9, stdlib only. Git's own words never reach the output.
 """
@@ -41,17 +45,8 @@ MOVED = re.compile(r"\[rejected\].*\((?:non-fast-forward|fetch first)\)|^hint: .
 ROUNDS = 4
 
 
-def data_branch():
-    try:
-        import agent_conf
-        return str(agent_conf.CONSTANTS.get("data_branch") or "ap-data")
-    except Exception:
-        return "ap-data"
-
-
-BRANCH = data_branch()
-LOCAL_REF = "refs/heads/" + BRANCH
-REMOTE_REF = "refs/remotes/origin/" + BRANCH
+DEFAULT_BRANCH = "ap-data"
+TEAM_KEYS = ("task_files", "task_take", "data_branch")
 
 
 def timeout_s():
@@ -144,8 +139,8 @@ def has_origin(root):
     return run(root, "remote", "get-url", "origin").ok
 
 
-def tip(root, ref=LOCAL_REF):
-    r = run(root, "rev-parse", "-q", "--verify", ref + "^{commit}")
+def tip(root, ref=None):
+    r = run(root, "rev-parse", "-q", "--verify", (ref or local_ref(root)) + "^{commit}")
     return r.out.strip() if r.ok else ""
 
 
@@ -233,11 +228,86 @@ def facts(root):
             else "data"}
 
 
+_BRANCH = {}
+_SAID = set()
+
+
+def wanted_branch(root):
+    """The data branch name asked for: agent_repo.conf data_branch=, else the Configure setting, else ap-data."""
+    raw = read_conf(root).get("data_branch")
+    if raw is None:
+        raw = setting_fact("data_branch", DEFAULT_BRANCH)
+    return raw.strip() or DEFAULT_BRANCH
+
+
+def holds_code(root, b):
+    """True when B is the production or the working branch, the current branch, or a branch (local or on origin)
+    whose tree has a path that is not an agent file."""
+    names = set()
+    try:
+        import agent_conf
+        names.add(agent_conf.production_branch(root))
+        names.add(agent_conf.working_branch(root) or "")
+    except Exception:
+        pass
+    names.add(run(root, "symbolic-ref", "--short", "-q", "HEAD").out.strip())
+    if b in names:
+        return True
+    for ref in ("refs/heads/" + b, "refs/remotes/origin/" + b):
+        if not run(root, "rev-parse", "-q", "--verify", ref + "^{commit}").ok:
+            continue
+        listing = run(root, "ls-tree", "-r", "--name-only", "-z", ref).out
+        if any(p and p not in AGENT_FILES for p in listing.split("\0")):
+            return True
+    return False
+
+
+def refusal(root, b):
+    """"" when B may be the data branch, else the one line that says why not."""
+    if b == DEFAULT_BRANCH or not is_repo(root):
+        return ""
+    if b.startswith("-") or b == "HEAD" or "@{" in b or not run(root, "check-ref-format", "--branch", b).ok:
+        return "data branch %s is not a branch name: refused for now, the files in git stay on %s" % (b, DEFAULT_BRANCH)
+    if holds_code(root, b):
+        return "data branch %s holds code: refused for now, the files in git stay on %s" % (b, DEFAULT_BRANCH)
+    return ""
+
+
+def data_branch(root):
+    """(the data branch in use, the refusal line or ""). One rule: repo value, else Configure, else ap-data; a
+    name git refuses or a branch that holds code is not used (the default is)."""
+    if root not in _BRANCH:
+        wanted = wanted_branch(root)
+        why = refusal(root, wanted)
+        _BRANCH[root] = (DEFAULT_BRANCH, why) if why else (wanted, "")
+    return _BRANCH[root]
+
+
+def branch(root):
+    return data_branch(root)[0]
+
+
+def local_ref(root):
+    return "refs/heads/" + branch(root)
+
+
+def remote_ref(root):
+    return "refs/remotes/origin/" + branch(root)
+
+
+def announce(root):
+    """A command that writes says once that a refused data branch is not used."""
+    why = data_branch(root)[1]
+    if why and root not in _SAID:
+        _SAID.add(root)
+        say(why)
+
+
 def place(root):
     """Where the files in git go: ("data", <data branch>) or ("tree", None). The one place that says it."""
     if facts(root)["task_place"] == "tree":
         return ("tree", None)
-    return ("data", BRANCH)
+    return ("data", branch(root))
 
 
 def in_git_files(root):
@@ -314,7 +384,7 @@ def make_commit(root, entries, parents, message):
 
 
 def move_ref(root, new, old):
-    return run(root, "update-ref", LOCAL_REF, new, old or "0" * 40).ok
+    return run(root, "update-ref", local_ref(root), new, old or "0" * 40).ok
 
 
 # ------------------------------------------------------------------ the commit
@@ -352,19 +422,20 @@ def publish(root):
     if not has_origin(root) or not tip(root):
         return
     for turn in range(ROUNDS):
-        r = run(root, "push", "-q", "origin", "%s:refs/heads/%s" % (LOCAL_REF, BRANCH), timeout=timeout_s())
+        r = run(root, "push", "-q", "origin", "%s:refs/heads/%s" % (local_ref(root), branch(root)), timeout=timeout_s())
         if r.ok:
             return
         if MOVED.search(r.err) and turn < ROUNDS - 1:
             sync_core(root, "sync")
             continue
-        say("%s: not pushed (%s); the next write pushes it" % (BRANCH, why_text(r)))
+        say("%s: not pushed (%s); the next write pushes it" % (branch(root), why_text(r)))
         return
 
 
 def commit(root, message):
     if not active(root):
         return
+    announce(root)
     if commit_core(root, message):
         publish(root)
 
@@ -442,7 +513,7 @@ def merge_file(file_name, base, ours, theirs, ours_time, theirs_time):
 def fetch(root):
     if not has_origin(root):
         return False
-    return run(root, "fetch", "-q", "origin", "+%s:%s" % (LOCAL_REF, REMOTE_REF), timeout=timeout_s()).ok
+    return run(root, "fetch", "-q", "origin", "+%s:%s" % (local_ref(root), remote_ref(root)), timeout=timeout_s()).ok
 
 
 def sync_core(root, message):
@@ -450,7 +521,7 @@ def sync_core(root, message):
     if not active(root):
         return False
     fetch(root)
-    local, remote = tip(root), tip(root, REMOTE_REF)
+    local, remote = tip(root), tip(root, remote_ref(root))
     ents_l, ents_r = tree_entries(root, local), tree_entries(root, remote)
     base = ""
     if local and remote:
@@ -521,9 +592,10 @@ def retrain(root):
 def sync(root, message="files sync", train=True):
     if not active(root):
         return
+    announce(root)
     new_done = sync_core(root, message)
     local = tip(root)
-    if local and has_origin(root) and local != tip(root, REMOTE_REF):
+    if local and has_origin(root) and local != tip(root, remote_ref(root)):
         publish(root)
     if new_done and train:
         retrain(root)
@@ -569,6 +641,8 @@ def ignore(root):
 
 
 def valid_value(key, value):
+    if key == "data_branch":
+        return bool(value.strip())
     allowed = {"task_files": TASK_FILES_VALUES, "task_take": TASK_TAKE_VALUES, "task_place": TASK_PLACE_VALUES}
     return key in allowed and value in allowed[key]
 
@@ -577,6 +651,7 @@ def put_fact(root, key, value):
     """The line in agent_repo.conf: replaced in place, else appended. True when the file changed."""
     path = os.path.join(root, CONF)
     old = read_file(root, CONF)
+    _BRANCH.clear()
     pat = re.compile(r"^\s*%s\s*=.*$" % re.escape(key))
     new_line = "%s=%s" % (key, value)
     if old is None:
@@ -597,37 +672,86 @@ def put_fact(root, key, value):
     return True
 
 
-def commit_conf(root, key, value):
+def commit_conf(root, message):
+    """One code-branch commit of agent_repo.conf; the repo's own hooks run. False (and one line) when refused."""
     if not is_repo(root):
-        return
+        return True
     if not run(root, "status", "--porcelain", "--", CONF).out.strip():
-        return
+        return True
     run(root, "add", "--", CONF)
-    r = run(root, "commit", "-q", "--no-verify", "--only", "-m", "agent-files: %s=%s" % (key, value), "--", CONF,
-            env=ident_env(root))
+    r = run(root, "commit", "-q", "--only", "-m", message, "--", CONF, env=ident_env(root))
     if not r.ok:
+        run(root, "reset", "-q", "--", CONF)
         say("%s: not committed (%s)" % (CONF, why_text(r)))
+        return False
+    return True
+
+
+def restore_conf(root, old):
+    """Put agent_repo.conf back as it was (a commit was refused)."""
+    path = os.path.join(root, CONF)
+    _BRANCH.clear()
+    if old is None:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    else:
+        write_file(path, old)
+
+
+def put_team(root, forced):
+    """Write the team facts agent_repo.conf lacks (task_files, task_take, data_branch) with their effective values,
+    FORCED ({key: value}) first. Returns the "key=value ..." text written ("" when nothing was missing)."""
+    have = read_conf(root)
+    f = facts(root)
+    eff = {"task_files": f["task_files"], "task_take": f["task_take"], "data_branch": branch(root)}
+    eff.update(forced)
+    wrote = []
+    for key in TEAM_KEYS:
+        if key in have and key not in forced:
+            continue
+        if put_fact(root, key, eff[key]):
+            wrote.append("%s=%s" % (key, eff[key]))
+    return " ".join(wrote)
+
+
+def team_line(wrote, reason):
+    return "%s: %s written (%s)" % (CONF, wrote, reason)
 
 
 def cmd_set(root, args):
     flags = [a for a in args if a.startswith("--")]
     rest = [a for a in args if not a.startswith("--")]
     if len(rest) != 2 or any(f not in ("--no-commit", "--no-move") for f in flags):
-        sys.stderr.write("files set: usage: files set <task_files|task_take|task_place> <value> [--no-commit] [--no-move]\n")
+        sys.stderr.write("files set: usage: files set <task_files|task_take|task_place|data_branch> <value> [--no-commit] [--no-move]\n")
         return 1
     key, value = rest
     if not valid_value(key, value):
         sys.stderr.write("files set: %s cannot be %s (task_files: local, ideas, ideas,todo; task_take: owner, anyone; "
-                         "task_place: data, tree)\n" % (key, value))
+                         "task_place: data, tree; data_branch: a branch name)\n" % (key, value))
         return 1
+    if key == "data_branch":
+        why = refusal(root, value)
+        if why:
+            sys.stderr.write(why + "\n")
+            return 1
     moves = key == "task_files" and "--no-move" not in flags
     if moves and place(root)[0] == "data" and is_repo(root) and not in_main_checkout(root):
         sys.stderr.write("files move: run it in the main checkout (%s)\n" % root)
         return 1
-    put_fact(root, key, value)
+    old = read_file(root, CONF)
+    wrote = ""
+    if moves and value != "local":
+        wrote = put_team(root, {"task_files": value})
+    else:
+        put_fact(root, key, value)
+    if "--no-commit" not in flags and not commit_conf(root, "agent-files: %s=%s" % (key, value)):
+        restore_conf(root, old)
+        return 1
     say("files set: %s=%s" % (key, value))
-    if "--no-commit" not in flags:
-        commit_conf(root, key, value)
+    if wrote and wrote != "task_files=%s" % value:
+        say(team_line(wrote, "the repo had no value"))
     if moves:
         return move(root)
     return 0
@@ -661,10 +785,29 @@ def read_bytes(path):
         return None
 
 
+def add_empty_task_files(root, shared):
+    """A task file that is shared now, exists here and is empty has no line to carry it onto the data branch:
+    create it there (the move creates what is missing)."""
+    local = tip(root)
+    ents = tree_entries(root, local)
+    new = dict(ents)
+    for n in ("agent_ideas.txt", "agent_todo.txt"):
+        if n in shared and n not in ents and read_file(root, n) == "":
+            sha = put_blob(root, "")
+            if sha:
+                new[n] = sha
+    if new == ents:
+        return
+    made = make_commit(root, new, [local] if local else [], "files move")
+    if made and move_ref(root, made, local):
+        publish(root)
+
+
 def move(root):
     if place(root)[0] == "tree":
         say("files move: the task files stay in the code tree (task_place=tree), nothing moves")
         return 0
+    announce(root)
     if not is_repo(root):
         sys.stderr.write("files move: %s is not a git repository\n" % root)
         return 1
@@ -677,6 +820,16 @@ def move(root):
         sys.stderr.write("files move: the index has staged changes (%s); commit or unstage them first, nothing moved\n"
                          % staged[0])
         return 1
+    if "task_files" not in read_conf(root):
+        f = facts(root)
+        if f["task_files"] != "local" or f["task_take"] == "anyone":
+            old_conf = read_file(root, CONF)
+            wrote = put_team(root, {})
+            if wrote and not commit_conf(root, "agent-files: %s" % wrote):
+                restore_conf(root, old_conf)
+                return 1
+            if wrote:
+                say(team_line(wrote, "your Configure shares, the repo had no value"))
     kept_dir = os.path.join(common_dir(root), "agent-files-kept")
     ts = stamp()
     changed = set()
@@ -718,14 +871,24 @@ def move(root):
             shutil.copy2(path, os.path.join(kept_dir, "%s.%s" % (n, ts)))
         run(root, "rm", "--cached", "-q", "-f", "--", n)
         changed.add(n)
+    old_ignore = read_file(root, ".gitignore")
     ignored_changed = ignore(root)
     if ignored_changed:
         run(root, "add", "--", ".gitignore")
     committed = False
     if run(root, "diff", "--cached", "--quiet").rc == 1:
-        r = run(root, "commit", "-q", "--no-verify", "-m", "agent-files: the agent files leave the code branch",
+        r = run(root, "commit", "-q", "-m", "agent-files: the agent files leave the code branch",
                 env=ident_env(root))
         if not r.ok:
+            # the repo's own hook refused: the move is not done, the index and .gitignore are put back
+            run(root, "reset", "-q", "--", ".gitignore", *AGENT_FILES)
+            if old_ignore is None:
+                try:
+                    os.remove(os.path.join(root, ".gitignore"))
+                except OSError:
+                    pass
+            elif ignored_changed:
+                write_file(os.path.join(root, ".gitignore"), old_ignore)
             sys.stderr.write("files move: commit failed: %s\n" % why_text(r))
             return 1
         committed = True
@@ -748,6 +911,7 @@ def move(root):
     # (4) the in-git files onto ap-data, synced with origin's, created when missing, pushed
     before = tree_entries(root, tip(root))
     sync(root, "files move")
+    add_empty_task_files(root, shared)
     after = tree_entries(root, tip(root))
     for n in shared:
         if before.get(n) != after.get(n):
@@ -757,7 +921,7 @@ def move(root):
         state = "in git" if n in shared else "local"
         if n in changed:
             if n in shared:
-                say("%s: in git (on %s)" % (n, BRANCH))
+                say("%s: in git (on %s)" % (n, branch(root)))
             else:
                 say("%s: local (out of the code branch; a copy is in agent-files-kept)" % n)
         else:

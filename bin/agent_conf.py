@@ -1,4 +1,4 @@
-"""The one reader of the 17 auto-pipeline settings.
+"""The one reader of the 20 auto-pipeline settings.
 
 The settings live only in Claude Code: /plugin -> Installed -> auto-pipeline -> Configure.
 They are stored in <claude config dir>/settings.json under
@@ -87,6 +87,14 @@ SETTINGS = [
     _s("city_idle_min", "City: City auto close (min)", "number", 30,
        "Minutes the agent city keeps running with no browser open, then it stops by itself. 1 to 240.",
        min=1, max=240),
+    _s("task_files", "Team: Task files in git", "string", "local",
+       "Which task files are shared through git besides the finished records: local (none), ideas, or ideas,todo. A value in the repo's agent_repo.conf wins.",
+       options=["local", "ideas", "ideas,todo"]),
+    _s("task_take", "Team: Who may take a task", "string", "owner",
+       "In a shared todo, who may work a task: owner (only the owner or the one assigned) or anyone (take it first). The repo value in agent_repo.conf wins.",
+       options=["owner", "anyone"]),
+    _s("data_branch", "Team: Data branch", "string", "ap-data",
+       "The branch that holds the shared agent files. The repo value in agent_repo.conf wins. A branch that holds code is refused for now (ap-data is used)."),
 ]
 
 CONSTANTS = {
@@ -100,7 +108,6 @@ CONSTANTS = {
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
     "check_budget_s": 60, "unused_pane_min": 30,
     "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024, "verify_box_min": 15,
-    "data_branch": "ap-data",
 }
 
 BY_KEY = {s["key"]: s for s in SETTINGS}
@@ -946,6 +953,34 @@ def working_branch(repo, derive=False):
         value = default
     cfg("config", "--local", "auto-pipeline.workingbranch", value)
     return value
+
+
+# ------------------------------------------------------------------ repo value against the person's Configure
+
+TEAM_KEYS = ("task_files", "task_take", "data_branch")
+
+
+def shared_lines(project_root, env=None):
+    """One line per team fact (task_files, task_take, data_branch) that agent_repo.conf of the project has and
+    the person's Configure value (the default when unset) differs from: the repo value counts. Never raises."""
+    out = []
+    try:
+        with open(os.path.join(project_root, REPO_FILE), "r", encoding="utf-8", errors="replace") as fh:
+            values = _parse_old(fh.read())
+    except Exception:
+        return out
+    for key in TEAM_KEYS:
+        if key not in values:
+            continue
+        try:
+            repo = values[key].replace(" ", "")
+            mine = text(get(key, env)).replace(" ", "")
+        except Exception:
+            continue
+        if repo != mine:
+            out.append("SHARED FILES: this repo says %s=%s in %s; your Configure says %s; the repo value counts"
+                       % (key, repo, REPO_FILE, mine))
+    return out
 
 
 # ------------------------------------------------------------------ CLI

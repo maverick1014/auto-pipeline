@@ -502,7 +502,7 @@ H4. Tables
 S1. Settings
 - Settings live only in /plugin -> Installed -> auto-pipeline -> Configure, user level (Claude Code keeps them in `~/.claude/settings.json` `pluginConfigs`)
 - Why: the plugin is a developer workflow, one setup for every repo
-- Configure holds the 17 settings
+- Configure holds the 20 settings
 - Repo facts (core paths, guard tests, test commands, edges, real-data access) live in the committed `agent_repo.conf` at the main repo root, not in Configure (R8)
 - New terminals use the "Permissions: Permission mode" setting, default bypassPermissions
 - `/auto-pipeline:settings` shows them as a table and never changes them

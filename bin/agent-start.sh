@@ -776,8 +776,8 @@ print_mode_lines() {
     *) rk=task_manager;;
   esac
   python3 "$pyp/agent_conf.py" you "$rk" "$ME" 2>/dev/null </dev/null || true
-  PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
-for w in a.warnings(): print(w)' 2>/dev/null </dev/null || true
+  PYTHONPATH="$pyp" python3 -c 'import sys, agent_conf as a
+for w in a.warnings() + a.shared_lines(sys.argv[1]): print(w)' "$PROJECT_ROOT" 2>/dev/null </dev/null || true
   printf '%s' "$MIGRATE_TEXT"
   python3 "$pyp/agent_update.py" sync "$STATE_DIR" "$PROJECT_ROOT" 2>/dev/null </dev/null || true
   if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ] || [ "$role" = second ]; }; then

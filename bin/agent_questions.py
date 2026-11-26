@@ -602,7 +602,12 @@ def cmd_park_add(c, args):
         fields.append("option %s: %s" % (LETTERS[j], o))
     if rec:
         fields.append("rec " + rec)
-    name = user_name(c.root)
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import agent_share
+        name = agent_share.name(c.root)
+    except Exception:
+        name = user_name(c.root)
     if name and " | " not in name and "\n" not in name:
         fields.append("by " + name)
     line = "PARKED: " + " | ".join(fields)
