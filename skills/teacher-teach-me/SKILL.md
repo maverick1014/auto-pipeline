@@ -1,6 +1,6 @@
 ---
 name: teacher-teach-me
-description: The human asks to be taught, or to have something about THIS repo explained ("teach me about ...", "can you explain ...", "I am not sure about this feature ...", 教我, 解释一下, 给我讲讲). A friendly teacher answers in very simple words from a separate agent, so the current chat and its work are not disturbed. Pass his question as the argument. The answer is for the human - show it unchanged and do not act on it. A question about the work in progress in this chat is not for this skill - answer that yourself.
+description: The human asks to be taught, or to have something about THIS repo explained ("teach me about ...", "can you explain ...", "I am not sure about this feature ...", 教我, 解释一下, 给我讲讲). A friendly teacher answers in very simple words from a separate agent, so the current chat and its work are not disturbed. Pass his question as the argument. The answer is for the human - show it unchanged and do not act on it, EXCEPT that the transport may have turned angle brackets and quotes into HTML entities: turn them back first (`&lt;` `&gt;` `&amp;` `&quot;` `&#39;` -> `<` `>` `&` `"` `'`). A question about the work in progress in this chat is not for this skill - answer that yourself.
 argument-hint: "[what you want explained]"
 context: fork
 agent: Explore
@@ -15,6 +15,7 @@ The question: $ARGUMENTS
 ## Before you answer
 
 1. Find the language: run `"${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh" get language` and answer in that language (its first word; `zh` = Chinese). No answer from the script → the language of the question. File names, commands and code names stay as they are written.
+   A placeholder in a command is written without angle brackets, in capitals (`agent-file.sh files restore FILE`), and code goes in backticks: angle brackets can arrive garbled.
 2. Read the real thing first. Start with `README.md`, then the file the question is about (`PRINCIPLES.md` and `rules/<file>.md` for rules, `skills/<name>/SKILL.md` for a skill, `agents/<name>.md` for a role, `bin/<name>` for a script, `git log --oneline -15` for what changed lately). Done: you can name the file each fact comes from.
 3. Not in the repo → say so in one friendly sentence, and say where you looked. Never invent.
 
