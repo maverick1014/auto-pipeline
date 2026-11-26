@@ -656,6 +656,43 @@ PANELS = {468: (583, [[42, 12, 268, 54], [0, 12, 32, 91], [12, 545, 112, 571], [
                       [220, 664, 258, 702], [264, 664, 302, 702], [308, 664, 346, 702]])}
 
 
+def page_in(lang):
+    """A copy of the page with its language fixed to LANG ('zh' or 'en'), for the sim harness (citypage.PAGE)."""
+    import citypage
+    import tempfile
+    text = open(citypage.PAGE, encoding="utf-8").read().replace("const LANG = '__CITY_LANG__';", "const LANG = '%s';" % lang, 1)
+    fd, path = tempfile.mkstemp(suffix=".html")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return path
+
+
+class TestHoverPlateWithoutTheTaskName(unittest.TestCase):
+    """Fix round 4 (UI CHECK 4: hovered or selected, the reviewer read '审查员 city-agents-at-de…' and the merge deputy
+    '合并副手 city-agents-at-de…', so 'PR REVIEW' and 'merge' were cut off). Short and long form both drop the task's own
+    name: the plate reads role word + the rest, in zh and en."""
+
+    def plates(self, lang):
+        import citypage
+        keep = citypage.PAGE
+        citypage.PAGE = page_in(lang)
+        try:
+            return sim(r"""
+snap(__payload.view, __payload.agents);
+settle(2);
+__out = ['rv', 'md'].map(id => { const c = byId(id); return [plateWord(c), plateName(c), plateName(c, true)]; });
+""", {"view": view(), "agents": TEAM_AGENTS}, required=REQUIRED + ("plateName",))
+        finally:
+            os.remove(citypage.PAGE)
+            citypage.PAGE = keep
+
+    def test_zh(self):
+        self.assertEqual(self.plates("zh"), [["审查员", "PR REVIEW", "PR REVIEW"], ["合并副手", "merge", "merge"]])
+
+    def test_en(self):
+        self.assertEqual(self.plates("en"), [["Reviewer", "PR REVIEW", "PR REVIEW"], ["Merge deputy", "merge", "merge"]])
+
+
 class TestTeamFloorEveryoneShows(unittest.TestCase):
     """Fix round 2, item 1 (UI CHECK 2: the reviewer had no plate at about 500 px and on the phone page). The click path's
     team floor (a manager, two workers, a reviewer, a merge deputy), projected as the page's default view on the stage of
@@ -777,9 +814,13 @@ __out = { short: ids.map(id => plateName(byId(id))), long: ids.map(id => plateNa
         self.assertEqual(sh["o1"], "city-x", "a task name alone stays")
         self.assertNotEqual(sh["c1"], sh["c2"])
         self.assertTrue(sh["c1"].startswith("UI CHECK") and sh["c2"].startswith("UI CHECK"), (sh["c1"], sh["c2"]))
-        self.assertEqual(lg["rv"], "city-agents-at-desks PR REVIEW", "the hover plate keeps the whole description")
-        self.assertEqual(lg["md"], "city-agents-at-desks merge")
+        # fix round 4 (main manager, UI CHECK 4): the long form (hover, select) drops the task's own name too; the whole
+        # description with the task name stays only in the follow bar and the card
+        self.assertEqual(lg["rv"], "PR REVIEW", "the hover plate shows the useful part, not the task name")
+        self.assertEqual(lg["md"], "merge")
         self.assertEqual(lg["e1"], "find the hook")
+        self.assertEqual(lg["r2"], "re-run the tests", "no task name in front: kept, long form too")
+        self.assertEqual(lg["x1"], "other-task merge")
         self.assertEqual(out["tm"][0], out["tm"][2], "a session: nameOf, both forms")
         self.assertEqual(out["tm"][1], out["tm"][2])
 
