@@ -50,6 +50,7 @@ CONTRACT
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -1226,7 +1227,7 @@ class TestStageSince(VerticalCase):
         self.stage("alpha", "workers", "2/3", now="2026-11-02 14:40")
         line = self.todo_line("alpha")
         self.assertIn(" | stage workers 2/3 since 2026-11-02 14:10", line)
-        self.assertEqual(line.count(" | stage "), 1, line)
+        self.assertEqual(len(re.findall(r" \| stage (?!log )", line)), 1, line)   # estimate-improve: the stage log is another field
         self.stage("alpha", "verify", now="2026-11-02 14:50")
         self.assertIn(" | stage verify since 2026-11-02 14:50", self.todo_line("alpha"))
 

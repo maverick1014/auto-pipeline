@@ -112,14 +112,14 @@ class Todo(object):
 
 def field_of(fields, prefix):
     for f in fields[3:]:
-        if f.startswith(prefix + " "):
+        if f.startswith(prefix + " ") and not (prefix == "stage" and f.startswith("stage log ")):
             return f[len(prefix) + 1:]
     return None
 
 
 def field_index(fields, prefix):
     for i in range(3, len(fields)):
-        if fields[i].startswith(prefix + " "):
+        if fields[i].startswith(prefix + " ") and not (prefix == "stage" and fields[i].startswith("stage log ")):
             return i
     return -1
 
@@ -128,7 +128,7 @@ def anchor(fields):
     """The index after which a new checks/scope/builder field goes: the last of est, guess, level (else the what)."""
     at = 2
     for i in range(3, len(fields)):
-        if re.match(r"(est|guess) \d+m$|level ([0-9]+|[A-D])$", fields[i]):
+        if re.match(r"(est|est0|added|guess) \d+m$|why .+|level ([0-9]+|[A-D])$", fields[i]):
             at = i
     return at
 
@@ -509,12 +509,25 @@ def cmd_todo_est(ctx, a):
     else:
         f.insert(3, "est %sm" % mins)
         at = 3
+    # est0 keeps the first estimate, added the sum of every +<m> (right after est)
+    e0 = field_index(f, "est0")
+    if e0 < 0 and old:
+        f.insert(at + 1, "est0 %s" % old)
+        e0 = at + 1
+    if add:
+        ad = field_index(f, "added")
+        if ad >= 0:
+            m = re.match(r"added (\d+)m$", f[ad])
+            f[ad] = "added %dm" % ((int(m.group(1)) if m else 0) + int(body))
+        else:
+            f.insert((e0 if e0 >= 0 else at) + 1, "added %dm" % int(body))
     if guess is not None:
         g = field_index(f, "guess")
         if g >= 0:
             f[g] = "guess %sm" % int(guess)
         else:
-            f.insert(at + 1, "guess %sm" % int(guess))
+            top = max(at, field_index(f, "est0"), field_index(f, "added"))
+            f.insert(top + 1, "guess %sm" % int(guess))
     todo.set(name, f)
     print("todo est: %s %s -> %sm" % (name, old or "-", mins))
 

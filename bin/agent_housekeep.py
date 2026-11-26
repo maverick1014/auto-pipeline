@@ -269,7 +269,7 @@ class Housekeep(object):
     @staticmethod
     def field(parts, key):
         for p in parts[1:]:
-            if p.startswith(key + " "):
+            if p.startswith(key + " ") and not (key == "stage" and p.startswith("stage log ")):
                 return p[len(key) + 1:].strip()
         return None
 

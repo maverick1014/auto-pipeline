@@ -127,7 +127,11 @@ class TestTodoDrop(ScriptCase):
 KEYS = ["repo", "type", "lane", "mock", "est", "work", "wait", "clock",
         "bounces", "workers", "files", "lines", "tests", "adds",
         "guess",   # estimate-blend (2026-11-13): the manager's guess
-        "level"]   # test-levels (2026-11-20): the risk level of the todo line, the last key
+        "level",   # test-levels (2026-11-20): the risk level of the todo line
+        # estimate-improve (2026-11-26): typed work, the first estimate, added minutes, builder done, stage and
+        # slice minutes (tests/test_agent_estimate_inputs.py holds the contract)
+        "typed", "est0", "added", "built", "stages", "slices",
+        "by"]   # scope add (owner 2026-11-26): the name of the clone that ran todo done; backfill writes "-"
 
 
 TYPES = ["page", "server", "script", "docs", "cloud", "app", "data", "mixed"]
@@ -258,7 +262,7 @@ TWICE_DONE = "2026-09-12 | twice | second try | est 45m actual 80m"
 
 
 # test-levels (2026-11-20): level is in the data block, not a column of the table
-HEADER = ["repo", "name", "date"] + [k for k in KEYS[1:] if k != "level"]
+HEADER = ["repo", "name", "date"] + KEYS[1:KEYS.index("level")]   # plain `data`: up to guess
 
 
 HERE_DATA = "2026-10-01 | here-new | a data line | " + block(
@@ -322,42 +326,42 @@ class TestTodoDoneData(DataCase):
         self.assertEqual(self.completed_lines(), [
             "2026-10-01 | t1 | build the thing | " + block(
                 repo="project", type="script", lane="full", mock="no",
-                est=90, work=85, wait=45, clock=150, bounces=1, workers=3,
-                tests=38, adds=2)])
+                est=90, work=105, wait=45, clock=150, bounces=1, workers=3,
+                tests=38, adds=2, typed=85, est0=90, by="t")])     # estimate-improve A1: work = clock 150 - wait 45
         self.assertNotIn("t1 |", self.read("agent_todo.txt"))
 
     def test_the_old_call_still_works_and_knows_what_it_can(self):
         out = self.assertOk(self.af("todo", "done", "t1"))
         self.assertIn("todo done: t1", out)
-        self.assertEqual(self.completed_lines(), [
+        self.assertEqual(self.completed_lines(), [      # estimate-improve A1: the work is measured
             "2026-10-01 | t1 | build the thing | "
-            + block(repo="project", est=90, clock=150)])
+            + block(repo="project", est=90, work=150, wait=0, clock=150, est0=90, by="t")])
 
     def test_the_old_call_with_a_result_text_still_works(self):
         self.assertOk(self.af("todo", "done", "t1", "merged abc123, 38 tests OK"))
         self.assertEqual(self.completed_lines(), [
             "2026-10-01 | t1 | build the thing | "
-            + block(repo="project", est=90, clock=150)])
+            + block(repo="project", est=90, work=150, wait=0, clock=150, est0=90, by="t")])
 
     def test_facts_after_a_result_text(self):
         self.assertOk(self.af("todo", "done", "t1", "merged abc123",
                               "--work", "85", "--lane", "full"))
         self.assertEqual(self.completed_lines(), [
             "2026-10-01 | t1 | build the thing | "
-            + block(repo="project", lane="full", est=90, work=85, clock=150)])
+            + block(repo="project", lane="full", est=90, work=150, wait=0, clock=150, typed=85, est0=90, by="t")])
 
     def test_zero_is_a_number(self):
         self.assertOk(self.af("todo", "done", "t1", "--work", "12",
                               "--wait", "0", "--bounces", "0", "--adds", "0"))
-        self.assertIn(block(repo="project", est=90, work=12, wait=0,
-                            clock=150, bounces=0, adds=0),
+        self.assertIn(block(repo="project", est=90, work=150, wait=0,
+                            clock=150, bounces=0, adds=0, typed=12, est0=90, by="t"),
                       self.completed_lines()[0])
 
     def test_no_estimate_and_no_opened_time_are_a_dash(self):
         self.todo("t2 | small | a thing | by main")
         self.assertOk(self.af("todo", "done", "t2", "--work", "5"))
         self.assertEqual(self.completed_lines(), [
-            "2026-10-01 | t2 | a thing | " + block(repo="project", work=5)])
+            "2026-10-01 | t2 | a thing | " + block(repo="project", work=5, typed=5, by="t")])
 
     def test_the_other_todo_lines_stay(self):
         self.todo(T1, "keep | big | stays | est 10m | opened 2026-10-01 19:00 | by main")
@@ -395,10 +399,18 @@ class TestTodoDoneData(DataCase):
         out = self.assertOk(self.af("todo", "done", "t1", "--work", "85"))
         self.assertIn("TIME DATA: 3 of 30", out)
 
-    def test_time_data_does_not_count_a_task_done_without_work(self):
+    def test_time_data_counts_a_task_done_without_typed_work(self):
+        # estimate-improve A1: the work is measured from the line's times, so it counts with no --work
         self.completed(
             "2026-09-30 | a | x | " + block(repo="project", est=60, work=50, clock=70))
         out = self.assertOk(self.af("todo", "done", "t1"))
+        self.assertIn("TIME DATA: 2 of 30", out)
+
+    def test_time_data_does_not_count_a_task_with_no_time_and_no_work(self):
+        self.completed(
+            "2026-09-30 | a | x | " + block(repo="project", est=60, work=50, clock=70))
+        self.todo("t2 | small | a thing | by main")
+        out = self.assertOk(self.af("todo", "done", "t2"))
         self.assertIn("TIME DATA: 1 of 30", out)
 
     # ---- refused ----
@@ -578,7 +590,7 @@ class TestTimeTableWrites(_TestTimeTableFixture, DataCase):
     def test_a_task_done_now_shows_up(self):
         self.todo(T1)
         self.assertOk(self.af("todo", "done", "t1", "--work", "45", "--wait", "30"))
-        self.assertIn(["t1", "90", "45", "30", "150", "0.5"], self.rows())
+        self.assertIn(["t1", "90", "120", "30", "150", "1.3"], self.rows())     # A1: work 150 - 30
 
 
 class TestBackfill(DataCase):
@@ -964,8 +976,8 @@ class TestDataAllReposWrites(_TestDataAllReposFixture, DataCase):
         self.assertOk(self.af("todo", "done", "t1", "--work", "85", "--wait",
                               "45", "--type", "docs", "--lane", "full",
                               "--mock", "no"))
-        self.assertIn(["project", "t1", "2026-10-01", "docs", "full", "no",
-                       "90", "85", "45", "150", "-", "-", "-", "-", "-", "-", "-"],
+        self.assertIn(["project", "t1", "2026-10-01", "docs", "full", "no",     # work 150 - 45 (A1)
+                       "90", "105", "45", "150", "-", "-", "-", "-", "-", "-", "-"],
                       self.rows())
 
 
@@ -998,8 +1010,16 @@ class TestEta(_TestEtaFixture, SharedDataCase):
     """One repo for the class: these tests only read (tests/sharedrepo.py)."""
 
     def test_no_numbers_given_the_whole_estimate_is_left(self):
-        self.assertEqual(self.parts("plain"),
+        # estimate-improve C10: with no --step and no --work-so-far eta reads the line like the board
+        # (tests/test_agent_forecast.py); --work-so-far 0 keeps today's math for these formatting tests
+        self.assertEqual(self.parts("plain", "--work-so-far", "0"),
                          (70, "21:10", "", "review", "21:10", ""))
+
+    def test_no_numbers_reads_the_line_like_the_board(self):
+        # opened 18:00, now 20:00, no stage: 120 minutes of work on a 70 minute estimate, no pace to go by
+        r = self.eta("plain")
+        self.assertEqual(r.returncode, 1, (r.stdout, r.stderr))
+        self.assertIn("--step", r.stderr)
 
     def test_the_step_says_how_much_is_done(self):
         # step 3 of 7: 30 of 70 done, 40 left
@@ -1044,8 +1064,8 @@ class TestEta(_TestEtaFixture, SharedDataCase):
                          (50, "20:50", "", "mock ready", "20:10", ""))
 
     def test_a_mock_task_with_no_step_given(self):
-        # 70 left; the mock is ready after 70 x 3/7 = 30 min
-        self.assertEqual(self.parts("paged"),
+        # 70 left; the mock is ready after 70 x 3/7 = 30 min (today's math: --work-so-far 0, see above)
+        self.assertEqual(self.parts("paged", "--work-so-far", "0"),
                          (70, "21:10", "", "mock ready", "20:30", ""))
 
     def test_after_the_mock_gate_the_owner_is_needed_at_the_review(self):
@@ -1061,12 +1081,12 @@ class TestEta(_TestEtaFixture, SharedDataCase):
                          (50, "21:20", "", "mock ready", "20:10", ""))
 
     def test_past_midnight_says_tomorrow(self):
-        self.assertEqual(self.parts("plain", now="2026-10-01 23:40"),
+        self.assertEqual(self.parts("plain", "--work-so-far", "0", now="2026-10-01 23:40"),
                          (70, "00:50", "tomorrow", "review", "00:50", "tomorrow"))
 
     def test_later_than_tomorrow_says_the_date(self):
         # 3000 min = 50 h after 2026-10-01 20:00
-        self.assertEqual(self.parts("long"),
+        self.assertEqual(self.parts("long", "--work-so-far", "0"),
                          (3000, "22:00", "on 2026-10-03", "review", "22:00",
                           "on 2026-10-03"))
 
@@ -1101,7 +1121,7 @@ class TestEta(_TestEtaFixture, SharedDataCase):
                           self.read("agent_completed.txt")), before)
 
     def test_the_machine_clock_is_used_when_no_fake_clock_is_set(self):
-        out = self.assertOk(self.repo.run("agent-file.sh", "eta", "plain",
+        out = self.assertOk(self.repo.run("agent-file.sh", "eta", "plain", "--work-so-far", "0",
                                           env={"AGENT_FAKE_NOW": ""}))
         self.assertRegex(out.strip(), ETA_LINE)
 
@@ -1348,6 +1368,9 @@ class TestStageRecord(StageCase):
         before = self.todo_line("alpha")
         out = self.stage("alpha", "tests", now="2026-11-02 14:10").stdout
         line = self.todo_line("alpha")
+        # estimate-improve A2: the stage log field sits right before started
+        self.assertIn(" | stage log tests 10 | started ", line)
+        line = line.replace(" | stage log tests 10", "")
         self.assertTrue(line.startswith(before), line)
         self.assertTrue(line.endswith(" | stage tests since 2026-11-02 14:10"), line)
         self.assertEqual(len(out.strip().splitlines()), 1, out)
@@ -1359,7 +1382,7 @@ class TestStageRecord(StageCase):
         self.af("todo", "where", "alpha", "pc2", "/x/alpha")
         self.stage("alpha", "workers", "1/2", now="2026-11-02 14:30")
         line = self.todo_line("alpha")
-        self.assertEqual(line.count(" | stage "), 1, line)
+        self.assertEqual(len(re.findall(r" \| stage (?!log )", line)), 1, line)   # the stage log is another field
         self.assertIn(" | stage workers 1/2 since 2026-11-02 14:30 | on pc2 /x/alpha", line)
 
     def test_the_same_value_again_keeps_the_line(self):
@@ -1433,8 +1456,10 @@ class TestStageInWorktree(StageCase):
         self.stage("alpha", "tests", now="2026-11-02 14:10", cwd=self.alpha)
         self.state("a line after\n", folder=self.alpha)
         self.stage("alpha", "verify", now="2026-11-02 14:50", cwd=self.alpha)
+        # estimate-improve C11: the first stage also writes the WORK START line, once, right before it
         self.assertEqual(self.state_text(self.alpha),
                          "brief line one\nHEARTBEAT alpha: step 3 of 7\n"
+                         "WORK START alpha | 2026-11-02 14:10\n"
                          "STAGE alpha: verify | since 2026-11-02 14:50\n"
                          "a line after\n")
         self.stage("alpha", "verify", now="2026-11-02 14:55", cwd=self.alpha)
@@ -1514,26 +1539,26 @@ class TestTodoAddLevel(TodoCase):
 
     def test_after_the_guess(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70", "--guess", "35", "--level", "C"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level C | opened %s | by main\n" % NOW_NOV20_1000)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | guess 35m | level C | opened %s | by main | owner t\n" % NOW_NOV20_1000)
 
     def test_it_may_stand_anywhere(self):
         self.assertOk(self.af("todo", "add", "--level", "D", "t1", "big", "build it", "70"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level D | opened %s | by main\n" % NOW_NOV20_1000)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | level D | opened %s | by main | owner t\n" % NOW_NOV20_1000)
 
     def test_no_est(self):
         self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", "A"))
-        self.assertEqual(self.todo(), "t1 | small | fix it | level A | opened %s | by main\n" % NOW_NOV20_1000)
+        self.assertEqual(self.todo(), "t1 | small | fix it | level A | opened %s | by main | owner t\n" % NOW_NOV20_1000)
 
     def test_no_level_is_as_before(self):
         self.assertOk(self.af("todo", "add", "t1", "big", "build it", "70"))
-        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | opened %s | by main\n" % NOW_NOV20_1000)
+        self.assertEqual(self.todo(), "t1 | big | build it | est 70m | opened %s | by main | owner t\n" % NOW_NOV20_1000)
 
     def test_an_old_number_is_stored_as_its_type(self):
         for old, typ in (("0", "A"), ("1", "B"), ("2", "C"), ("3", "C"), ("4", "D")):
             with self.subTest(old=old):
                 self.write_todo()
                 self.assertOk(self.af("todo", "add", "t1", "small", "fix it", "--level", old))
-                self.assertEqual(self.todo(), "t1 | small | fix it | level %s | opened %s | by main\n" % (typ, NOW_NOV20_1000))
+                self.assertEqual(self.todo(), "t1 | small | fix it | level %s | opened %s | by main | owner t\n" % (typ, NOW_NOV20_1000))
 
     def test_a_bad_level_is_refused(self):
         for bad in (["--level", "5"], ["--level", "E"], ["--level", "-1"], ["--level", "x"], ["--level", ""], ["--level"]):
@@ -1610,23 +1635,24 @@ class TestTodoDoneLevel(TodoCase):
     def test_the_level_is_the_last_key(self):
         self.write_todo("t1 | big | build it | est 70m | guess 35m | level C | opened 2026-11-20 09:00 | by main")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertTrue(self.done_line().endswith(" adds=- guess=35 level=C"), self.done_line())
+        # estimate-improve: the six new keys follow level
+        self.assertIn(" adds=- guess=35 level=C typed=60 est0=70 ", self.done_line())
 
     def test_an_old_number_is_copied_as_it_is(self):
         self.write_todo("t1 | big | build it | est 70m | guess 35m | level 2 | opened 2026-11-20 09:00 | by main")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertTrue(self.done_line().endswith(" level=2"), self.done_line())
+        self.assertIn(" level=2 typed=", self.done_line())
         self.assertIn(" | t1 | build it | data repo=", self.done_line())
 
     def test_no_level_is_a_dash(self):
         self.write_todo("t1 | big | build it | est 70m | opened 2026-11-20 09:00 | by main")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertTrue(self.done_line().endswith(" guess=- level=-"), self.done_line())
+        self.assertIn(" guess=- level=- typed=", self.done_line())
 
     def test_a_level_word_in_the_what_is_not_the_level(self):
         self.write_todo("t1 | big | level 9 is a word here | est 70m | opened 2026-11-20 09:00 | by main")
         self.assertOk(self.af("todo", "done", "t1", "--work", "60", "--type", "script", "--lane", "full"))
-        self.assertTrue(self.done_line().endswith(" level=-"), self.done_line())
+        self.assertIn(" level=- typed=", self.done_line())
 
     def test_the_data_table_keeps_its_columns(self):
         with open(self.repo.path("agent_completed.txt"), "w") as fh:
