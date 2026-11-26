@@ -30,7 +30,7 @@ def whole(text):
 
 
 def history(root):
-    """The clean rows (clock and wait numbers, work <= clock <= 1440) of agent_completed.txt, in file order."""
+    """The clean rows (clock a number, work <= clock <= 1440; the wait may be missing) of agent_completed.txt, in file order."""
     path = os.path.join(root, "agent_completed.txt")
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
@@ -47,7 +47,7 @@ def history(root):
                 k, v = w.split("=", 1)
                 d.setdefault(k, v)
         work, wait, clock = whole(d.get("work")), whole(d.get("wait")), whole(d.get("clock"))
-        if work is None or wait is None or clock is None or work > clock or clock > MAX_CLOCK:
+        if work is None or clock is None or work > clock or (clock if wait is None else max(0, clock - wait)) > MAX_CLOCK:
             continue
         est0, est, built = whole(d.get("est0")), whole(d.get("est")), whole(d.get("built"))
         stages = {}
@@ -64,7 +64,8 @@ def history(root):
         rows.append({
             "est": est0 if est0 is not None else est,
             "label": built if built is not None else work,
-            "tail": max(0, work - built) if built is not None else max(0, clock - wait - work),
+            "tail": (max(0, work - built) if built is not None
+                     else max(0, clock - wait - work) if wait is not None else None),
             "lane": "fast" if d.get("lane") == "fast" else "full",
             "built": built, "stages": stages, "slices": slices,
         })
@@ -126,7 +127,7 @@ def forecast(task, rows, draws=DRAWS, seed=SEED):
     if len(pool) < FORECAST_MIN_ROWS:
         return None
     qs = sorted(r["label"] / float(r["est"]) for r in pool)
-    ts = sorted(r["tail"] for r in pool)
+    ts = sorted(r["tail"] for r in pool if r.get("tail") is not None) or [0]
     nq, nt = len(qs), len(ts)
     stage = task.get("stage")
     name, i, m = stage if stage else (None, None, None)

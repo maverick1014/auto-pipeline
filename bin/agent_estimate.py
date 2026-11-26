@@ -101,7 +101,7 @@ def read_tasks(stream):
             "est": est, "work": rawwork if built is None else built, "rawwork": rawwork,
             "est0": est0, "built": built, "stages": stages,
             "wait": wait, "clock": clock, "words": words, "repo": f[0],
-            "clean": wait is not None and clock is not None and rawwork <= clock and clock <= MAX_CLOCK,
+            "clean": clock is not None and rawwork <= clock and (clock if wait is None else clock - wait) <= MAX_CLOCK,
             "guess": own if own is not None else (est if est is not None and est >= 1 else None),      # its guess, else its todo est
             "todo": est,                                   # the est of the todo line only
         })
@@ -112,7 +112,7 @@ def read_tasks(stream):
 
 
 def learnable(tasks):
-    """The clean rows only (clock and wait are numbers, work <= clock <= one day), numbered again."""
+    """The clean rows only (clock a number, work <= clock <= one day; the wait may be missing), numbered again."""
     out = [t for t in tasks if t["clean"]]
     for i, t in enumerate(out):
         t["pos"] = i
@@ -538,7 +538,10 @@ def measure_lines(tasks, bt):
     end_q = []
     for r, e in zip(rows, ests):
         t = r["task"]
-        tails = [max(0, p["clock"] - p["wait"] - p["work"]) for p in tasks[:t["pos"]] if p["lane"] == t["lane"]]
+        if t["wait"] is None:
+            continue          # only a row with a wait is scored on the end
+        tails = [max(0, p["clock"] - p["wait"] - p["work"]) for p in tasks[:t["pos"]]
+                 if p["lane"] == t["lane"] and p["wait"] is not None]
         tail = int(statistics.median(tails)) if len(tails) >= MIN_TAIL else 0
         actual = max(t["clock"] - t["wait"], 1)
         end_q.append(math.log(actual / float(max(e + tail, 1))))
@@ -570,7 +573,7 @@ def live_pairs(tasks, t):
         built = p["built"]
         hist.append({"est": pe, "label": p["work"], "lane": p["lane"], "built": built,
                      "tail": max(0, p["rawwork"] - built) if built is not None
-                     else max(0, p["clock"] - p["wait"] - p["rawwork"])})
+                     else max(0, p["clock"] - p["wait"] - p["rawwork"]) if p["wait"] is not None else None})
     out = []
     done = 0
     before = 0

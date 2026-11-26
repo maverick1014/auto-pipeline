@@ -642,30 +642,31 @@ class TestRealData(EstimateCase):
         with open(REAL) as fh:
             self.write("agent_completed.txt", fh.read())
 
-    # estimate-improve A5 (2026-11-26): 15 of these 30 old rows have no wait, so they are not learned; the
-    # numbers below are the new code's, checked by the task manager against the row list (only clean rows
-    # are scored, each from the clean rows before it)
+    # estimate-improve A5 (2026-11-26, after fix order 1): 4 of these 30 old rows have work over their clock,
+    # so they are not learned; rows with no wait are learned for the work. The numbers below are the new
+    # code's, checked by the task manager against the row list (only clean rows are scored, each from the
+    # clean rows before it)
 
     def test_the_backtest_table(self):
         out = self.assertOk(self.af("backtest"))
-        self.assertTrue(self.lines(out)[0].startswith("backtest: 30 tasks, 5 tested"), out)
+        self.assertTrue(self.lines(out)[0].startswith("backtest: 30 tasks, 16 tested"), out)
         t = self.table(out)
-        self.assertEqual(t["estimator"].group(1, 2, 3, 4), ("5", "41.0", "20", "60"))
-        self.assertEqual(t["rubric"].group(1, 2, 3, 4), ("5", "23.0", "40", "20"))
-        self.assertEqual(t["todo est"].group(1, 2, 3), ("5", "28.0", "20"))
-        self.assertEqual(t["winner"], "rubric")
+        self.assertEqual(t["estimator"].group(1, 2, 3, 4), ("16", "23.0", "50", "63"))
+        self.assertEqual(t["rubric"].group(1, 2, 3, 4), ("16", "32.0", "25", "25"))
+        self.assertEqual(t["todo est"].group(1, 2, 3), ("16", "31.0", "25"))
+        self.assertEqual(t["winner"], "blend+repo")
 
     def test_a_task_row(self):
         rows = self.task_rows(self.assertOk(self.af("backtest", "--tasks")))
-        self.assertEqual(len(rows), 5)
+        self.assertEqual(len(rows), 16)
         row = [TASK_ROW.match(r) for r in rows if r.startswith("task city-device-join ")]
         self.assertEqual(len(row), 1, rows)
-        self.assertEqual(row[0].group(2, 3, 4, 5, 6), ("43", "28", "19", "48", "53"))
-        self.assertEqual(TASK_ROW.match(rows[0]).group(1), "city-login-start")
+        self.assertEqual(row[0].group(2, 3, 4, 5, 6), ("43", "45", "31", "92", "53"))
+        self.assertEqual(TASK_ROW.match(rows[0]).group(1), "msg-sides")
 
     def test_v1_waits_for_30_clean_tasks(self):
         out = self.assertOk(self.af("retrain"))
-        self.assertEqual(self.verdicts(out), ["estimate retrain: not yet (15 of 30 tasks)"])
+        self.assertEqual(self.verdicts(out), ["estimate retrain: not yet (26 of 30 tasks)"])
         self.assertIsNone(self.model_text())
 
     def test_the_like_tasks_are_clean_ones(self):
@@ -673,9 +674,9 @@ class TestRealData(EstimateCase):
         m, likes = self.estimate("full", "no", "script",
                                  "agent-city.sh: join once per computer, hooks gate on team relay, "
                                  "script change with tests", "--name", "script-change")
-        self.assertEqual(m.group(1, 2, 3, 6), ("35", "22", "63", "15"))
+        self.assertEqual(m.group(1, 2, 3, 6), ("27", "19", "50", "26"))
         self.assertEqual([l.group(1) for l in likes],
-                         ["city-device-join", "city-login-start", "estimate-data"])
+                         ["city-device-join", "city-login-start", "session-clean"])
 
 
 # ---------------------------------------------------------------- speed
