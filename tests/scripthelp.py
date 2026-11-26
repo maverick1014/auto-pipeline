@@ -76,6 +76,7 @@ COPY_BIN = [
     "agent-questions-page.html",
     "agent-name.sh",
     "agent_estimate.py",
+    "agent_forecast.py",     # estimate-improve: the end time (Monte Carlo), board, eta and backtest share it
     "agent-cleanup.sh",
     "agent_cleanup.py",
     "agent_cleanfiles.py",   # clean-up: --files, rubbish docs and outdated agent_* lines
@@ -110,6 +111,9 @@ COPY_BIN = [
 # Copied into the temp plugin's root.
 COPY_PLUGIN = [
     "PRINCIPLES.md",
+    "GLOSSARY.md",     # md-slim-principles: beside the core
+    "NOTICE.md",
+    "rules",           # md-slim-principles: the 22 rule files (a folder: copied whole)
 ]
 
 # Per-project files. No agent.conf: a test starts from the Configure defaults.
@@ -295,7 +299,9 @@ class ScriptRepo:
                 shutil.copy2(src, os.path.join(self.plugin_bin, name))
         for name in COPY_PLUGIN:
             src = os.path.join(ROOT, name)
-            if os.path.exists(src):
+            if os.path.isdir(src):
+                shutil.copytree(src, os.path.join(self.plugin, name))
+            elif os.path.exists(src):
                 shutil.copy2(src, os.path.join(self.plugin, name))
 
         if init_project:
@@ -808,14 +814,13 @@ class ScriptCase(unittest.TestCase):
 
 
 def pointer_part(out):
-    """The startup hook output without the output section: drop the lines from
-    "## E. Output" up to the RULES line (or the end)."""
-    keep, skip = [], False
+    """The start part of a start output: everything before the rules block
+    (md-slim-principles: the block opens with the core's first line,
+    "# PRINCIPLES", and runs to the end). A hook-mode start has no rules block
+    (it comes from the second entry, agent-start.sh --rules): all of it."""
+    keep = []
     for line in out.splitlines(keepends=True):
-        if line.startswith("## E. Output"):
-            skip = True
-        elif skip and line.startswith("RULES: read "):
-            skip = False
-        if not skip:
-            keep.append(line)
+        if line.rstrip("\n") == "# PRINCIPLES" or line.startswith("=== rules/output.md ==="):
+            break
+        keep.append(line)
     return "".join(keep)

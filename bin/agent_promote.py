@@ -192,7 +192,7 @@ def remove_stale(root):
 
 def release_not_run(prod, where):
     out("release: not run: local %s is checked out in %s; switch that checkout to the working branch "
-        "(section 33), then run bin/agent-release.sh --push" % (prod, where))
+        "(section 33 of requirements/check-blocks.md), then run bin/agent-release.sh --push" % (prod, where))
 
 
 def release_at(root, prod, sha):

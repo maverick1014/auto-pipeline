@@ -50,6 +50,7 @@ CONTRACT
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -1226,7 +1227,7 @@ class TestStageSince(VerticalCase):
         self.stage("alpha", "workers", "2/3", now="2026-11-02 14:40")
         line = self.todo_line("alpha")
         self.assertIn(" | stage workers 2/3 since 2026-11-02 14:10", line)
-        self.assertEqual(line.count(" | stage "), 1, line)
+        self.assertEqual(len(re.findall(r" \| stage (?!log )", line)), 1, line)   # estimate-improve: the stage log is another field
         self.stage("alpha", "verify", now="2026-11-02 14:50")
         self.assertIn(" | stage verify since 2026-11-02 14:50", self.todo_line("alpha"))
 
@@ -1657,8 +1658,8 @@ class TestModelAndRelease(unittest.TestCase):
             self.assertEqual(agent_conf.get(role, env), "sonnet-5:medium")
 
     def test_the_rule_text(self):
-        text = read("PRINCIPLES.md")
-        w6 = text[text.index("W6. Roles"):text.index("W7. ")]
+        text = read("rules", "roles.md")   # md-slim-principles: W6 stands in rules/roles.md, W10 follows it
+        w6 = text[text.index("W6. Roles"):text.index("W10. ")]
         # out of date on main b4392c7: check-blocks (f1e3995, models by setting) names the
         # setting in W6 instead of a fixed model; the pin follows the rule text
         self.assertIn('- Main manager (the "Main manager model" setting) = the main chat.', w6)

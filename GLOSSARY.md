@@ -3,8 +3,8 @@ Read when: a repo term in a rule, skill or brief is unclear. Each entry says wha
 
 ## People and roles
 **Owner**: the human whose typed words count as approval; a quote of them is checked against his transcript before it is stored (from bin/agent-owner-order.sh).
-_Avoid_: boss
-**Human**: whoever reads the replies and types in a session; in this repo the owner (inferred; the owner decides).
+_Avoid_: boss; owner for the person a task belongs to (that is the Owner of a task)
+**Human**: the person who types in a session and reads its replies; in this repo the owner. In a shared repo each member is the human of their own sessions.
 **Main manager**: the one session per repo that holds the main-manager lock: it routes tasks, talks to the human and decides. Named `<repo> Manager`.
 _Avoid_: main agent, main chat (the chat is where it runs, not what it is)
 **Task manager**: the session that runs one big feature in its own worktree (exception: human-direct, W10): tests, worker briefs, verification; never product code. Named `<feature> Task Manager`.
@@ -28,6 +28,9 @@ _Avoid_: Helper for a worker or deputy
 
 ## Work units
 **Task**: one todo line: a name, size, estimate and its check blocks.
+**Owner of a task**: the person who created the task: `owner <name>` on its todo line, the git user name of their clone; in a shared todo only they assign it (from bin/agent_share.py).
+**Assignee**: the person the owner of a task gave it to (`todo assign <task> <name>`, the field `assignee <name>`); only they work it then.
+**Take**: `todo take <task>`: with the setting "Team: Who may take a task" = anyone, a member claims a free task of a shared todo (the field `taken <name>`, pushed at once); the first push wins, the next taker is told who took it.
 **Task instance**: a task's record from `todo add` on: opened time, checks, stage; it stays when the target changes.
 **Slice**: the part of a feature one worker builds; one worker = one slice.
 **Fast lane**: the path of a small task: one fast-lane deputy, no task manager.
@@ -52,6 +55,7 @@ _Avoid_: ap-main (bare), integration branch
 **Target**: where a task merges: production (only on the owner's verified yes) or working (the default).
 **Base**: the branch a task branches from: the production branch for target production, else the working branch.
 **Main checkout**: the main repo folder, not a worktree; switched to the working branch.
+**Data branch**: the branch that holds the agent files that are in git (setting "Team: Data branch", default `ap-data`; the value in `agent_repo.conf` wins); the scripts commit to it by plumbing and push at once, it is never merged into a code branch; a branch that holds code carries them under `.ap-data/` (from bin/agent_share.py).
 **Late yes**: the owner's publish yes after a task was added; a new branch from production gets the task's commits cherry-picked (the brief field `late yes of:`, from agents/fast-lane-deputy.md).
 
 ## Checks
@@ -68,7 +72,7 @@ _Avoid_: safety net (same thing)
 **Release run**: the one full suite on the working branch before a publish; the batch run on that commit counts.
 
 ## Machines, sessions, records
-**Connected machine**: another machine paired in Orca that can take jobs; placement tries it first (inferred: the old text says both "connected machine" and "paired Orca machine" and never equates them; the owner decides).
+**Connected machine**: another machine paired in Orca that can take jobs; placement tries it first.
 _Avoid_: paired machine, remote machine, another machine (when it means this)
 **Pane**: an Orca terminal running one agent or shell.
 **The lock**: the main-manager lock line in the shared git dir: pid, date, session id, terminal.

@@ -35,10 +35,19 @@ def section(text, start, end):
     return "\n".join(lines[begin:stop])
 
 
+def part(text, start, end=None):
+    """md-slim-principles: the text from `start` up to `end`; no end = up to the end of the file
+    (a rule that now stands last in its own rules/ file)."""
+    begin = text.index(start)
+    if end is None:
+        return text[begin:]
+    return text[begin:text.index(end, begin + len(start))]
+
+
 class TestPrinciplesW6Names(unittest.TestCase):
 
     def setUp(self):
-        self.text = read("PRINCIPLES.md")
+        self.text = read("rules", "roles.md")
 
     def naming_lines(self):
         return [line for line in self.text.splitlines()
@@ -95,7 +104,7 @@ class TestPrinciplesW6Names(unittest.TestCase):
         self.assertIn("--name '<repo> Helper'", line)
 
     def test_cross_repo_peer_is_found_by_manager_name(self):
-        w12 = section(self.text, "W12.", "W13.")
+        w12 = part(read("rules", "cross-repo.md"), "W12.")
         self.assertNotIn("named after the other repo's folder", w12)
         self.assertIn("Manager", w12)
         self.assertIn("-<xx>", w12)
@@ -148,7 +157,7 @@ class TestNoOldHelperFormat(unittest.TestCase):
     """Owner change, 2026-10-29: "<repo> Helper - <Task Name>". The old form
     "<repo> Helper <Task Name>" is gone from every rule text and script."""
 
-    FILES = (("PRINCIPLES.md",), ("README.md",), ("skills", "close-case", "SKILL.md"),
+    FILES = (("PRINCIPLES.md",), ("rules", "roles.md"), ("rules", "map.md"), ("README.md",), ("skills", "close-case", "SKILL.md"),
              ("bin", "agent-start.sh"), ("bin", "agent-roots.sh"),
              ("bin", "agent-file.sh"), ("bin", "agent-name.sh"))
 
@@ -174,17 +183,20 @@ class TestHooksJsonNameHook(unittest.TestCase):
 
     def test_session_start_runs_both_hooks(self):
         # the city starts by /auto-pipeline:city: no SessionStart entry for it
+        # md-slim-principles: SessionStart is [agent-start.sh, agent-start.sh --rules, agent-name.sh]
         entries = json.loads(read("hooks", "hooks.json"))["hooks"]["SessionStart"]
-        self.assertEqual(len(entries), 2, entries)
+        self.assertEqual(len(entries), 3, entries)
         self.assertIn("/bin/agent-start.sh", json.dumps(entries[0]))
-        self.assertEqual(entries[1], NAME_ENTRY)
+        self.assertNotIn("--rules", json.dumps(entries[0]))
+        self.assertIn("/bin/agent-start.sh --rules", json.dumps(entries[1]))
+        self.assertEqual(entries[2], NAME_ENTRY)
 
     def test_the_script_can_run(self):
         path = os.path.join(ROOT, "bin", "agent-name.sh")
         self.assertTrue(os.access(path, os.X_OK), "bin/agent-name.sh has no execute bit")
 
     def test_readme_names_the_script(self):
-        self.assertIn("bin/agent-name.sh", read("PRINCIPLES.md"))
+        self.assertIn("bin/agent-name.sh", read("rules", "map.md"))
 
 
 class TestPromptHookJson(unittest.TestCase):
@@ -201,19 +213,28 @@ class TestPromptHookJson(unittest.TestCase):
                     self.assertNotIn("--prompt", json.dumps(entries))
 
     def test_readme_says_it_names_the_helper_task(self):
-        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("  bin/agent-name.sh"))
+        line = next(l for l in read("rules", "map.md").splitlines() if l.startswith("  bin/agent-name.sh"))
         self.assertIn("UserPromptSubmit", line)
         self.assertIn("<repo> Helper - <Task Name>", line)
 
 
+# md-slim-principles: rules/close-case.md W13 "Report to the upper level" is the reword of old line 369
+# decided by the main manager 2026-11-26 (report.md decision 2); approved text, 316 characters. Every other
+# W13 line keeps the 200 cap.
+W13_DECIDED_LINE = "- Report to the upper level: a task manager writes it into its agent_state.txt"
+
+
+def w13_cap(line):
+    return 320 if line.startswith(W13_DECIDED_LINE) else 200
+
+
 class TestPrinciplesW13Clean(unittest.TestCase):
     def w13(self):
-        text = read("PRINCIPLES.md")
-        return text[text.index("W13."):text.index("W14.")]
+        return part(read("rules", "close-case.md"), "W13.")
 
     def s8(self):
-        text = read("PRINCIPLES.md")
-        return text[text.index("S8."):text.index("S9.")]
+        # md-slim-principles: the close-case clear line moved to rules/context.md (S8 (cont.))
+        return part(read("rules", "context.md"), "S8 (cont.)", "S9.")
 
     def test_w13_asks_cleans_and_keeps_the_seat(self):
         rule = self.w13()
@@ -229,7 +250,7 @@ class TestPrinciplesW13Clean(unittest.TestCase):
         self.assertLessEqual(len(bullets), 14)
         for line in bullets:
             with self.subTest(line=line[:40]):
-                self.assertLessEqual(len(line), 200)
+                self.assertLessEqual(len(line), w13_cap(line))
         self.assertEqual(len([l for l in bullets if "--release" in l]), 1)
         self.assertEqual(len([l for l in bullets if "--clean" in l]), 1)
 
@@ -281,12 +302,17 @@ class TestPrinciplesW13CloseCase(unittest.TestCase):
     """PRINCIPLES.md W13, short lines, same style as the other rules."""
 
     def rule(self):
-        return section(read("PRINCIPLES.md"), "W13. Close case", "W14.")
+        return part(read("rules", "close-case.md"), "W13. Close case")
 
+    # md-slim-principles: NOT FOLLOWED (old line 288): the order W12 -> W13 -> "## C. Human" was an order
+    # inside one file; W12 and W13 are now two rule files and the core has no "## C. Human"
     def test_it_sits_after_w12_in_the_work_section(self):
-        text = read("PRINCIPLES.md")
-        self.assertLess(text.index("W12. Cross-repo"), text.index("W13. Close case"))
-        self.assertLess(text.index("W13. Close case"), text.index("## C. Human"))
+        # md-slim-principles: W12 and W13 are two rule files now (old lines 349, 365, 458: an order inside one
+        # file); the pin is that the core's Read-when list leads to both
+        core = read("PRINCIPLES.md")
+        when = core[core.index("## Read when"):]
+        self.assertIn("rules/cross-repo.md", when)
+        self.assertIn("rules/close-case.md", when)
 
     def test_one_short_line_per_rule(self):
         bullets = [l for l in self.rule().splitlines() if l.startswith("- ")]
@@ -294,7 +320,7 @@ class TestPrinciplesW13CloseCase(unittest.TestCase):
         self.assertLessEqual(len(bullets), 14)   # session-clean: question, clean, release
         for line in bullets:
             with self.subTest(line=line[:40]):
-                self.assertLessEqual(len(line), 200)
+                self.assertLessEqual(len(line), w13_cap(line))
 
     def test_it_says_what_the_owner_decided(self):
         rule = self.rule()
@@ -307,7 +333,7 @@ class TestPrinciplesW13CloseCase(unittest.TestCase):
                 self.assertIn(phrase, rule)
 
     def test_the_idea_rule_allows_ideas_in_the_close_case_report(self):
-        w1 = section(read("PRINCIPLES.md"), "W1. ", "W2. ")
+        w1 = part(read("PRINCIPLES.md"), "## W1. ", "## Never")
         self.assertIn("CLOSE CASE", w1)
 
     def test_the_quiz_still_has_twenty_nine_questions(self):
@@ -345,16 +371,14 @@ class TestCloseCaseSkill(unittest.TestCase):
         self.assertIn("CLOSE CASE <name>: unfinished", brief)
 
     def test_the_readme_names_the_hook_and_the_skill(self):
-        text = read("PRINCIPLES.md")
+        text = read("rules", "map.md")
         self.assertIn("agent-close-case.sh", text)
         self.assertIn("close-case", text)
 
 
 class TestPrinciplesW15Report(unittest.TestCase):
     def w15(self):
-        with open(os.path.join(os.path.dirname(HERE), "PRINCIPLES.md")) as fh:
-            text = fh.read()
-        return text[text.index("W15. Watch"):text.index("W16.")].splitlines()
+        return part(read("rules", "watch.md"), "W15. Watch").splitlines()
 
     def test_the_stage_from_the_newest_heartbeat_line(self):
         hits = [l for l in self.w15() if "HEARTBEAT step" in l and "STAGE line" in l and "main repo" in l]
@@ -369,7 +393,7 @@ class TestPrinciplesW15Report(unittest.TestCase):
 
 class TestPrinciplesW15Watch(unittest.TestCase):
     def test_principles_watch_rule_names_the_script_and_the_report_block(self):
-        w15 = section(read("PRINCIPLES.md"), "W15. Watch", "W16.")
+        w15 = part(read("rules", "watch.md"), "W15. Watch")
         line = next((l for l in w15.splitlines() if "agent-watch.sh" in l), "")
         self.assertTrue(line, "W15 has no agent-watch.sh line")
         for word in ("=== REPORT ===", "agent_state.txt", "background",
@@ -407,7 +431,7 @@ class TestPrinciplesW15Watch(unittest.TestCase):
         self.assertIn("agent_state.txt", report)
 
     def test_map_names_the_watch_script(self):
-        self.assertIn("bin/agent-watch.sh", read("PRINCIPLES.md"))
+        self.assertIn("bin/agent-watch.sh", read("rules", "map.md"))
 
 
 CHANGE = "/plugin -> Installed -> auto-pipeline -> Configure"
@@ -415,7 +439,7 @@ CHANGE = "/plugin -> Installed -> auto-pipeline -> Configure"
 
 class TestSettingsTexts(unittest.TestCase):
     def test_principles(self):
-        text = read("PRINCIPLES.md")
+        text = read("rules", "setup.md")
         self.assertNotIn("agent.conf", text)
         self.assertNotIn("auto-pipeline.conf", text)
         self.assertIn(CHANGE, text)
@@ -523,8 +547,9 @@ class TestTypedLaunchLines(unittest.TestCase):
                                            "--permission-mode", "auto", "ROLE=task-manager"]), err)
 
     def test_no_unquoted_model_placeholder_anywhere(self):
-        files = [os.path.join(ROOT, "PRINCIPLES.md"), os.path.join(ROOT, "README.md")]
-        for folder in ("skills", "agents"):
+        files = [os.path.join(ROOT, "PRINCIPLES.md"), os.path.join(ROOT, "README.md"),
+                 os.path.join(ROOT, "GLOSSARY.md")]
+        for folder in ("rules", "skills", "agents"):   # md-slim-principles: the rule text moved into rules/
             for top, _dirs, names in os.walk(os.path.join(ROOT, folder)):
                 files += [os.path.join(top, n) for n in names if n.endswith(".md")]
         for path in files:
@@ -547,12 +572,12 @@ class TestLaunchTextPermission(unittest.TestCase):
         self.assertIn("--permission-mode <mode>", text)
 
     def test_w10_helper_line(self):
-        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("- Open a second session"))
+        line = next(l for l in read("rules", "roles.md").splitlines() if l.startswith("- Open a second session"))
         self.assertIn("agent-settings.sh get permission_mode", line)
         self.assertIn("--permission-mode <mode>", line)
 
     def test_w10_new_terminals_line(self):
-        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("- New terminals"))
+        line = next(l for l in read("rules", "roles.md").splitlines() if l.startswith("- New terminals"))
         self.assertIn("Permission mode", line)
         self.assertNotIn(".conf", line)
 
@@ -605,7 +630,7 @@ class TestHooksJsonVersion(unittest.TestCase):
 
 class TestRuleAndReleaseVersion(unittest.TestCase):
     def test_one_w16_line(self):
-        lines = [l for l in section_version(read("PRINCIPLES.md"), "W16. ", "W17. ")
+        lines = [l for l in part(read("rules", "traps.md"), "W16. ").splitlines()
                  if l.startswith("- ") and "STALE PLUGIN" in l]
         self.assertEqual(len(lines), 1, "W16: one bullet names STALE PLUGIN")
         line = lines[0]
@@ -614,7 +639,7 @@ class TestRuleAndReleaseVersion(unittest.TestCase):
         self.assertLessEqual(len(line), 200, line)
 
     def test_readme_lists_the_script(self):
-        self.assertIn("bin/agent-version.sh", read("PRINCIPLES.md"))
+        self.assertIn("bin/agent-version.sh", read("rules", "map.md"))
 
     def test_the_script_is_executable(self):
         self.assertTrue(os.access(os.path.join(ROOT, "bin", "agent-version.sh"), os.X_OK))
@@ -640,7 +665,7 @@ def text_between(text, start, end):
 class TestPrinciplesW11Time(unittest.TestCase):
 
     def w11(self):
-        return text_between(read("PRINCIPLES.md"), "W11. Time", "W12.")
+        return part(read("rules", "time.md"), "W11. Time")
 
     def test_every_w11_rule_is_one_dash_line(self):
         lines = [l for l in self.w11().splitlines()[1:] if l.strip()]
@@ -691,18 +716,18 @@ class TestPrinciplesW11Time(unittest.TestCase):
         self.assertIn("bin/agent-file.sh time", self.w11())
 
     def test_r5_names_the_data_block_and_its_keys(self):
-        r5 = text_between(read("PRINCIPLES.md"), "R5. Task files", "R6.")
+        r5 = part(read("rules", "files.md"), "R5. Task files", "R6.")
         self.assertIn("`data`", r5)
         for key in DATA_KEYS:
             with self.subTest(key=key):
                 self.assertRegex(r5, r"\b%s\b" % key)
 
     def test_r5_no_longer_says_est_slash_actual(self):
-        r5 = text_between(read("PRINCIPLES.md"), "R5. Task files", "R6.")
+        r5 = part(read("rules", "files.md"), "R5. Task files", "R6.")
         self.assertNotIn("est/actual", r5)
 
     def test_w8_the_deputy_passes_the_facts_and_the_merge_commit(self):
-        w8 = text_between(read("PRINCIPLES.md"), "W8. Merge and cleanup", "W9.")
+        w8 = part(read("rules", "worktrees.md"), "W8. Merge and cleanup")
         self.assertIn("todo done", w8)
         self.assertIn("--merge", w8)
         self.assertIn("facts", w8.lower())
@@ -865,17 +890,17 @@ class TestCloseCaseHookTime(unittest.TestCase):
 class TestReadmeTime(unittest.TestCase):
 
     def test_the_command_list_shows_the_time_commands(self):
-        text = read("PRINCIPLES.md")
+        text = read("rules", "map.md")
         for command in ("bin/agent-file.sh time", "bin/agent-file.sh data",
                         "bin/agent-file.sh eta"):
             with self.subTest(command=command):
                 self.assertIn(command, text)
 
     def test_the_time_line_no_longer_says_estimate_vs_actual(self):
-        self.assertNotIn("estimate vs actual", read("PRINCIPLES.md"))
+        self.assertNotIn("estimate vs actual", read("rules", "map.md"))
 
     def test_the_files_table_says_the_completed_file_is_data_too(self):
-        row = [l for l in read("PRINCIPLES.md").splitlines()
+        row = [l for l in read("rules", "files.md").splitlines()
                if l.startswith("| `agent_completed.txt`")][0]
         self.assertRegex(row.lower(), r"data")
 
@@ -895,8 +920,10 @@ def section_lines(text, start, end):
 
 class TestPrinciplesS8Trim(unittest.TestCase):
     def setUp(self):
+        # md-slim-principles: S8 is the core's section (state add, goal text) plus rules/context.md (S8 (cont.))
         self.text = read("PRINCIPLES.md")
-        self.s8 = [l for l in section_lines(self.text, "S8.", "S9.") if l.startswith("- ")]
+        self.core = [l for l in section_lines(self.text, "## S8.", "## Talking") if l.startswith("- ")]
+        self.s8 = [l for l in section_lines(read("rules", "context.md"), "S8 (cont.)", "S9.") if l.startswith("- ")]
 
     def has(self, lines, *words):
         hits = [l for l in lines if all(w in l for w in words)]
@@ -908,7 +935,7 @@ class TestPrinciplesS8Trim(unittest.TestCase):
                 self.assertLessEqual(len(line), 200, line)
 
     def test_s8_state_add(self):
-        self.has(self.s8, "agent-file.sh state add")
+        self.has(self.core, "agent-file.sh state add")
 
     def test_s8_state_trim_and_the_day_archive(self):
         self.has(self.s8, "state trim", "agent_state.trim-")
@@ -926,10 +953,10 @@ class TestPrinciplesS8Trim(unittest.TestCase):
         self.assertNotIn("the main manager types it into the pane", self.text)
 
     def test_w8_housekeep_trims(self):
-        self.has(section_lines(self.text, "W8.", "W9."), "housekeep", "state trim")
+        self.has(section_lines(read("rules", "worktrees.md"), "W8.", "W9."), "housekeep", "state trim")
 
     def test_w14_state_add(self):
-        self.has(section_lines(self.text, "W14.", "W15."), "state add")
+        self.has(section_lines(read("rules", "board.md"), "W14.", "W15."), "state add")
 
 
 class TestDispatchSkillTrim(unittest.TestCase):
@@ -959,7 +986,7 @@ class TestDispatchSkillTrim(unittest.TestCase):
 
 class TestReadmeAndReleaseTrim(unittest.TestCase):
     def test_readme_names_state_trim(self):
-        self.assertIn("state trim", read("PRINCIPLES.md"))
+        self.assertIn("state trim", read("rules", "files.md"))
 
 
 class TestWiredInEstimate(unittest.TestCase):
@@ -978,17 +1005,19 @@ class TestWiredInEstimate(unittest.TestCase):
                 self.assertNotIn(old, step1)
 
     def test_the_time_rules_name_the_estimator(self):
-        w11 = text_between(read("PRINCIPLES.md"), "W11. Time", "W12.")
+        w11 = part(read("rules", "time.md"), "W11. Time")
         self.assertIn("bin/agent-file.sh estimate", w11)
         self.assertIn("bin/agent-file.sh time", w11)
         self.assertNotIn("pick a rubric row", w11)
 
     def test_the_readme_lists_it(self):
-        text = read("PRINCIPLES.md")
+        # md-slim-principles: the file `agent_estimate.txt` is a row of the files table (rules/files.md)
+        text = read("rules", "map.md")
         for word in ("bin/agent-file.sh estimate", "bin/agent-file.sh backtest",
-                     "bin/agent-file.sh retrain", "bin/agent_estimate.py", "`agent_estimate.txt`"):
+                     "bin/agent-file.sh retrain", "bin/agent_estimate.py"):
             with self.subTest(word=word):
                 self.assertIn(word, text)
+        self.assertIn("`agent_estimate.txt`", read("rules", "files.md"))
 
     def test_the_usage_of_agent_file_names_the_new_commands(self):
         head = read("bin", "agent-file.sh").split("\nset -eu")[0]
@@ -1010,11 +1039,11 @@ class TestWiredInBlend(unittest.TestCase):
         self.assertTrue(all("--guess" in l for l in add), add)
 
     def test_the_time_rules_name_the_guess(self):
-        w11 = text_between(read("PRINCIPLES.md"), "W11. Time", "W12.")
+        w11 = part(read("rules", "time.md"), "W11. Time")
         self.assertIn("--guess", w11)
 
     def test_the_readme_and_the_usage_name_the_guess(self):
-        self.assertIn("--guess", read("PRINCIPLES.md"))
+        self.assertIn("--guess", read("rules", "map.md"))
         head = read("bin", "agent-file.sh").split("\nset -eu")[0]
         for word in ("--guess", "guess=", "warning"):
             with self.subTest(word=word):
@@ -1047,17 +1076,14 @@ class TestSkillsProgress(unittest.TestCase):
         self.assertLess(text.index(self.CMD + "e2e"), text.index(self.CMD + "merge"))
 
     def test_principles_show_todo_names_the_stage_record(self):
-        text = read("PRINCIPLES.md")
-        w14 = text[text.index("W14. Todo board"):text.index("W15. Watch")]
+        w14 = part(read("rules", "board.md"), "W14. Todo board")
         self.assertIn("todo stage", w14)
         self.assertIn("progress", w14.lower())
 
 
 class TestAutoClearQuietRule(unittest.TestCase):
     def test_s8(self):
-        with open(os.path.join(os.path.dirname(HERE), "PRINCIPLES.md")) as fh:
-            text = fh.read()
-        s8 = text[text.index("S8. "):text.index("S9. ")]
+        s8 = part(read("rules", "context.md"), "S8 (cont.)", "S9. ")
         for phrase in ("The auto clear fires only when no human has typed a prompt in that pane for the last N minutes",
                        '"Context: Auto clear after quiet (min)", default 30',
                        "Not a human prompt: a task notification, a tell pointer, a cross-session message, the watch "
@@ -1070,11 +1096,15 @@ class TestAutoClearQuietRule(unittest.TestCase):
 class TestPrinciplesW12OwnerRelay(unittest.TestCase):
 
     def setUp(self):
-        self.w12 = text_between(read("PRINCIPLES.md"), "W12. Cross-repo", "W13. Close case")
+        self.w12 = part(read("rules", "cross-repo.md"), "W12. Cross-repo")
         self.rules = [l for l in self.w12.splitlines() if l.startswith("- ")]
+        # md-slim-principles: the "verified owner words" line stands in rules/approval.md (W12 (relayed owner words))
+        self.w12_approval = part(read("rules", "approval.md"), "W12 (relayed owner words)")
+        self.rules_approval = [l for l in self.w12_approval.splitlines() if l.startswith("- ")]
 
-    def one(self, *words):
-        hits = [l for l in self.rules if all(w.lower() in l.lower() for w in words)]
+    def one(self, *words, approval=False):
+        hits = [l for l in (self.rules_approval if approval else self.rules)
+                if all(w.lower() in l.lower() for w in words)]
         self.assertEqual(len(hits), 1, "want one W12 line with %r, got %r" % (words, hits))
         return hits[0]
 
@@ -1091,7 +1121,7 @@ class TestPrinciplesW12OwnerRelay(unittest.TestCase):
         self.assertIn("match line", line.lower())   # L17 (review bounce 1)
 
     def test_g1_still_ask_line(self):
-        line = self.one("verified owner words")
+        line = self.one("verified owner words", approval=True)
         # approval-design (section 53 E): he is read by the approval cases of R8, not by words that name the action
         for words in ("approval cases", "final yes", "production included", "one question"):
             with self.subTest(words=words):
@@ -1100,11 +1130,11 @@ class TestPrinciplesW12OwnerRelay(unittest.TestCase):
         self.assertNotIn("name that action", line)
 
     def test_g1_floor_still_applies(self):
-        self.assertIn("floor", self.w12.lower())
+        self.assertIn("floor", self.w12_approval.lower())
 
     def test_g1_the_three_new_lines_are_short(self):
         for line in (self.one("agent-owner-order.sh line --quote"), self.one("check line", "ask the owner"),
-                     self.one("verified owner words")):
+                     self.one("verified owner words", approval=True)):
             with self.subTest(line=line[:40]):
                 self.assertLessEqual(len(line), 200)
 
@@ -1128,7 +1158,7 @@ class TestDispatchSkillOwnerRelay(unittest.TestCase):
 class TestReadmeOwnerRelay(unittest.TestCase):
 
     def test_g3_map_lists_the_tool(self):
-        hits = [l for l in read("PRINCIPLES.md").splitlines()
+        hits = [l for l in read("rules", "map.md").splitlines()
                 if l.strip().startswith("bin/agent-owner-order.sh")]
         self.assertEqual(len(hits), 1, hits)
         self.assertIn("owner", hits[0].lower())
@@ -1180,10 +1210,10 @@ def rule(text, code, nxt):
 
 class PrinciplesCase(unittest.TestCase):
     def setUp(self):
-        self.text = read("PRINCIPLES.md")
-        self.assertIn("## E. Output", self.text.splitlines(),
-                      "PRINCIPLES.md has no '## E. Output' line yet")
-        self.e = section_e(self.text)
+        # md-slim-principles: section E is rules/output.md now (E1-E4); its every-step lines are in the core
+        self.text = read("rules", "output.md")
+        self.core = read("PRINCIPLES.md")
+        self.e = part(self.text, "E1. ").rstrip() + "\n"
         self.low = self.e.lower()
 
     def has(self, *phrases, where=None):
@@ -1194,8 +1224,15 @@ class PrinciplesCase(unittest.TestCase):
 
 
 class TestTheSection(PrinciplesCase):
+    # md-slim-principles: NOT FOLLOWED (old line 1198): "## D. Auto setup" before "## E. Output" was an order
+    # inside one file; D is rules/setup.md now and E is rules/output.md
     def test_it_comes_after_d(self):
-        self.assertLess(self.text.index("## D. Auto setup"), self.text.index("## E. Output"))
+        # md-slim-principles: "## D." and "## E." are rules/setup.md and rules/output.md now (old lines 500,
+        # 576: an order inside one file); the pin is that the core's Read-when list leads to both
+        core = read("PRINCIPLES.md")
+        when = core[core.index("## Read when"):]
+        self.assertIn("rules/setup.md", when)
+        self.assertIn("rules/output.md", when)
 
     def test_it_fits_the_hook(self):
         size = len(self.e.encode())
@@ -1210,7 +1247,7 @@ class TestTheSection(PrinciplesCase):
         self.assertRegex(self.e, r"(?m)^E1\. ")
 
     def test_credit_line(self):
-        self.has("i-have-adhd", "Ayoub Ghriss", "MIT", where=self.text)
+        self.has("i-have-adhd", "Ayoub Ghriss", "MIT", where=read("NOTICE.md"))
 
     def test_no_owner_or_machine(self):
         for word in ("Maverick", "maverick", "laptop", "pc2"):
@@ -1235,13 +1272,17 @@ class TestF1TheRuleset(PrinciplesCase):
 
 class TestF2OwnerOverrides(PrinciplesCase):
     def test_never_fail_silently(self):
-        self.has("fail silently", "blocked", "refused", "broken", "partial success")
+        # md-slim-principles: the E2 line keeps "fail silently" and "partial success"; "blocked, ambiguous,
+        # refused or broken" is the core's Never line
+        self.has("fail silently", "partial success")
+        self.has("fail silently", "blocked", "refused", "broken", where=part(self.core, "## Never", "## S8."))
 
     def test_tables_are_not_lists(self):
         self.has("tables and ledgers are not lists", "completeness")
 
     def test_verified_needs_evidence(self):
-        self.has("verified", "evidence", "real device")
+        # md-slim-principles: this E2 line is one of the core's every-step lines (PRINCIPLES.md, Talking to the human)
+        self.has("verified", "evidence", "real device", where=part(self.core, "## Talking to the human", "## W17."))
 
     def test_decide_section_stays(self):
         self.has("decide section", "H3")
@@ -1252,8 +1293,10 @@ class TestF2OwnerOverrides(PrinciplesCase):
 
 class TestF3Concise(PrinciplesCase):
     def test_concise(self):
-        self.has("lead with the result", "narration", "short by default",
-                 "plainly", "full detail on request",
+        # md-slim-principles: "lead with the result" and "short by default" are core lines (E1, E3)
+        self.has("lead with the result", "short by default",
+                 where=part(self.core, "## Talking to the human", "## W17."))
+        self.has("narration", "plainly", "full detail on request",
                  "never trade correctness for brevity")
 
 
@@ -1265,72 +1308,78 @@ class TestF4Switch(PrinciplesCase):
 
 class TestTheNotice(PrinciplesCase):
     def test_copyright_line(self):
-        self.assertIn("Copyright (c) 2026 Ayoub Ghriss", self.text)
+        self.assertIn("Copyright (c) 2026 Ayoub Ghriss", read("NOTICE.md"))
 
     def test_the_whole_permission_notice(self):
-        self.assertIn(squash(MIT_NOTICE), squash(self.text))
+        self.assertIn(squash(MIT_NOTICE), squash(read("NOTICE.md")))
 
     def test_it_is_after_section_e_not_inside(self):
         self.assertNotIn("Permission is hereby granted", self.e)
-        self.assertGreater(self.text.index("Permission is hereby granted"),
-                           self.text.index("## E. Output"))
+        # md-slim-principles: NOT FOLLOWED (old line 1274): "after section E" was an order inside one file;
+        # the notice is its own file now (NOTICE.md), outside rules/output.md
+        self.assertIn("Permission is hereby granted", read("NOTICE.md"))
 
 
 class TestGeneric(PrinciplesCase):
     def test_no_owner_or_machine_names_anywhere(self):
+        # md-slim-principles: "anywhere" in the old file = the core, every rules/ file, the glossary, the notice
+        texts = [self.core, read("GLOSSARY.md"), read("NOTICE.md")] + [
+            read("rules", name) for name in sorted(os.listdir(os.path.join(ROOT, "rules")))]
         for word in ("Maverick", "maverick-pc2", "this laptop"):
-            with self.subTest(word=word):
-                self.assertNotIn(word, self.text)
+            for text in texts:
+                with self.subTest(word=word):
+                    self.assertNotIn(word, text)
 
 
 class TestF5ManagerLaws(PrinciplesCase):
     def test_test_parallelism_is_capped(self):
-        self.has("maxWorkers=2", "-j 2", where=rule(self.text, "S5.", "S6."))
+        self.has("maxWorkers=2", "-j 2", where=part(read("rules", "tests.md"), "S5."))
 
     def test_no_count_caps(self):
         # was test_reviewers_count_toward_the_cap: the caps are gone (check-blocks section 25, owner 2026-11-25)
-        self.has("No count caps", where=rule(self.text, "S6.", "S7."))
+        self.has("No count caps", where=part(read("rules", "resources.md"), "S6."))
 
     def test_push_at_every_stage_and_clean_after_a_verified_merge(self):
-        self.has("push at every stage", where=self.text)
-        self.has("merge is verified", where=rule(self.text, "W8.", "W9."))
+        self.has("push at every stage", where=read("rules", "worktrees.md"))
+        self.has("merge is verified", where=part(read("rules", "worktrees.md"), "W8."))
 
     def test_watching_launches_and_stalls(self):
         self.has("2 min",
-                 "nudge once", "salvage", "heartbeat", where=self.text)
+                 "nudge once", "salvage", "heartbeat", where=read("rules", "watch.md"))
 
     def test_only_owner_level_or_irreversible_stops_the_line(self):
-        self.has("owner-level", "irreversible", where=rule(self.text, "W1.", "W2."))
+        self.has("owner-level", "irreversible", where=part(self.core, "## W1. ", "## Never"))
 
     def test_model_by_kind_of_thinking(self):
-        self.has("strongest", where=rule(self.text, "S9.", "## E. Output"))
+        self.has("strongest", where=part(read("rules", "context.md"), "S9."))
 
     def test_tests_follow_the_blocks(self):
         # check-blocks 2026-11-25: the full gate per task is gone (no block backs it); FULL SUITE
         # (owner 1A: no task runs the full suite; MODULE TESTS only when its trigger fires)
-        self.has("MODULE TESTS only when its trigger fires", where=rule(self.text, "W4.", "W5."))
+        self.has("MODULE TESTS only when its trigger fires", where=part(read("rules", "tests.md"), "W4.", "S5."))
 
     def test_e2e_is_the_proof(self):
-        block = rule(self.text, "W5.", "W6.")
-        self.has("unit tests are not proof", "never verify their own work",
-                 "needs a real device", where=block)
+        block = part(read("rules", "ui.md"), "W5.")
+        self.has("unit tests are not proof", "needs a real device", where=block)
+        # md-slim-principles: "Builders never verify their own work" is a core Never line
+        self.has("never verify their own work", where=part(read("PRINCIPLES.md"), "## Never", "## S8."))
 
     def test_ask_in_one_batch_and_the_return_table(self):
         self.has("one batch", "interim default", "recommendation",
-                 where=rule(self.text, "H1.", "H2."))
+                 where=part(read("rules", "human.md"), "H1.", "H2."))
 
     def test_collision(self):
-        self.has("collision", "never route around", where=self.text)
+        self.has("collision", "never route around", where=self.core)
 
 
 class TestF6Lessons(PrinciplesCase):
     def test_time(self):
-        block = rule(self.text, "W11.", "W12.")
+        block = part(read("rules", "time.md"), "W11.")
         self.has("`date`", "drift", "re-estimate", where=block)
 
     def test_commands(self):
         self.has("classifier", "! git push", "Deliver", "4 KB", "--cursor",
-                 "mid-turn", "screen locked", "headless Chrome", where=self.text)
+                 "mid-turn", "screen locked", "headless Chrome", where=read("rules", "traps.md"))
 
 
 def principles_between(start, end):
@@ -1367,9 +1416,10 @@ class TestB2NoSuiteAtTheMerge(unittest.TestCase):
         self.assertNotIn("<suite command>", dep)
         self.assertIn("No test run at the merge (W4: never re-run what passed; R8: no task runs the full suite)", dep)
         self.assertNotIn("ORIG_HEAD", dep)              # no test run, nothing to undo
-        w8 = principles_between("W8. ", "W9. ")
+        w8 = part(read("rules", "worktrees.md"), "W8. ")
         self.assertNotIn("ORIG_HEAD", w8)
-        self.assertIn("Never `git reset --hard` in the main checkout", w8)
+        # md-slim-principles: the "never git reset --hard in the main checkout" line is a core Never line (W8)
+        self.assertIn("Never `git reset --hard` in the main checkout", read("PRINCIPLES.md"))
 
 
 class TestB3StepOneChecksTheBuildersBlocks(unittest.TestCase):
@@ -1430,15 +1480,15 @@ class TestS5SyncAtABatchStart(unittest.TestCase):
 class TestS6NotSwitchedYet(unittest.TestCase):
     def test_r8(self):
         self.assertIn("A repo whose working branch exists but whose main checkout is not switched yet: merges go into "
-                      "the production branch as before", principles_between("R8. ", "W1. "))
+                      "the production branch as before", read("rules", "branches.md"))
 
 
 class TestS7NoSlotNoLevel(unittest.TestCase):
     def test_texts(self):
         text = read("PRINCIPLES.md")
         self.assertNotIn("WATCH SLOT", text)
-        self.assertIn("WATCH ROOM", principles_between("W15. ", "W16. "))
-        self.assertIn("level (old tasks only, - for new ones)", principles_between("R5. ", "R6. "))
+        self.assertIn("WATCH ROOM", part(read("rules", "watch.md"), "W15. "))
+        self.assertIn("level (old tasks only, - for new ones)", part(read("rules", "files.md"), "R5. ", "R6. "))
         d = read(*DISPATCH)
         self.assertNotIn("slot", d.lower())
         self.assertIn("Waiting for room or another task", d)
@@ -1455,7 +1505,7 @@ class TestS8ModelsBySetting(unittest.TestCase):
     def test_w6_and_tree(self):
         text = read("PRINCIPLES.md")
         self.assertNotIn("Sonnet 5, medium", text)
-        w6 = principles_between("W6. ", "W7. ")
+        w6 = part(read("rules", "roles.md"), "W6. ", "W10. ")
         for role in ("Fast-lane deputy", "Merge deputy", "Check deputy", "Worker"):
             line = [l for l in w6.splitlines() if l.startswith("- %s (" % role)][0]
             self.assertIn("Helper model", line)
@@ -1471,7 +1521,7 @@ class TestS8ModelsBySetting(unittest.TestCase):
 
 class TestS9OneWording(unittest.TestCase):
     def test_r8(self):
-        r8 = principles_between("R8. ", "W1. ")
+        r8 = read("rules", "checks.md")   # md-slim-principles: R8 stands in rules/checks.md (parts in approval, branches, tests)
         self.assertNotIn("never by the user", r8)
         self.assertIn("a human may edit it, never has to", r8)
 
@@ -1485,13 +1535,13 @@ class TestS10StatusFinal(unittest.TestCase):
 
 class TestS11PermissionModeDefault(unittest.TestCase):
     def test_s1(self):
-        s1 = principles_between("S1. ", "S2. ")
+        s1 = part(read("rules", "setup.md"), "S1. ")
         self.assertIn('"Permissions: Permission mode" setting, default bypassPermissions', s1)
 
 
 class TestD1MockRule(unittest.TestCase):
     def test_r1_and_dispatch(self):
-        r1 = principles_between("R1. ", "R2. ")
+        r1 = part(read("PRINCIPLES.md"), "## R1. ", "## W1. ")
         self.assertNotIn("Mock if the task has UI", r1)
         self.assertIn("2. Mock for a new page or a whole-page re-layout (W2)", r1)
         self.assertIn("a new page or a whole-page re-layout", read(*DISPATCH))
@@ -1499,7 +1549,7 @@ class TestD1MockRule(unittest.TestCase):
 
 class TestD2CleanupOrder(unittest.TestCase):
     def test_w8(self):
-        w8 = principles_between("W8. ", "W9. ")
+        w8 = part(read("rules", "worktrees.md"), "W8. ")
         self.assertNotIn("Clean up only after the merge is verified", w8)
         self.assertIn("Delete the branch and close the todo line only after the merge is verified", w8)
         self.assertIn("the pane and the worktree may go while waiting for the owner's yes; the pushed branch stays", w8)
@@ -1507,16 +1557,17 @@ class TestD2CleanupOrder(unittest.TestCase):
 
 class TestD3ResultFirst(unittest.TestCase):
     def test_e1(self):
-        e1 = principles_between("E1. ", "E2. ")
+        e1 = part(read("rules", "output.md"), "E1. ", "E2. ")
         self.assertNotIn("Lead with the next action", e1)
-        self.assertIn("Lead with the result", e1)
+        # md-slim-principles: "Lead with the result" is the core's every-step line (E1), not a line of rules/output.md
+        self.assertIn("Lead with the result", part(read("PRINCIPLES.md"), "## Talking to the human", "## W17."))
         self.assertIn("A command, path or snippet the human must use comes right after the result", e1)
         self.assertIn("End with one concrete next action", e1)
 
 
 class TestD4WaitExceptions(unittest.TestCase):
     def test_w1(self):
-        w1 = principles_between("W1. ", "W2. ")
+        w1 = part(read("PRINCIPLES.md"), "## W1. ", "## Never")
         self.assertIn("Never wait for the human, except: the kick-off round, a mock yes, an OWNER SIGN, NEEDS HUMAN E2E",
                       w1)
         self.assertNotIn("kick-off round only", w1)
@@ -1547,14 +1598,18 @@ LEVEL_WORDS = re.compile(r"(?i)(\brisk types?\b|\btype [A-D]\b|\b[A-D] = (?:text
 class TestPrinciplesR8(unittest.TestCase):
 
     def r8(self):
-        return text_between_after_start(read("PRINCIPLES.md"), "R8. Check blocks", "## B. Work")
+        # md-slim-principles: R8 is rules/checks.md; its other parts: approval.md, branches.md, tests.md
+        return part(read("rules", "checks.md"), "R8. Check blocks")
 
     def test_r8_is_check_blocks_in_its_place(self):
-        text = read("PRINCIPLES.md")
-        order = [text.index(h) for h in ("R7. Worktree file", "R8. Check blocks", "## B. Work")]
+        text = read("rules", "checks.md")
+        order = [text.index(h) for h in ("# Check blocks", "R8. Check blocks", "| Block |")]
         self.assertEqual(order, sorted(order))
         self.assertNotIn("R8. Risk types", text)
         self.assertEqual(text.count("\nR8. "), 1)
+        for name in ("approval.md", "branches.md", "tests.md"):
+            with self.subTest(file=name):
+                self.assertEqual(read("rules", name).count("\nR8 ("), 1)
 
     def test_r8_holds_the_one_table_exactly(self):
         rows = table_rows()
@@ -1563,7 +1618,9 @@ class TestPrinciplesR8(unittest.TestCase):
         self.assertEqual(lines[i:i + len(rows)], rows)
 
     def test_the_table_is_in_principles_only_once(self):
-        self.assertEqual(read("PRINCIPLES.md").count(table_rows()[0]), 1)
+        # md-slim-principles: the table lives in rules/checks.md, nowhere else
+        self.assertEqual(read("rules", "checks.md").count(table_rows()[0]), 1)
+        self.assertEqual(read("PRINCIPLES.md").count(table_rows()[0]), 0)
 
     def test_r8_says_the_owner_goal_and_the_process(self):
         r8 = self.r8()
@@ -1571,24 +1628,34 @@ class TestPrinciplesR8(unittest.TestCase):
                        "agent-level.sh check", "todo add", "--checks", "only added",
                        "verified owner order", "--remove", "--owner-quote", "agent-file.sh check",
                        "checks gate", "no pass line", "OWNER SIGN", "not the builder",
-                       "check_budget_s", "60 s", "the net", "NIGHTLY RUN", "RELEASE SMOKE",
+                       "check_budget_s", "60 s", "the net",
                        # owner 1A 2026-11-25 (section 15)
-                       "No task runs the full suite", "MODULE TESTS", "gates nothing", "selection miss",
-                       "agent-nightly.sh", "the last nightly on that commit", "agent-nightly.sh --release-ok",
+                       "No task runs the full suite", "MODULE TESTS",
                        "agent_repo.conf", "edge add", "which example would have shown it",
                        "Refactor", "Urgent fix", "Rollback", "Research only",
                        "skipped with one printed line", "second agent's opinion only for CORE REVIEW",
                        "copies its defaults from the released", "every changed default"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r8)
+        # md-slim-principles: the net and the release are R8 (branches, the net, release), rules/branches.md
+        branches = read("rules", "branches.md")
+        for phrase in ("NIGHTLY RUN", "RELEASE SMOKE", "gates nothing", "selection miss",
+                       "agent-nightly.sh", "the last nightly on that commit", "agent-nightly.sh --release-ok"):
+            with self.subTest(file="branches.md", phrase=phrase):
+                self.assertIn(phrase, branches)
 
     def test_r8_lines_are_short_bullets_or_table_rows(self):
-        for line in self.r8().rstrip().splitlines()[1:]:
-            with self.subTest(line=line[:50]):
-                if not line.strip() or line.startswith("|"):
-                    continue
-                self.assertTrue(line.startswith("- ") or line.startswith("  - "), line)
-                self.assertLessEqual(len(line), 220)
+        # md-slim-principles: R8 stands in four files; each part is read from its own file
+        branches = read("rules", "branches.md")
+        for name, text in (("checks.md", self.r8()),
+                           ("branches.md", part(branches, "R8 (branches, the net, release)")),
+                           ("tests.md", part(read("rules", "tests.md"), "R8 (tests)", "W3. "))):
+            for line in text.rstrip().splitlines()[1:]:
+                with self.subTest(file=name, line=line[:50]):
+                    if not line.strip() or line.startswith("|"):
+                        continue
+                    self.assertTrue(line.startswith("- ") or line.startswith("  - "), line)
+                    self.assertLessEqual(len(line), 220)
 
     def test_every_block_name_in_principles_is_in_the_table(self):
         # never a rule line that the table of blocks does not back
@@ -1617,36 +1684,46 @@ class TestPrinciplesOtherRules(unittest.TestCase):
     def test_no_level_words_left_in_the_rules(self):
         body = self.text().split("## Notice")[0]
         self.assertEqual(LEVEL_WORDS.findall(body), [])
+        for name in sorted(os.listdir(os.path.join(ROOT, "rules"))):   # md-slim-principles: the rules moved to rules/
+            with self.subTest(file=name):
+                self.assertEqual(LEVEL_WORDS.findall(read("rules", name)), [])
 
     def test_r1_lane_by_size_checks_by_triggers(self):
-        r1 = self.rule("R1. ", "R2. ")
-        for phrase in ("small task = one subagent", "own git worktree", "over 2 hours", "task manager",
-                       "Which checks run follows the triggers only (R8)",
-                       "A small logic task never opens a task manager just because it needs a test",
-                       "past 2x its estimate", "second slice", "goes on from its branch"):
+        # md-slim-principles: R1 is in the core; rows 37, 39, 41 of report.md are reworded (the deputy's own
+        # worktree and example tests moved to rules/roles.md W6, "triggers only" joined with the small-logic line)
+        r1 = part(self.text(), "## R1. ", "## W1. ")
+        for phrase in ("Small task → fast lane (one fast-lane deputy)", "over 2 hours", "task manager",
+                       "Checks follow the block triggers only (R8), never the lane",
+                       "a small logic task never opens a task manager just for a test",
+                       "past 2x its estimate", "second slice", "from its branch"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r1)
         self.assertNotIn("TDD", r1)
+        self.assertIn("own git worktree", part(read("rules", "roles.md"), "W6. ", "W10. "))
 
     def test_w4_tests_follow_the_blocks(self):
-        w4 = self.rule("W4. ", "W5. ")
+        # md-slim-principles: W4 is rules/tests.md; its line "No task runs the full suite" merged into R8,
+        # rules/checks.md (proof.md old 217)
+        w4 = part(read("rules", "tests.md"), "W4. ", "S5. ")
         for phrase in ("RELATED TESTS", "GUARD TESTS", "MODULE TESTS", "only when its trigger fires",
                        "never re-run tests the task manager already passed", "re-run only the tests that failed"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w4)
         self.assertNotIn("Full suite only when really needed", w4)
         self.assertNotIn("FULL SUITE", w4)
-        self.assertIn("No task runs the full suite", w4)
+        self.assertIn("No task runs the full suite", read("rules", "checks.md"))
 
     def test_w5_the_check_deputy_drives_the_browser(self):
-        w5 = self.rule("W5. ", "W6. ")
-        for phrase in ("check deputy", "one at a time", "FLOW CHECK", "UI CHECK", "never verify their own work"):
+        # md-slim-principles: W5 is rules/ui.md; "Builders never verify their own work" is in the core (Never)
+        w5 = part(read("rules", "ui.md"), "W5. ")
+        for phrase in ("check deputy", "one at a time", "FLOW CHECK", "UI CHECK"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w5)
+        self.assertIn("never verify their own work", self.text())
         self.assertNotIn("Main manager only", w5)
 
     def test_w6_roles(self):
-        w6 = self.rule("W6. ", "W7. ")
+        w6 = part(read("rules", "roles.md"), "W6. ", "W10. ")   # md-slim-principles: rules/roles.md
         for phrase in ("Check deputy", "agents/check-deputy.md", "verdict with evidence",
                        "The main manager stays free for the human", "runs no long check itself",
                        "own git worktree", "pushes a branch"):
@@ -1654,14 +1731,16 @@ class TestPrinciplesOtherRules(unittest.TestCase):
                 self.assertIn(phrase, w6)
 
     def test_w8_merge_gate_and_cleanup(self):
-        w8 = self.rule("W8. ", "W9. ")
+        # md-slim-principles: W8 is rules/worktrees.md; the --hard warning is in the core (Never)
+        w8 = part(read("rules", "worktrees.md"), "W8. ")
         # section 42 B2: no run at the merge, so no undo line; the --hard warning stays in its own words
-        for phrase in ("checks gate", "after every merge", "Never `git reset --hard` in the main checkout"):
+        for phrase in ("checks gate", "after every merge"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w8)
+        self.assertIn("Never `git reset --hard` in the main checkout", self.text())
 
     def test_w9_small_tasks_and_self_assignment(self):
-        w9 = self.rule("W9. ", "W10. ")
+        w9 = part(read("rules", "routing.md"), "W9. ")   # md-slim-principles: rules/routing.md
         for phrase in ("own git worktree", "never share a checkout", "agent-file.sh next",
                        "at every wake", "needs no new question", "todo done",
                        "room under the Max memory % limit (S3)"):   # section 37 F5: room, not slots
@@ -1671,18 +1750,22 @@ class TestPrinciplesOtherRules(unittest.TestCase):
         self.assertNotIn("Never spawn a worktree for a small task", w9)
 
     def test_w15_restart_the_watch_first(self):
-        w15 = self.rule("W15. ", "W16. ")
+        w15 = part(read("rules", "watch.md"), "W15. ")   # md-slim-principles: rules/watch.md
         self.assertIn("the first action is to start the watch again, then handle the signal", w15)
         self.assertIn("when there is room for a queued task (WATCH ROOM)", w15)   # section 42 S7   # section 37 F5: room, not slots
         self.assertNotIn("slot is free", w15)
         self.assertIn("board warning", w15)
 
     def test_the_map_names_the_new_pieces(self):
-        f = self.text().split("## F. Map")[1]
-        for phrase in ("bin/agent_blocks.py", "bin/agent-level.sh", "Check deputy", "agent_repo.conf",
+        # md-slim-principles: section F is rules/map.md; the Tree row "Check deputy" is rules/roles.md W6 and
+        # the Files row "agent_repo.conf" is rules/files.md (proof.md old 568, 617)
+        f = read("rules", "map.md")
+        for phrase in ("bin/agent_blocks.py", "bin/agent-level.sh",
                        "36-question quiz", "agent-file.sh next", "checks gate"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, f)
+        self.assertIn("Check deputy", read("rules", "roles.md"))
+        self.assertIn("agent_repo.conf", read("rules", "files.md"))
 
 
 class TestDispatchSkill(unittest.TestCase):
@@ -1868,18 +1951,24 @@ class TestMemoryGate(unittest.TestCase):
         return read("PRINCIPLES.md")
 
     def test_s3_to_s6(self):
-        s = text_between_after_start(self.text(), "S3. ", "S7. ")
+        # md-slim-principles: S3, S4, S6 are rules/resources.md; S5 (test runs) is rules/tests.md
+        s = part(read("rules", "resources.md"), "S3. ")
         for phrase in ("memory in use now + the memory this run is known to need", "Load: Max memory %",
                        "measured peak MB", "never measured", "starts at once with a monitor on its memory",
                        "the newest, unmeasured one first", "records its peak MB", "tried again when there is room",
                        "Only test and build runs are stopped", "a Claude pane counts too",
-                       "reservation list", "a dead pid frees its entry", "CPU", "the soft one", "the hard gate",
+                       "CPU", "the soft one", "the hard gate",
                        "Long but light runs just go", "agent-room.sh"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, s)
+        s5 = part(read("rules", "tests.md"), "S5. ")
+        for phrase in ("reservation list", "a dead pid frees its entry"):
+            with self.subTest(file="tests.md", phrase=phrase):
+                self.assertIn(phrase, s5)
 
     def test_no_slots_and_no_special_machine_anywhere(self):
-        for path in (("PRINCIPLES.md",), ("skills", "dispatch", "SKILL.md"), ("skills", "merge", "SKILL.md"),
+        for path in (("PRINCIPLES.md",), ("rules", "resources.md"), ("rules", "tests.md"),
+                     ("skills", "dispatch", "SKILL.md"), ("skills", "merge", "SKILL.md"),
                      ("agents", "merge-deputy.md"), ("agents", "fast-lane-deputy.md"), ("agents", "worker.md")):
             with self.subTest(path=path):
                 text = read(*path).lower()
@@ -1887,32 +1976,34 @@ class TestMemoryGate(unittest.TestCase):
                     self.assertNotIn(word, text)
 
     def test_placement(self):
-        for start, end in (("W7. ", "W8. "), ("W9. ", "W10. ")):
+        # md-slim-principles: W7 (placement) is rules/resources.md, W9 is rules/routing.md
+        for name, start, end in (("resources.md", "W7 (placement)", "S3. "), ("routing.md", "W9. ", None)):
             with self.subTest(rule=start):
-                self.assertIn("connected machine first", text_between_after_start(self.text(), start, end))
+                self.assertIn("connected machine first", part(read("rules", name), start, end))
         disp = read("skills", "dispatch", "SKILL.md")
         self.assertIn("connected machine first", disp)
         self.assertIn("agent-room.sh check", disp)
 
     def test_remote_cleanup(self):
-        w8 = text_between_after_start(self.text(), "W8. ", "W9. ")
+        w8 = part(read("rules", "worktrees.md"), "W8. ")   # md-slim-principles: rules/worktrees.md
         for phrase in ("cleaned up there", "scratch clones", "temp test folders", "its reservation"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w8)
         self.assertIn("scratch clones", read("agents", "merge-deputy.md"))
 
     def test_s4_over_the_limit(self):
-        s4 = text_between_after_start(self.text(), "S4. ", "S5. ")
+        s4 = part(read("rules", "resources.md"), "S4. ", "S6. ")   # md-slim-principles: rules/resources.md
         for phrase in ("start nothing new", "close done and idle panes first", "stop test runs before anything else",
                        "never stop a working agent", "tell the main manager", "agent-room.sh relief"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, s4)
 
     def test_s6_no_count_caps(self):
-        s6 = text_between_after_start(self.text(), "S6. ", "S7. ")
+        s6 = part(read("rules", "resources.md"), "S6. ")   # md-slim-principles: rules/resources.md
         self.assertIn("No count caps", s6)
         self.assertIn("a new agent pane is admitted by the same rule", s6)
         self.assertNotIn("Max agents", self.text())
+        self.assertNotIn("Max agents", read("rules", "resources.md"))
         self.assertNotIn("max_agents", read("skills", "dispatch", "SKILL.md"))
 
     def test_plugin_json_has_no_slot_setting(self):
@@ -1947,7 +2038,7 @@ class TestKeepTheResultLines(unittest.TestCase):
         self.assertIn("checks gather", text)
 
     def test_w8_says_so(self):
-        w8 = text_between_after_start(read("PRINCIPLES.md"), "W8. ", "W9. ")
+        w8 = part(read("rules", "worktrees.md"), "W8. ")   # md-slim-principles: rules/worktrees.md
         self.assertIn("checks gather", w8)
 
 
@@ -1955,15 +2046,17 @@ class TestWorkingBranchRules(unittest.TestCase):
     """Owner 2026-11-25 (sections 28-29): one working-branch model for every repo."""
 
     def test_r1_target_from_the_request(self):
-        r1 = text_between_after_start(read("PRINCIPLES.md"), "R1. ", "R2. ")
-        for phrase in ("Merge into the target branch + cleanup", "the user's request decides",
+        # md-slim-principles: R1 flow step 9 is in the core; the target lines are rules/branches.md R1 (target)
+        self.assertIn("Merge into the target branch + cleanup", part(read("PRINCIPLES.md"), "## R1. ", "## W1. "))
+        r1 = part(read("rules", "branches.md"), "R1 (target)", "R8 (")
+        for phrase in ("the user's request decides",
                        "publish or merge to main", "straight into the production branch", "the deploy follows by itself",
                        "ap-main-<name>", "nothing goes to production by itself"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r1)
 
     def test_r8_the_model(self):
-        r8 = text_between_after_start(read("PRINCIPLES.md"), "R8. Check blocks", "## B. Work")
+        r8 = part(read("rules", "branches.md"), "R8 (branches, the net, release)")   # md-slim-principles
         for phrase in ("Flow: Working branch", "the main checkout is switched to the working branch",
                        "never on the production branch by accident",
                        "when the last one of the batch is merged, ONE full suite runs on the working branch",
@@ -1978,12 +2071,12 @@ class TestWorkingBranchRules(unittest.TestCase):
                 self.assertIn(phrase, r8)
 
     def test_w8_and_w9(self):
-        w8 = text_between_after_start(read("PRINCIPLES.md"), "W8. ", "W9. ")
+        w8 = part(read("rules", "worktrees.md"), "W8. ")   # md-slim-principles: rules/worktrees.md
         for phrase in ("working branch", "agent-promote.sh --task", "a short-lived worktree of the production branch",
                        "production is merged back into the working branch at once"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w8)
-        w9 = text_between_after_start(read("PRINCIPLES.md"), "W9. ", "W10. ")
+        w9 = part(read("rules", "routing.md"), "W9. ")   # md-slim-principles: rules/routing.md
         for phrase in ("branches from the production branch", "branches from the working branch", "--batch",
                        "may also wait until the working branch is tested and published",
                        "The target is per task, not per request",
@@ -2019,8 +2112,13 @@ class TestWorkingBranchRules(unittest.TestCase):
 class TestReviewIsTheMainCheck(unittest.TestCase):
     """Section 21 (owner and main manager, 2026-11-25; corrects section 19), for every repo on the plugin."""
 
+    # md-slim-principles: R8 stands in rules/checks.md (the block table), rules/branches.md (urgent fix, the
+    # net, release) and rules/tests.md (light tests); each pin reads its own file
     def r8(self):
-        return text_between_after_start(read("PRINCIPLES.md"), "R8. Check blocks", "## B. Work")
+        return part(read("rules", "checks.md"), "R8. Check blocks")
+
+    def branches(self):
+        return part(read("rules", "branches.md"), "R8 (branches, the net, release)")
 
     def test_r8_head(self):
         r8 = self.r8()
@@ -2028,23 +2126,32 @@ class TestReviewIsTheMainCheck(unittest.TestCase):
         for phrase in ("let other agents verify the outcome of the code instead of letting test cases do it",
                        "PR REVIEW", "did not build it", "reads the diff against the approved requirement",
                        "the main check of every task", "its cost follows the diff size",
-                       "only when what the user sees or does changed", "15-minute time box", "ideas file",
-                       "light related tests", "a bug that a review or check finds gets a small test with its fix",
-                       "The full suite is the safety net only", "URGENT FIX", "branch from the production branch",
-                       "merge production back into the working branch"):
+                       "only when what the user sees or does changed", "15-minute time box", "ideas file"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, head)
+        tests = part(read("rules", "tests.md"), "R8 (tests)", "W3. ")
+        for phrase in ("light related tests", "a bug that a review or check finds gets a small test with its fix"):
+            with self.subTest(file="tests.md", phrase=phrase):
+                self.assertIn(phrase, tests)
+        branches = self.branches()
+        for phrase in ("The full suite is the safety net only", "URGENT FIX", "branch from the production branch",
+                       "merge production back into the working branch"):
+            with self.subTest(file="branches.md", phrase=phrase):
+                self.assertIn(phrase, branches)
         self.assertNotIn("runs the real thing once", r8)
+        self.assertNotIn("runs the real thing once", branches)
 
     def test_r8_release_run_failures(self):
-        r8 = self.r8()
+        r8 = self.branches()
         for phrase in ("agent-nightly.sh --failures", "test out of date", "real break",
                        "No check is deleted without a twin", "a table of these labels"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r8)
 
     def test_the_old_urgent_line_is_gone(self):
-        self.assertNotIn("a verified owner order may move a block to right after the release", self.r8())
+        old = "a verified owner order may move a block to right after the release"
+        self.assertNotIn(old, self.r8())
+        self.assertNotIn(old, self.branches())
 
     def test_dispatch(self):
         text = read("skills", "dispatch", "SKILL.md")
@@ -2067,7 +2174,8 @@ class TestReviewIsTheMainCheck(unittest.TestCase):
                 self.assertIn(phrase, text)
 
     def test_no_retired_block_names_left(self):
-        for path in (("PRINCIPLES.md",), ("skills", "dispatch", "SKILL.md"), ("skills", "merge", "SKILL.md"),
+        for path in (("PRINCIPLES.md",), ("rules", "checks.md"), ("rules", "branches.md"),
+                     ("skills", "dispatch", "SKILL.md"), ("skills", "merge", "SKILL.md"),
                      ("agents", "check-deputy.md"), ("agents", "fast-lane-deputy.md"), ("agents", "merge-deputy.md")):
             with self.subTest(path=path):
                 text = read(*path)
@@ -2105,12 +2213,16 @@ class TestReviewer(unittest.TestCase):
                 self.assertIn(phrase, body)
 
     def test_r1_fixed_sequence(self):
-        r1 = text_between_after_start(read("PRINCIPLES.md"), "R1. ", "R2. ")
-        for phrase in ("builder reports done", "reviewer reads the diff against the approved requirement",
-                       "check deputy only when what the user sees or does changed (15 min box)", "merge deputy",
-                       "A fail at review or check goes back to the builder as a fix order", "Reviewer model"):
+        # md-slim-principles: report.md row 42 rewords this line; the diff read is rules/checks.md R8 (PR REVIEW),
+        # the 15 min box is its 15-minute time box, the Reviewer model is rules/roles.md W6
+        r1 = part(read("PRINCIPLES.md"), "## R1. ", "## W1. ")
+        for phrase in ("builder done → reviewer → check deputy only when what the user sees or does changed",
+                       "→ merge deputy", "A fail → a fix order to the builder"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r1)
+        self.assertIn("reads the diff against the approved requirement", read("rules", "checks.md"))
+        self.assertIn("a 15-minute time box", read("rules", "checks.md"))
+        self.assertIn("Reviewer model", read("rules", "roles.md"))
 
     def test_merge_skill_sends_the_reviewer(self):
         text = read("skills", "merge", "SKILL.md")
@@ -2287,10 +2399,13 @@ class TestMarketplaceManifest(unittest.TestCase):
 class TestHooksJson(unittest.TestCase):
     def command(self):
         data = load_json("hooks", "hooks.json")
-        # the naming hook (tests/test_agent_name.py) is the second entry
+        # the naming hook (tests/test_agent_name.py) is the last entry; md-slim-principles: the --rules
+        # entry (the core and the rules block) comes right after agent-start.sh
         entries = [e for e in data["hooks"]["SessionStart"]
                    if "agent-name.sh" not in json.dumps(e)]
-        self.assertEqual(len(entries), 1, entries)
+        self.assertEqual(len(entries), 2, entries)
+        self.assertTrue(entries[1]["hooks"][0]["command"].replace('"', "").endswith("/bin/agent-start.sh --rules"),
+                        entries[1])
         hooks = entries[0]["hooks"]
         self.assertEqual(len(hooks), 1, hooks)
         self.assertEqual(hooks[0]["type"], "command")
@@ -2410,15 +2525,17 @@ class TestCityHooks(unittest.TestCase):
         # The city is local and starts by /auto-pipeline:city; no SessionStart hook
         # touches it (no autostart probe, no event hook).
         entries = self.hooks()["SessionStart"]
-        self.assertEqual(len(entries), 1, "agent-start only (hooks() leaves the naming hook out)")
+        # md-slim-principles: agent-start.sh, then agent-start.sh --rules (hooks() leaves the naming hook out)
+        self.assertEqual(len(entries), 2, "agent-start and agent-start --rules only")
         self.assertIn("agent-start.sh", json.dumps(entries[0]))
+        self.assertIn("agent-start.sh --rules", json.dumps(entries[1]))
         self.assertNotIn("agent-city", json.dumps(entries))
 
     def test_nothing_else_is_hooked(self):
         self.assertEqual(sorted(self.hooks()), sorted(["SessionStart"] + self.EVENTS))
 
     def test_readme_names_the_city_script(self):
-        self.assertIn("bin/agent-city.sh", read("PRINCIPLES.md"))
+        self.assertIn("bin/agent-city.sh", read("rules", "map.md"))   # md-slim-principles: the map is rules/map.md
 
 
 class TestRepoSettings(unittest.TestCase):
@@ -2528,7 +2645,7 @@ class TestPrinciplesR3(unittest.TestCase):
     """R3 lists the plugin folders now, not the old .claude paths."""
 
     def r3(self):
-        text = read("PRINCIPLES.md")
+        text = read("rules", "files.md")   # md-slim-principles: R3-R7 are rules/files.md
         start = text.index("R3.")
         end = text.index("R4.")
         return text[start:end]
@@ -2543,20 +2660,21 @@ class TestPrinciplesR3(unittest.TestCase):
         self.assertNotIn(".claude/agents/*.md", self.r3())
 
     def test_nothing_else_moved(self):
-        text = read("PRINCIPLES.md")
-        for rule in ("R1.", "R2.", "R4.", "R5.", "R6.", "R7.", "W10.", "S9."):
+        # md-slim-principles: R1, R2 are in the core; R4-R7 rules/files.md; W10 rules/roles.md; S9 rules/context.md
+        for rule, path in (("R1.", ("PRINCIPLES.md",)), ("R2.", ("PRINCIPLES.md",)),
+                           ("R4.", ("rules", "files.md")), ("R5.", ("rules", "files.md")),
+                           ("R6.", ("rules", "files.md")), ("R7.", ("rules", "files.md")),
+                           ("W10.", ("rules", "roles.md")), ("S9.", ("rules", "context.md"))):
             with self.subTest(rule=rule):
-                self.assertIn(rule, text)
+                self.assertIn(rule, read(*path))
 
 
 class TestPrinciplesS8(unittest.TestCase):
     """S8 clears instead of restarting."""
 
     def s8(self):
-        text = read("PRINCIPLES.md")
-        start = text.index("S8.")
-        end = text.index("S9.")
-        return text[start:end]
+        # md-slim-principles: S8's every-step lines are the core; the /clear lines are S8 (cont.) in rules/context.md
+        return part(read("rules", "context.md"), "S8 (cont.). ", "S9. ")
 
     def test_it_mentions_clear(self):
         self.assertIn("/clear", self.s8())
@@ -2574,8 +2692,7 @@ class TestEffortIsAlwaysPassed(unittest.TestCase):
         return read("skills", "dispatch", "SKILL.md")
 
     def w10(self):
-        text = read("PRINCIPLES.md")
-        return text[text.index("W10."):text.index("## C. Human")]
+        return part(read("rules", "roles.md"), "W10. ")   # md-slim-principles: W10 is rules/roles.md, its last rule
 
     def test_the_dispatch_launch_line_passes_effort(self):
         text = self.dispatch()
@@ -2615,7 +2732,7 @@ class TestReadmeInstall(unittest.TestCase):
         self.assertIn(ALLOW_RULES[0], text)
 
     def test_the_tree_shows_the_new_paths(self):
-        text = read("PRINCIPLES.md")
+        text = read("rules", "map.md")   # md-slim-principles: the map is rules/map.md
         self.assertIn("bin/agent-start.sh", text)
 
 
@@ -2642,18 +2759,18 @@ class TestCloudPackSkill(unittest.TestCase):
 
 class TestReadmeShowsThePack(unittest.TestCase):
     def test_it_names_the_script(self):
-        self.assertIn("bin/agent-cloud-pack.sh", read("PRINCIPLES.md"))
+        self.assertIn("bin/agent-cloud-pack.sh", read("rules", "setup.md"))
 
     def test_it_shows_where_the_pack_lands(self):
-        self.assertIn(".claude/auto-pipeline/", read("PRINCIPLES.md"))
+        self.assertIn(".claude/auto-pipeline/", read("rules", "setup.md"))
 
     def test_it_gives_the_one_sentence_install(self):
         self.assertIn(
             "git clone https://github.com/maverick1014/auto-pipeline /tmp/ap"
-            " && /tmp/ap/bin/agent-cloud-pack.sh .", read("PRINCIPLES.md"))
+            " && /tmp/ap/bin/agent-cloud-pack.sh .", read("rules", "setup.md"))
 
     def test_it_names_the_github_app(self):
-        self.assertIn("Claude GitHub App", read("PRINCIPLES.md"))
+        self.assertIn("Claude GitHub App", read("rules", "setup.md"))
 
 
 class TestUserConfig(unittest.TestCase):
@@ -2808,15 +2925,14 @@ class TestInitSkillTellsTheHumanWhatOnlyHeCanDo(unittest.TestCase):
 class TestPrinciplesRuntimeShape(unittest.TestCase):
     """W5 and W7 stop assuming Orca and a second terminal."""
 
-    def rule(self, name, nxt):
-        text = read("PRINCIPLES.md")
-        return text[text.index(name):text.index(nxt)]
+    def rule(self, path, name, nxt=None):
+        return part(read(*path), name, nxt)
 
     def w5(self):
-        return self.rule("W5.", "W6.")
+        return self.rule(("rules", "ui.md"), "W5.")   # md-slim-principles: rules/ui.md
 
     def w7(self):
-        return self.rule("W7.", "W8.")
+        return self.rule(("rules", "worktrees.md"), "W7.", "W8.")   # md-slim-principles: rules/worktrees.md
 
     def test_w5_keeps_claude_in_chrome_for_a_local_machine(self):
         self.assertIn("Claude in Chrome", self.w5())
@@ -2852,7 +2968,8 @@ class TestPrinciplesRuntimeShape(unittest.TestCase):
 
     def test_no_new_doc_file_was_added(self):
         """R3 allows requirement, test and main idea docs. Nothing else."""
-        allowed = {"PRINCIPLES.md", "README.md", "CLAUDE.md", "AGENTS.md"}
+        # md-slim-principles: GLOSSARY.md and NOTICE.md are the owner-approved root docs next to rules/
+        allowed = {"PRINCIPLES.md", "README.md", "CLAUDE.md", "AGENTS.md", "GLOSSARY.md", "NOTICE.md"}
         found = {n for n in os.listdir(ROOT) if n.endswith(".md")}
         self.assertEqual(found - allowed, set())
 
@@ -2861,16 +2978,12 @@ class TestPrinciplesW12CrossRepo(unittest.TestCase):
     """W12 lets main managers pass work to each other, called side first."""
 
     def w12(self):
-        text = read("PRINCIPLES.md")
-        start = text.index("W12.")
-        end = text.index("## C. Human")
-        return text[start:end]
+        return part(read("rules", "cross-repo.md"), "W12.")   # md-slim-principles: rules/cross-repo.md
 
     def test_w12_exists_after_w11(self):
-        text = read("PRINCIPLES.md")
-        self.assertIn("W11.", text)
-        self.assertIn("W12. Cross-repo", text)
-        self.assertLess(text.index("W11."), text.index("W12."))
+        # md-slim-principles: W11 is rules/time.md, W12 is rules/cross-repo.md (no one file to order them in)
+        self.assertIn("W11.", read("rules", "time.md"))
+        self.assertIn("W12. Cross-repo", read("rules", "cross-repo.md"))
 
     def test_w12_names_called_side_first(self):
         self.assertIn("Called side first", self.w12())
@@ -2888,17 +3001,14 @@ class TestPrinciplesW12CrossRepo(unittest.TestCase):
         self.assertIn("CROSS-REPO TASK <name> from <repo>", text)
 
     def test_principles_names_w12(self):
-        self.assertIn("W12. Cross-repo", read("PRINCIPLES.md"))
+        self.assertIn("W12. Cross-repo", read("rules", "cross-repo.md"))   # md-slim-principles
 
 
 class TestPrinciplesS4NamesRelief(unittest.TestCase):
     """S4 (usage cap) must tell an over-cap agent to run relief first."""
 
     def s4(self):
-        text = read("PRINCIPLES.md")
-        start = text.index("S4.")
-        end = text.index("S5.")
-        return text[start:end]
+        return part(read("rules", "resources.md"), "S4. ", "S6. ")   # md-slim-principles: rules/resources.md
 
     def test_s4_mentions_relief(self):
         self.assertIn("relief", self.s4())
@@ -2907,14 +3017,13 @@ class TestPrinciplesS4NamesRelief(unittest.TestCase):
 class TestThreatModel(unittest.TestCase):
     def test_r8_and_the_requirement(self):
         line = "the gate guards against mistakes and shortcuts made through the documented commands"
-        self.assertIn(line, principles_between("R8. ", "W1. "))
+        self.assertIn(line, part(read("rules", "checks.md"), "R8. Check blocks"))   # md-slim-principles
         self.assertIn(line, read("requirements", "check-blocks.md"))
 
 
 class TestRuleTexts(unittest.TestCase):
     def test_principles_w14(self):
-        text = read("PRINCIPLES.md")
-        w14 = text[text.index("W14. Todo board"):text.index("W15.")]
+        w14 = part(read("rules", "board.md"), "W14. Todo board")   # md-slim-principles: rules/board.md
         for word in ("--who", "--after", "not started", "waiting on others", "first stage"):
             with self.subTest(word=word):
                 self.assertIn(word, w14)
@@ -2969,7 +3078,7 @@ class TestSkillAndRule(unittest.TestCase):
         self.assertIn("commit", text.lower())
 
     def test_after_a_bug_fix_the_fixer_adds_an_edge(self):
-        for path in (("PRINCIPLES.md",), ("agents", "worker.md"), ("agents", "fast-lane-deputy.md")):
+        for path in (("rules", "checks.md"), ("agents", "worker.md"), ("agents", "fast-lane-deputy.md")):
             with self.subTest(path=path):
                 text = self.read(*path)
                 self.assertIn("which example would have shown it", text)
@@ -2978,7 +3087,8 @@ class TestSkillAndRule(unittest.TestCase):
 
 class TestRuleText(unittest.TestCase):
     def w15(self):
-        return section(read("PRINCIPLES.md"), "W15. Watch", "W16.").splitlines()
+        # md-slim-principles: W15 is rules/watch.md, its last rule: the cut runs to the end of the file
+        return part(read("rules", "watch.md"), "W15. Watch").splitlines()
 
     def line_with(self, lines, *words):
         hits = [l for l in lines if all(w in l for w in words)]
@@ -3001,7 +3111,7 @@ class TestRuleText(unittest.TestCase):
         self.line_with(lines, "not confirmed")
 
     def test_k_w14_status_line_rows(self):
-        w14 = section(read("PRINCIPLES.md"), "W14. Todo board", "W15.").splitlines()
+        w14 = part(read("rules", "board.md"), "W14. Todo board").splitlines()   # md-slim-principles: rules/board.md
         line = self.line_with(w14, "statusline", "5 lines")
         for word in ("own row", "+N tasks", "warning"):
             self.assertIn(word, line)
@@ -3031,18 +3141,23 @@ class TestRuleText(unittest.TestCase):
         self.assertTrue([l for l in read("skills", "merge", "SKILL.md").splitlines() if "agent-watch.sh --all" in l])
 
     def test_g_map_names_the_all_watch_and_tell(self):
-        text = read("PRINCIPLES.md")
+        text = read("rules", "map.md")   # md-slim-principles: the map is rules/map.md
         self.assertIn("agent-watch.sh --all", text)
         self.assertIn("agent-file.sh tell", text)
 
 
+# md-slim-principles: the rules/ file of each code this helper cuts (codes.md); one file per code
+CODE_FILES = {"W8": ("rules", "worktrees.md"), "S4": ("rules", "resources.md"),
+              "S6": ("rules", "resources.md"), "W14": ("rules", "board.md")}
+
+
 def principles_code_between(code, nxt):
-    """PRINCIPLES.md from the line "<code>. ..." up to the line "<nxt>. ..."."""
-    with open(os.path.join(ROOT, "PRINCIPLES.md")) as fh:
-        text = fh.read()
+    """The text of its own rules/ file from the line "<code>. ..." up to the line "<nxt>. ..."; the code
+    is the last in its file (or the next stands in another file) -> up to the end of the file."""
+    text = read(*CODE_FILES[code])
     start = text.index("\n%s. " % code)
-    end = text.index("\n%s. " % nxt, start)
-    return text[start:end]
+    end = text.find("\n%s. " % nxt, start)
+    return text[start:] if end < 0 else text[start:end]
 
 
 class TestTheRules(unittest.TestCase):
@@ -3073,7 +3188,7 @@ class TestTheRules(unittest.TestCase):
         self.assertIn("unreachable", w8)
 
     def test_s4_names_stop_leftovers(self):
-        self.assertIn("stop-leftovers", principles_code_between("S4", "S5"))
+        self.assertIn("stop-leftovers", principles_code_between("S4", "S6"))
 
     def test_s6_counts_busy_agents_only(self):
         s6 = principles_code_between("S6", "S7")
@@ -3105,14 +3220,13 @@ class TestTheRules(unittest.TestCase):
         self.assertIn("`OWNER TODO:`", principles_code_between("W14", "W15"))
 
     def test_one_line_per_rule(self):
-        for code, nxt in (("W8", "W9"), ("S4", "S5"), ("S6", "S7"), ("W14", "W15")):
+        for code, nxt in (("W8", "W9"), ("S4", "S6"), ("S6", "S7"), ("W14", "W15")):
             for line in principles_code_between(code, nxt).splitlines():
                 if line.startswith("- "):
                     self.assertLessEqual(len(line), 200, line)
 
     def test_the_map_names_the_script(self):
-        with open(os.path.join(ROOT, "PRINCIPLES.md")) as fh:
-            self.assertIn("bin/agent-cleanup.sh", fh.read())
+        self.assertIn("bin/agent-cleanup.sh", read("rules", "map.md"))   # md-slim-principles: rules/map.md
 
 
 def block_after_head(text, head):
@@ -3123,7 +3237,7 @@ def block_after_head(text, head):
 
 class TestGuardRuleText(unittest.TestCase):
     def test_w14_launches_record_themselves(self):
-        w14 = block_after_head(read("PRINCIPLES.md"), "W14. Todo board")
+        w14 = block_after_head(read("rules", "board.md"), "W14. Todo board")   # md-slim-principles: rules/board.md
         self.assertIn("agent-guard.sh", w14)
         self.assertIn("no open todo task", w14)
         self.assertIn("Todo before agent", w14)
@@ -3147,15 +3261,15 @@ class TestGuardRuleText(unittest.TestCase):
         self.assertIn("agent-guard.sh", s)
 
     def test_readme(self):
-        self.assertIn("bin/agent-guard.sh", read("PRINCIPLES.md"))
+        self.assertIn("bin/agent-guard.sh", read("rules", "map.md"))   # md-slim-principles: rules/map.md
 
     def test_the_texts_name_the_setting(self):
         # settings-configure (owner 1A 2026-11-25): "Rules: Todo before agent", on by default,
         # replaces board_guard (old default record, owner 3A 2026-11-20)
-        line = [l for l in read("PRINCIPLES.md").splitlines() if "bin/agent-guard.sh" in l][0]
+        line = [l for l in read("rules", "map.md").splitlines() if "bin/agent-guard.sh" in l][0]   # md-slim-principles
         self.assertIn("Todo before agent", line)
         self.assertIn("off records only", line)
-        w14 = block_after_head(read("PRINCIPLES.md"), "W14. Todo board")
+        w14 = block_after_head(read("rules", "board.md"), "W14. Todo board")
         self.assertRegex(w14, r"on \(default\)")
         s = read("skills", "dispatch", "SKILL.md")
         board = s[s.index("## Board records"):s.index("## Time question")]
@@ -3185,7 +3299,7 @@ class TestA1Texts(unittest.TestCase):
         self.assertIn("head: <sha>", read("skills", "merge", "SKILL.md"))
 
     def test_r8(self):
-        self.assertIn("pass --commit <the head they looked at>", principles_between("R8. ", "W1. "))
+        self.assertIn("pass --commit <the head they looked at>", part(read("rules", "checks.md"), "R8. Check blocks"))   # md-slim-principles
 
 
 class TestA2FastLaneBrief(unittest.TestCase):
@@ -3230,18 +3344,22 @@ class TestA7WatchRoom(unittest.TestCase):
 
 class TestA8Reviewer(unittest.TestCase):
     def test_tree_and_merge(self):
-        tree = read("PRINCIPLES.md").split("## F. Map")[1]
+        # md-slim-principles: the Tree is gone (proof.md old 568 merged into W6); the reviewer row is rules/roles.md
+        tree = part(read("rules", "roles.md"), "W6. ", "W10. ")
         self.assertNotIn("Reviewer (Opus 5.5, high)", tree)
-        self.assertIn("Reviewer model setting", tree)
+        self.assertIn("Reviewer (Reviewer model", tree)
         m = read("skills", "merge", "SKILL.md")
         self.assertIn("the model and the effort of the Reviewer model setting", m)
 
 
 class TestA9NoSecondYes(unittest.TestCase):
     def test_three_places(self):
-        for text in (principles_between("R8. ", "W1. "), read("skills", "dispatch", "SKILL.md"), read("skills", "merge", "SKILL.md")):
+        # md-slim-principles: R8 stands in rules/checks.md, rules/branches.md, rules/approval.md, rules/tests.md
+        r8 = [part(read("rules", "checks.md"), "R8. Check blocks"), read("rules", "branches.md"),
+              read("rules", "approval.md"), read("rules", "tests.md")]
+        for text in r8 + [read("skills", "dispatch", "SKILL.md"), read("skills", "merge", "SKILL.md")]:
             self.assertNotIn("the owner's yes", text)
-        self.assertIn("his verified words at dispatch, read as the publish of that task, are his final yes", principles_between("R8. ", "W1. "))   # approval-design
+        self.assertIn("his verified words at dispatch, read as the publish of that task, are his final yes", read("rules", "branches.md"))   # approval-design
 
 
 class TestWalks(unittest.TestCase):
@@ -3312,7 +3430,7 @@ class TestF1MergeDeputyChecksTheBranch(unittest.TestCase):
 class TestF6AndF7Texts(unittest.TestCase):
     def test_second_opinion_line(self):
         line = "Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW"
-        self.assertIn(line, principles_between("R8. ", "W1. "))
+        self.assertIn(line, part(read("rules", "checks.md"), "R8. Check blocks"))   # md-slim-principles
         self.assertIn(line, read("skills", "dispatch", "SKILL.md"))
 
     def test_merge_skill(self):
@@ -3342,7 +3460,7 @@ class TestAfterDoneFailAndLost(unittest.TestCase):
     """Section 38 (owner order 16:4x, TELL 10b4d922): what the main manager does after DONE FAIL and LOST."""
 
     def test_w15(self):
-        w15 = principles_between("W15. ", "W16. ")
+        w15 = part(read("rules", "watch.md"), "W15. ")   # md-slim-principles: rules/watch.md
         lines = w15.splitlines()
         for phrase in ("DONE FAIL → the main manager reviews the report, then sends the task manager a fix order "
                        "(where, what is seen, what is expected, evidence). Never merged, never closed silently",
@@ -3365,22 +3483,25 @@ class TestLeftoversTexts(unittest.TestCase):
         self.assertNotIn("slot is free", text)
 
     def test_b_merged_means_either_branch(self):
+        # md-slim-principles: R5 is rules/files.md, the sweep line is W8, rules/worktrees.md
         text = read("PRINCIPLES.md")
         self.assertNotIn("merged into origin/main", text)
-        r5 = principles_between("R5. ", "R6. ")
+        r5 = part(read("rules", "files.md"), "R5. ", "R6. ")
         self.assertIn("merged into the working branch or the production branch", r5)
-        sweep = [l for l in text.splitlines() if l.startswith("- Removes only safe items")][0]
+        sweep = [l for l in read("rules", "worktrees.md").splitlines() if l.startswith("- Removes only safe items")][0]
         self.assertIn("merged into the working branch or the production branch", sweep)
         self.assertNotIn("merged into origin/main", read("bin", "agent-cleanup.sh"))
 
     def test_c_old_names(self):
-        text = read("PRINCIPLES.md")
+        # md-slim-principles: the map is rules/map.md; the board's stage line is rules/board.md
+        text = read("rules", "map.md")
         self.assertNotIn("(E2E, then merge deputy)", text)
+        self.assertNotIn("(E2E, then merge deputy)", read("PRINCIPLES.md"))
         self.assertIn("(the reviewer and the check deputy, then the merge deputy)", text)
-        self.assertIn("Main manager: e2e (the review and the checks), merge", text)
+        self.assertIn("Main manager: e2e (the review and the checks), merge", read("rules", "board.md"))
 
     def test_d_agent_paths(self):
-        w6 = principles_between("W6. ", "W7. ")
+        w6 = part(read("rules", "roles.md"), "W6. ", "W10. ")   # md-slim-principles: rules/roles.md
         self.assertNotIn(".claude/agents/", w6)
         for name in ("merge-deputy", "worker"):
             self.assertIn("`agents/%s.md`" % name, w6)
@@ -3390,14 +3511,14 @@ class TestSlimPassFacts(unittest.TestCase):
     """Section 40 (TELL e2fd5575): rule text that the code contradicts."""
 
     def test_1_models_by_setting(self):
-        w6 = principles_between("W6. ", "W7. ")
+        w6 = part(read("rules", "roles.md"), "W6. ", "W10. ")   # md-slim-principles: rules/roles.md
         for role in ("Main manager", "Task manager"):
             line = [l for l in w6.splitlines() if l.startswith("- %s (" % role)][0]
             self.assertNotIn("xhigh", line, line)
             self.assertIn("%s model" % role, line)
 
     def test_2_start_runs_release_ok_checks(self):
-        r8 = principles_between("R8. ", "W1. ")
+        r8 = part(read("rules", "branches.md"), "R8 (branches, the net, release)")   # md-slim-principles
         self.assertIn("`agent-nightly.sh --release-ok` only checks", r8)
         self.assertIn("`agent-nightly.sh --start` runs the full suite in the background", r8)
 
@@ -3405,12 +3526,12 @@ class TestSlimPassFacts(unittest.TestCase):
         self.assertNotIn("./agent-file.sh", read("PRINCIPLES.md"))
 
     def test_4_r5_fields(self):
-        r5 = principles_between("R5. ", "R6. ")
+        r5 = part(read("rules", "files.md"), "R5. ", "R6. ")   # md-slim-principles: rules/files.md
         for field in ("guess", "level"):
             self.assertIn(field, r5)
 
     def test_5_the_map_names_every_script(self):
-        f = read("PRINCIPLES.md").split("## F. Map")[1]
+        f = read("rules", "map.md")   # md-slim-principles: rules/map.md
         for name in ("agent-promote", "agent-runtime", "agent-resources", "agent-autoclear", "agent-release",
                      "agent-statusline", "agent-roots"):
             with self.subTest(name=name):
@@ -3436,7 +3557,7 @@ class TestG9AndG10Texts(unittest.TestCase):
     def test_r8_names_both_switches(self):
         self.assertIn("init switches the main checkout of a new repo to the working branch; in a repo that already "
                       "uses the plugin the main manager switches it at a quiet point after the start's WORKING BRANCH "
-                      "line", principles_between("R8. ", "W1. "))
+                      "line", part(read("rules", "branches.md"), "R8 (branches, the net, release)"))
 
     def test_dispatch_says_suite_run(self):
         d = read("skills", "dispatch", "SKILL.md")
@@ -3467,43 +3588,55 @@ def block_after(text, marker):
 
 class TestDeciderFloorRuleText(unittest.TestCase):
     def setUp(self):
+        # md-slim-principles: W17 is in the core (heading "## W17."); its definition line is GLOSSARY.md
         self.text = read("PRINCIPLES.md")
-        self.w17 = rule_body_lines(self.text, "W17. Decider floor")
+        self.w17 = rule_body_lines(self.text, "## W17. Decider floor")
         self.body = "\n".join(self.w17)
 
     def test_one_line_per_rule(self):
-        self.assertGreaterEqual(len(self.w17), 6)
+        self.assertGreaterEqual(len(self.w17), 4)   # report.md rows 432-441: ten lines merged into four
         for line in self.w17:
             with self.subTest(line=line[:40]):
                 self.assertTrue(line.startswith("- "))
-                self.assertLessEqual(len(line), 200)
+                # report.md row 432 joins four old lines into "Act on one only when both meet the floor ..." (205)
+                # md-slim-principles: the merged floor line (report.md rows 432, 437, 438, 440; approved) is
+                # 205 characters; every other W17 line keeps the 200 cap
+                cap = 210 if line.startswith("- Act on one only when both meet the floor") else 200
+                self.assertLessEqual(len(line), cap)
 
     def test_who_and_the_floor(self):
-        for words in ("main manager", "task manager", "reviewer", "Opus 5.5", "Fable", "medium",
-                      "Sonnet", "Haiku"):
+        # report.md row 431: the definition of a decision maker is the GLOSSARY.md entry
+        entry = next(l for l in read("GLOSSARY.md").splitlines() if l.startswith("**Decision maker**"))
+        for words in ("main manager", "task manager", "reviewer"):
+            with self.subTest(words=words, file="GLOSSARY.md"):
+                self.assertIn(words, entry)
+        for words in ("Opus 5.5", "Fable", "medium", "Sonnet", "Haiku"):
             with self.subTest(words=words):
                 self.assertIn(words, self.body)
         self.assertTrue(re.search(r"Sonnet and Haiku never decide", self.body))
 
     def test_sending(self):
-        self.assertIn("[Opus 5.5 xhigh]", self.body)
-        self.assertIn("model and effort", self.body)
+        # report.md row 434: "states the sender's model and effort first: `[Opus 5.5 xhigh]`" -> "starts with
+        # the sender's `[<model> <effort>]`"
+        self.assertIn("`[<model> <effort>]`", self.body)
         self.assertIn("not orders", self.body)
         for word in ("Reports", "heartbeats", "questions"):
             self.assertIn(word, self.body)
 
     def test_receiving(self):
         low = self.body.lower()
-        for words in ("do not act", "ask the sender", "tell the human", "exempt", "helper"):
+        # proof.md old 405: "Same check for every agent: task manager, Helper, worker, deputy" -> "Every agent checks"
+        for words in ("do not act", "ask the sender", "tell the human", "exempt", "every agent checks"):
             with self.subTest(words=words):
                 self.assertIn(words, low)
 
     def test_own_values_and_the_validator(self):
         self.assertIn("YOU:", self.body)
-        self.assertIn("agent_conf.py", self.body)
+        # md-slim-principles: the settings line of W17 is rules/setup.md
+        self.assertIn("agent_conf.py", part(read("rules", "setup.md"), "W17 (settings)", "Cloud pack"))
 
     def test_w12_first_line(self):
-        line = next(l for l in self.text.splitlines() if l.startswith("- Send the brief"))
+        line = next(l for l in read("rules", "cross-repo.md").splitlines() if l.startswith("- Send the brief"))   # md-slim-principles
         self.assertIn("[<model> <effort>] CROSS-REPO TASK <name> from <repo>", line)
 
 
@@ -3556,7 +3689,7 @@ class TestCleanupRules(unittest.TestCase):
         merge = read("skills", "merge", "SKILL.md")
         self.assertIn("agent-cleanup.sh --apply", merge)
         self.assertLess(merge.index("MERGE PASS"), merge.index("agent-cleanup.sh --apply"))
-        w8 = read("PRINCIPLES.md").split("W8. ")[1].split("W9. ")[0]
+        w8 = part(read("rules", "worktrees.md"), "W8. ")   # md-slim-principles: rules/worktrees.md
         self.assertIn("after every merge", w8)
         self.assertIn("human-direct protects only the human's own session pane", w8)
         self.assertIn("never got a prompt", w8)
@@ -3569,7 +3702,7 @@ class TestCleanupRules(unittest.TestCase):
 class TestHelperJoinRules(unittest.TestCase):
 
     def test_w10(self):
-        w10 = read("PRINCIPLES.md").split("W10. ")[1].split("W11. ")[0]
+        w10 = part(read("rules", "roles.md"), "W10. ")   # md-slim-principles: rules/roles.md
         for phrase in ("keeps its protection only while the human alone drives it", "agent-file.sh helper-join",
                        "takes a task from the main manager or reports DONE to it", "claude --resume <session id>"):
             with self.subTest(phrase=phrase):
@@ -3588,8 +3721,7 @@ class TestHelperJoinRules(unittest.TestCase):
 
 class TestBypassRuleText(unittest.TestCase):
     def w10(self):
-        text = read("PRINCIPLES.md")
-        return text[text.index("W10. "):text.index("W11. ")]
+        return part(read("rules", "roles.md"), "W10. ")   # md-slim-principles: rules/roles.md
 
     def test_w10_launch_line_reads_the_mode(self):
         w10 = self.w10()
@@ -3604,6 +3736,7 @@ class TestBypassRuleText(unittest.TestCase):
 
     def test_no_literal_auto_launch_anywhere_in_the_rules(self):
         self.assertNotIn("--permission-mode auto", read("PRINCIPLES.md"))
+        self.assertNotIn("--permission-mode auto", read("rules", "roles.md"))   # md-slim-principles: W10
 
     def test_the_local_click_line_keeps_permission_mode(self):
         text = read("requirements", "city.md")
@@ -3644,7 +3777,8 @@ class TestAgentText(unittest.TestCase):
 class TestH2Texts(unittest.TestCase):
     def test_no_fixed_sentence_is_left(self):
         # approval-design (section 53 A1): the owner picked C, the interim sentences of section 51 H2 go
-        texts = [("PRINCIPLES.md",), DISPATCH, MERGE, DEPUTY, ("README.md",), ("agents", "reviewer.md"),
+        texts = [("PRINCIPLES.md",), ("rules", "approval.md"), ("rules", "branches.md"), ("rules", "checks.md"),
+                 DISPATCH, MERGE, DEPUTY, ("README.md",), ("agents", "reviewer.md"),
                  ("agents", "fast-lane-deputy.md"), ("skills", "close-case", "SKILL.md")]
         for parts in texts:
             text = read(*parts)
@@ -3663,15 +3797,16 @@ class TestApprovalCases(unittest.TestCase):
     the cases are written once in R8, R1, W9, W12 and skills/dispatch agree."""
 
     def r8(self):
-        return principles_between("R8. ", "## B. Work")
+        # md-slim-principles: the approval part of R8 is rules/approval.md (R8 (owner approval))
+        return part(read("rules", "approval.md"), "R8 (owner approval)", "W12 (")
 
     def test_r8_holds_the_rule(self):
         r8 = self.r8()
         for phrase in ("reads his words", "no fixed sentence", "no word list", "--owner-quote", "--means",
-                       "--question", "under 20 characters", "whole prompt", "OWNER WORDS",
-                       "PR REVIEW and OWNER SIGN are never removed"):
+                       "--question", "under 20 characters", "whole prompt", "OWNER WORDS"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r8)
+        self.assertIn("PR REVIEW and OWNER SIGN are never removed", read("rules", "checks.md"))
 
     def test_r8_holds_the_five_cases(self):
         r8 = self.r8()
@@ -3683,19 +3818,29 @@ class TestApprovalCases(unittest.TestCase):
                 self.assertIn(phrase, r8)
 
     def test_the_cases_are_written_once(self):
-        self.assertEqual(read("PRINCIPLES.md").count("is it ready to publish?"), 1)
+        # md-slim-principles: the cases stand in rules/approval.md only; the core and the other rules point to it
+        self.assertEqual(read("rules", "approval.md").count("is it ready to publish?"), 1)
+        for path in (("PRINCIPLES.md",), ("rules", "branches.md"), ("rules", "routing.md"), ("rules", "checks.md")):
+            with self.subTest(path=path):
+                self.assertEqual(read(*path).count("is it ready to publish?"), 0)
 
     def test_r1_w9_w12_point_to_the_cases(self):
-        for start, end in (("R1. ", "R2. "), ("W9. ", "W10. "), ("W12. ", "W13. ")):
-            with self.subTest(rule=start):
-                self.assertIn("approval cases", principles_between(start, end))
-        self.assertNotIn("that name the action", principles_between("W12. ", "W13. "))
+        # md-slim-principles: R1's target lines are rules/branches.md, W9 rules/routing.md, W12's owner
+        # words rules/approval.md (W12 (relayed owner words))
+        for name, text in (("R1", part(read("rules", "branches.md"), "R1 (target)", "R8 (")),
+                           ("W9", part(read("rules", "routing.md"), "W9. ")),
+                           ("W12", part(read("rules", "approval.md"), "W12 ("))):
+            with self.subTest(rule=name):
+                self.assertIn("approval cases", text)
+        self.assertNotIn("that name the action", part(read("rules", "approval.md"), "W12 ("))
+        self.assertNotIn("that name the action", part(read("rules", "cross-repo.md"), "W12. "))
 
     def test_r8_promote_line_takes_means(self):
-        self.assertIn('agent-promote.sh --owner-quote "<his words>" --means "<what you read>"', self.r8())
+        self.assertIn('agent-promote.sh --owner-quote "<his words>" --means "<what you read>"',
+                      read("rules", "branches.md"))   # md-slim-principles: the promote line is in rules/branches.md
 
     def test_r8_says_who_launches_the_reviewer(self):
-        r8 = self.r8()
+        r8 = part(read("rules", "checks.md"), "R8. Check blocks")   # md-slim-principles: rules/checks.md
         self.assertIn("PR REVIEW, FLOW CHECK and UI CHECK count only from a reviewer or check deputy the main manager launched", r8)
 
     def test_dispatch_agrees(self):
@@ -3717,7 +3862,7 @@ class TestApprovalCases(unittest.TestCase):
         self.assertIn("git branch -D <branch>", line)
 
     def test_section_f_names_md_slim(self):
-        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("Agent skills:"))
+        line = next(l for l in read("rules", "map.md").splitlines() if l.startswith("Agent skills:"))   # md-slim-principles
         self.assertIn("/auto-pipeline:slim-markdown", line)   # S6: md-slim renamed
         self.assertIn("/auto-pipeline:teacher-teach-me", line)   # TELL 9594c165: the skill main got in e198fbe
 
@@ -3741,7 +3886,8 @@ class TestFixOrder1Texts(unittest.TestCase):
     """FIX ORDER 1 (TELL cdacc0c5) R2, R3, R6: the rule text of the late yes, the relayed order and the wording."""
 
     def r8(self):
-        return principles_between("R8. ", "## B. Work")
+        # md-slim-principles: the approval part of R8 is rules/approval.md
+        return part(read("rules", "approval.md"), "R8 (owner approval)", "W12 (")
 
     def test_r2_the_late_yes_case(self):
         r8 = self.r8()
@@ -3752,15 +3898,16 @@ class TestFixOrder1Texts(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r8)
         self.assertNotIn("rebase --onto", read("PRINCIPLES.md"))
+        self.assertNotIn("rebase --onto", read("rules", "approval.md"))
         self.assertNotIn("force", r8.lower().replace("enforce", ""))
         self.assertIn("todo target", read(*DISPATCH))
 
     def test_r3_the_relayed_order(self):
-        self.assertIn("--relayed-from", principles_between("W12. ", "W13. "))
+        self.assertIn("--relayed-from", part(read("rules", "cross-repo.md"), "W12. "))   # md-slim-principles
         self.assertIn("--relayed-from", self.r8())
 
     def test_r6_no_words_that_name_the_publish(self):
-        for parts in (DISPATCH, MERGE, ("PRINCIPLES.md",)):
+        for parts in (DISPATCH, MERGE, ("PRINCIPLES.md",), ("rules", "approval.md"), ("rules", "cross-repo.md")):
             with self.subTest(file="/".join(parts)):
                 self.assertNotIn("name the publish", read(*parts))
 
@@ -3772,9 +3919,9 @@ class TestFixOrder1Texts(unittest.TestCase):
         self.assertIn("OWNER TODO", line)
 
     def test_r6_a_hook_points_to_a_skill_or_a_rule(self):
-        text = read("PRINCIPLES.md")
-        self.assertIn("only points to a skill or a rule", text)
-        line = next(l for l in text.splitlines() if "bin/agent-keyword.sh" in l and "UserPromptSubmit" in l)
+        # md-slim-principles: the hook rule is E4, rules/output.md; the script line is rules/map.md
+        self.assertIn("only points to a skill or a rule", read("rules", "output.md"))
+        line = next(l for l in read("rules", "map.md").splitlines() if "bin/agent-keyword.sh" in l and "UserPromptSubmit" in l)
         self.assertIn("skill or rule", line)
 
     def test_r6_the_check_usage_names_the_approval_options(self):
@@ -3789,7 +3936,8 @@ class TestFixOrder2Texts(unittest.TestCase):
     """FIX ORDER 2 (TELL f68297ca) S1-S4: the rule text."""
 
     def r8(self):
-        return principles_between("R8. ", "## B. Work")
+        # md-slim-principles: the approval part of R8 is rules/approval.md
+        return part(read("rules", "approval.md"), "R8 (owner approval)", "W12 (")
 
     def test_s1_the_fast_lane_deputy_case(self):
         dep = read("agents", "fast-lane-deputy.md")
@@ -3814,10 +3962,11 @@ class TestFixOrder2Texts(unittest.TestCase):
         line = next(l for l in self.r8().splitlines() if "another machine" in l and "cannot be verified here" in l)
         self.assertIn("owner", line)
         self.assertIn("main manager lock", self.r8())
-        text = read("PRINCIPLES.md")
+        # md-slim-principles: the relay lines stand once, in rules/approval.md; W12 (rules/cross-repo.md) points to them
+        text = read("rules", "approval.md")
         self.assertEqual(text.count("cannot be verified here"), 1)
         self.assertEqual(text.count("must be a repo with a main manager lock"), 1)
-        w12 = next(l for l in principles_between("W12. ", "W13. ").splitlines() if "--relayed-from" in l)
+        w12 = next(l for l in part(read("rules", "cross-repo.md"), "W12. ").splitlines() if "--relayed-from" in l)
         self.assertIn("R8", w12)
 
     def test_s4_usage_shows_relayed_from(self):
@@ -3844,7 +3993,7 @@ class TestS6SkillRename(unittest.TestCase):
                 self.assertNotIn("/auto-pipeline:%s" % old, text)
 
     def test_s6_principles_and_readme_name_the_new_skills(self):
-        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("Agent skills:"))
+        line = next(l for l in read("rules", "map.md").splitlines() if l.startswith("Agent skills:"))   # md-slim-principles: rules/map.md
         readme = read("README.md")
         for new, old in self.NEW.items():
             with self.subTest(skill=new):
@@ -3893,10 +4042,10 @@ class TestParallelDefault(unittest.TestCase):
         self.assertNotIn("only when that check shows a real overlap", text)
 
     def test_w9_follow_up_goes_to_the_task_manager(self):
-        text = read("PRINCIPLES.md")
+        text = read("rules", "routing.md")   # md-slim-principles: W9 is rules/routing.md
         block = text.split("W9. Task routing", 1)[1].split("\n\n", 1)[0]
         self.assertIn("must go to that task manager (P1), never to a second agent", block)
-        for path in ("PRINCIPLES.md", "skills/dispatch/SKILL.md"):
+        for path in ("PRINCIPLES.md", "rules/routing.md", "skills/dispatch/SKILL.md"):
             with self.subTest(path=path):
                 self.assertNotIn("in the two cases of P1", read(path))
 
@@ -3912,14 +4061,14 @@ class TestT2T3Texts(unittest.TestCase):
 
     def test_t2_dispatch_step_2_and_r8_name_them(self):
         step2 = next(l for l in read(*DISPATCH).splitlines() if l.startswith("2. Small task"))
-        r8 = principles_between("R8. ", "## B. Work")
+        r8 = part(read("rules", "approval.md"), "R8 (owner approval)", "W12 (")   # md-slim-principles
         for field in ("late yes of:", "old branch:"):
             with self.subTest(field=field):
                 self.assertIn(field, step2)
                 self.assertIn(field, r8)
 
     def test_t2_a_publish_line_copies_the_planned_blocks(self):
-        r8 = principles_between("R8. ", "## B. Work")
+        r8 = part(read("rules", "approval.md"), "R8 (owner approval)", "W12 (")   # md-slim-principles
         line = next(l for l in r8.splitlines() if "<task>-publish" in l)
         self.assertIn("--checks", line)
 

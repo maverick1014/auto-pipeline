@@ -976,7 +976,24 @@ class Engine:
             out(line)
             for l in evidence or []:
                 out(l)
+        if events:
+            self.point_to_rules()
         return events
+
+    def point_to_rules(self):
+        """One line to the rules of a wake, once per session (marker <git common dir>/agent_point_<sid>_watch)."""
+        line = "Handle it: rules/watch.md (W15). The watch only points."
+        try:
+            sid = re.sub(r"[^A-Za-z0-9_.-]", "_", os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
+            if sid:
+                marker = os.path.join(self.ctx.gitdir, "agent_point_%s_watch" % sid)
+                if os.path.exists(marker):
+                    return
+                with open(marker, "w") as fh:
+                    fh.write(now_text() + "\n")
+        except OSError:
+            pass
+        out(line)
 
     # ---- the room wake: a queued task that `agent-file.sh next` would start, said once
 

@@ -79,9 +79,13 @@ class TestTeacherKeyword(unittest.TestCase):
         self.assertTrue(any("teach me, explain to me, can you explain, 教我, 解释一下, 给我讲讲" in r for r in rows), rows)
 
 
+# md-slim-principles C 9: the owner's publish or skip words -> rules/approval.md (the cases), rules/routing.md
+# (the per-task target, W9)
 APPROVAL = ("Approval hook: if the owner is approving a publish or a skipped check here, read his words by the "
-            "approval cases (PRINCIPLES.md R8) and the per-task target (W9). If the words are only mentioned or "
-            "quoted, ignore this.")
+            "approval cases (rules/approval.md R8) and the per-task target (rules/routing.md W9). If the words are "
+            "only mentioned or quoted, ignore this.")
+CLOSE_CASE = ("Keyword hook: run skill /auto-pipeline:close-case. Its rule: rules/close-case.md (W13). If the words "
+              "are only mentioned or quoted, ignore this.")
 APPROVAL_WORDS = ["publish", "merge to main", "release", "deploy", "production", "上线", "发布", "部署",
                   "skip the", "leave out", "跳过"]
 MAIN_PID = "424242"
@@ -122,6 +126,17 @@ class TestApprovalHook(ScriptCase):
 
     def test_no_word_no_line(self):
         self.assertEqual(self.hook("fix the footer typo"), [])
+
+    def test_the_owners_numbered_publish_names_rules_approval(self):
+        # section 4: "2. need to publish direct after done" to a main manager
+        lines = self.hook("2. need to publish direct after done")
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("rules/approval.md", lines[0])
+        self.assertNotIn("PRINCIPLES.md", lines[0])
+
+    def test_close_case_points_to_its_rule_file(self):
+        # C 9: close case -> rules/close-case.md, on the line that names the skill
+        self.assertIn(CLOSE_CASE, self.hook("close case please"))
 
     def test_a_skill_keyword_still_works_beside_it(self):
         lines = self.hook("close case and publish the rest")

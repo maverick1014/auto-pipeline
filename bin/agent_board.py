@@ -74,6 +74,22 @@ def load_conf():
         sys.dont_write_bytecode = old
 
 
+def load_forecast():
+    """The sibling module agent_forecast (the Monte Carlo end time), None when it cannot be loaded."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    old = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agent_forecast
+        return agent_forecast
+    except Exception:
+        return None
+    finally:
+        sys.dont_write_bytecode = old
+
+
 def conf_get(key, default):
     """One setting or constant from agent_conf; DEFAULT when agent_conf cannot be loaded or read."""
     try:
@@ -311,16 +327,25 @@ def clock_text(lang, now, when):
     return ("%s %s" % (stamp, clock)) if lang == "zh" else ("%s on %s" % (clock, stamp))
 
 
+def done_by_ahead(est, work, p, min_pct=0):
+    """Minutes from now to the done-by time of today's rule; None when there is none (no work, or over with no pace)."""
+    if work is None:
+        return None
+    if est is not None and work < est:
+        return est - work
+    if p is not None and p > 0 and p * 100 >= min_pct:
+        return math.ceil(Fraction(work) * (1 - p) / p)
+    return None
+
+
 def done_by_text(lang, now, est, work, p, min_pct=0):
     """Done by: est / work in minutes (None = unknown), p = Fraction of progress or None.
 
     Far enough = a stage, p > 0 and 100 p >= min_pct (progress_eta_min_pct)."""
     if work is None:
         return "-"
-    if est is not None and work < est:
-        return clock_text(lang, now, now + datetime.timedelta(minutes=est - work))
-    if p is not None and p > 0 and p * 100 >= min_pct:
-        ahead = math.ceil(Fraction(work) * (1 - p) / p)
+    ahead = done_by_ahead(est, work, p, min_pct)
+    if ahead is not None:
         return clock_text(lang, now, now + datetime.timedelta(minutes=ahead))
     if est is None:
         return "-"
@@ -473,9 +498,11 @@ class Board:
         self.words = STATUS[self.lang]
         self.weights = read_weights(self.root)
         self.eta_min_pct = read_eta_min_pct(self.root)
+        self.hist = None        # the clean history rows for the forecast, read once
         self.rows = []
         self.notes = []
         self.seq = 0
+        self.plain = {}
         self.records = []       # (folder, record) of every LAUNCH line read
         self.hand_workers = {}  # label -> row of a hand WORKER line
         self.unconfirmed = 0    # target rows that got the "not confirmed" warning
@@ -559,25 +586,82 @@ class Board:
         return stage_progress(self.weights, t["stage"], t["est"], parse_time(t["since"]) if t["since"] else None,
                               self.now, t["wis"], wsince)
 
+    # -- the end time (agent_forecast): the board cell and `eta` use these two
+
+    def history_rows(self):
+        if self.hist is None:
+            mod = load_forecast()
+            try:
+                self.hist = mod.history(self.root) if mod else []
+            except Exception:
+                self.hist = []
+        return self.hist
+
+    def forecast_of(self, t, work, p):
+        """(p50, p85) minutes still to go of a running todo line, or None (no est, no work, too little history)."""
+        mod = load_forecast()
+        if mod is None or t["est"] is None or work is None:
+            return None
+        built_work = None
+        for word in ("report", "e2e"):
+            at = [m for w, m in t["slog"] if w == word]
+            if at:
+                built_work = at[0]
+                break
+        task = {"est": t["est"], "work": work, "stage": t["stage"], "p": None if p is None else float(p),
+                "lane": "fast" if t["size"] == "small" else "full", "built_work": built_work}
+        try:
+            return mod.forecast(task, self.history_rows())
+        except Exception:
+            return None
+
+    def slip_text(self, t, fc):
+        """" · p50 +<X>m in <T>m" when the p50 moved later by more minutes than the time since it was asked."""
+        if not t["p50"] :
+            return ""
+        was, asked = parse_time(t["p50"][0]), parse_time(t["p50"][1])
+        if was is None or asked is None:
+            return ""
+        x = minutes(was, self.now + datetime.timedelta(minutes=fc[0]))
+        span = minutes(asked, self.now)
+        if x is None or span is None or x <= span:
+            return ""
+        return " · p50 +%dm in %dm" % (x, span)
+
+    def work_of(self, t):
+        """(work, wait): the work minutes as the board counts them, and the wait minutes (open wait included)."""
+        opened = parse_time(t["opened"]) if t["opened"] else None
+        started = parse_time(t["started"]) if t["started"] else None
+        wsince = parse_time(t["wsince"]) if t["wsince"] else None
+        wait = t["waited"]
+        if wsince is not None:
+            wait += minutes(wsince, self.now)
+        if started is not None:
+            return max(0, minutes(started, self.now) - (wait - t["swaited"])), wait
+        clock = minutes(opened, self.now)
+        return (None if clock is None else max(0, clock - wait)), wait
+
     # -- rows
 
     def add(self, group, when, task, what, status, where, est="-", work="-", wait="-", done="-", progress="-",
-            info=None, level="-"):
+            info=None, level="-", plain=None):
         """when: "YYYY-MM-DD HH:MM" or None (no date sorts last, file order)."""
         self.seq += 1
         key = (group, 0 if when else 1, when or "", self.seq)
         cells = [cell(task), cell(cut_what(what)), cell(status), progress.replace("|", "\\|"), cell(where), cell(level), cell(est),
                  cell(work), cell(wait), cell(done)]
+        if plain is not None:
+            self.plain[self.seq] = plain
         self.rows.append((key, cells, info))
 
     # -- the todo lines
 
     def parse_todo(self, line):
         f = line.split(" | ")
-        t = {"name": f[0].strip(), "what": f[2] if len(f) > 2 else "", "est": None,
+        t = {"name": f[0].strip(), "size": f[1].strip() if len(f) > 1 else "", "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
              "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None, "checks": None,
-             "who": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": ""}
+             "who": None, "owner": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": "", "slog": [], "p50": None}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
             if m and t["est"] is None:
@@ -591,6 +675,13 @@ class Board:
             if m and t["wkind"] is None:
                 t["wkind"], t["wsince"], t["wnote"] = m.group(1), m.group(2), m.group(3) or ""
                 continue
+            m = re.match(r"stage log (.+)$", x)
+            if m:
+                for e in m.group(1).split(", "):
+                    em = re.match(r"^(\w+)(?: \d+/\d+)? (\d+)$", e.strip())
+                    if em:
+                        t["slog"].append((em.group(1), int(em.group(2))))
+                continue
             m = re.match(r"stage (\S+(?: \d+/\d+)?) since (%s)" % DATE, x)
             if m and t["stage"] is None:
                 t["stage"] = parse_stage(m.group(1))
@@ -600,6 +691,10 @@ class Board:
             if m and t["who"] is None:
                 if m.group(1).strip():
                     t["who"] = m.group(1).strip()
+                continue
+            m = re.match(r"owner (.+)$", x.strip())
+            if m and t["owner"] is None:
+                t["owner"] = m.group(1)
                 continue
             m = re.match(r"after (.*)$", x)
             if m and t["after"] is None:
@@ -623,6 +718,10 @@ class Board:
             m = re.match(r"checks (.+)$", x)
             if m and t["checks"] is None:
                 t["checks"] = ", ".join(c.strip() for c in m.group(1).split(",") if c.strip()) or None
+                continue
+            m = re.match(r"p50 (%s) at (%s)$" % (DATE, DATE), x.strip())
+            if m and t["p50"] is None:
+                t["p50"] = (m.group(1), m.group(2))
                 continue
             m = re.match(r"beat (.+)$", x)
             if m and not t["beat"]:
@@ -696,6 +795,7 @@ class Board:
         owner = bool(kind in OWNER_KINDS and not who) or bool(who and who.lower() in OWNER_WHO)
         info = None
         dash = False
+        slip = ""
         est = fmt_min(t["est"])
         work, done, progress = "-", "-", "-"
         if kind == "queue":
@@ -726,13 +826,14 @@ class Board:
             if dash:
                 est = "-"
         else:
-            if started is not None:
-                work = max(0, minutes(started, self.now) - (wait - t["swaited"]))
-            else:
-                clock = minutes(opened, self.now)
-                work = None if clock is None else max(0, clock - wait)
+            work = self.work_of(t)[0]
             p = self.progress_of(t)
             done = done_by_text(self.lang, self.now, t["est"], work, p, self.eta_min_pct)
+            fc = self.forecast_of(t, work, p)
+            if fc is not None:
+                slip = self.slip_text(t, fc)
+                done = " / ".join(clock_text(self.lang, self.now, self.now + datetime.timedelta(minutes=x))
+                                  for x in fc)
             work = fmt_min(work)
             wait_cell = fmt_min(wait)
             progress = "-" if p is None else bar_text(p)
@@ -743,15 +844,16 @@ class Board:
         if info is not None:
             info["group"], info["notstarted"] = group, bool(t["since"] is None and started is None and not kind)
         status += self.watch_warn(t, group)
+        status += slip
         if t["machine"]:
             where = t["machine"] + (", " + short_path(t["path"], self.home) if t["path"] else "")
         else:
             where = self.worktree_where(t["name"], wt_lines)
             if where is None:
                 where = self.where_here(own_dir) if own_dir else "-"
-        self.add(group, when, t["name"], t["what"] or "-", status, where,
+        self.add(group, when, t["name"] + (" [%s]" % t["owner"] if t["owner"] else ""), t["what"] or "-", status, where,
                  est=est, work=work, wait=wait_cell, done=done, progress=progress,
-                 level=checks_cell(t), info=info)
+                 level=checks_cell(t), info=info, plain=t["name"])
 
     def helper_row(self, f):
         what = "-"
@@ -987,6 +1089,93 @@ def build(args, now=None, records=True):
     return board
 
 
+def todo_line_of(root, name):
+    """The parsed-ready todo line of a task (first field = name), None when there is none."""
+    for line in read_lines(os.path.join(root, "agent_todo.txt")):
+        if line.split(" | ")[0].strip() == name:
+            return line
+    return None
+
+
+def work_mode(args, name):
+    """--work-of <name>: prints the work minutes as the board counts them; prints nothing (exit 0) when unknown."""
+    line = todo_line_of(os.path.normpath(args.root), name)
+    if line is None:
+        return 0
+    board = Board(args)
+    t = board.parse_todo(line)
+    if t["since"] is None and t["started"] is None:
+        return 0
+    work = board.work_of(t)[0]
+    if work is not None:
+        print(work)
+    return 0
+
+
+def p50_mode(args, name):
+    """--p50-of <name>: prints "YYYY-MM-DD HH:MM", the p50 clock of the line's forecast; nothing when there is none."""
+    line = todo_line_of(os.path.normpath(args.root), name)
+    if line is None:
+        return 0
+    board = Board(args)
+    t = board.parse_todo(line)
+    if t["since"] is None and t["started"] is None:
+        return 0
+    work = board.work_of(t)[0]
+    fc = board.forecast_of(t, work, board.progress_of(t))
+    if fc is not None:
+        print((board.now + datetime.timedelta(minutes=fc[0])).strftime("%Y-%m-%d %H:%M"))
+    return 0
+
+
+def eta_mode(args, name, wait):
+    """--eta <name> [--wait <m>]: the eta line from the same numbers as the "Done by" cell."""
+    line = todo_line_of(os.path.normpath(args.root), name)
+    if line is None:
+        sys.stderr.write("no todo line named: %s\n" % name)
+        return 1
+    board = Board(args)
+    now = board.now
+    t = board.parse_todo(line)
+    if t["est"] is None:
+        sys.stderr.write("eta: no estimate on the todo line: %s\n" % name)
+        return 1
+    work = board.work_of(t)[0]
+    if work is None:
+        sys.stderr.write("eta: cannot count the work of %s (no opened or started time); use --step\n" % name)
+        return 1
+    p = board.progress_of(t)
+    fc = board.forecast_of(t, work, p)
+    if fc is None:
+        left = done_by_ahead(t["est"], work, p, board.eta_min_pct)
+        if left is None:
+            sys.stderr.write("eta: %s is over its estimate and no pace is known; give --step <1-7> and --work-so-far\n" % name)
+            return 1
+        p85 = None
+    else:
+        left, p85 = fc
+
+    def at(m):
+        return clock_text("en", now, now + datetime.timedelta(minutes=m))
+
+    msg = "about %d min of work left" % left
+    if wait > 0:
+        msg += " and %d min of waiting" % wait
+    if p85 is not None:
+        msg += " (85%%: %d min)" % p85
+    msg += ", done around " + at(left + wait)
+    if p85 is not None:
+        msg += " (85%%: %s)" % at(p85 + wait)
+    what = (t["what"] or "").lower()
+    mock = "no mock" not in what and "mock" in what and (t["stage"] is None or t["stage"][0] in ("brief", "register", "mock"))
+    if mock:
+        who, when = "mock ready", at(-(-left * 3 // 7))
+    else:
+        who, when = "review", at(left + wait)
+    print("%s; owner needed next: %s about %s" % (msg, who, when))
+    return 0
+
+
 def clock_now():
     """AGENT_FAKE_NOW when set, else the machine clock."""
     return os.environ.get("AGENT_FAKE_NOW") or datetime.datetime.now().strftime(FMT)
@@ -1034,8 +1223,8 @@ def board_warnings(root, plugin, now):
         return ["WARN watch not running -> start it now: %s/bin/agent-watch.sh --all (Bash run_in_background)"
                 % plugin]
     out, said = [], set()
-    for _, cells, _info in sorted(board.rows, key=lambda r: r[0]):
-        name = cells[0]
+    for key, cells, _info in sorted(board.rows, key=lambda r: r[0]):
+        name = board.plain.get(key[3], cells[0])
         if name in board.warned and name not in said:
             said.add(name)
             n = board.warned[name]
@@ -1332,7 +1521,17 @@ def main():
     p.add_argument("--host", default="-")
     p.add_argument("--self", dest="self_mode", action="store_true")
     p.add_argument("--watch", type=int, default=None, metavar="SEC")
+    p.add_argument("--eta", default=None, metavar="NAME")
+    p.add_argument("--wait", type=int, default=0, metavar="MIN")
+    p.add_argument("--work-of", default=None, metavar="NAME")
+    p.add_argument("--p50-of", default=None, metavar="NAME")
     args = p.parse_args()
+    if args.p50_of is not None:
+        sys.exit(p50_mode(args, args.p50_of))
+    if args.work_of is not None:
+        sys.exit(work_mode(args, args.work_of))
+    if args.eta is not None:
+        sys.exit(eta_mode(args, args.eta, max(0, args.wait)))
     if args.watch is not None:
         if args.watch < 1:
             p.error("--watch takes a whole number of seconds from 1")

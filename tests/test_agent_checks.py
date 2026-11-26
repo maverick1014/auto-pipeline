@@ -225,6 +225,9 @@ class TestTodoEst(Case):
         r = self.ok("todo", "est", "t", "120", "--guess", "100")
         self.assertEqual(r.stdout.strip(), "todo est: t 60m -> 120m")
         after = self.fields("t")
+        # estimate-improve A3: the first estimate is kept as one new field right after est
+        self.assertEqual(after[after.index("est 120m") + 1], "est0 60m")
+        after.remove("est0 60m")
         self.assertEqual(len(before), len(after))
         for b, a in zip(before, after):
             if b == "est 60m":
@@ -237,7 +240,7 @@ class TestTodoEst(Case):
     def test_est_only_keeps_guess(self):
         self.ok("todo", "add", "t", "big", "task", "60", "--guess", "50")
         self.ok("todo", "est", "t", "90")
-        self.assertEqual(self.fields("t")[3:5], ["est 90m", "guess 50m"])
+        self.assertEqual(self.fields("t")[3:6], ["est 90m", "est0 60m", "guess 50m"])   # estimate-improve A3
 
     def test_refusals(self):
         self.ok("todo", "add", "t", "big", "task", "60")
@@ -688,12 +691,23 @@ class TestNext(Case):
         self.assertIn("WAIT b: after a still open", out)
         self.assertFalse(any(l.startswith("START b") for l in out), out)
 
-    def test_a_clash_on_the_same_files_waits(self):
+    def test_the_same_files_are_no_hold(self):
+        # md-slim-principles D 13 (decision 3, parallel first): task A runs with scope
+        # bin/x.py, queued task B has scope bin/x.py: todo next offers B
+        self.add("a", "--scope", "bin/x.py")
+        self.ok("todo", "stage", "a", "workers")
+        self.add("b", "--scope", "bin/x.py")
+        out = self.next().stdout.splitlines()
+        self.assertIn("START b | est 10m | what b", out)
+        self.assertFalse(any("clashes" in l for l in out), out)
+
+    def test_a_queued_task_on_a_running_tasks_files_starts(self):
         self.add("a", "--scope", "bin/agent-file.sh,tests/**")
         self.ok("todo", "stage", "a", "workers")
         self.add("b", "--scope", "bin/agent-file.sh")
+        self.ok("todo", "wait", "b", "on", "queue")
         out = self.next().stdout.splitlines()
-        self.assertTrue(any(l.startswith("WAIT b: clashes with a on ") for l in out), out)
+        self.assertIn("START b | est 10m | what b", out)
 
     def test_no_room_for_a_pane_starts_nothing(self):
         self.add("a", "--scope", "x/**")
@@ -1217,7 +1231,7 @@ class TestF2CoreReviewIsNoBuildersJob(TestGate):
             self.assertIn("CORE REVIEW: pass by the builder (t Task Manager), not accepted", r.stdout.splitlines())
 
     def test_r8_names_it(self):
-        self.assertIn("CORE REVIEW", [x for x in rule("R8. ", "W1. ").splitlines()
+        self.assertIn("CORE REVIEW", [x for x in read("rules", "checks.md").splitlines()   # md-slim-principles: R8 stands in rules/checks.md
                                       if "not the builder" in x and "PR REVIEW" in x][0])   # FIX ORDER 1: the late-yes line names the builder too
 
 
@@ -1537,3 +1551,24 @@ class TestRelayedFrom(ApprovalCase):
                 r = self.add_p(*extra)
                 self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
                 self.assertNotIn("p | ", self.todo())
+
+
+class TestFieldPrefixes(unittest.TestCase):
+    """estimate-improve fix order 2 A: a field name that is the prefix of another never matches it."""
+
+    def test_stage_is_not_the_stage_log(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
+        import importlib
+        import agent_checks
+        agent_checks = importlib.reload(agent_checks)
+        f = ["x", "big", "w", "est 80m", "est0 60m", "added 20m", "stage log brief 0, tests 30",
+             "started 2026-11-13 08:00", "stage tests since 2026-11-13 11:00"]
+        self.assertEqual(agent_checks.field_of(f, "stage"), "tests since 2026-11-13 11:00")
+        self.assertEqual(agent_checks.field_index(f, "stage"), 8)
+        self.assertEqual(agent_checks.field_of(f, "est"), "80m")
+        self.assertEqual(agent_checks.field_of(f, "stage log"), "brief 0, tests 30")
+        self.assertIsNone(agent_checks.field_of(f[:8], "stage"))
+
+
+if __name__ == "__main__":
+    unittest.main()

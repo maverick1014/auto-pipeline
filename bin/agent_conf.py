@@ -907,6 +907,36 @@ def production_branch(repo):
     return git("symbolic-ref", "--short", "-q", "HEAD") or "main"
 
 
+def _clean_name(text):
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def user_name(repo):
+    """The name of this clone's user as written: git user.name trimmed (case and spaces kept, a "|" or a line break
+    becomes a space); empty: the login name; still empty: "user"."""
+    def raw(text):
+        return re.sub(r"[|\r\n]", " ", text).strip()
+    try:
+        r = subprocess.run(["git", "-C", repo, "config", "user.name"], stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, timeout=30)
+        who = raw(r.stdout.decode(errors="replace"))
+    except (OSError, subprocess.SubprocessError):
+        who = ""
+    if not who:
+        try:
+            import getpass
+            who = raw(getpass.getuser())
+        except Exception:
+            who = ""
+    return who or "user"
+
+
+def same_person(a, b):
+    """True when the cleaned forms (lower case, runs of other characters one "-") are equal and not empty."""
+    ca, cb = _clean_name(a or ""), _clean_name(b or "")
+    return bool(ca) and ca == cb
+
+
 def working_branch(repo, derive=False):
     """The working branch of this clone. Without derive: the stored git config auto-pipeline.workingbranch, or
     None when nothing is stored (nothing is stored by a read). With derive=True (init and the start only): the
@@ -920,17 +950,7 @@ def working_branch(repo, derive=False):
         except (OSError, subprocess.SubprocessError):
             return ""
     def named(form):
-        if "<name>" not in form:
-            return form
-        who = re.sub(r"[^a-z0-9]+", "-", cfg("config", "user.name").lower()).strip("-")
-        if not who:
-            try:
-                import getpass
-                login = getpass.getuser()
-            except Exception:
-                login = ""
-            who = re.sub(r"[^a-z0-9-]+", "-", login.lower()).strip("-") or "user"
-        return form.replace("<name>", who)
+        return form.replace("<name>", _clean_name(user_name(repo)) or "user") if "<name>" in form else form
     stored = cfg("config", "--local", "--get", "auto-pipeline.workingbranch")
     if stored:
         if stored != production_branch(repo):

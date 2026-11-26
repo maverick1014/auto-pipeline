@@ -2,8 +2,14 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                          resource check + pointers + open tasks
-#   ./agent-start.sh --quiz                   print the 36 quiz questions
-#   ./agent-start.sh --answer "1A 2D ... 36D"    grade your quiz answers
+#   ./agent-start.sh --rules                  the rules block (the second SessionStart entry): the core,
+#                                             the output rules, the PATHS line, the role's READ NOW line
+#   ./agent-start.sh --quiz [--role main|task|second|all]
+#                                             print the 36 quiz questions (all), or the role's set (no --role:
+#                                             the role of this session)
+#   ./agent-start.sh --answer "1A 2D ... 36D" [--role ...]
+#                                             grade your quiz answers (only the role's questions; a wrong one
+#                                             names the file to re-read)
 #   ./agent-start.sh --take-over              this session becomes the main manager
 #                                             (only when the human asks; the old one is closed)
 #   ./agent-start.sh --clean ["carry line" ...]
@@ -21,8 +27,9 @@
 # (two hooks, repo-packed plus user-scope, can fire for the same session):
 # see the once-per-session dedupe below (AGENT_START_DEDUPE_SEC, default 60s).
 #
-# The hook also prints PRINCIPLES.md section "## E. Output" (how to shape what a
-# human reads) before the RULES line.
+# The hook prints the start part only (Claude Code caps a hook's stdout at 10,000
+# characters); the rules block is the second SessionStart entry, --rules. Run by hand
+# (no hook JSON on stdin) the start part is followed by the rules block.
 
 set -u
 . "$(dirname "$0")/agent-roots.sh"
@@ -220,13 +227,67 @@ if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ] || [ "${1:-}" = "-
   exit 0
 fi
 
-# ---- --quiz: print the questions only, nothing else, no lock, no roots ----
-if [ "${1:-}" = "--quiz" ]; then
-  cat <<'QUIZ'
-=== QUIZ — answer all 36 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 36D"
-Do not start work until you see PASS.
+# ---- the quiz per role (md-slim-principles B 8). The 36 questions, their order, the
+# answer key and the SALT do not change. Each question carries the file(s) that hold
+# its rule; a role is asked the questions whose file is PRINCIPLES.md or on its
+# reading list. ----
+QFILES=( _
+  "PRINCIPLES.md" "PRINCIPLES.md rules/files.md" "rules/human.md" "rules/ui.md" "rules/tests.md"
+  "rules/cross-repo.md rules/approval.md" "rules/resources.md" "PRINCIPLES.md rules/human.md" "rules/files.md" "PRINCIPLES.md"
+  "rules/files.md" "rules/human.md" "PRINCIPLES.md" "rules/worktrees.md" "PRINCIPLES.md rules/roles.md"
+  "rules/worktrees.md" "rules/routing.md" "rules/setup.md rules/roles.md" "rules/roles.md" "PRINCIPLES.md"
+  "rules/context.md" "rules/human.md" "PRINCIPLES.md rules/human.md" "rules/worktrees.md" "rules/branches.md"
+  "PRINCIPLES.md" "rules/checks.md" "rules/branches.md" "rules/approval.md" "rules/approval.md"
+  "rules/approval.md" "rules/approval.md" "PRINCIPLES.md" "rules/approval.md" "rules/routing.md"
+  "PRINCIPLES.md" )
+MAIN_READS="rules/human.md rules/routing.md rules/approval.md rules/checks.md rules/branches.md rules/worktrees.md rules/watch.md rules/files.md"
+TASK_READS="rules/tests.md rules/checks.md rules/watch.md rules/context.md rules/resources.md"
+SECOND_READS="rules/roles.md $TASK_READS"
 
+# quiz_role <role|"">: sets QROLE (main|task|second|all); an unknown role returns 1.
+quiz_role() {
+  case "${1:-}" in
+    main|task|second|all) QROLE=$1; return 0;;
+    "") ;;
+    *) return 1;;
+  esac
+  roots_read; role_read
+  if [ -n "${AGENT_ROLE:-}" ]; then QROLE=task
+  else case $role in main|takeover) QROLE=main;; *) QROLE=second;; esac; fi
+  return 0
+}
+
+# quiz_set: from QROLE, sets QSET (the question numbers, space separated) and QN (how many).
+quiz_set() {
+  local reads q f g take
+  case $QROLE in main) reads=$MAIN_READS;; task) reads=$TASK_READS;; second) reads=$SECOND_READS;; *) reads="";; esac
+  QSET=""; QN=0
+  for q in $(seq 1 $N); do
+    take=0
+    if [ "$QROLE" = all ]; then take=1; else
+      for f in ${QFILES[$q]}; do
+        [ "$f" = PRINCIPLES.md ] && take=1
+        for g in $reads; do [ "$f" = "$g" ] && take=1; done
+      done
+    fi
+    [ $take = 1 ] && { QSET="$QSET $q"; QN=$((QN+1)); }
+  done
+}
+
+# quiz_args <what> "$@": the optional "--role <role>" after --quiz or the answer.
+quiz_parse_role() {
+  QROLE_ARG=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --role) [ $# -ge 2 ] || return 1; QROLE_ARG=$2; shift 2;;
+      *) return 1;;
+    esac
+  done
+  return 0
+}
+
+quiz_body() {
+  cat <<'QUIZ'
 Q1. Mid-task, part of the spec is unclear.
   A. Pick a sensible default, log it, continue
   B. Stop and ask the human
@@ -443,27 +504,63 @@ Q36. A live task manager is changing the discount logic of the billing module. T
   C. Hold it until that task is merged
   D. Do it yourself in the main chat
 QUIZ
+}
+
+# ---- --quiz [--role main|task|second|all]: print the questions only, nothing else, no lock write ----
+if [ "${1:-}" = "--quiz" ]; then
+  shift
+  quiz_parse_role "$@" && quiz_role "$QROLE_ARG" || { echo 'usage: ./agent-start.sh --quiz [--role main|task|second|all]'; exit 2; }
+  quiz_set
+  if [ "$QROLE" = all ]; then
+    echo "=== QUIZ — answer all 36 before any work ==="
+    echo 'Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 36D"'
+    echo "Do not start work until you see PASS."
+    echo
+    quiz_body
+  else
+    case $QROLE in main) rn="main manager";; task) rn="task manager";; *) rn="human-direct session";; esac
+    echo "=== QUIZ ($rn) — answer all $QN before any work ==="
+    echo 'Reply by running:   ./agent-start.sh --answer "<one answer per question of your own role, like 3B>"'
+    echo "Do not start work until you see PASS."
+    echo
+    quiz_body | awk -v keep="$QSET " '
+      /^Q[0-9]+\. / { n = $1; sub(/^Q/, "", n); sub(/\.$/, "", n); on = index(" " substr(keep, 2), " " n " ") > 0 }
+      on { if ($0 ~ /^[[:space:]]*$/) b++; else { for (; b > 0; b--) print ""; print } }
+      !on { b = 0 }'
+  fi
   exit 0
 fi
 
-# ---- grade ----
+# ---- grade: only the role's questions; a wrong one names the file(s) to re-read ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D"'; exit 2; }
+  ANSWER="${2:-}"
+  [ -z "$ANSWER" ] || [ "$ANSWER" = "--role" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D" [--role main|task|second|all]'; exit 2; }
+  shift 2
+  quiz_parse_role "$@" && quiz_role "$QROLE_ARG" || { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D"'; exit 2; }
+  ASKED=$QROLE
+  quiz_role ""
+  quiz_set
+  if [ -n "$QROLE_ARG" ] && [ "$ASKED" != "$QROLE" ]; then
+    case $QROLE in main) rn="a main manager";; task) rn="a task manager";; *) rn="a human-direct session";; esac
+    echo "QUIZ REFUSED: this session is $rn ($QN questions); --answer grades your own role only, --role is for --quiz"
+    exit 2
+  fi
   ok=0; wrong=""
-  for q in $(seq 1 $N); do
-    tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
+  for q in $QSET; do
+    tok=$(printf '%s\n' $ANSWER | grep -i "^${q}[a-d]$" | head -1)
     l=$(printf '%s' "${tok#$q}" | tr a-d A-D)
-    if [ -n "$l" ] && [ "$(h "$SALT:$q:$l")" = "${KEY[$q]}" ]; then ok=$((ok+1)); else wrong="$wrong Q$q(${RULE[$q]})"; fi
+    if [ -n "$l" ] && [ "$(h "$SALT:$q:$l")" = "${KEY[$q]}" ]; then ok=$((ok+1)); else wrong="$wrong$q "; fi
   done
-  if [ $ok -eq $N ]; then
+  if [ $ok -eq $QN ]; then
     if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
       ( roots_read && mkdir -p "$PROJECT_GITDIR" && \
         : > "$PROJECT_GITDIR/agent_quiz_$CLAUDE_CODE_SESSION_ID" ) 2>/dev/null || true
     fi
-    echo "QUIZ RESULT: $ok/$N PASS"; echo "You may start work."; exit 0
+    echo "QUIZ RESULT: $ok/$QN PASS"; echo "You may start work."; exit 0
   else
-    echo "QUIZ RESULT: $ok/$N FAIL"; echo "Wrong:$wrong"
-    echo "Re-read those rules in PRINCIPLES.md, then answer again."; exit 1
+    echo "QUIZ RESULT: $ok/$QN FAIL"
+    for q in $wrong; do echo "Q$q: re-read ${QFILES[$q]// /, }"; done
+    echo "Re-read those files, then answer again."; exit 1
   fi
 fi
 
@@ -471,7 +568,8 @@ fi
 . "$PLUGIN_ROOT/bin/agent-resources.sh"
 
 # ---- hook input (Claude Code SessionStart passes JSON on stdin) ----
-SRC=startup; SID=""; CWD=""; SESSION_MODE=""
+SRC=startup; SID=""; CWD=""; SESSION_MODE=""; IN=""
+RULES_MODE=no; [ "${1:-}" = "--rules" ] && RULES_MODE=yes
 if [ ! -t 0 ]; then
   IN=""; line=""
   while IFS= read -t 1 -r line || [ -n "$line" ]; do IN="$IN$line"; done   # read -t: never block on an open pipe; || keeps a final line with no trailing newline
@@ -483,22 +581,51 @@ try:
 except Exception: print("SRC=startup; SID=; CWD=; SESSION_MODE=")' 2>/dev/null)"
 fi
 
-# print_output_section: PRINCIPLES.md from the line "## E. Output" up to, not
-# including, the next "## " line (or the end), blank lines at its end dropped.
-# Nothing when no PRINCIPLES.md, or no such section. Never fails.
-# Outside the CAP byte budget: it is not part of any `fixed` sum.
-print_output_section() {
-  [ -f "$PLUGIN_ROOT/PRINCIPLES.md" ] || return 0
-  awk '
-    !p && index($0, "## E. Output") == 1 { p = 1; print; next }
-    p && index($0, "## ") == 1 { exit }
-    p { if ($0 ~ /^[[:space:]]*$/) b++; else { for (; b > 0; b--) print ""; print } }
-  ' "$PLUGIN_ROOT/PRINCIPLES.md" 2>/dev/null
+# print_output_part: "=== rules/output.md ===" and rules/output.md from its line
+# "E1. Shape" to the end. Nothing when there is no such file or line. Never fails.
+print_output_part() {
+  local f="$PLUGIN_ROOT/rules/output.md"
+  [ -f "$f" ] || return 0
+  grep -q '^E1\. Shape' "$f" 2>/dev/null || return 0
+  echo "=== rules/output.md ==="
+  awk '!p && index($0, "E1. Shape") == 1 { p = 1 } p' "$f" 2>/dev/null
+  return 0
+}
+
+# by_hand: no hook JSON on stdin (a person, or an agent running the start itself).
+by_hand() { [ -z "$IN" ]; }
+
+# print_rules_block: the core whole, the output rules, the PATHS line, the role's READ NOW
+# line (md-slim-principles B 6, B 7). Compact: the core, the PATHS line, the READ NOW line.
+# Needs the roots and the role (role_read). Never fails.
+print_rules_block() {
+  local qsid read_line
+  [ -f "$PLUGIN_ROOT/PRINCIPLES.md" ] && cat "$PLUGIN_ROOT/PRINCIPLES.md" 2>/dev/null
+  [ "$SRC" = compact ] || print_output_part
+  echo "PATHS: rules/*.md, GLOSSARY.md and NOTICE.md are under $PLUGIN_ROOT/"
+  qsid="${CLAUDE_CODE_SESSION_ID:-}"
+  if by_hand && [ -n "$qsid" ] && [ -f "$PROJECT_GITDIR/agent_quiz_$qsid" ]; then
+    read_line="READ NOW: the quiz already passed in this session; a worker, deputy or reviewer reads nothing at start: its brief and its agent file name what to read"
+  elif [ -n "${AGENT_ROLE:-}" ]; then
+    read_line="READ NOW (task manager): $(printf '%s' "$TASK_READS" | sed 's/ /, /g')"
+  else
+    case $role in
+      main|takeover) read_line="READ NOW (main manager): $(printf '%s' "$MAIN_READS" | sed 's/ /, /g')";;
+      *) read_line="READ NOW (human-direct session): rules/roles.md, then $(printf '%s' "$TASK_READS" | sed 's/ /, /g')";;
+    esac
+  fi
+  printf '%s\n' "$read_line"
   return 0
 }
 
 # ---- the two roots (bad or empty stdin JSON falls back to $PWD) ----
 roots_read "$CWD"
+
+# ---- --rules on a repo that is not set up: the output part only, nothing written ----
+if [ "$RULES_MODE" = yes ] && ! repo_set_up; then
+  print_output_part
+  exit 0
+fi
 
 # ---- zero-touch setup guard (scope safety). A user-scope install turns
 # this plugin on in every repo the owner opens, so a repo is only set up by
@@ -528,12 +655,12 @@ auto-pipeline: run /auto-pipeline:init once to see the permission block and the 
       SETUP_TEXT="auto-pipeline: setup failed, run /auto-pipeline:init by hand
 "
       printf '%s' "$SETUP_TEXT"
-      print_output_section
+      by_hand && print_output_part
       exit 0
     fi
   else
     echo "auto-pipeline: not set up in this repo, run /auto-pipeline:init to enable"
-    print_output_section
+    by_hand && print_output_part
     exit 0
   fi
 fi
@@ -565,7 +692,8 @@ setting_value() {
 # startup (never on compact); see the cleanup below "normal start". ----
 if [ -n "$SID" ]; then
   DEDUPE_SEC="${AGENT_START_DEDUPE_SEC:-60}"
-  MARKER="$PROJECT_GITDIR/agent_started_$SID"
+  MARKER_KIND=started; [ "$RULES_MODE" = yes ] && MARKER_KIND=rules   # the two entries never silence each other
+  MARKER="$PROJECT_GITDIR/agent_${MARKER_KIND}_$SID"
   LOCKDIR="$MARKER.lock"
 
   # mtime of the lock dir, GNU form first: GNU coreutils' `-f` means "file
@@ -622,6 +750,12 @@ fi
 role_read; NOW=$(date '+%Y-%m-%d %H:%M')
 REPO=$(basename "$PROJECT_ROOT")
 
+# ---- --rules: the rules block, nothing else (the second SessionStart entry) ----
+if [ "$RULES_MODE" = yes ]; then
+  print_rules_block
+  exit 0
+fi
+
 # ---- CAP: the whole output, always, at or under this many bytes. The state
 # block (the unbounded one) gets whatever the fixed parts below leave. ----
 CAP=2000
@@ -658,7 +792,7 @@ print_role_and_project() {
     takeover) lock_write "$NOW"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7). Address: /rename $REPO Manager or claude --name";;
     closed)   closed_lines "ROLE: closed.";;
     second)
-      echo "ROLE: task manager, human-direct (W10). Main manager already running: $(holder_text)."
+      echo "ROLE: task manager, human-direct (W10, rules/roles.md). Main manager already running: $(holder_text)."
       echo "Take over only when the human asks (the old main manager is then closed). The human types this line in this session; never run it yourself:"
       echo "! $PLUGIN_ROOT/bin/agent-start.sh --take-over"
       announce_human_direct
@@ -754,8 +888,8 @@ mode_match_line() {
   [ -n "$want" ] && [ "$want" != "$SESSION_MODE" ] || return 0
   lang=$(setting_value language en)
   case $lang in
-    zh*) echo "MODE MISMATCH: 本会话模式 ${SESSION_MODE}，设置 Permission mode 是 ${want}。不同模式的会话互发消息，要在接收端等人批准。对齐：用 claude --permission-mode ${want} 重启，或在 /plugin -> auto-pipeline -> Configure 改 Permission mode。";;
-    *) echo "MODE MISMATCH: this session runs in $SESSION_MODE, the Permission mode setting is $want. Messages between sessions in different modes wait for the human's approval at the receiver. To match: restart with claude --permission-mode $want, or change Permission mode in /plugin -> auto-pipeline -> Configure.";;
+    zh*) echo "MODE MISMATCH: 本会话模式 ${SESSION_MODE}，设置 Permission mode 是 ${want}。不同模式的会话互发消息，要在接收端等人批准。对齐：用 claude --permission-mode ${want} 重启，或在 /plugin -> auto-pipeline -> Configure 改 Permission mode。 Rule: rules/traps.md (W16).";;
+    *) echo "MODE MISMATCH: this session runs in $SESSION_MODE, the Permission mode setting is $want. Messages between sessions in different modes wait for the human's approval at the receiver. To match: restart with claude --permission-mode $want, or change Permission mode in /plugin -> auto-pipeline -> Configure. Rule: rules/traps.md (W16).";;
   esac
   return 0
 }
@@ -929,7 +1063,7 @@ fi
 # ---- compaction: short, no resources, no counts, no quiz. Same byte cap. ----
 if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   COMPACT_TEXT=$(print_compact_lines; printf 'X'); COMPACT_TEXT=${COMPACT_TEXT%X}
-  RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
+  RULES_LINE="RULES: the core (PRINCIPLES.md) and your reading list come in the rules block; no rules block: run $PLUGIN_ROOT/bin/agent-start.sh --rules (S8)."
   WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
   fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$COMPACT_TEXT") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") ))
   budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
@@ -937,7 +1071,6 @@ if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   printf '%s' "$COMPACT_TEXT"
   printf '%s' "$WARN_TEXT"
   print_state_block "$budget"
-  print_output_section
   printf '%s\n' "$RULES_LINE"
   exit 0
 fi
@@ -948,7 +1081,7 @@ fi
 # this session starts again at 0 (A5 C7). ----
 if [ "$SRC" = clear ] && [ -n "$SID" ]; then
   CLEARED_LINE="CLEARED. Continue from agent_state.txt, not from memory (S8)."
-  RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
+  RULES_LINE="RULES: the core (PRINCIPLES.md) and your reading list come in the rules block; no rules block: run $PLUGIN_ROOT/bin/agent-start.sh --rules (S8)."
   rm -f "$PROJECT_GITDIR/agent_compact_$SID"
   WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
   fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(line_bytes "$CLEARED_LINE") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") ))
@@ -957,7 +1090,6 @@ if [ "$SRC" = clear ] && [ -n "$SID" ]; then
   printf '%s\n' "$CLEARED_LINE"
   printf '%s' "$WARN_TEXT"
   print_state_block "$budget"
-  print_output_section
   printf '%s\n' "$RULES_LINE"
   exit 0
 fi
@@ -966,18 +1098,18 @@ fi
 
 # ---- drop stale session markers. Only on a real startup run (never
 # compact, handled above by the earlier `exit 0`). agent_started_*/
-# agent_compact_* older than AGENT_MARKER_DAYS (default 7, env override for
+# agent_compact_*/agent_point_* (moment pointers) older than AGENT_MARKER_DAYS (default 7, env override for
 # tests) days are deleted so they don't pile up in the git dir forever. The
 # current session's own markers are excluded by name, whatever their age.
 # `-mtime +N -delete` works the same on GNU and BSD/macOS find; wrapped in
 # `2>/dev/null || true` so a failure here never breaks the hook. ----
 MARKER_DAYS="${AGENT_MARKER_DAYS:-7}"
 if [ -n "$SID" ]; then
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' \) \
-    ! -name "agent_started_$SID" ! -name "agent_compact_$SID" ! -name "agent_quiz_$SID" ! -name "agent_stale_$SID" ! -name "agent_autoclear_$SID" \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_rules_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' -o -name 'agent_point_*' \) \
+    ! -name "agent_started_$SID" ! -name "agent_rules_$SID" ! -name "agent_compact_$SID" ! -name "agent_quiz_$SID" ! -name "agent_stale_$SID" ! -name "agent_autoclear_$SID" ! -name "agent_point_${SID}_*" \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 else
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' \) \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_rules_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' -o -name 'agent_point_*' \) \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 fi
 
@@ -1056,7 +1188,7 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
     fi
   fi
 fi
-RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
+RULES_LINE="RULES: the core (PRINCIPLES.md) and your reading list come in the rules block; no rules block: run $PLUGIN_ROOT/bin/agent-start.sh --rules (S8)."
 QUIZ_SID="${SID:-${CLAUDE_CODE_SESSION_ID:-}}"
 if [ -n "$QUIZ_SID" ] && [ -f "$PROJECT_GITDIR/agent_quiz_$QUIZ_SID" ]; then
   QUIZ_LINE="QUIZ: PASS already in this session. A subagent (worker, deputy) takes no quiz (S9). Go on with your brief."
@@ -1163,6 +1295,7 @@ printf '%s' "$CLEAN_TEXT"
 printf '%s' "$WARN_TEXT"
 print_state_block "$budget"
 printf '%s' "$RESUME_TEXT"
-print_output_section
 printf '%s\n' "$RULES_LINE"
 printf '%s\n' "$QUIZ_LINE"
+by_hand && print_rules_block
+exit 0

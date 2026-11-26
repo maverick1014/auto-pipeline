@@ -15,7 +15,7 @@
 #   agent-file.sh todo target "<name>" production --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>] [--relayed-from <folder>]
 #                                                             -> the owner's yes after the task was added: verified and stored like todo add --target production; the line's target field becomes "target production", every other field stays
 #   agent-file.sh todo builder "<name>" <who>                 -> field " | builder <who>" (replaced in place; a comma list is fine)
-#   agent-file.sh todo est "<name>" <minutes> [--guess <m>]   -> est (and guess) replaced in place; prints "todo est: <name> <old>m -> <new>m"
+#   agent-file.sh todo est "<name>" <minutes> [--guess <m>]   -> est (and guess) replaced in place; the first est stays as " | est0 <m>m", the sum of every +<m> as " | added <m>m"; prints "todo est: <name> <old>m -> <new>m"
 #   agent-file.sh check "<task>" "<BLOCK>" pass|fail --by <who> --evidence "<text>" [--owner-quote "<words>" --means "<what he signs>" [--question "<q>"] [--relayed-from <folder>]]
 #                                                             -> agent_state.txt of this folder: "CHECK <task> <BLOCK>: pass | by <who> | at <sha12> | <evidence> | <date time>" (OWNER SIGN allowed; [--commit <sha>], default HEAD of this folder)
 #   agent-file.sh checks gather "<task>" --dir <path>         -> appends the task's CHECK lines of <path>/agent_state.txt to the main repo's agent_state.txt (lines already there skipped); prints "checks gather: <task> <n> lines"
@@ -53,7 +53,7 @@
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
 #   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
 #                                                             -> an older plugin than installed: one line "retrain skipped: <running> is older than installed <newest>", nothing changes
-#   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next
+#   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next; with neither --step nor --work-so-far the numbers are the board's "Done by" cell (p50 and p85 from the history, agent_forecast.py); with one of them, the old rule
 #   agent-file.sh todo wait "<name>" on <mock|question|review|hold|queue> ["<note>"] [--who <name>] [--after <task>]  -> the todo line starts a wait
 #   agent-file.sh todo wait "<name>" off                      -> the wait closes; its minutes join "waited <m>m"; who, after, wait run since go
 #   agent-file.sh todo where "<name>" <machine> ["<worktree path>"]   -> the todo line says where it runs
@@ -73,14 +73,19 @@
 #   agent-file.sh board [--self]                              -> the table of everything open (/auto-pipeline:todo); --self: this session's task only
 #   agent-file.sh state add "<line>"                          -> agent_state.txt of this folder gets "<line> | <date time>" (one line, " | " inside is fine)
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
-#   agent-file.sh heartbeat "<task>" <step 0-7> <work min> "<what runs now>"  -> agent_state.txt: "HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date time>" (bad step, minutes or empty text: refused)
+#   agent-file.sh heartbeat "<task>" <step 0-7> "<what runs now>"  -> agent_state.txt: "HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date time>"; the work is computed (the todo line as the board counts it, else the WORK START line of this folder's agent_state.txt; neither: refused). The form with typed minutes (<step> <work min> "<text>") still works: a known start wins (a note on stderr when they differ by more than 5)
 #   agent-file.sh helper-join "<task>"                        -> a human-direct Helper becomes a normal agent: its worktree line becomes "<path> | <task> | working | since .. | pane .. | session .."
 #   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working (production needs --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>] [--relayed-from <folder>], verified at once) and --batch <name>
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
 #
 # todo done also closes the queue wait of every open line whose " | after <name>" field is that task, drops the after field, and prints "released: <line name>" per line.
 # todo done: every option is optional; a number is a whole number, 0 or more. "<result>" is not stored.
-#   work = agent minutes. wait = minutes spent waiting (mock gate, owner, suite run). Never mixed.
+#   work = agent minutes, MEASURED: minutes(started, now) - max(0, W - n) (n = the " after <n>m waited" of the started field), else
+#   clock - W when the line has an opened time; W = closed waits + the open wait up to now (--wait <m> given: the larger). Never below 0.
+#   No time on the line: the typed --work, else "-". The typed --work is kept as typed=<m>, never as the label. A typed --work over
+#   the clock: one warning line on stderr, the line moves as usual. wait = W. Work and wait are never mixed.
+#   est0 = the " | est0 <m>m" field, else est; added = the " | added <m>m" field, else "-". stages, slices, built come from the
+#   " | stage log" field (todo stage): stages=<stage>:<m>,... slices=<m>,... built=<m> ("-" when there is no log).
 #   <t> is one of: page server script docs cloud app data mixed.
 #   est comes from the todo line. clock = minutes from "opened" to now. repo = folder name of the main repo.
 #   files and lines (lines = added + deleted) are counted only when asked, in the main repo:
@@ -91,13 +96,15 @@
 #   It prints "todo done: <name>" and "TIME DATA: <n> of 30" (finished tasks that have a work number).
 #   No --type or no --lane: one warning line on stderr ("todo done: warning: no --type --lane given (...)"), exit 0.
 #   --guess <m> (whole number, 1 or more; anywhere after "todo add") adds the field " | guess <m>m" after est; done copies it to guess=<m>.
+#   An est equal to --guess is refused (one line on stderr naming --why, exit 1, nothing written) unless --why "<reason>" is given;
+#   --why adds " | why <reason>" right after guess (an empty reason, " | " or a line break: refused; needs --guess).
 #   --level <A-D>: old callers only (levels are gone, use --checks) (old 0-4 accepted, stored as a letter; anywhere after "todo add") adds " | level <A-D>" right after guess (else after est, else after the what); done copies it to level=<A-D>.
 #   todo level "<name>" <A-D>: old callers only; sets it in place, every other field stays; prints "todo level: <name> <old> -> <new>" ("-" for none) or "todo level: <name> already type <new>" (writes nothing).
 #     A lower type, no such line, a bad or missing type: refused (one line on stderr, exit 1, nothing written).
 #   Then the retrain, only when due: one line "estimate retrain: ...", never the table. A failure never stops todo done.
 #
 # The line in agent_completed.txt (keys in this order, "-" when not known):
-#   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n> guess=<m> level=<n>
+#   <date> | <name> | <what> | data repo=<r> type=<t> lane=<l> mock=<yes|no> est=<m> work=<m> wait=<m> clock=<m> bounces=<n> workers=<n> files=<n> lines=<n> tests=<n> adds=<n> guess=<m> level=<n> typed=<m> est0=<m> added=<m> built=<m> stages=<s:m,...> slices=<m,...>
 #   level = the risk type from the todo line's "level <A-D>" field (an old line may hold 0-4), "-" when none. An older block has no level key (read as "-").
 #   An old line ("est <n>m actual <n>m") has no data block.
 #
@@ -117,6 +124,7 @@
 #   Prints "wrote: <the new line>" and "TIME DATA: <n> of 30". --dry-run prints "would write: <the new line>" only.
 #
 # data: read-only. Columns: repo name date type lane mock est work wait clock bounces workers files lines tests adds guess.
+#   data --what adds est0 typed built stages slices after guess, then what.
 #   An old line gives est and clock, "-" elsewhere. The repo column is the data block's repo, else the folder name.
 #   Repos, in this order, the same repo (real path) once:
 #     1. this repo
@@ -193,6 +201,8 @@
 #   exit 1, nothing written): no todo line of that name, an empty text, " | " or a line break in it, too many arguments.
 # todo stage <name> <stage> [<i>/<m>]: (first stage: a line with no stage and no started field also gets " | started <date>[ after <n>m waited]"
 #   right before the stage field; n = closed waited <m>m + an open wait up to now, no " after " when 0; never added or changed later.)
+#   A new value (new stage or new <i>/<m>) also adds the entry "<value> <m>" to " | stage log <entry>, <entry>, ..." right before the
+#   started field (else the stage field); m = the work minutes at now as todo done counts them (the first stage: 0).
 #   The stage field of the todo line, " | stage <stage>[ <i>/<m>] since <date>" (one atomic
 #   write, replaced in place, once). A new <i>/<m> of the same stage keeps its "since" (todo line and STAGE line); a new
 #   stage name sets since = now and drops the " | waited in stage <n>m" field. The stages: brief register mock tests workers verify push report e2e merge. <i>/<m> only
@@ -230,7 +240,7 @@
 set -eu
 TIME_DATA_GOAL=30
 DATA_TYPES="page server script docs cloud app data mixed"
-DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess level"
+DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess level typed est0 added built stages slices by"
 OPT_CMD="todo done"   # the prefix of a refusal from done_opts; backfill sets it to "backfill"
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
@@ -244,7 +254,7 @@ t = os.path.realpath(tempfile.gettempdir()); r = os.path.realpath(sys.argv[1])
 sys.exit(0 if r == t or r.startswith(t.rstrip("/") + "/") else 1)' "$ROOT" 2>/dev/null
 }
 if fake_clock_ok; then NOW=$AGENT_FAKE_NOW; else NOW=$(date '+%Y-%m-%d %H:%M'); fi; WHO=${AGENT_ROLE:-main}
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the files in git (agent_share.py): a snapshot before and after, one commit on the data branch when a run changed them.
 # Bash only (no python start when nothing changed): the facts are read from agent_repo.conf with grep and sed.
@@ -317,16 +327,85 @@ minutes_between() {
 dreset() {
   d_repo=-; d_type=-; d_lane=-; d_mock=-; d_est=-; d_work=-; d_wait=-; d_clock=-
   d_bounces=-; d_workers=-; d_files=-; d_lines=-; d_tests=-; d_adds=-; d_guess=-; d_level=-
+  d_typed=-; d_est0=-; d_added=-; d_built=-; d_stages=-; d_slices=-; d_by=-
 }
 dblock() {
-  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s guess=%s level=%s' \
+  printf 'data repo=%s type=%s lane=%s mock=%s est=%s work=%s wait=%s clock=%s bounces=%s workers=%s files=%s lines=%s tests=%s adds=%s guess=%s level=%s typed=%s est0=%s added=%s built=%s stages=%s slices=%s by=%s' \
     "$d_repo" "$d_type" "$d_lane" "$d_mock" "$d_est" "$d_work" "$d_wait" "$d_clock" \
-    "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds" "$d_guess" "$d_level"
+    "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds" "$d_guess" "$d_level" \
+    "$d_typed" "$d_est0" "$d_added" "$d_built" "$d_stages" "$d_slices" "$d_by"
+}
+# todo_times "<todo line>" [<typed wait>]: t_clock, t_wait (W), t_work from the times on the line ("-" when unknown). Like the board:
+# work = minutes(started, now) - max(0, W - n), else clock - W (opened); W = closed waits + the open wait up to now, or the typed wait when larger.
+todo_times() {
+  local m
+  IFS=$'\t' read -r t_opened t_started t_before t_closed t_wo <<< "$(printf '%s\n' "$1" | awk -F' \\| ' '
+    function ok(x) { return x ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]$/ }
+    { o = s = wo = "-"; b = 0; w = 0
+      for (i = 4; i <= NF; i++) {
+        if (o == "-" && $i ~ /^opened / && ok(substr($i, 8, 16))) o = substr($i, 8, 16)
+        else if (s == "-" && $i ~ /^started / && ok(substr($i, 9, 16))) {
+          s = substr($i, 9, 16)
+          if ($i ~ / after [0-9]+m waited$/) { x = $i; sub(/^.* after /, "", x); b = x + 0 }
+        }
+        else if (wo == "-" && $i ~ /^waiting [^ ]+ since / && ok(substr($i, index($i, " since ") + 7, 16))) wo = substr($i, index($i, " since ") + 7, 16)
+        else if ($i ~ /^waited [0-9]+m$/) w = substr($i, 8) + 0
+      }
+      printf "%s\t%s\t%s\t%s\t%s\n", o, s, b, w, wo; exit }')"
+  t_wait=$t_closed
+  if [ "$t_wo" != - ]; then m=$(minutes_between "$t_wo" "$NOW"); t_wait=$((t_wait + ${m:-0})); fi
+  if [ -n "${2:-}" ] && [ "$2" != - ] && [ $((10#$2)) -gt "$t_wait" ]; then t_wait=$((10#$2)); fi
+  t_clock=-; t_work=-
+  if [ "$t_opened" != - ]; then m=$(minutes_between "$t_opened" "$NOW"); [ -z "$m" ] || t_clock=$m; fi
+  if [ "$t_started" != - ]; then
+    m=$(minutes_between "$t_started" "$NOW"); m=${m:-0}
+    m=$((m - (t_wait > t_before ? t_wait - t_before : 0)))
+    t_work=$((m > 0 ? m : 0))
+  elif [ "$t_clock" != - ]; then
+    m=$((t_clock - t_wait)); t_work=$((m > 0 ? m : 0))
+  fi
+}
+# stage_facts "<todo line>" <work>: d_stages d_slices d_built from the " | stage log" field ("-" when there is none)
+stage_facts() {
+  local log out
+  d_stages=-; d_slices=-; d_built=-
+  log=$(printf '%s\n' "$1" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage log /) { print substr($i, 11); exit } }')
+  [ -n "$log" ] || return 0
+  IFS=$'\t' read -r d_stages d_slices d_built <<< "$(printf '%s\n' "$log" | awk -v done="$2" '
+    { n = split($0, e, ", ")
+      for (k = 1; k <= n; k++) {
+        m[k] = e[k]; sub(/^.* /, "", m[k]); m[k] += 0
+        v = e[k]; sub(/ [0-9]+$/, "", v)
+        w[k] = v; sub(/ .*$/, "", w[k]); f[k] = v; if (index(v, " ")) sub(/^[^ ]* /, "", f[k]); else f[k] = ""
+      }
+      for (k = 1; k <= n; k++) {
+        if (k > 1 && w[k] == w[k - 1]) continue
+        end = done; for (j = k + 1; j <= n; j++) if (w[j] != w[k]) { end = m[j]; break }
+        if (end == "-" || end == "") end = m[k]
+        d = end - m[k]; if (d < 0) d = 0
+        if (!(w[k] in dur)) order[++no] = w[k]
+        dur[w[k]] += d
+      }
+      st = ""; for (k = 1; k <= no; k++) st = st (k > 1 ? "," : "") order[k] ":" dur[order[k]]
+      fm = ""; sl = ""
+      for (k = 1; k <= n; k++) if (w[k] == "workers") {
+        if (fm == "") fm = m[k]
+        if (f[k] ~ /^[0-9]+\/[0-9]+$/) { i = f[k]; sub(/\/.*$/, "", i); i += 0
+          if (!(i in seen)) { seen[i] = 1; if (i >= 1) sl = sl (sl == "" ? "" : ",") (m[k] - fm) } }
+      }
+      b = ""
+      for (k = 1; k <= n && b == ""; k++) if (w[k] == "report") b = m[k]
+      for (k = 1; k <= n && b == ""; k++) if (w[k] == "e2e") b = m[k]
+      printf "%s\t%s\t%s\n", (st == "" ? "-" : st), (sl == "" ? "-" : sl), (b == "" ? "-" : b) }')"
 }
 # dkey "<line>" <key>: that key of the line's data block (can be "-"); nothing when the line has no block
 dkey() {
   local w
   case "$1" in *' | data '*) ;; *) return 0;; esac
+  if [ "$2" = by ]; then   # by= is the last key and holds the name as written, to the end of the line
+    case "$1" in *' by='*) printf '%s' "${1##* by=}";; esac
+    return 0
+  fi
   for w in ${1##* | data }; do
     case "$w" in "$2="*) printf '%s' "${w#*=}"; return 0;; esac
   done
@@ -473,17 +552,19 @@ backfill_name() {
 
 # --- data
 DATA_FMT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %5s\n'
-DATA_FMT_WHAT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %5s %s\n'   # data --what: one more column
+DATA_FMT_WHAT='%-14s %-30s %-10s %-6s %-4s %-4s %5s %5s %5s %6s %7s %7s %5s %6s %5s %4s %5s %5s %5s %5s %s %s %s\n'   # data --what: est0 typed built stages slices, then what
 DATA_WHAT=
 DATA_SEEN="
 "
 # dload "<line>": d_* from the data block of the line ("-" for a key it does not say)
 dload() {
-  local w k
+  local w k rest
   dreset
-  for w in ${1##* | data }; do
+  rest=${1##* | data }
+  case "$rest" in *' by='*) d_by=${rest##* by=}; rest=${rest% by=*};; esac
+  for w in $rest; do
     k=${w%%=*}
-    case " $DATA_KEYS " in *" $k "*) eval "d_$k=\${w#*=}";; esac
+    case " $DATA_KEYS " in *" $k "*) [ "$k" = by ] || eval "d_$k=\${w#*=}";; esac
   done
 }
 # the repo folders named by the keys of "territories" in world.json: "<repo>/.git" gives <repo>
@@ -526,7 +607,8 @@ $rp
       esac
       printf "$DATA_FMT_WHAT" "${d_repo// /_}" "${name// /_}" "${date// /_}" "${d_type:--}" "${d_lane:--}" "${d_mock:--}" \
         "${d_est:--}" "${d_work:--}" "${d_wait:--}" "${d_clock:--}" "${d_bounces:--}" "${d_workers:--}" \
-        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}" "${d_guess:--}" "${what:--}"
+        "${d_files:--}" "${d_lines:--}" "${d_tests:--}" "${d_adds:--}" "${d_guess:--}" "${d_est0:--}" "${d_typed:--}" \
+        "${d_built:--}" "${d_stages:--}" "${d_slices:--}" "${what:--}"
     else
       printf "$DATA_FMT" "${d_repo// /_}" "${name// /_}" "${date// /_}" "${d_type:--}" "${d_lane:--}" "${d_mock:--}" \
         "${d_est:--}" "${d_work:--}" "${d_wait:--}" "${d_clock:--}" "${d_bounces:--}" "${d_workers:--}" \
@@ -559,7 +641,7 @@ data_run() {
     case "$a" in --what) DATA_WHAT=1;; *) set -- "$@" "$a";; esac
   done
   if [ -n "$DATA_WHAT" ]; then
-    printf "$DATA_FMT_WHAT" repo name date type lane mock est work wait clock bounces workers files lines tests adds guess what
+    printf "$DATA_FMT_WHAT" repo name date type lane mock est work wait clock bounces workers files lines tests adds guess est0 typed built stages slices what
   else
     printf "$DATA_FMT" repo name date type lane mock est work wait clock bounces workers files lines tests adds guess
   fi
@@ -598,6 +680,59 @@ retrain_auto() {
   if [ "$rc" -ne 0 ]; then echo "estimate retrain: failed"
   elif [ -n "$out" ]; then printf '%s\n' "$out"
   fi
+  est_py measure >/dev/null 2>&1 || true     # one entry of the list "measures"; a failure never stops todo done
+  return 0
+}
+
+# --- the estimator after todo done runs in the background (fix order 2B): a queue file, one detached runner
+# est_gitdir: the absolute git common dir of the project root; fails when there is none
+est_gitdir() {
+  local d
+  d=$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null) || return 1
+  case "$d" in /*) ;; *) d="$ROOT/$d";; esac
+  (cd "$d" 2>/dev/null && pwd -P)
+}
+# est_lock <git dir>: takes the lock dir (a dead pid's lock is taken over); returns 1 when a live runner holds it
+est_lock() {
+  local lock="$1/agent_estimate.lock" pid try
+  for try in 1 2; do
+    if mkdir "$lock" 2>/dev/null; then return 0; fi
+    pid=$(cat "$lock/pid" 2>/dev/null) || pid=
+    if [ -z "$pid" ] || kill -0 "$pid" 2>/dev/null; then return 1; fi
+    rm -rf "$lock"
+  done
+  return 1
+}
+# est_runner: oldest queue file first: the retrain when due, then one measures entry; every line goes to the log
+est_runner() {
+  local gd q lock f
+  gd=$(est_gitdir) || return 0
+  q="$gd/agent_estimate.queue"; lock="$gd/agent_estimate.lock"
+  mkdir -p "$q" "$lock" 2>/dev/null || true
+  printf '%s\n' "$$" > "$lock/pid"
+  while :; do
+    while f=$(ls "$q" 2>/dev/null | sort | head -n 1) && [ -n "$f" ]; do
+      rm -f "$q/$f"
+      retrain_auto || true
+    done
+    rm -rf "$lock"
+    [ -n "$(ls "$q" 2>/dev/null | head -n 1)" ] || break
+    est_lock "$gd" || break
+    printf '%s\n' "$$" > "$lock/pid"
+  done
+  return 0
+}
+# est_after_done: queue one run and start the runner unless one lives; AGENT_ESTIMATE_WAIT=1 runs it here, verdict printed
+est_after_done() {
+  local gd q
+  if [ "${AGENT_ESTIMATE_WAIT:-}" = 1 ]; then retrain_auto; return 0; fi
+  gd=$(est_gitdir) || return 0
+  q="$gd/agent_estimate.queue"
+  mkdir -p "$q" 2>/dev/null || return 0
+  printf '%s\n' "$NOW" > "$q/$(date +%s)-$$-$RANDOM" 2>/dev/null || return 0
+  est_lock "$gd" || return 0
+  ( trap '' HUP; exec "$0" estimate-runner </dev/null >>"$gd/agent_estimate.log" 2>&1 ) </dev/null >/dev/null 2>&1 &
+  printf '%s\n' "$!" > "$gd/agent_estimate.lock/pid" 2>/dev/null || true
   return 0
 }
 
@@ -647,6 +782,12 @@ eta_run() {
   est=$(old_num "$line" est)
   [ -n "$est" ] || refuse "eta: no estimate on the todo line: $name"
   est=$((10#$est)); s=${step:-0}
+  if [ -z "$step" ] && [ -z "$wsf" ]; then   # no old option: the board's numbers (agent_forecast), one answer
+    command -v python3 >/dev/null 2>&1 || refuse "eta: python3 is needed and was not found"
+    python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+      --now "$NOW" --lang en --eta "$name" --wait "$wt" || exit $?
+    return 0
+  fi
   if [ -z "$wsf" ]; then left=$(( (est * (7 - s) + 6) / 7 ))
   elif [ "$wsf" -lt "$est" ]; then left=$((est - wsf))
   elif [ "$s" -ge 1 ]; then left=$(( (wsf * (7 - s) + s - 1) / s ))
@@ -910,7 +1051,7 @@ todo_beat() {
 # todo_stage <name> <stage> [<i>/<m>]
 STAGE_WORDS="brief register mock tests workers verify push report e2e merge"
 todo_stage() {
-  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here= csince tsince keep started wn wo
+  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here= csince tsince keep started wn wo swork
   [ -n "$name" ] || refuse "todo stage: needs a todo name"
   [ -n "$stage" ] || refuse "todo stage: needs a stage"
   case " $STAGE_WORDS " in *" $stage "*) ;; *) refuse "todo stage: the stage is one of: $STAGE_WORDS (got: $stage)";; esac
@@ -933,27 +1074,42 @@ todo_stage() {
   line=$(first "$TODO" "$name")
   if [ -z "$line" ] && [ -z "$wt_here" ]; then refuse "no todo line named: $name"; fi
   if [ -n "$line" ]; then
-    cur=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage /) { sub(/^stage /, "", $i); sub(/ since .*$/, "", $i); print $i; exit } }')
+    cur=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage / && $i !~ /^stage log /) { sub(/^stage /, "", $i); sub(/ since .*$/, "", $i); print $i; exit } }')
     if [ "$cur" != "$val" ]; then
       tsince=$NOW; keep=0; started=
-      if [ -z "$cur" ] && ! printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^(stage |started )/) exit 0; exit 1 }'; then
+      if [ -z "$cur" ] && ! printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if (($i ~ /^stage / && $i !~ /^stage log /) || $i ~ /^started /) exit 0; exit 1 }'; then
         wn=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^waited [0-9]+m$/) { print substr($i, 8) + 0; exit } }')
         wn=${wn:-0}
         wo=$(printf '%s\n' "$line" | sed -n 's/.* | waiting [^ ]* since \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
         if [ -n "$wo" ]; then m=$(minutes_between "$wo" "$NOW"); wn=$((wn + ${m:-0})); fi
         started="started $NOW"
         if [ "$wn" -gt 0 ]; then started="$started after ${wn}m waited"; fi
+        swork=0
+      else
+        todo_times "$line"; swork=$t_work; [ "$swork" != - ] || swork=0
       fi
       if [ "${cur%% *}" = "$stage" ]; then
-        csince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage /) { if (sub(/^.* since /, "", $i)) print $i; exit } }')
+        csince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage / && $i !~ /^stage log /) { if (sub(/^.* since /, "", $i)) print $i; exit } }')
         if [ -n "$csince" ]; then tsince=$csince; keep=1; fi
       fi
-      NEW="stage $val since $tsince" STARTED="$started" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v keep="$keep" '
+      NEW="stage $val since $tsince" STARTED="$started" ENTRY="$val $swork" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v keep="$keep" '
         $1 == k && !hit {
-          hit = 1; wi = 0
-          for (i = 4; i <= NF; i++) if (!wi && $i ~ /^stage /) wi = i
+          hit = 1; wi = 0; li = 0; si = 0
+          for (i = 4; i <= NF; i++) {
+            if (!li && $i ~ /^stage log /) li = i
+            else if (!wi && $i ~ /^stage /) wi = i
+            if (!si && $i ~ /^started /) si = i
+          }
           if (wi) $wi = ENVIRON["NEW"]
           else { if (ENVIRON["STARTED"] != "") $(NF + 1) = ENVIRON["STARTED"]; $(NF + 1) = ENVIRON["NEW"] }
+          if (li) $li = $li ", " ENVIRON["ENTRY"]
+          else {   # the log goes right before the started field, else right before the stage field
+            at = 0
+            for (i = 4; i <= NF; i++) if (!at && $i ~ /^started /) at = i
+            if (!at) for (i = 4; i <= NF; i++) if (!at && $i ~ /^stage / && $i !~ /^stage log /) at = i
+            for (i = NF; i >= at; i--) $(i + 1) = $i
+            $at = "stage log " ENVIRON["ENTRY"]
+          }
           if (!keep) {
             n = 0
             for (i = 1; i <= NF; i++) if (!(i >= 4 && ($i ~ /^waited in stage [0-9]+m$/ || $i ~ /^beat /))) out[++n] = $i
@@ -963,6 +1119,25 @@ todo_stage() {
           }
         }
         { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO"
+      # the slip flag: the board's p50 clock of this line, kept as " | p50 <time> at <now>" (no forecast: the line stays)
+      if [ -z "$wt_here" ] && command -v python3 >/dev/null 2>&1; then
+        local p50
+        p50=$(python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+          --now "$NOW" --lang en --p50-of "$name" 2>/dev/null) || p50=
+        case "$p50" in
+          [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\ [0-9][0-9]:[0-9][0-9])
+            NEW="p50 $p50 at $NOW" awk -F' \\| ' -v OFS=' | ' -v k="$name" '
+              $1 == k && !hit {
+                hit = 1; n = 0
+                for (i = 1; i <= NF; i++) if (!(i >= 4 && $i ~ /^p50 [0-9-]+ [0-9:]+ at /)) out[++n] = $i
+                out[++n] = ENVIRON["NEW"]
+                s = out[1]
+                for (i = 2; i <= n; i++) s = s OFS out[i]
+                print s; next
+              }
+              { print }' "$TODO" > "$TODO.tmp" && mv "$TODO.tmp" "$TODO";;
+        esac
+      fi
     fi
   fi
   if [ -n "$wt_here" ]; then
@@ -972,6 +1147,7 @@ todo_stage() {
       csince=$(awk -v p="STAGE $name: " 'index($0, p) == 1 { s = $0; if (sub(/^.* \| since /, "", s)) print s; exit }' "$STATE_FILE")
     fi
     if [ "$cur" != "$val" ]; then
+      if ! grep -qF "WORK START $name | " "$STATE_FILE" 2>/dev/null; then state_append "WORK START $name | $NOW"; fi   # the start of the work, once (heartbeat counts from it)
       local src="$STATE_FILE" ssn=$NOW; [ -f "$src" ] || src=/dev/null
       if [ -n "$cur" ] && [ "${cur%% *}" = "$stage" ] && [ -n "$csince" ]; then ssn=$csince; fi
       NEW="STAGE $name: $val | since $ssn" awk -v p="STAGE $name: " '
@@ -1208,11 +1384,15 @@ case "${1:-}:${2:-}" in
     [ $# -ge 2 ] || usage
     helper_join "$2";;
   todo:add)
-    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""; omeans=""; oquestion=""; orelay=""
+    shift 2; guess=""; why=""; haswhy=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""; omeans=""; oquestion=""; orelay=""
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
       if [ "$1" = "--guess" ]; then
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
         guess=$((10#$2)); shift 2
+      elif [ "$1" = "--why" ]; then
+        [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: --why needs a reason"
+        if bad_text "$2"; then refuse "todo add: the --why value must not hold \" | \" or a line break"; fi
+        why=$2; haswhy=1; shift 2
       elif [ "$1" = "--level" ]; then
         level=$(risk_type "${2:-}"); [ -n "$level" ] || refuse "todo add: --level wants one of A B C D (got: ${2:-nothing})"
         shift 2
@@ -1240,6 +1420,10 @@ case "${1:-}:${2:-}" in
     done
     set -- todo add ${rest[@]+"${rest[@]}"}
     need 5 "$@"
+    if [ -n "$haswhy" ] && [ -z "$guess" ]; then refuse "todo add: --why goes with --guess"; fi
+    if [ -n "$guess" ] && [ -z "$why" ] && is_num "${6:-}" && [ "${#6}" -le 9 ] && [ $((10#$6)) -eq "$guess" ]; then
+      refuse "todo add: est $((10#$6)) is the --guess; give the number the estimate printed, or --why \"<reason>\""
+    fi
     if [ "$target" = production ]; then   # the direct path is bound to the owner's words, verified at once (F1)
       checks_py owner-words "$3" "$oquote" "$otime" "$omeans" "$oquestion" "$orelay" || exit 1
     elif [ -n "$oquote$otime$omeans$oquestion$orelay" ]; then refuse "todo add: --owner-quote, --means, --question, --time and --relayed-from belong to --target production"
@@ -1249,6 +1433,7 @@ case "${1:-}:${2:-}" in
     what="$5"
     [ -n "${6:-}" ] && what="$5 | est ${6}m"
     [ -z "$guess" ] || what="$what | guess ${guess}m"
+    [ -z "$why" ] || what="$what | why $why"
     [ -z "$level" ] || what="$what | level $level"
     [ -z "$checks" ] || what="$what | checks $checks"
     [ -z "$scope" ] || what="$what | scope $scope"
@@ -1256,7 +1441,8 @@ case "${1:-}:${2:-}" in
     [ -z "$target" ] || what="$what | target $target"
     [ -z "$batch" ] || what="$what | batch $batch"
     by="${7:-$WHO}"
-    append "$TODO" "$3 | $4 | $what | opened $NOW | by $by"
+    owner=$(PYTHONPATH="$(dirname "$0")" python3 -c 'import sys, agent_conf; print(agent_conf.user_name(sys.argv[1]))' "$PWD" 2>/dev/null) || owner=user
+    append "$TODO" "$3 | $4 | $what | opened $NOW | by $by | owner ${owner:-user}"
     echo "todo added: $3";;
   todo:done)
     need 3 "$@"; name="$3"; line=$(first "$TODO" "$name")
@@ -1274,9 +1460,25 @@ case "${1:-}:${2:-}" in
     opened=$(printf '%s\n' "$line" | sed -n 's/.*opened \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
     clock=; [ -z "$opened" ] || clock=$(minutes_between "$opened" "$NOW")
     d_repo=$(repo_name "$ROOT"); d_est=${est:--}; d_clock=${clock:--}
+    d_typed=$d_work                                # the typed --work is kept as typed, the label is measured
+    todo_times "$line" "$d_wait"
+    if [ "$t_work" != - ]; then
+      d_work=$t_work; d_wait=$t_wait
+      if [ "$d_typed" != - ] && [ "$d_clock" != - ] && [ $((10#$d_typed)) -gt "$d_clock" ]; then
+        echo "todo done: warning: --work ${d_typed}m is more than the clock ${d_clock}m; work ${d_work}m is stored, the typed number is kept as typed=$((10#$d_typed))" >&2
+      fi
+    fi
+    [ "$d_typed" = - ] || d_typed=$((10#$d_typed))
+    d_est0=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^est0 [0-9]+m$/) {v = $i; sub(/^est0 /, "", v); sub(/m$/, "", v); print v; exit}}')
+    d_est0=${d_est0:-$d_est}
+    d_added=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^added [0-9]+m$/) {v = $i; sub(/^added /, "", v); sub(/m$/, "", v); print v; exit}}')
+    d_added=${d_added:--}
+    stage_facts "$line" "$d_work"
     d_guess=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^guess [0-9]+m$/) {v = $i; sub(/^guess /, "", v); sub(/m$/, "", v); print v; exit}}')
     d_guess=${d_guess:--}
     d_level=$(todo_line_level "$line"); d_level=${d_level:--}
+    d_by=$(PYTHONPATH="$(dirname "$0")" python3 -c 'import sys, agent_conf; print(agent_conf.user_name(sys.argv[1]))' "$PWD" 2>/dev/null) || d_by=user
+    d_by=${d_by:-user}
     date="${NOW%% *}"
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
     checks_py task-end done "$name" || true     # its removals, stored owner words and planned blocks end (G2, G4)
@@ -1287,7 +1489,7 @@ case "${1:-}:${2:-}" in
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
     # the finished task no longer counts as open: trim the state file (silent unless lines moved; a refusal is a warning)
     if command -v python3 >/dev/null 2>&1; then python3 "$(dirname "$0")/agent_state.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" trim --auto || true; fi
-    retrain_auto
+    est_after_done || true
     sweep_after_last_task;;
   todo:wait)
     shift 2; todo_wait "$@";;
@@ -1392,7 +1594,15 @@ case "${1:-}:${2:-}" in
     need 3 "$@"; drop "$WT" "$3"; echo "worktree removed: $3";;
   show:*)
     for f in "$TODO" "$DONE" "$IDEAS" "$WT"; do
-      echo "=== $(basename "$f") ==="; [ -s "$f" ] && cat "$f" || echo "(empty)"; echo
+      echo "=== $(basename "$f") ==="
+      if [ -s "$f" ]; then
+        case "$f" in
+          "$TODO") sed -E 's/^(.* \| owner ([^|]*[^| ])( \| .*)?)$/\1 [\2]/' "$f";;
+          "$DONE") sed -E '/ data .* by=-$/!s/^(.* data .* by=(.+))$/\1 [\2]/' "$f";;
+          *) cat "$f";;
+        esac
+      else echo "(empty)"; fi
+      echo
     done;;
   time:)
     printf '%-30s %8s %8s %8s %8s %8s\n' "name" "est" "work" "wait" "clock" "ratio"
@@ -1414,16 +1624,39 @@ case "${1:-}:${2:-}" in
       printf '%-30s %8s %8s %8s %8s %8s\n' "$name" "$est" "$work" "$wt" "$clock" "$ratio"
     done < "$DONE";;
   heartbeat:*)
-    # heartbeat "<task>" <step 0-7> <work minutes> "<what runs now>": the one right form (C51)
-    [ $# -eq 5 ] || refuse "heartbeat: usage: heartbeat \"<task>\" <step 0-7> <work minutes> \"<what runs now>\""
+    # heartbeat "<task>" <step 0-7> "<what runs now>": the work is computed (the todo line, else WORK START);
+    # the five-word form (typed minutes) still works; with a known start the computed minutes win
+    hb_typed=
+    case $# in
+      4) hb_raw=$4;;
+      5) hb_typed=$4; hb_raw=$5;;
+      *) refuse "heartbeat: usage: heartbeat \"<task>\" <step 0-7> \"<what runs now>\" (or with typed minutes: heartbeat \"<task>\" <step 0-7> <work minutes> \"<what runs now>\")";;
+    esac
     case "$2" in ''|*[[:space:]:]*) refuse "heartbeat: the task name must be one word without a colon";; esac
     case "$3" in [0-7]) ;; *) refuse "heartbeat: the step is a whole number from 0 to 7 (got: $3)";; esac
-    is_num "$4" && [ "${#4}" -le 9 ] || refuse "heartbeat: the work minutes are a whole number (got: $4)"
-    hb_text=$(printf '%s' "$5" | tr '\r\n' '  ' | sed 's/^ *//; s/ *$//')
+    if [ $# -eq 5 ]; then is_num "$hb_typed" && [ "${#hb_typed}" -le 9 ] || refuse "heartbeat: the work minutes are a whole number (got: $hb_typed)"; fi
+    hb_text=$(printf '%s' "$hb_raw" | tr '\r\n' '  ' | sed 's/^ *//; s/ *$//')
     [ -n "$hb_text" ] || refuse "heartbeat: say what runs now (the text is empty)"
+    hb_work=
+    if [ -f "$TODO" ] && [ -n "$(first "$TODO" "$2")" ] && command -v python3 >/dev/null 2>&1; then
+      hb_work=$(python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+        --now "$NOW" --lang en --work-of "$2" 2>/dev/null) || hb_work=
+      is_num "$hb_work" || hb_work=
+    fi
+    if [ -z "$hb_work" ] && [ -f "$STATE_FILE" ]; then
+      hb_start=$(awk -v p="WORK START $2 | " 'index($0, p) == 1 { print substr($0, length(p) + 1); exit }' "$STATE_FILE")
+      if [ -n "$hb_start" ] && [ -n "$(to_epoch "$hb_start")" ]; then hb_work=$(minutes_between "$hb_start" "$NOW"); hb_work=${hb_work:-0}; fi
+    fi
+    if [ -z "$hb_work" ]; then
+      [ $# -eq 5 ] || refuse "heartbeat: no start is known for $2 (no todo line, no WORK START line); give the minutes: heartbeat \"$2\" $3 <work minutes> \"<what runs now>\""
+      hb_work=$((10#$hb_typed))
+    elif [ $# -eq 5 ]; then
+      hb_d=$((hb_work - 10#$hb_typed)); [ "$hb_d" -ge 0 ] || hb_d=$((-hb_d))
+      if [ "$hb_d" -gt 5 ]; then echo "heartbeat: work ${hb_work}m from the start, not the typed $((10#$hb_typed))m" >&2; fi
+    fi
     mkdir -p "$STATE_DIR" 2>/dev/null
     if [ -s "$STATE_FILE" ] && [ -n "$(tail -c 1 "$STATE_FILE")" ]; then printf '\n' >> "$STATE_FILE"; fi
-    append "$STATE_FILE" "HEARTBEAT $2: step $3 of 7, work $((10#$4))m, $hb_text | $NOW"
+    append "$STATE_FILE" "HEARTBEAT $2: step $3 of 7, work $((10#$hb_work))m, $hb_text | $NOW"
     echo "heartbeat: $2 step $3 of 7";;
   tell:*)
     need 3 "$@"; [ $# -eq 3 ] || usage
@@ -1441,6 +1674,8 @@ case "${1:-}:${2:-}" in
     shift; data_run "$@";;
   repos:*)
     repos_list;;
+  estimate-runner:*)
+    est_runner;;
   estimate:*|backtest:*|retrain:*)
     cmd="$1"; shift
     if [ "$cmd" = retrain ] && stale_skip; then exit 0; fi

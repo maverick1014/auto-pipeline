@@ -71,12 +71,16 @@ def write(path, text):
         fh.write(text)
 
 
+# md-slim-principles: the rule file that holds each rule code (requirements/md-slim-principles/codes.md)
+RULE_FILE = {"R5": "files.md", "R6": "files.md", "R7": "files.md", "W8": "worktrees.md", "W12": "cross-repo.md"}
+
+
 def principles_section(code):
-    """The lines of one PRINCIPLES.md rule, e.g. "W8", heading included."""
+    """The lines of one rule, e.g. "W8", heading included, read from the rules/ file that holds it."""
     out = []
     inside = False
-    for line in read_root("PRINCIPLES.md").splitlines():
-        if re.match(r"^[A-Z]\d+\. ", line) or line.startswith("## "):
+    for line in read_root("rules", RULE_FILE[code]).splitlines():
+        if re.match(r"^[A-Z]\d+\. ", line) or line.startswith("#") or line == "Files:":   # "Files:" = the table after R7
             inside = line.startswith(code + ". ")
             if inside:
                 out.append(line)
@@ -617,6 +621,15 @@ class TestTodoStale(HousekeepCase):
         self.set_file("agent_todo.txt", [self.todo("s3", opened="2026-11-13 10:00")])
         self.apply()
         self.assertEqual(self.stale_line("s3"), [])
+
+    def test_a_stage_log_does_not_hide_the_stage(self):
+        # estimate-improve fix order 2 A: " | stage log ..." stands before the stage field; the stale age counts
+        # from the stage's since (11:00, 60 min), not from opened only (08:00, 240 min)
+        self.set_file("agent_todo.txt", [self.todo(
+            "s5", opened="2026-11-13 08:00",
+            extra=" | stage log brief 0, tests 30 | started 2026-11-13 08:00 | stage tests since 2026-11-13 11:00")])
+        self.apply()
+        self.assertEqual(self.stale_line("s5"), [])
 
     def test_an_open_wait_is_not_stale(self):
         self.set_file("agent_todo.txt", [self.todo(
@@ -1348,7 +1361,7 @@ class TestDocs(unittest.TestCase):
         self.assertGreaterEqual(tuple(int(x) for x in ver.split(".")), (0, 34, 1))
 
     def test_readme_lists_the_script(self):
-        self.assertIn("bin/agent-housekeep.sh", read_root("PRINCIPLES.md"))
+        self.assertIn("bin/agent-housekeep.sh", read_root("rules", "map.md"))
 
 
 ROWS_NOW = "2026-11-24 12:00"

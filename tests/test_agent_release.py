@@ -36,7 +36,8 @@ ROOT = os.path.dirname(HERE)
 SCRIPT = os.path.join(ROOT, "bin", "agent-release.sh")
 LOGIC = os.path.join(ROOT, "bin", "agent_release.py")
 
-SHIP = [".claude-plugin", "hooks", "bin", "skills", "agents", "PRINCIPLES.md"]
+# md-slim-principles A 1: the rule files ship beside the core
+SHIP = [".claude-plugin", "hooks", "bin", "skills", "agents", "PRINCIPLES.md", "rules", "GLOSSARY.md", "NOTICE.md"]
 
 
 # ---------------------------------------------------------------- helpers
@@ -78,6 +79,9 @@ BASE_FILES = {
         "# rules: requirements/r.md, tests/t.txt and README.md say why\n"),
     "agents/worker.md": "Use ${CLAUDE_PLUGIN_ROOT}/bin/agent-start.sh\n",
     "PRINCIPLES.md": "# PRINCIPLES\n",
+    "rules/checks.md": "# Check blocks\nRead when: x.\n",
+    "GLOSSARY.md": "# GLOSSARY\n",
+    "NOTICE.md": "## Notice\n",
     "README.md": "# readme\n",
     "CLAUDE.md": "Run ./bin/agent-start.sh first.\n",
     "AGENTS.md": "Run ./bin/agent-start.sh first.\n",
@@ -211,7 +215,7 @@ class Fixture(unittest.TestCase):
 # ---------------------------------------------------------------- rule 1
 
 class TestShipList(unittest.TestCase):
-    def test_list_prints_the_six_paths_in_order(self):
+    def test_list_prints_the_nine_paths_in_order(self):
         if not os.path.exists(SCRIPT):
             self.fail("bin/agent-release.sh does not exist yet. Write it.")
         r = subprocess.run([SCRIPT, "--list"], cwd=HERE, capture_output=True,
@@ -335,6 +339,23 @@ class TestDryRun(Fixture):
         r = self.run_release("--dry-run")
         self.assertExit(r, 0)
         self.assertIn("left out: none", r.stdout.splitlines())
+
+
+class TestTheRuleFilesShip(unittest.TestCase):
+    """md-slim-principles section 4: the release ship set contains rules/checks.md, GLOSSARY.md and NOTICE.md."""
+
+    def test_the_real_ship_set(self):
+        out = subprocess.run(["git", "-C", ROOT, "ls-files", "--"] + SHIP, capture_output=True, text=True).stdout
+        names = out.splitlines()
+        for name in ("rules/checks.md", "GLOSSARY.md", "NOTICE.md", "PRINCIPLES.md"):
+            with self.subTest(name=name):
+                self.assertIn(name, names)
+
+    def test_the_script_lists_them(self):
+        r = subprocess.run([SCRIPT, "--list"], cwd=HERE, capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for name in ("rules", "GLOSSARY.md", "NOTICE.md"):
+            self.assertIn(name, r.stdout.splitlines())
 
 
 class TestBuild(Fixture):

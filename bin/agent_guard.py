@@ -329,6 +329,79 @@ def bash_launches(command):
     return found
 
 
+POINTS = {
+    "dispatch": ("Dispatch: route it by rules/routing.md (W9); its blocks (--checks) by rules/checks.md (R8). "
+                 "The hook only points."),
+    "merge": ("Merge: the gate by rules/checks.md (R8); the merge and the cleanup by rules/worktrees.md (W8). "
+              "The hook only points."),
+    "push": "Push: a push that is denied: rules/traps.md (W16). The hook only points.",
+}
+POINT_AGENTS = {"fast-lane-deputy": "dispatch", "merge-deputy": "merge", "reviewer": "merge",
+                "check-deputy": "merge"}
+_POINT = {"moment": None, "ctx": None, "sid": ""}
+
+
+def git_subcommand(args):
+    """The git subcommand of the words after `git` (global options skipped)."""
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-C", "-c", "--git-dir", "--work-tree", "--namespace"):
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        return a
+    return ""
+
+
+def bash_moment(command, ops):
+    """dispatch | merge | push | None for a Bash text (the first one found, in command order)."""
+    if any(op == "create" for op, _ in ops):
+        return "dispatch"
+    for words in split_commands(command):
+        k = 0
+        while k < len(words) and (RE_ASSIGN.match(words[k]) or words[k] in SKIP_WORDS):
+            k += 1
+        w = words[k:]
+        if not w:
+            continue
+        if os.path.basename(w[0]) in ("bash", "sh") and len(w) > 1:
+            w = w[1:]
+        name = os.path.basename(w[0])
+        rest = w[1:]
+        if name == "agent-file.sh":
+            for a, b in zip(rest, rest[1:]):
+                if (a, b) == ("todo", "add"):
+                    return "dispatch"
+                if (a, b) == ("checks", "gate"):
+                    return "merge"
+        elif name == "agent-promote.sh" and "--task" in rest:
+            return "merge"
+        elif name == "git" and git_subcommand(rest) == "push":
+            return "push"
+    return None
+
+
+def point_line(ctx):
+    """The pointer line of this call, or None (already given in this session, or no session id and no marker)."""
+    moment = _POINT["moment"]
+    if not moment or ctx is None:
+        return None
+    sid = re.sub(r"[^A-Za-z0-9_.-]", "_", _POINT["sid"])
+    if sid:
+        path = os.path.join(ctx["common"], "agent_point_%s_%s" % (sid, moment))
+        if os.path.exists(path):
+            return None
+        try:
+            with open(path, "w") as fh:
+                fh.write(ctx["now"] + "\n")
+        except OSError:
+            return None
+    return POINTS[moment]
+
+
 def pane_title(opts):
     t = opts.get("title")
     if t is None or not t.strip():
@@ -826,9 +899,14 @@ def handle(payload):
     if ev in ("PreToolUse", "PostToolUse"):
         if tool in ("Agent", "Task"):
             kind = "agent"
+            if ev == "PreToolUse":
+                _POINT["moment"] = POINT_AGENTS.get(base_type(str(tin.get("subagent_type") or "")))
         elif tool == "Bash":
-            ops = bash_launches(str(tin.get("command") or ""))
-            if not ops:
+            command = str(tin.get("command") or "")
+            ops = bash_launches(command)
+            if ev == "PreToolUse":
+                _POINT["moment"] = bash_moment(command, ops)
+            if not ops and not _POINT["moment"]:
                 return OK
             kind = "bash"
         else:
@@ -839,6 +917,8 @@ def handle(payload):
     ctx = make_context(payload)
     if ctx is None:
         return OK
+    _POINT["ctx"] = ctx
+    _POINT["sid"] = str(payload.get("session_id") or "")
     quiet = ctx["role"] == "free"
 
     if ev == "PreToolUse":
@@ -1036,21 +1116,30 @@ def run(raw):
         return ("WARN", "board guard: bad hook JSON; allowed")
     if not isinstance(payload, dict):
         return ("WARN", "board guard: bad hook JSON; allowed")
-    return handle(payload)
+    _POINT.update(moment=None, ctx=None, sid="")
+    res = handle(payload)
+    if res[0] == "BLOCK":
+        return res
+    line = point_line(_POINT["ctx"])
+    return res + (line,) if line else res
 
 
 def main():
     try:
         raw = sys.stdin.read()
-        status, text = run(raw)
+        got = run(raw)
+        status, text = got[0], got[1]
+        point = got[2] if len(got) > 2 else ""
     except Warn as e:
+        point = ""
         status, text = "WARN", str(e) if str(e).startswith("board guard:") else "board guard: %s; allowed" % e
     except Exception as e:  # never raise
+        point = ""
         what = one_line("%s %s" % (type(e).__name__, e))[:60]
         status, text = "WARN", "board guard: %s; allowed" % what
     line = status if not text else "%s %s" % (status, one_line(text))
     try:
-        sys.stdout.write(line + "\n")
+        sys.stdout.write(("POINT %s\n" % one_line(point) if point else "") + line + "\n")
         sys.stdout.flush()
     except Exception:
         pass

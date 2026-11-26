@@ -2,7 +2,7 @@
 name: init
 description: One-time project setup — the task files, .secrets/, AGENTS.md, and it prints the permissions block. Use right after installing the plugin.
 ---
-# /init — set up this project (PRINCIPLES.md S1)
+# /init — set up this project (rules/setup.md S1)
 
 1. Init asks no setting. Settings live only in Configure (S1); init writes no settings file. An old repo or machine settings file is moved into Configure once by the script, which says each move.
 2. Run `${CLAUDE_PLUGIN_ROOT}/bin/agent-init.sh` on the current project. Show its output unchanged, including the permissions block and the skip-warning line (new panes stop on the bypass warning screen). Never write `~/.claude/settings.json`: the human adds `"skipDangerousModePermissionPrompt": true` there himself. The agent never edits that file by hand.

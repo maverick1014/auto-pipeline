@@ -421,7 +421,7 @@ class TestDocs(unittest.TestCase):
         self.assertIn("`agent-city start`", text)
 
     def test_readme_lists_the_shim(self):
-        self.assertIn("bin/agent-city-shim", self.text("PRINCIPLES.md"))
+        self.assertIn("bin/agent-city-shim", self.text("rules", "map.md"))   # md-slim-principles: the map moved to rules/map.md
 
 
 class TestCityScriptWorld(unittest.TestCase):
@@ -439,7 +439,7 @@ def read(*parts):
 
 class TestF8ShortCityCommand(unittest.TestCase):
     def setUp(self):
-        self.readme = read("PRINCIPLES.md")
+        self.readme = read("rules", "map.md")   # md-slim-principles: the map moved to rules/map.md
 
     def test_readme_uses_the_short_command(self):
         self.assertIsNone(re.search(r"\./bin/agent-city\.sh [a-z]", self.readme))

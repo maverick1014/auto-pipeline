@@ -25,6 +25,8 @@ SCRIPT = os.path.join(ROOT, "bin", "agent-cloud-pack.sh")
 
 PACK = os.path.join(".claude", "auto-pipeline")
 HOOK_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-start.sh'
+# md-slim-principles (answer bd1ecc18): the rules block is a second SessionStart entry, right after the start part
+RULES_CMD = HOOK_CMD + " --rules"
 NAME_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-name.sh'
 # helper-task-title (owner, 2026-10-28): the Helper's task title, on every prompt
 PROMPT_NAME_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/auto-pipeline/bin/agent-name.sh --prompt'
@@ -56,7 +58,7 @@ ALLOW_RULES = [
 ]
 
 SOURCE_PARTS = ["bin", "skills", "agents", "hooks", ".claude-plugin",
-                "PRINCIPLES.md"]
+                "PRINCIPLES.md", "rules", "GLOSSARY.md", "NOTICE.md"]
 
 USER_SETTINGS = {
     "model": "opus",
@@ -289,6 +291,13 @@ class TestEveryFileLands(PackCase):
         self.assertEqual(read_bytes(self.p("PRINCIPLES.md")),
                          read_bytes(self.s("PRINCIPLES.md")))
 
+    def test_the_rule_files_glossary_and_notice_are_copied(self):
+        # md-slim-principles A 1, section 4: the pack carries rules/checks.md, GLOSSARY.md, NOTICE.md
+        for parts in (("rules", "checks.md"), ("GLOSSARY.md",), ("NOTICE.md",)):
+            with self.subTest(parts=parts):
+                self.assertEqual(read_bytes(self.p(*parts)), read_bytes(self.s(*parts)))
+        self.assertEqual(sorted(os.listdir(self.p("rules"))), sorted(os.listdir(self.s("rules"))))
+
     def test_the_version_marker_is_the_source_version(self):
         self.assertEqual(read_text(self.p("VERSION")),
                          self.source_version() + "\n")
@@ -365,10 +374,22 @@ class TestSettingsMerge(PackCase):
         self.assertEqual(data["hooks"]["PreToolUse"][:len(user_pre)], user_pre,
                          "the user's own hooks stay first, unchanged")
 
-    def test_exactly_one_hook_runs_agent_start(self):
+    def test_exactly_the_two_start_entries_in_order(self):
         self.assertOk(self.pack())
         cmds = session_start_commands(self.settings())
-        self.assertEqual([c for c in cmds if "agent-start.sh" in c], [HOOK_CMD])
+        self.assertEqual([c for c in cmds if "agent-start.sh" in c], [HOOK_CMD, RULES_CMD])
+
+    def test_an_older_pack_gets_the_rules_entry_right_after_the_start(self):
+        data = json.loads(json.dumps(USER_SETTINGS))
+        data["hooks"]["SessionStart"].append({"hooks": [{"type": "command", "command": HOOK_CMD}]})
+        data["hooks"]["SessionStart"].append({"hooks": [{"type": "command", "command": NAME_CMD, "timeout": 5}]})
+        write_text(self.t(".claude", "settings.json"), json.dumps(data))
+        self.assertOk(self.pack())
+        cmds = session_start_commands(self.settings())
+        mine = [c for c in cmds if ".claude/auto-pipeline/bin/" in c]
+        self.assertEqual(mine, [HOOK_CMD, RULES_CMD, NAME_CMD])
+        self.assertOk(self.pack())
+        self.assertEqual(session_start_commands(self.settings()), cmds, "a rerun adds nothing")
 
     def test_the_users_own_session_start_hook_is_kept(self):
         self.assertOk(self.pack())
@@ -398,13 +419,14 @@ class TestSettingsMerge(PackCase):
         write_text(self.t(".claude", "settings.json"), json.dumps(data))
         self.assertOk(self.pack())
         cmds = session_start_commands(self.settings())
-        self.assertEqual(len([c for c in cmds if "agent-start.sh" in c]), 1)
+        self.assertEqual(len([c for c in cmds if "agent-start.sh" in c and "--rules" not in c]), 1)
+        self.assertEqual(len([c for c in cmds if "agent-start.sh --rules" in c]), 1)
 
     def test_a_repo_with_no_settings_gets_one(self):
         os.remove(self.t(".claude", "settings.json"))
         self.assertOk(self.pack())
         data = self.settings()
-        self.assertEqual(session_start_commands(data), [HOOK_CMD, NAME_CMD])
+        self.assertEqual(session_start_commands(data), [HOOK_CMD, RULES_CMD, NAME_CMD])
         self.assertEqual(data["permissions"]["allow"], ALLOW_RULES)
 
     def test_the_pack_has_no_city_hook(self):
@@ -600,9 +622,11 @@ class TestUpdate(PackCase):
         os.remove(self.s("bin", "agent-old.sh"))
         write_text(self.s("bin", "agent-new.sh"), "#!/usr/bin/env bash\n")
         os.chmod(self.s("bin", "agent-new.sh"), 0o755)
+        os.remove(self.s("rules", "ui.md"))
+        write_text(self.s("rules", "new.md"), "# New\nRead when: x.\n")
         for parts in (("bin", "agent-start.sh"), ("PRINCIPLES.md",),
                       ("skills", "dispatch", "SKILL.md"),
-                      ("agents", "worker.md")):
+                      ("agents", "worker.md"), ("rules", "checks.md"), ("GLOSSARY.md",), ("NOTICE.md",)):
             with open(self.s(*parts), "a") as fh:
                 fh.write("\n# newer ${CLAUDE_PLUGIN_ROOT}/bin/x\n")
 
@@ -621,6 +645,12 @@ class TestUpdate(PackCase):
     def test_principles_is_refreshed(self):
         self.assertEqual(read_bytes(self.p("PRINCIPLES.md")),
                          read_bytes(self.s("PRINCIPLES.md")))
+
+    def test_the_rule_files_are_refreshed(self):
+        for parts in (("rules", "checks.md"), ("GLOSSARY.md",), ("NOTICE.md",), ("rules", "new.md")):
+            with self.subTest(parts=parts):
+                self.assertEqual(read_bytes(self.p(*parts)), read_bytes(self.s(*parts)))
+        self.assertFalse(os.path.exists(self.p("rules", "ui.md")), "a rule file the source dropped is gone")
 
     def test_skills_and_agents_are_refreshed(self):
         self.assertEqual(
@@ -658,8 +688,9 @@ class TestRunsFromThePack(PackCase):
         self.assertIn("ROLE:", out)
         self.assertIn("PROJECT: %s | PLUGIN: %s"
                       % (self.target, self.pack_root), out)
-        self.assertIn("RULES: read %s/PRINCIPLES.md now (S8)."
-                      % self.pack_root, out)
+        self.assertIn("RULES: the core (PRINCIPLES.md) and your reading list come in the rules block; "
+                      "no rules block: run %s/bin/agent-start.sh --rules (S8)." % self.pack_root, out)
+        self.assertIn("PATHS: rules/*.md, GLOSSARY.md and NOTICE.md are under %s/" % self.pack_root, out)
         self.assertIn("QUIZ: run %s/bin/agent-start.sh --quiz, then --answer."
                       % self.pack_root, out)
         self.assertIn("LANGUAGE: en", out)   # settings-configure: the default in a cloud pack
@@ -736,6 +767,9 @@ class TestTheOutput(PackCase):
         out = self.assertOk(self.pack())
         self.assertIn("created: .claude/auto-pipeline/bin/agent-start.sh", out)
         self.assertIn("created: .claude/auto-pipeline/PRINCIPLES.md", out)
+        self.assertIn("created: .claude/auto-pipeline/rules/checks.md", out)
+        self.assertIn("created: .claude/auto-pipeline/GLOSSARY.md", out)
+        self.assertIn("created: .claude/auto-pipeline/NOTICE.md", out)
         self.assertIn("created: .claude/skills/dispatch/SKILL.md", out)
         self.assertIn("created: .claude/agents/worker.md", out)
 
@@ -838,7 +872,7 @@ class TestOneSentenceInstall(PackCase):
         self.assertFalse(os.path.exists(self.t("agent.conf")))
         self.assertIn(POINTER, read_text(self.t("CLAUDE.md")))
         cmds = session_start_commands(self.settings())
-        self.assertEqual([c for c in cmds if "agent-start.sh" in c], [HOOK_CMD])
+        self.assertEqual([c for c in cmds if "agent-start.sh" in c], [HOOK_CMD, RULES_CMD])
 
     def test_the_packed_hook_then_runs(self):
         self.assertOk(self.result)

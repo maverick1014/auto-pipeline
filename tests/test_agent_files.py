@@ -1053,7 +1053,8 @@ class TestTheRuleText(unittest.TestCase):
     """The task-file rule says where the files live, how a repo moves, and who may work a shared task."""
 
     def r5(self):
-        text = read(os.path.join(ROOT, "PRINCIPLES.md"))
+        # md-slim-principles-2: R5 lives in rules/files.md now
+        text = read(os.path.join(ROOT, "rules", "files.md"))
         return text[text.index("R5. Task files"):text.index("R6.")]
 
     def test_where_they_live(self):
@@ -1067,7 +1068,7 @@ class TestTheRuleText(unittest.TestCase):
             self.assertIn(words, r5)
 
     def test_the_repo_facts_name_the_team_values(self):
-        text = read(os.path.join(ROOT, "PRINCIPLES.md"))
+        text = read(os.path.join(ROOT, "rules", "checks.md"))
         lines = text.splitlines()
         at = [n for n, l in enumerate(lines) if l.startswith("- Repo facts live in the committed `agent_repo.conf`")][0]
         for key in ("task_files", "task_take", "data_branch"):
