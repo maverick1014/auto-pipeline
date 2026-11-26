@@ -3,7 +3,7 @@
 Written by a separate read-only agent. Nothing else was changed. `bin/agent-start.sh` was not run (read-only brief; it writes the seat lock and state files).
 
 ## Which "old"
-- OLD = `PRINCIPLES.old-249f1c1.md`, **740 lines**. It is byte-identical to `249f1c1:PRINCIPLES.md`. During this check the branch `Niagawan-mave/approval-design` was merged into main (149710d) and the remote branch deleted; `git diff 249f1c1 149710d -- PRINCIPLES.md skills agents` is empty, so this copy is still the live text. Skills were read at 249f1c1.
+- OLD = `PRINCIPLES.old-249f1c1.md`, **740 lines**. It is byte-identical to `249f1c1:PRINCIPLES.md`. During this check the branch `the task branch approval-design` was merged into main (149710d) and the remote branch deleted; `git diff 249f1c1 149710d -- PRINCIPLES.md skills agents` is empty, so this copy is still the live text. Skills were read at 249f1c1.
 - NEW = PRINCIPLES.md (79) + rules/*.md (18 files) + GLOSSARY.md + NOTICE.md + proposed-skill-changes.md, plus the skills it points to.
 
 ## Method

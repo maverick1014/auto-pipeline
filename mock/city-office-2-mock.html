@@ -399,7 +399,7 @@ const REPOS = [
   {id:'v4-office',     color:'#2FB57A'},
   {id:'v3',            color:'#E8A33A'},
   {id:'pos-pro',       color:'#9B7BFF'},
-  {id:'niagawan-scan', color:'#21A7BD'},
+  {id:'receipt-scan', color:'#21A7BD'},
 ];
 let order = ['v3','v4-office','v4-plus','auto-pipeline'];   // index 0 = 1F
 let cur = 'auto-pipeline';
@@ -593,7 +593,7 @@ const THEMES = {
   'v4-office':     {name:'行政后台', why:'V4 Office 是办公室管理那一边', carpet:'#D5E5DA', wood:'#A8C9B2', tile:'#E9F2EC', desk:'#EEF3EF', deskLeg:'#8DB59A', chair:'#2F7A57', rugMeet:'#9FD8BC', rugMgr:'#2FB57A', accent:'#2FB57A', decor:['cabinets','plants','printer']},
   'v3':            {name:'老牌会计部', why:'V3 是用了很多年的旧系统', carpet:'#D3C3A6', wood:'#8A5A3C', tile:'#E9DFCB', desk:'#C9A57A', deskLeg:'#7A4E31', chair:'#5A3A26', rugMeet:'#B98F6A', rugMgr:'#8F3B2E', accent:'#E8A33A', decor:['bookshelf','clock','safe']},
   'pos-pro':       {name:'收银台风格', why:'POS Pro 是餐厅和店铺用的收银机', carpet:'#EAD9C6', wood:'#D9A066', tile:'#F5EADC', desk:'#F4E1C8', deskLeg:'#C08C5A', chair:'#7B5CE0', rugMeet:'#CDBEFF', rugMgr:'#9B7BFF', accent:'#9B7BFF', decor:['cashier','goods','menu']},
-  'niagawan-scan': {name:'扫描实验室', why:'Niagawan Scan 用 AI 读收据', carpet:'#D2E6EA', wood:'#9FCBD3', tile:'#E7F3F5', desk:'#EAF4F6', deskLeg:'#7FB3BE', chair:'#1F7F91', rugMeet:'#9EDBE6', rugMgr:'#21A7BD', accent:'#21A7BD', decor:['scanner','lightbox','plants']},
+  'receipt-scan': {name:'扫描实验室', why:'Receipt Scan 用 AI 读收据', carpet:'#D2E6EA', wood:'#9FCBD3', tile:'#E7F3F5', desk:'#EAF4F6', deskLeg:'#7FB3BE', chair:'#1F7F91', rugMeet:'#9EDBE6', rugMgr:'#21A7BD', accent:'#21A7BD', decor:['scanner','lightbox','plants']},
 };
 const DESIGN = {'auto-pipeline':{st:'done',v:0}, 'v4-plus':{st:'done',v:0}, 'v4-office':{st:'done',v:0}, 'v3':{st:'done',v:0}};
 function shade(hex, dl){ const c = new THREE.Color(hex); c.offsetHSL(0.02*dl, 0, -0.035*dl); return '#' + c.getHexString(); }
