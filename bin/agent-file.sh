@@ -27,6 +27,16 @@
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
 #   agent-file.sh idea rm   <n>                                -> remove line n from agent_ideas.txt
 #   agent-file.sh idea keep <n>                                -> line n gets " | kept <date>": still wanted, never a housekeep suspect again
+#   agent-file.sh files show                                  -> "files: task_files=<v> task_take=<v> place=<ap-data|tree>", then "<file>: local" or "<file>: in git" per agent file
+#   agent-file.sh files sync                                  -> fetch origin ap-data, merge it into the files in git, commit, push (agent_share.py)
+#   agent-file.sh files move                                  -> main checkout only: every tracked agent file leaves the code branch (copy kept in <git dir>/agent-files-kept), ignore lines written, the files in git go onto ap-data; second run changes nothing
+#   agent-file.sh files set <task_files|task_take|task_place> <value>   -> the fact in agent_repo.conf (one code-branch commit of that file); task_files then runs files move
+#
+# Files in git (place data, the default): agent_completed.txt and agent_estimate.txt always, agent_ideas.txt and agent_todo.txt when
+#   agent_repo.conf says task_files=ideas or ideas,todo. A run that changes one of them ends with one commit on the data branch ap-data
+#   (git plumbing, HEAD and the index never move; message = the command words, e.g. "todo done t") and a push of origin ap-data at once.
+#   A push that fails never fails the command: one line "ap-data: not pushed (<why>); the next write pushes it". Place tree (cloud): nothing is committed here.
+#   idea add writes "by <git user.name>" (no name: the role); idea list shows "[<name>]" before a line that carries a name.
 #   agent-file.sh worktree set "<path>" "<module>" "<status>" -> agent_worktree.txt (add or replace)
 #   agent-file.sh worktree rm  "<path>"                       -> agent_worktree.txt
 #   agent-file.sh helper-task "<Task Name>"                   -> the task of THIS human-direct Helper session: its name becomes "<repo> Helper - <Task Name>"
@@ -233,6 +243,37 @@ sys.exit(0 if r == t or r.startswith(t.rstrip("/") + "/") else 1)' "$ROOT" 2>/de
 }
 if fake_clock_ok; then NOW=$AGENT_FAKE_NOW; else NOW=$(date '+%Y-%m-%d %H:%M'); fi; WHO=${AGENT_ROLE:-main}
 case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+
+# the files in git (agent_share.py): a snapshot before and after, one commit on the data branch when a run changed them.
+# Bash only (no python start when nothing changed): the facts are read from agent_repo.conf with grep and sed.
+conf_fact() { { grep -E "^[[:space:]]*$1[[:space:]]*=" "$ROOT/agent_repo.conf" 2>/dev/null || true; } | tail -n 1 | sed 's/^[^=]*=//; s/[[:space:]]//g'; }
+share_files() {
+  local tf; [ -e "$ROOT/.git" ] || return 0
+  [ "$(conf_fact task_place)" != tree ] || return 0
+  tf=$(conf_fact task_files)
+  printf '%s\n' agent_completed.txt agent_estimate.txt
+  # no repo fact: the person's Configure setting may say more, so watch both (agent_share.py commit decides)
+  case "$tf" in ideas) echo agent_ideas.txt;; ideas,todo|'') echo agent_ideas.txt; echo agent_todo.txt;; esac
+}
+share_snap() { local f; for f in $(share_files); do [ -f "$ROOT/$f" ] && echo "$f $(cksum < "$ROOT/$f")"; done; return 0; }
+share_msg() {
+  case "${1:-}" in
+    idea) case "${2:-}" in add) echo "idea add";; *) echo "idea ${2:-} ${3:-}";; esac;;
+    todo) echo "todo ${2:-} ${3:-}";;
+    *) echo "${1:-run}";;
+  esac
+}
+SHARE_MSG=$(share_msg "$@" | sed 's/ *$//')
+SHARE_SNAP=$(share_snap)
+share_exit() {
+  local rc=$?
+  trap - EXIT
+  if [ "$rc" -eq 0 ] && [ -n "$SHARE_SNAP$(share_snap)" ] && [ "$(share_snap)" != "$SHARE_SNAP" ]; then
+    command -v python3 >/dev/null 2>&1 && python3 "$(dirname "$0")/agent_share.py" "$ROOT" commit "$SHARE_MSG" || true
+  fi
+  exit "$rc"
+}
+case "${1:-}" in files|show|time|data|repos|estimate|backtest|eta) ;; *) trap share_exit EXIT;; esac
 
 # the whole header comment block, whatever its length
 usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
@@ -1268,6 +1309,14 @@ case "${1:-}:${2:-}" in
     shift; questions_run "$@";;
   state:*)
     shift; state_run "$@";;
+  files:*)
+    command -v python3 >/dev/null 2>&1 || refuse "files: python3 is needed and was not found"
+    case "${2:-}" in
+      show|sync|move|set) ;;
+      *) usage;;
+    esac
+    shift
+    exec python3 "$(dirname "$0")/agent_share.py" "$ROOT" "$@";;
   todo:drop)
     need 5 "$@"; line=$(first "$TODO" "$3")
     [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }
@@ -1280,10 +1329,18 @@ case "${1:-}:${2:-}" in
     checks_py task-end drop "$3" || true        # its removals and stored owner words end (G2, G4)
     echo "todo dropped: $3";;
   idea:add)
-    need 3 "$@"; append "$IDEAS" "$3 | $NOW | by $WHO"
+    need 3 "$@"; by=$(python3 "$(dirname "$0")/agent_share.py" "$ROOT" name 2>/dev/null | head -n 1 || true)
+    append "$IDEAS" "$3 | $NOW | by ${by:-$WHO}"
     echo "idea added";;
   idea:list)
-    [ -s "$IDEAS" ] && cat -n "$IDEAS" || echo "(empty)";;
+    if [ -s "$IDEAS" ]; then
+      awk '{ tag = ""
+             if (match($0, / \| by [^|]+( \| kept [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])?$/)) {
+               x = substr($0, RSTART); sub(/^ \| by /, "", x); sub(/ \| kept [0-9-]+$/, "", x); sub(/[ \t]+$/, "", x)
+               if (x !~ /^(main|task-manager|task_manager|manager|worker|deputy|helper|fast-lane-deputy|merge-deputy|interior-designer)$/) tag = "[" x "] "
+             }
+             printf "%6d\t%s%s\n", NR, tag, $0 }' "$IDEAS"
+    else echo "(empty)"; fi;;
   idea:rm)
     need 3 "$@"; n="$3"
     case "$n" in ''|*[!0-9]*) echo "no idea number $n" >&2; exit 1;; esac

@@ -29,7 +29,7 @@ import agent_cleanup  # noqa: E402
 import agent_conf  # noqa: E402
 import agent_state  # noqa: E402
 
-TAIL = re.compile(r" \| \d{4}-\d\d-\d\d \d\d:\d\d \| by \S+$")
+TAIL = re.compile(r" \| \d{4}-\d\d-\d\d \d\d:\d\d \| by [^|]+$")
 KEPT = re.compile(r" \| kept \d{4}-\d\d-\d\d\s*$")
 NOTE_WORDS = re.compile(r"(?<![A-Za-z0-9_-])(?:TMs?|task managers?|bounce"
                         r"|worker|S\d+)(?![A-Za-z0-9_-])", re.I)

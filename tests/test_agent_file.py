@@ -1304,7 +1304,7 @@ class TestIdeaKeepWithTheOtherVerbs(IdeaKeepCase):
         self.assertOk(self.repo.run("agent-file.sh", "idea", "add", "new one",
                                     env={"AGENT_FAKE_NOW": IDEA_NOW}))
         self.assertEqual(self.ideas(), [A + " | kept 2026-11-13",
-                                        "new one | 2026-11-13 21:00 | by main"])
+                                        "new one | 2026-11-13 21:00 | by t"])   # agent-files: the git name
 
     def test_usage_lists_idea_keep(self):
         res = self.repo.run("agent-file.sh")

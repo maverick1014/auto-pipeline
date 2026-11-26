@@ -286,7 +286,7 @@ class Ex1SetupInANewRepo(FilesCase):
 
     def test_a_spaced_fact_reads_the_same(self):
         path = os.path.join(self.dir, "agent_repo.conf")
-        write(path, read(path).replace("task_files=local", "task_files = ideas"))
+        write(path, read(path) + "task_files = ideas\n")
         out = self.af("files", "show").stdout
         self.assertIn("task_files=ideas", out)
         self.assertIn("agent_ideas.txt: in git", out)
@@ -559,10 +559,10 @@ class TestFilesSet(FilesCase):
     def test_a_bad_value_is_refused(self):
         r = self.af("files", "set", "task_files", "everything", ok=False)
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(self.conf().get("task_files"), "local")
+        self.assertNotIn("task_files", self.conf())
         r = self.af("files", "set", "task_take", "boss", ok=False)
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(self.conf().get("task_take"), "owner")
+        self.assertNotIn("task_take", self.conf())
 
     def test_task_take_is_committed(self):
         self.af("files", "set", "task_take", "anyone")
