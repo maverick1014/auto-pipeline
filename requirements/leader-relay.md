@@ -15,12 +15,19 @@ Leader passes on three things: his exact words, the time he typed them, and the 
 
 1. The source is Leader's chat: the transcript file lies inside the one folder the owner named as Leader's (a new setting, "Leader transcript folder", in /plugin Configure; empty = this feature is off). The real path is compared after links are resolved; a path that leaves the folder, a link pointing out of it, or any other file is refused.
 2. The exact quote stands in a message the owner typed himself in that file: a user prompt, as the same-session check defines one. Not a tool result. Not text put into the chat by anyone else: a relayed mail or message, an Orca note, a system reminder, a task notification, a system notification, a pasted block, a command or skill expansion.
+   Leader's chat (main manager, TELL 380815fe, from the shapes of Leader's real transcripts): every prompt comes through the SDK (type user, promptSource and turnOrigin "sdk", one text block, sometimes an image block first or a plain string); no field says which part he typed. Orca puts notes in front of his message in the same text block: a note header is a line that starts with "[" at column 0 and ends with "]"; a fenced block is a line "<<<", content lines, a line ">>>"; some headers carry unfenced text. His message is the last paragraph, after one blank line. So, for a transcript in the Leader folder only:
+   a. No note header and no fence line: the whole prompt is his (several paragraphs allowed). "[Image #1] " followed by his words is this case.
+   b. With a note header or a fence: only the last paragraph (after the last blank line) is his, and only when the line right before that blank line is a closed fence ">>>" or a note header line.
+   c. Unfenced text right before the last paragraph: refused, "his words cannot be told from the text Orca put into this prompt; he says it again in a new message or in the repo session".
+   d. The quote only in a header, a fence, unfenced note text or an earlier paragraph: refused, saying so. A fence left open, a last paragraph that starts with "[" or is ">>>": refused.
+   e. An image block before the text block changes nothing. Records that are never his stay refused (isMeta, promptSource "system", a task notification, a tool result, text that starts with a system reminder, a task notification, a local command or a command name).
+   The same-session check and `--relayed-from` keep their own function, unchanged.
 3. The time matches: the message that holds the quote carries the time Leader gave (to the minute).
 4. A quote under 20 characters counts only as his whole prompt, with the question it answered standing in the assistant message right before it in that same transcript (the rule of the same-session check).
 
 Anything else is refused, with one line saying which point failed: one character changed, no match, the wrong file, the wrong time, a quote that is only inside relayed text.
 
-- The same-session check and `--relayed-from` stay exactly as they are.
+- The same-session check and `--relayed-from` stay exactly as they are (their own function; the Leader parser of point 2 is used only for a file in the Leader folder).
 - The stored record says where the words were verified ("relayed by Leader", the file, the time), and the gate and the publish print it with the OWNER WORDS lines.
 - The deciding agent still reads his words by the approval cases (`rules/approval.md`); the tool only proves they are his.
 - The transcript is read only. Nothing of it is copied but the quoted words and their time.
