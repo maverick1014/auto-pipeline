@@ -1047,3 +1047,27 @@ class Ex9TwoPeopleFinishAtOnce(PairCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheRuleText(unittest.TestCase):
+    """The task-file rule says where the files live, how a repo moves, and who may work a shared task."""
+
+    def r5(self):
+        text = read(os.path.join(ROOT, "PRINCIPLES.md"))
+        return text[text.index("R5. Task files"):text.index("R6.")]
+
+    def test_where_they_live(self):
+        r5 = self.r5()
+        for words in ("git-ignored", "data branch", "ap-data", "Task files in git", "agent_repo.conf", "files move"):
+            self.assertIn(words, r5)
+
+    def test_who_may_work_a_shared_task(self):
+        r5 = self.r5()
+        for words in ("todo assign", "todo take", "owner", "assignee", "Who may take a task"):
+            self.assertIn(words, r5)
+
+    def test_the_repo_facts_name_the_team_values(self):
+        text = read(os.path.join(ROOT, "PRINCIPLES.md"))
+        line = [l for l in text.splitlines() if l.startswith("- Repo facts live in the committed `agent_repo.conf`")][0]
+        for key in ("task_files", "task_take", "data_branch"):
+            self.assertIn(key, line)
