@@ -240,7 +240,7 @@ QFILES=( _
   "PRINCIPLES.md" "rules/checks.md" "rules/branches.md" "rules/approval.md" "rules/approval.md"
   "rules/approval.md" "rules/approval.md" "PRINCIPLES.md" "rules/approval.md" "rules/routing.md"
   "PRINCIPLES.md" )
-MAIN_READS="rules/human.md rules/routing.md rules/approval.md rules/checks.md rules/branches.md rules/worktrees.md rules/watch.md"
+MAIN_READS="rules/human.md rules/routing.md rules/approval.md rules/checks.md rules/branches.md rules/worktrees.md rules/watch.md rules/files.md"
 TASK_READS="rules/tests.md rules/checks.md rules/watch.md rules/context.md rules/resources.md"
 SECOND_READS="rules/roles.md $TASK_READS"
 
@@ -520,7 +520,7 @@ if [ "${1:-}" = "--quiz" ]; then
   else
     case $QROLE in main) rn="main manager";; task) rn="task manager";; *) rn="human-direct session";; esac
     echo "=== QUIZ ($rn) — answer all $QN before any work ==="
-    echo "Reply by running:   ./agent-start.sh --answer \"<one answer per question below, like 3B>\" --role $QROLE"
+    echo 'Reply by running:   ./agent-start.sh --answer "<one answer per question of your own role, like 3B>"'
     echo "Do not start work until you see PASS."
     echo
     quiz_body | awk -v keep="$QSET " '
@@ -536,8 +536,15 @@ if [ "${1:-}" = "--answer" ]; then
   ANSWER="${2:-}"
   [ -z "$ANSWER" ] || [ "$ANSWER" = "--role" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D" [--role main|task|second|all]'; exit 2; }
   shift 2
-  quiz_parse_role "$@" && quiz_role "$QROLE_ARG" || { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D" [--role main|task|second|all]'; exit 2; }
+  quiz_parse_role "$@" && quiz_role "$QROLE_ARG" || { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D"'; exit 2; }
+  ASKED=$QROLE
+  quiz_role ""
   quiz_set
+  if [ -n "$QROLE_ARG" ] && [ "$ASKED" != "$QROLE" ]; then
+    case $QROLE in main) rn="a main manager";; task) rn="a task manager";; *) rn="a human-direct session";; esac
+    echo "QUIZ REFUSED: this session is $rn ($QN questions); --answer grades your own role only, --role is for --quiz"
+    exit 2
+  fi
   ok=0; wrong=""
   for q in $QSET; do
     tok=$(printf '%s\n' $ANSWER | grep -i "^${q}[a-d]$" | head -1)
