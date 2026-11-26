@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Run one test command per test file, N at a time, and report seconds, peak MB and exit code
-per file, slowest first (the test-slim skill, step 1). Python 3 stdlib only, any repo."""
+per file, slowest first (the slim-test-case skill, step 1). Python 3 stdlib only, any repo."""
 
 import argparse
 import glob

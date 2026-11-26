@@ -1,8 +1,8 @@
 ---
-name: test-slim
-description: Main manager only. Use when the tests of a repo have grown too many or too slow: measure, report the plan to the owner, then merge and speed them up without losing a check. The human may call /auto-pipeline:test-slim.
+name: slim-test-case
+description: Main manager only. Use when the tests of a repo have grown too many or too slow: measure, report the plan to the owner, then merge and speed them up without losing a check. The human may call /auto-pipeline:slim-test-case.
 ---
-# /test-slim: fewer, faster tests in any repo
+# /slim-test-case: fewer, faster tests in any repo
 
 Main manager only. A task manager or Helper: refuse in one line, run nothing. Words to the human: the Language setting.
 
