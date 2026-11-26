@@ -3867,3 +3867,16 @@ class TestS6SkillRename(unittest.TestCase):
                     hits.append("%s:%d" % (f, n))
         self.assertEqual(hits, [])
 
+
+class TestParallelDefault(unittest.TestCase):
+    def test_p1_tasks_run_in_parallel_two_cases_only(self):
+        text = read("PRINCIPLES.md")
+        block = text.split("P1. Fastest correct way", 1)[1].split("\n\n", 1)[0]
+        for phrase in (
+            "- Tasks run in parallel on their own branches; the one that merges second resolves the conflict. For an agent that is minutes",
+            "- A task waits for another, or joins its task manager, only when resolving would cost more than waiting",
+            '- That is two cases: one moves or renames many files the other edits; or both rewrite the same logic or paragraph. "Same file" alone is no reason',
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, block)
+        self.assertNotIn("only when that check shows a real overlap", text)
