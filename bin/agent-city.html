@@ -1666,7 +1666,8 @@ function subBadge(rowId){
    none) }. opts.bounds { l, t, r, b }: every box is kept inside by its own width (a chip stays over its head); a head
    outside the bounds is 'none' and not moved. opts.blocks [[l, t, r, b], ...]: the panels, never covered. Order: higher
    pri first; equal pri: the larger y (nearer the viewer) first, then input order. Three steps:
-   1. pri >= 2: 'full' first; a panel in the way moves it the least way out (down, left or right) inside the bounds.
+   1. pri >= 2: 'full' first, starting from where its plate was laid out last frame (px, py) when given; a panel or an
+      earlier selected / hovered plate in the way moves it the least way out (down, left or right) inside the bounds.
    2. everyone else: a chip over its head; else nudged left or right by 0.6 chip widths, else one row up (h + 2); the first
       spot that meets no panel and no box laid out before; none fits: 'none'.
    3. in order, a chip becomes 'full' when its full box (with its doing line) over its head meets no panel and no other box.
@@ -1694,13 +1695,15 @@ function plateLayout(items, opts){
     const it = items[i];
     if ((it.pri || 0) < 2) continue;
     const ew = fullW(it), eh = fullH(it);
-    let p = clampTo(ew, eh, heads[i].x, heads[i].y);
-    for (let k = 0; k < 8; k++) {
-      const blk = blocks.find(q => hit(q, fullBox(it, p.x, p.y)));
+    // it starts where its plate was laid out last frame (px, py), so a hovered chip stays under the pointer
+    let p = clampTo(ew, eh, it.px != null ? it.px : heads[i].x, it.py != null ? it.py : heads[i].y);
+    const taken = c => blocks.some(q => hit(q, fullBox(it, c.x, c.y))) || boxes.some(q => q && hit(q, fullBox(it, c.x, c.y)));   // the panels, and the selected / hovered laid out before
+    for (let k = 0; k < 12; k++) {
+      const me = fullBox(it, p.x, p.y), blk = blocks.find(q => hit(q, me)) || boxes.find(q => q && hit(q, me));
       if (!blk) break;
       let best = null, bd2 = 1e18;
       for (const c of [{ x:p.x, y:blk[3] + eh }, { x:blk[0] - ew / 2, y:p.y }, { x:blk[2] + ew / 2, y:p.y }]) {
-        if (!inside(ew, eh, c) || blocks.some(q => hit(q, fullBox(it, c.x, c.y)))) continue;
+        if (!inside(ew, eh, c) || taken(c)) continue;
         const d = (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y);
         if (d < bd2) { bd2 = d; best = c; }
       }
@@ -1731,14 +1734,17 @@ function plateLayout(items, opts){
 }
 /* plateName(c, long) -> the name on c's plate: a session's nameOf; an agent's description without the type its chip already
    says ('' when the description is only its type; two alike keep nameOf's '#<id>' ending). The short form (the default) also
-   drops a leading task name (a kebab-case word with a '-', followed by more text): 'city-x PR REVIEW' -> 'PR REVIEW'. */
+   drops the task's own name in front (the task of a live session of the floor, followed by more text): 'city-x PR REVIEW' -> 'PR REVIEW'. */
 function plateName(c, long){
   const n = nameOf(c);
   if (!isSub(c)) return n;
   const l = shortLabel(c.label, repoOf(c)) || c.label || '';
   let r = n;
   if (l && n.startsWith(l)) { r = n.slice(l.length); r = r.startsWith(' · ') ? r.slice(3) : r.trim(); }
-  if (!long) r = r.replace(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)+\s+(?=\S)/, '');
+  if (!long) {   // only the task's own name goes: the task of a live session of this floor, followed by more text
+    const m = /^(\S+)\s+(?=\S)/.exec(r);
+    if (m && citizens.some(o => !o.gone && !isSub(o) && o.terr === c.terr && (o.task === m[1] || (/^(.+) Task Manager$/.exec(o.label || '') || [])[1] === m[1]))) r = r.slice(m[0].length);
+  }
   return r;
 }
 /* platePri(f) -> how early a head tag is laid out: the selected one 3, the one under the pointer 2, a session or an area
@@ -3079,10 +3085,19 @@ function goChain(c, leadId){
   const leadC = (leadId && byId(leadId)) || (c.lead ? byId(c.lead) : null);
   if (leadC && !leadC.gone && leadC !== c && isDrawn(leadC) && leadC.at === c.at && !leadC.trip) goOffice(c, leadC); else goHall(c);
 }
+/* homeTerr(role, terr, up, lead) -> the floor an agent is drawn on: its parent's, when its parent (up, else lead) is a live
+   session of another floor or 'gov:<other floor>' (an agent sits near the one that started it); else its own */
+function homeTerr(role, terr, up, lead){
+  if (SESSION_ROLES.includes(role)) return terr;
+  const pid = up || lead || '';
+  if (pid.slice(0, 4) === 'gov:') return pid.slice(4) !== terr && terrOf(pid.slice(4)) ? pid.slice(4) : terr;
+  const p = pid ? byId(pid) : null;
+  return p && !p.gone && !isSub(p) && p.terr !== terr && terrOf(p.terr) ? p.terr : terr;
+}
 function placeAgent(a){
   if (!terrOf(a.terr)) return null; // a repo that is no floor is shown nowhere
   const role = roleOrOther(a.role);
-  const c = newCitizen(a.id, role, a.task, a.terr);
+  const c = newCitizen(a.id, role, a.task, homeTerr(role, a.terr, typeof a.up === 'string' ? a.up : '', a.lead || ''));
   c.office = a.office || null;
   c.lead = a.lead || '';
   c.up = typeof a.up === 'string' ? a.up : '';   // city-rail-tree P1: who sent it (the rail's tree)
@@ -3204,7 +3219,7 @@ function apply(ev){
         if (old) old.gone = true;
       }
       const role = roleOrOther(ev.role || 'worker');
-      const n = newCitizen(ev.id, role, ev.task, ev.terr);
+      const n = newCitizen(ev.id, role, ev.task, homeTerr(role, ev.terr, typeof ev.up === 'string' ? ev.up : '', ev.lead || ''));
       n.office = ev.office || null;
       n.lead = ev.lead || '';
       n.up = typeof ev.up === 'string' ? ev.up : '';   // city-rail-tree P1
@@ -4721,9 +4736,10 @@ function syncFigs(dt){
   for (const f of figs.values()) {
     const o = f.o;
     if (!o) continue;
-    if (o.tag.hidden || !(o.wFull > 0)) { pin(o.doing, 0, 0, false); continue; }
+    if (o.tag.hidden || !(o.wFull > 0)) { pin(o.doing, 0, 0, false); o.lastOn = false; continue; }
     const dn = o.doingOn && o.wd > 0;   // the doing line: part of the full plate's box, 26 px above the plate's bottom
     items.push({ x:o.tag._px, y:o.tag._py, w:o.wFull, wChip:o.wChip, h:o.hTag || 22, pri:platePri(f),
+      px:o.lastOn ? o.lastX : undefined, py:o.lastOn ? o.lastY : undefined,   // where this plate was laid out last frame
       wd:dn ? o.wd : 0, hd:dn ? o.hdRaw + Math.max(0, 26 - (o.hTag || 22)) : 0 });
     ovs.push(o);
   }
@@ -4732,6 +4748,7 @@ function syncFigs(dt){
   for (let i = 0; i < ovs.length; i++) {
     const t = ovs[i].tag;
     t.classList.toggle('chip', modes[i] === 'chip');
+    ovs[i].lastOn = modes[i] !== 'none'; ovs[i].lastX = items[i].x; ovs[i].lastY = items[i].y;
     if (modes[i] === 'none') t.hidden = true;
     else pin(t, items[i].x, items[i].y, true);
     if (modes[i] === 'full' && ovs[i].doingOn) pin(ovs[i].doing, items[i].x, items[i].y - 26, true);   // the doing line only over a full plate, at its moved spot

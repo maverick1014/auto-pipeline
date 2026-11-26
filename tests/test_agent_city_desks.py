@@ -885,7 +885,7 @@ __out = { drawn: [isDrawn(w1), isDrawn(w2)], terr: [w1.terr, w2.terr], at: [w1.a
         self.assertEqual(out["at"], [T1, T1])
         for s_ in out["seats"]:
             self.assertTrue(any(same_spot(s_, d) for d in out["desks"]), "at a desk there: %s" % s_)
-        self.assertEqual(out["count"], [3, 0], "counted on the parent's floor, not on its own")
+        self.assertEqual(out["count"], [4, 0], "counted on the parent's floor (its area manager, s:t, w1, w2), not on its own")
 
     def test_the_server_names_a_parent_on_another_floor(self):
         sys.path.insert(0, HERE)
