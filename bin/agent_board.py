@@ -780,14 +780,14 @@ class Board:
         return " · ".join(parts)
 
     def idle_minutes(self, t):
-        """Minutes a not started task (no stage, no wait) has sat idle, None when it is not idle: added 10 minutes or
-        more ago (minus the waits it has closed), and less than 24 hours ago. No added time: never idle."""
+        """Minutes a not started task (no stage, no wait) has sat idle, None when it is not idle: the minutes since it
+        was added minus the waits it has closed are 10 or more and under 24 hours. No added time: never idle."""
         opened = parse_time(t["opened"]) if t["opened"] else None
         age = minutes(opened, self.now)
-        if age is None or age >= IDLE_BACKLOG_MIN:
+        if age is None:
             return None
-        n = max(0, age - (t["waited"] or 0))
-        return n if n >= IDLE_AFTER_MIN else None
+        n = max(0, age - (t["waited"] or 0))      # the 24 hour cutoff counts these same minutes
+        return n if IDLE_AFTER_MIN <= n < IDLE_BACKLOG_MIN else None
 
     def idle_mark(self, n):
         return " · " + self.word("idle") % fmt_waited(self.lang, n)
@@ -796,10 +796,11 @@ class Board:
         """The Status cell of a todo row still not started after the agents are folded in ends with the idle mark."""
         for task, n in self.idle.items():
             row = self.todo_rows.get(task)
-            if row is None or row not in self.rows or row[1][2] != cell(self.word("notstarted")):
+            plain = cell(self.word("notstarted"))
+            if row is None or row not in self.rows or not (row[1][2] == plain or row[1][2].startswith(plain + " · ")):
                 continue
             cells = list(row[1])
-            cells[2] += self.idle_mark(n)
+            cells[2] = plain + self.idle_mark(n) + cells[2][len(plain):]      # before the not confirmed mark
             self.rows[self.rows.index(row)] = (row[0], cells, row[2])
 
     def queue_text(self, t):
@@ -1263,8 +1264,9 @@ WATCH_LINE = {
 
 def board_warnings(root, plugin, now):
     """The board's warnings as the WARN lines of `agent-file.sh next` and the warn hook: watch not running
-    (alone: every target is then unconfirmed), else each not confirmed task in board order, then each pane
-    without a task line. No orca call. [] for none (no watch runs here, no targets)."""
+    (alone: every target is then unconfirmed), else each not confirmed task in board order, then each idle task
+    (idle_warnings, also when no watch runs), then each pane without a task line. No orca call.
+    [] for none (no watch runs here, no targets, no idle task)."""
     args = argparse.Namespace(root=root, state_dir=root, cwd=root, now=now, lang="en", host="-", self_mode=False)
     board = build(args, records=False)
     idle = idle_warnings(board)

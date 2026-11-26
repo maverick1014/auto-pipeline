@@ -1544,7 +1544,8 @@ class TestBoardRow(WatchBoardCase):
         beta = self.repo.make_worktree("beta", as_repo=False)
         self.add("beta", "bank recon", 60, opened="2026-11-02 14:20", started=False)
         self.worktree_lines((self.alpha, "alpha", "working"), (beta, "beta", "working"))
-        self.assertEqual(self.status_of("beta"), self.st("not_started") + self.warn(40))
+        idle = " · 闲置 40分钟" if self.lang == "zh" else " · idle 40m"      # idle-task-flag
+        self.assertEqual(self.status_of("beta"), self.st("not_started") + idle + self.warn(40))
 
     def test_live_means_a_sweep_at_most_2_intervals_plus_2_minutes_old(self):
         self.watch(sweep="2026-11-02 14:48", changed="2026-11-02 14:55")

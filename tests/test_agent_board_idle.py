@@ -5,11 +5,7 @@ line, and the main manager is warned (WARN idle <task> (25m) -> ...). Fixed numb
 Every example runs in zh and en (the English classes at the end)."""
 import json
 import os
-import shutil
-import subprocess
 import sys
-import tempfile
-import importlib.util
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -17,14 +13,24 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from test_agent_board import BoardCase, NOW, HOST  # noqa: E402
-from scripthelp import ROOT  # noqa: E402
 
-BASE_REF = "origin/ap-main-maverick"
 MAIN_PID = "424242"
 FIRST = "Board warning for the main manager, act in this turn:"
 MARK = {"zh": "未开始 · 闲置 %d分钟", "en": "not started · idle %dm"}
 PLAIN = {"zh": "未开始", "en": "not started"}
 RUNNING = {"zh": "进行中", "en": "running"}
+
+
+# Status lines of the repo of test_a_repo_with_no_idle_task_prints_what_the_base_printed, captured from the code before
+# idle-task-flag: (language, width) -> text
+NO_IDLE_LINES = {
+    ('zh', 0): 'run                       ██████░░░░  65%  写代码 1/2  15:33\nold                       未开始\nq                         排队 · 在 fresh 之后\nfresh                     未开始\n',
+    ('zh', 70): 'run    ██████░░░░ 写代码 1/2 · 15:33\nq      排队 · 在 fresh 之后\nold    未开始\nfresh  未开始\n',
+    ('zh', 200): 'run    ██████░░░░ 写代码 1/2 · 15:33\nq      排队 · 在 fresh 之后\nold    未开始\nfresh  未开始\n',
+    ('en', 0): 'run                       ██████░░░░  65%  workers 1/2  15:33\nold                       not started\nq                         queue · after fresh\nfresh                     not started\n',
+    ('en', 70): 'run    ██████░░░░ workers 1/2 · 15:33\nq      queue · after fresh\nold    not started\nfresh  not started\n',
+    ('en', 200): 'run    ██████░░░░ workers 1/2 · 15:33\nq      queue · after fresh\nold    not started\nfresh  not started\n',
+}
 
 
 def warn_idle(task, n):
@@ -125,6 +131,26 @@ class IdleCase(BoardCase):
         self.assertNotIn(self.word_idle(), self.status_of("t"))
         self.assertEqual(self.warns(), [])
 
+    def test_a_worktree_target_shows_the_idle_mark_beside_not_confirmed(self):
+        beta = self.repo.make_worktree("beta", as_repo=False)
+        self.todo("beta", "2026-11-02 14:20")
+        self.worktree_lines((beta, "beta", "working"))
+        warn = " · 未确认 40m" if self.lang == "zh" else " · not confirmed 40m"
+        self.assertEqual(self.status_of("beta"), self.mark(40) + warn)
+        self.assertIn(warn_idle("beta", 40), self.warns())
+
+    def test_released_from_a_long_hold_is_idle_again_by_the_minutes_not_the_age(self):
+        # added 27 hours ago, held 26 hours, released 1 hour ago: idle 1h, though added over 24 hours ago
+        self.todo("t", "2026-11-01 12:00")
+        self.wait("t", "on", "hold", "later", now="2026-11-01 12:00")
+        self.wait("t", "off", now="2026-11-02 14:00")
+        self.assertEqual(self.status_of("t"), self.plain() + (" · 闲置 1小时" if self.lang == "zh" else " · idle 1h"))
+        self.assertEqual(self.warns(), [warn_idle("t", 60)])
+
+    def test_30_hours_idle_with_no_wait_is_still_backlog(self):
+        self.todo("t", "2026-11-01 09:00")
+        self.assertEqual(self.status_of("t"), self.plain())
+
     def test_a_line_with_no_added_time_is_plain_and_does_not_crash(self):
         with open(self.repo.path("agent_todo.txt"), "w") as fh:
             fh.write("t | big | no time here | est 20m\n")
@@ -138,35 +164,13 @@ class IdleCase(BoardCase):
 
     # ---- the status line ----
 
-    def line(self, width, base=False):
+    def line(self, width):
         stdin = json.dumps({"session_id": "s1", "cwd": self.repo.dir,
                             "workspace": {"current_dir": self.repo.dir, "project_dir": self.repo.dir}})
         env = {"AGENT_FAKE_NOW": NOW, "AGENT_STATUSLINE_WIDTH": str(width)}
-        if not base:
-            r = self.statusline_py(stdin, env=env)
-        else:
-            self.repo._board_module = self.base_module()
-            try:
-                r = self.statusline_py(stdin, env=env)
-            finally:
-                self.repo._board_module = None
+        r = self.statusline_py(stdin, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout
-
-    def base_module(self):
-        here = os.path.realpath(ROOT)
-        ok = subprocess.run(["git", "-C", here, "rev-parse", "--verify", "-q", BASE_REF], capture_output=True)
-        if ok.returncode:
-            self.skipTest("no %s here" % BASE_REF)
-        tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tmp, True)
-        tar = subprocess.run(["git", "-C", here, "archive", BASE_REF, "bin"], capture_output=True, check=True).stdout
-        subprocess.run(["tar", "-x", "-C", tmp], input=tar, check=True)
-        spec = importlib.util.spec_from_file_location("agent_board__base_%x" % id(self),
-                                                      os.path.join(tmp, "bin", "agent_board.py"))
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
 
     def test_the_status_line_marks_an_idle_task_at_every_width(self):
         self.todo("sitter", "2026-11-02 14:35")
@@ -183,7 +187,7 @@ class IdleCase(BoardCase):
         self.assertEqual(out.count(self.word_idle()), 1, out)
         self.assertIn(self.plain(), [l for l in out.splitlines() if "fresh" in l][0])
 
-    def test_a_repo_with_no_idle_task_prints_what_the_base_prints(self):
+    def test_a_repo_with_no_idle_task_prints_what_the_base_printed(self):
         self.todo("fresh", "2026-11-02 14:57")
         self.todo("old", "2026-11-01 09:00")
         self.todo("q", "2026-11-02 14:00")
@@ -191,7 +195,7 @@ class IdleCase(BoardCase):
         self.add("run", "running one", 30, opened="2026-11-02 14:00")
         self.af("todo", "stage", "run", "workers", "1/2", now="2026-11-02 14:30")
         for width in (0, 70, 200):
-            self.assertEqual(self.line(width), self.line(width, base=True), width)
+            self.assertEqual(self.line(width), NO_IDLE_LINES[(self.lang, width)], width)
 
     # ---- the warning is said once (the existing hook limit) ----
 
