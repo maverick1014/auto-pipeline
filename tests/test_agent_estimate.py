@@ -155,9 +155,16 @@ class EstimateCase(ScriptCase):
 
     def setUp(self):
         super().setUp()
-        quiet_done(self.repo)
+        if self.own_file():
+            quiet_done(self.repo)
         if not os.path.exists(os.path.join(ROOT, "bin", "agent_estimate.py")):
             self.fail("bin/agent_estimate.py does not exist yet. Write it.")
+
+    def own_file(self):
+        """test-slim-3: the speed-ups (no sweep and no background runner after todo done, estimate/backtest/retrain
+        in-process) are for the classes of this file only; a subclass in another file (estimate_learn, version,
+        inputs, fit, forecast) may be about exactly those and keeps the real command line."""
+        return type(self).__module__ == __name__
 
     def write(self, name, text):
         with open(self.repo.path(name), "w") as fh:
@@ -185,7 +192,7 @@ class EstimateCase(ScriptCase):
         env = {"AGENT_FAKE_NOW": kwargs.pop("now", NOW)}
         key = "%s.%s" % (type(self).__name__, self._testMethodName)
         if (args[:1] not in (("estimate",), ("backtest",), ("retrain",)) or kwargs or key in REAL_SHELL
-                or os.environ.get("AGENT_TEST_NO_TEMPLATE")):
+                or os.environ.get("AGENT_TEST_NO_TEMPLATE") or not self.own_file()):
             return self.repo.run("agent-file.sh", *args, env=env, **kwargs)
         return self.af_in_process(args, env)
 
