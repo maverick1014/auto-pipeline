@@ -1660,7 +1660,8 @@ function subBadge(rowId){
   return [w ? 'worker ×' + w : '', d ? 'deputy ×' + d : ''].filter(Boolean).join(' · ');
 }
 /* plateLayout(items, opts) -> 'full' | 'chip' | 'none' per item, in input order. An item is a name plate on screen { x, y (its
-   bottom centre, px), w (the full plate), wChip (the role chip alone), h, pri }. opts.bounds { l, t, r, b }: first each item
+   bottom centre, px), w (the full plate), wChip (the role chip alone), h, pri, wd and hd (the doing line above a full plate:
+   its width and its height; 0 or absent: none -- a chip or hidden plate shows none) }. opts.bounds { l, t, r, b }: first each item
    is moved (x and y changed in place) the least that keeps its full box inside; opts.blocks [[l, t, r, b], ...]: boxes
    already taken (panels): no shown plate meets one, the first included. Higher pri first; equal pri: the larger y (nearer
    the viewer) first, then input order. The first is always 'full' (unless a block is in the way); each next one is 'full'
@@ -1669,16 +1670,17 @@ function plateLayout(items, opts){
   const n = items.length, order = [], out = new Array(n), blocks = (opts && opts.blocks) || [], bd = opts && opts.bounds, shown = [];
   if (bd) for (const it of items) {
     if (it.x < bd.l || it.x > bd.r || it.y < bd.t || it.y > bd.b) { it.off = true; continue; }   // the head is off screen: no plate, not moved
-    it.x = Math.max(bd.l + it.w / 2, Math.min(bd.r - it.w / 2, it.x));
-    it.y = Math.max(bd.t + it.h, Math.min(bd.b, it.y));
+    const ew = Math.max(it.w, it.wd || 0);
+    it.x = Math.max(bd.l + ew / 2, Math.min(bd.r - ew / 2, it.x));
+    it.y = Math.max(bd.t + it.h + (it.hd || 0), Math.min(bd.b, it.y));
   }
   for (let i = 0; i < n; i++) { if (items[i].off) { out[i] = 'none'; delete items[i].off; } else order.push(i); }
   order.sort((a, b) => ((items[b].pri || 0) - (items[a].pri || 0)) || (items[b].y - items[a].y) || (a - b));
-  const box = (it, w) => [it.x - w / 2, it.y - it.h, it.x + w / 2, it.y];
+  const box = (it, w, hd) => [it.x - w / 2, it.y - it.h - hd, it.x + w / 2, it.y];   // hd: the doing line above a full plate
   const hit = (q, b) => Math.min(q[2], b[2]) > Math.max(q[0], b[0]) && Math.min(q[3], b[3]) > Math.max(q[1], b[1]);
   const meets = b => { for (const q of shown) if (hit(q, b)) return true; for (const q of blocks) if (hit(q, b)) return true; return false; };
   for (const i of order) {
-    const it = items[i], full = box(it, it.w), chip = box(it, it.wChip);
+    const it = items[i], full = box(it, Math.max(it.w, it.wd || 0), it.hd || 0), chip = box(it, it.wChip, 0);
     if (!meets(full)) { shown.push(full); out[i] = 'full'; }
     else if (!meets(chip)) { shown.push(chip); out[i] = 'chip'; }
     else out[i] = 'none';
@@ -4592,7 +4594,12 @@ function pinOv(f, st){
   }
   const doing = !far && c && st.mood === 'busy' ? doingText(c) : '';
   if (doing) setText(o.doing, doing);
-  pin(o.doing, sx, y, doing !== ''); if (doing) y -= 22;
+  pin(o.doing, sx, y, doing !== '');
+  o.doingOn = doing !== '';
+  if (doing) {   // its size is measured only when its text changes (syncFigs lays it out with the plate)
+    if (o.dMeasured !== doing) { o.dMeasured = doing; o.wd = o.doing.offsetWidth; o.hdRaw = o.doing.offsetHeight || 20; }
+    y -= 22;
+  }
   const ask = c ? openAskFor(c.id) : openGovAskFor(terr);
   const showQm = !!(ask && ask.phase === 'owner');
   const bubText = c ? personBubble(c) : govTalk(terr);
@@ -4668,8 +4675,11 @@ function syncFigs(dt){
   const items = [], ovs = [];
   for (const f of figs.values()) {
     const o = f.o;
-    if (!o || o.tag.hidden || !(o.wFull > 0)) continue;
-    items.push({ x:o.tag._px, y:o.tag._py, w:o.wFull, wChip:o.wChip, h:o.hTag || 22, pri:platePri(f) });
+    if (!o) continue;
+    if (o.tag.hidden || !(o.wFull > 0)) { pin(o.doing, 0, 0, false); continue; }
+    const dn = o.doingOn && o.wd > 0;   // the doing line: part of the full plate's box, 26 px above the plate's bottom
+    items.push({ x:o.tag._px, y:o.tag._py, w:o.wFull, wChip:o.wChip, h:o.hTag || 22, pri:platePri(f),
+      wd:dn ? o.wd : 0, hd:dn ? o.hdRaw + Math.max(0, 26 - (o.hTag || 22)) : 0 });
     ovs.push(o);
   }
   const bounds = { l:4, t:4, r:W - 4, b:H - 4 }, blocks = panelBlocks();
@@ -4679,6 +4689,8 @@ function syncFigs(dt){
     t.classList.toggle('chip', modes[i] === 'chip');
     if (modes[i] === 'none') t.hidden = true;
     else pin(t, items[i].x, items[i].y, true);
+    if (modes[i] === 'full' && ovs[i].doingOn) pin(ovs[i].doing, items[i].x, items[i].y - 26, true);   // the doing line only over a full plate, at its moved spot
+    else pin(ovs[i].doing, 0, 0, false);
   }
 }
 const DEMO_WORLD = {"v": 2, "repos": [{"id": "4d5d7e95", "name": "auto-pipeline", "here": true, "n": 0}, {"id": "8329562e", "name": "v4-plus", "here": true, "n": 1}, {"id": "7b94683e", "name": "v4-office", "here": true, "n": 2}, {"id": "0a8b5440", "name": "v3", "here": true, "n": 3}], "floors": ["4d5d7e95", "8329562e", "7b94683e"], "designs": {"8329562e": {"v": 1, "name": "\u6536\u94f6\u53f0\u98ce\u683c", "why": "POS \u6536\u94f6\u7684 repo", "colors": {"accent": "#2E7D6B", "carpet": "#E4DCCB", "manager_floor": "#D9C2A0", "pantry_floor": "#EEEAE0", "desk": "#EFDAB5", "desk_leg": "#BBA27C", "chair": "#3E4560", "meeting_rug": "#A9BCE0", "manager_rug": "#C97B66"}, "decor": ["cashier", "none", "goods"]}, "7b94683e": {"v": 2, "name": "\u6e05\u723d\u84dd\u767d", "why": "\u540e\u53f0\u529e\u516c\uff0c\u5e72\u51c0\u660e\u4eae", "colors": {"accent": "#3B82C4", "carpet": "#DDD6C7", "manager_floor": "#C9B79A", "pantry_floor": "#E3DED2", "desk": "#F4F7FB", "desk_leg": "#9FB3C8", "chair": "#2F5D8A", "meeting_rug": "#BBD3EC", "manager_rug": "#6F9BC9"}, "materials": {"carpet": "wood", "manager_floor": "herringbone", "pantry_floor": "checker"}, "layout": {"items": [{"k": "tm", "x": -5.4, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -3.0, "z": -1.2, "yaw": 0}, {"k": "tm", "x": -5.4, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -3.0, "z": 2.0, "yaw": 0}, {"k": "tm", "x": -0.6, "z": 0.2, "yaw": 90}, {"k": "helper", "x": 3.4, "z": -1.2, "yaw": 0}, {"k": "helper", "x": 5.4, "z": -1.2, "yaw": 0}, {"k": "meet", "x": 3.8, "z": 3.6, "yaw": 0}, {"k": "plant", "x": -1.2, "z": -3.8, "yaw": 0, "s": 1}, {"k": "plant", "x": -0.8, "z": 5.4, "yaw": 0, "s": 0.8}, {"k": "decor", "id": "bookshelf", "x": -5.2, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "plants", "x": -1.6, "z": 6.35, "yaw": 180}, {"k": "decor", "id": "clock", "x": 6.45, "z": 0.8, "yaw": 270}]}}}, "asked": ["8329562e", "7b94683e"]};
