@@ -313,7 +313,7 @@ class TestPrinciplesW13CloseCase(unittest.TestCase):
     def test_the_quiz_still_has_twenty_nine_questions(self):
         text = read("bin", "agent-start.sh")
         # test-levels (2026-11-20): Q38 and Q39 (R8); approval-design: Q40-Q44
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 34)   # S5: the quiz tidied
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 36)   # S5 + T4
 
 
 class TestCloseCaseSkill(unittest.TestCase):
@@ -1680,7 +1680,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
     def test_the_map_names_the_new_pieces(self):
         f = self.text().split("## F. Map")[1]
         for phrase in ("bin/agent_blocks.py", "bin/agent-level.sh", "Check deputy", "agent_repo.conf",
-                       "34-question quiz", "agent-file.sh next", "checks gate"):
+                       "36-question quiz", "agent-file.sh next", "checks gate"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, f)
 
@@ -3809,11 +3809,15 @@ class TestFixOrder2Texts(unittest.TestCase):
         self.assertIn("a whole line or sentence", self.r8())
 
     def test_s3_another_machine_goes_to_the_owner(self):
-        for text in (self.r8(), principles_between("W12. ", "W13. ")):
-            with self.subTest(rule=text[:4]):
-                line = next(l for l in text.splitlines() if "another machine" in l and "cannot be verified here" in l)
-                self.assertIn("owner", line)
+        # T3 (TELL 7ae473b6): the relay lines stand once, in R8; W12 points to them
+        line = next(l for l in self.r8().splitlines() if "another machine" in l and "cannot be verified here" in l)
+        self.assertIn("owner", line)
         self.assertIn("main manager lock", self.r8())
+        text = read("PRINCIPLES.md")
+        self.assertEqual(text.count("cannot be verified here"), 1)
+        self.assertEqual(text.count("must be a repo with a main manager lock"), 1)
+        w12 = next(l for l in principles_between("W12. ", "W13. ").splitlines() if "--relayed-from" in l)
+        self.assertIn("R8", w12)
 
     def test_s4_usage_shows_relayed_from(self):
         head = read("bin", "agent-file.sh").split("\nset ")[0]
@@ -3894,3 +3898,27 @@ class TestParallelDefault(unittest.TestCase):
         for path in ("PRINCIPLES.md", "skills/dispatch/SKILL.md"):
             with self.subTest(path=path):
                 self.assertNotIn("in the two cases of P1", read(path))
+
+
+class TestT2T3Texts(unittest.TestCase):
+    """TELL 7ae473b6 T2: the late-yes brief fields are named where the deputies are briefed."""
+
+    def test_t2_the_merge_brief_template_has_the_fields(self):
+        m = read(*MERGE)
+        for field in ("late yes of:", "old branch:"):
+            with self.subTest(field=field):
+                self.assertIn(field, m)
+
+    def test_t2_dispatch_step_2_and_r8_name_them(self):
+        step2 = next(l for l in read(*DISPATCH).splitlines() if l.startswith("2. Small task"))
+        r8 = principles_between("R8. ", "## B. Work")
+        for field in ("late yes of:", "old branch:"):
+            with self.subTest(field=field):
+                self.assertIn(field, step2)
+                self.assertIn(field, r8)
+
+    def test_t2_a_publish_line_copies_the_planned_blocks(self):
+        r8 = principles_between("R8. ", "## B. Work")
+        line = next(l for l in r8.splitlines() if "<task>-publish" in l)
+        self.assertIn("--checks", line)
+

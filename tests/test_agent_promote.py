@@ -723,6 +723,43 @@ class TestS4GateSaysIt(PromoteCase):
         self.assertNotIn("carries commits of", r.stdout)
 
 
+class TestT5NothingToPublish(PromoteCase):
+    """TELL 60aacfae T5: a branch with no commit of its own on top of production publishes nothing, so the gate and
+    promote refuse it (a cherry-pick that failed silently must not look published)."""
+
+    def empty_branch(self, name):
+        self.git("fetch", "-q", "origin")
+        self.git("branch", "-q", name, "origin/main")
+        self.git("push", "-q", "-u", "origin", name)
+        return name
+
+    def state(self):
+        path = os.path.join(self.repo.dir, "agent_state.txt")
+        return open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+
+    def test_t5_promote_refuses_and_stores_nothing(self):
+        b = self.empty_branch("feat-e")
+        self.ready_direct(b, b)
+        before = self.git("rev-parse", "origin/main")
+        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("nothing to publish: feat-e has no commit on top of main", r.stdout + r.stderr)
+        self.assertNotIn("promote: feat-e -> main", r.stdout)
+        self.assertNotIn("OWNER WORDS publish feat-e ->", self.state())
+        self.git("fetch", "-q", "origin")
+        self.assertEqual(self.git("rev-parse", "origin/main"), before)
+
+    def test_t5_the_gate_refuses_it_too(self):
+        b = self.empty_branch("feat-f")
+        self.ready_direct(b, b)
+        wt = os.path.join(self.repo.base, "wt-feat-f")
+        self.git("worktree", "add", "-q", wt, b)
+        r = self.repo.run("agent-file.sh", "checks", "gate", b, "--dir", wt, "--branch", b, "--base", "origin/main")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("nothing to publish: feat-f has no commit on top of", r.stdout)
+        self.assertNotIn("GATE PASS", r.stdout)
+
+
 class TestG15Gather(PromoteCase):
     def test_a_missing_worktree_is_named(self):
         self.git("fetch", "-q", "origin")
