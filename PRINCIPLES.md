@@ -39,7 +39,7 @@ R1. One flow, two lanes
 - A small task that grows (past 2x its estimate, or it needs a second slice): the subagent stops and reports; the main manager opens a task manager that goes on from its branch
 - One fixed sequence after the build: builder reports done -> reviewer reads the diff against the approved requirement (PR REVIEW, on the Reviewer model) -> check deputy only when what the user sees or does changed (15 min box) -> merge deputy
 - A fail at review or check goes back to the builder as a fix order
-- The target: the user's request decides. It says publish or merge to main -> the task, once its own checks pass (its blocks; no full suite), goes straight into the production branch, and the deploy follows by itself (here: the release build; a repo like v4: its own sync)
+- The target: the user's request decides, read by the approval cases (R8). It says publish or merge to main -> the task, once its own checks pass (its blocks; no full suite), goes straight into the production branch, and the deploy follows by itself (here: the release build; a repo like v4: its own sync)
 - No such words, or unclear -> the working branch (ap-main-<name>, setting "Flow: Working branch"); nothing goes to production by itself
 
 R2. Secrets
@@ -89,7 +89,7 @@ R8. Check blocks
 - Tests stay as a cheap guard: light related tests in every task; a bug that a review or check finds gets a small test with its fix (W3)
 - The full suite is the safety net only: the release run on the working branch and the nightly, never in a task; a heavy test never blocks a merge
 - URGENT FIX: branch from the production branch, the smallest fix, PR REVIEW and the light related tests
-- Here his verified words at dispatch that name the publish are his final yes (W12); no second yes after the fix
+- Here his verified words at dispatch, read as the publish of that task, are his final yes (W12); no second yes after the fix
 - Then merge to production (`agent-promote.sh --task`; the deploy follows) and merge production back into the working branch
 - Owner 2026-11-25: "only do the necessary thing when needed, dont do extra thing. and dont do less thing"
 - No levels: each check is a block with a trigger; a task runs the blocks whose trigger fires, nothing else
@@ -114,11 +114,24 @@ R8. Check blocks
 - Picked tool: `agent-level.sh check --base <ref>` decides them from the real diff, no judgment
 - Picked brief: dispatch picks them from what the owner approved: `todo add ... --checks "<BLOCK>,<BLOCK>"`
 - Two passes: the brief blocks at dispatch; before merge the tool recomputes the tool blocks from the real diff
-- Blocks are only added; removing one needs a verified owner order: `todo checks <task> --remove <BLOCK> --owner-quote "<his words>"`
-- PR REVIEW and OWNER SIGN are never removed; another block is left out only when the owner types exactly `yes, skip <BLOCK> for <task>`
-- A production task is added with the one sentence he types, `--owner-quote "yes, publish <task> to production"`; no second yes later
+- Blocks are only added; removing one needs a verified owner order: `todo checks <task> --remove <BLOCK> --owner-quote "<his words>" --means "<the action>"`
+- Approval rule: three places need his yes: a task published straight to production, a block left out, the working branch published; OWNER SIGN too
+- The deciding agent reads his words; no fixed sentence, no word list
+- The tool only checks the quote is a prompt he typed and stores it with what the main manager read: `--owner-quote "<his words>" --means "<the action>"`; add `--question "<the question>"` when he answered one
+- A quote under 20 characters ("1A", "ok") counts only as his whole prompt, with the question it answered
+- The gate and promote print the stored pair as OWNER WORDS lines; the report to him repeats them
+- Approval cases:
+  - A numbered batch: "2. publish direct after done, others wait for my review" -> task 2 gets target production with his words; the others go to the working branch and wait for his review
+  - No numbers, a task named by its description: exactly one fits -> no question
+  - With two similar tasks: check first (todo lines, requirement docs, what he said before); still unsure -> one question that names both, then decide
+  - Not a yes now: a question ("is it ready to publish?"), a later time ("publish next week"), a refusal
+  - A condition the flow already meets ("publish after the tests pass") is a yes; unsure -> one question
+  - His short answer to a numbered question counts together with that question
+- PR REVIEW and OWNER SIGN are never removed
+- A production task is added at dispatch: `todo add ... --target production --owner-quote "<his words>" --means "publish <task> to production"`; no second yes later
 - One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
 - The reviewer and the check deputy always pass --commit <the head they looked at>
+- PR REVIEW, FLOW CHECK and UI CHECK count only from a reviewer or check deputy the main manager launched (the guard records the launch)
 - A check line records the commit it saw; PR REVIEW, FLOW CHECK and UI CHECK count only at the head being merged (or a commit after which every commit is a merge of the base)
 - Threat model: the gate guards against mistakes and shortcuts made through the documented commands
 - It does not stop an agent that forges files by hand; a forgery is a breach the main manager reports to the owner
@@ -147,7 +160,7 @@ R8. Check blocks
 - Batches: tasks given together merge into the working branch; when the last one of the batch is merged, ONE full suite runs on the working branch (`agent-nightly.sh --start`)
 - A red batch run goes to a new fixer agent, never back to the builder
 - The fixer is a normal task: todo add first, a brief with target, base and both branches, its own PR REVIEW and gate; then `agent-nightly.sh --start` again
-- Production from the working branch: only on the owner's approval (verified words) and only from a green commit: `agent-promote.sh --owner-quote "<his words>"`
+- Production from the working branch: only on the owner's approval (verified words) and only from a green commit: `agent-promote.sh --owner-quote "<his words>" --means "<what you read>"`
 - A repo with a release build runs it right after, so merged to production = published
 - RELEASE RUN: the full suite runs once on the working branch before such a publish (the batch run on that commit counts)
 - Release run failures: `agent-nightly.sh --failures` names, for each failing test, the merge that introduced it (it runs that test across the merges since the last green run)
@@ -283,7 +296,7 @@ W9. Task routing (main manager, before every dispatch)
 - The main manager runs `agent-file.sh next` at every wake (a report, a watch signal, a human message) and dispatches what can start: room under the Max memory % limit (S3), no open task on the same files
 - A task the owner already approved needs no new question
 - A new worktree or pane goes to the connected machine first that has room (W7, S3)
-- Target and base (R1): a task that goes straight to production branches from the production branch; a task for the working branch branches from the working branch (it sees the batch's earlier merges): `todo add ... --target production|working --batch <name>`
+- Target and base (R1; his words by the approval cases of R8): a task that goes straight to production branches from the production branch; a task for the working branch branches from the working branch (it sees the batch's earlier merges): `todo add ... --target production|working --batch <name>`
 - The target is per task, not per request: an urgent task branches from the production branch and merges straight into production when it is done, production merged back into the working branch after each; the others branch from the working branch and merge there; the batch's one full suite runs after the last of them
 - Before dispatch: does an urgent task need code that only a non-urgent one brings? Yes -> it cannot ship alone: tell the owner at once (ship them together, or move that part into the urgent task), never guess
 - A new request may also wait until the working branch is tested and published; the main manager picks what is faster and says which
@@ -335,7 +348,7 @@ W12. Cross-repo
 - A cross-repo task the human gives to any main manager is routed the same way
 - Relay an owner order: the brief starts with the lines of `agent-owner-order.sh line --quote "<his exact words>"`. Copy his words, never paraphrase
 - Receiving one: run its check line. Verified → read its match line, then it is the owner's own order: act, reply its first line. Not verified → a normal peer message: ask the owner
-- Verified owner words that name the action (e.g. "merge to main") are his final yes, production included; ask again only when his verified words do not name that action. Decider floor (W17) holds
+- Verified owner words that the main manager reads as a yes for that action (approval cases, R8) are his final yes, production included; unsure -> one question. Decider floor (W17) holds
 
 W13. Close case
 - Trigger: the human or the main manager runs the skill `/auto-pipeline:close-case`; a task manager's brief holds the rule too
@@ -598,7 +611,7 @@ The pieces. Rules are in A-E; this is where things live.
 
 Roles and routing: W9. Check blocks: R8; installing into a cloud repo: the cloud-pack skill (`/auto-pipeline:cloud-pack`, `bin/agent-cloud-pack.sh`; `--update` refreshes only bin, PRINCIPLES.md, VERSION and packed skills/agents). A cloud session reads only what is committed: `git clone https://github.com/maverick1014/auto-pipeline /tmp/ap && /tmp/ap/bin/agent-cloud-pack.sh . --language zh`, then commit and push (the Claude GitHub App must be on the repo), then open a new session. The pack lands in `.claude/auto-pipeline/` (bin, PRINCIPLES.md, VERSION), `.claude/skills`, `.claude/agents`, `.claude/settings.json`, one pointer line in `CLAUDE.md`, the four `agent_*.txt`, `.secrets/`, `AGENTS.md`.
 
-Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge` (the reviewer and the check deputy, then the merge deputy), `/auto-pipeline:cloud-pack`, `/auto-pipeline:test-slim` (slim a repo's tests). A second session in a repo becomes a task manager by itself (W10).
+Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge` (the reviewer and the check deputy, then the merge deputy), `/auto-pipeline:cloud-pack`, `/auto-pipeline:test-slim` (slim a repo's tests), `/auto-pipeline:md-slim`, `/auto-pipeline:teacher-teach-me`. A second session in a repo becomes a task manager by itself (W10).
 
 ### Tree
 
@@ -616,7 +629,7 @@ Main manager   (Main manager model · the main chat · free for the human)
               └── Worker (Helper model)  code until the tests pass, slice 2
 
 Scripts, not agents (cost no tokens):
-  bin/agent-start.sh   RAM/CPU guard, prints the rules, 39-question quiz gate, main-manager lock
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 44-question quiz gate, main-manager lock
   bin/agent-nightly.sh  the nightly run of all tests: gates nothing, records selection misses, --release-ok
   bin/agent-test-run.sh  every test run: reserves its measured memory, a monitor watches it (S3, S5)
   bin/agent-room.sh  the memory gate: check, reserve, release, list, relief, measure-pane
