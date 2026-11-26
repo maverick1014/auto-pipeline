@@ -436,5 +436,184 @@ class TestTag(unittest.TestCase):
                 self.assertTrue(texts["zh"].get(key) and texts["en"].get(key))
 
 
+
+# -- fix round (TELL 7fba8777, the UI CHECK on the laptop) ---------------------------------------------------------
+#
+# plateLayout(items) -> one mode per item, in input order: 'full' | 'chip' | 'none'. An item is a name plate on screen:
+# { x, y (its bottom centre, px), w (full plate width), wChip (the role chip alone), h, pri (higher first: the selected
+# person, then the one under the pointer, then the rest) }. Equal pri: the one lower on screen (larger y, nearer the
+# viewer) first, then input order. Its box: full -> [x - w/2, y - h, x + w/2, y], chip -> the same with wChip. The first
+# item in that order is always 'full'; each next one is 'full' when its full box meets no box already shown, else 'chip'
+# when its chip box meets none, else 'none' (the full plate comes back on hover or tap). No two shown boxes overlap.
+
+def boxes_of(items, modes):
+    out = []
+    for it, m in zip(items, modes):
+        if m == "none":
+            continue
+        w = it["w"] if m == "full" else it["wChip"]
+        out.append((it["x"] - w / 2, it["y"] - it["h"], it["x"] + w / 2, it["y"]))
+    return out
+
+
+def overlapping(boxes, eps=0.5):
+    bad = []
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            a, b = boxes[i], boxes[j]
+            if min(a[2], b[2]) - max(a[0], b[0]) > eps and min(a[3], b[3]) - max(a[1], b[1]) > eps:
+                bad.append((i, j))
+    return bad
+
+
+def layout(items):
+    return sim("__out = plateLayout(__payload.items);", {"items": items}, required=("plateLayout",))
+
+
+class TestPlateLayout(unittest.TestCase):
+    """Fix 1: no two name plates overlap on screen; the selected (then hovered) one keeps its full plate."""
+
+    def test_a_tight_cluster_never_overlaps(self):
+        import random
+        rnd = random.Random(7)
+        items = [{"x": 600 + rnd.uniform(-60, 60), "y": 300 + rnd.uniform(-30, 30), "w": rnd.uniform(100, 180),
+                  "wChip": rnd.choice([32, 52, 62]), "h": 22, "pri": 0} for _ in range(30)]
+        modes = layout(items)
+        self.assertEqual(len(modes), 30)
+        self.assertTrue(set(modes) <= {"full", "chip", "none"}, modes)
+        self.assertEqual(overlapping(boxes_of(items, modes)), [])
+        first = max(range(30), key=lambda i: (items[i]["pri"], items[i]["y"], -i))
+        self.assertEqual(modes[first], "full", "the first in order always shows in full")
+
+    def test_the_selected_one_is_full_in_a_pile(self):
+        items = [{"x": 500, "y": 400, "w": 150, "wChip": 32, "h": 22, "pri": 0} for _ in range(8)]
+        items[5]["pri"] = 2
+        modes = layout(items)
+        self.assertEqual(modes[5], "full")
+        self.assertEqual([m for i, m in enumerate(modes) if i != 5], ["none"] * 7, "a pile: one plate only")
+
+    def test_apart_all_full(self):
+        items = [{"x": 100 + 300 * i, "y": 300, "w": 180, "wChip": 32, "h": 22, "pri": 0} for i in range(5)]
+        self.assertEqual(layout(items), ["full"] * 5)
+
+    def test_chip_when_only_the_chip_fits(self):
+        items = [{"x": 100, "y": 100, "w": 160, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": 210, "y": 100, "w": 160, "wChip": 32, "h": 22, "pri": 0}]
+        self.assertEqual(layout(items), ["full", "chip"])
+
+    def test_nearer_first_on_a_tie(self):
+        items = [{"x": 100, "y": 100, "w": 160, "wChip": 32, "h": 22, "pri": 0},
+                 {"x": 110, "y": 110, "w": 160, "wChip": 32, "h": 22, "pri": 0}]
+        modes = layout(items)
+        self.assertEqual(modes[1], "full", "lower on screen = nearer the viewer")
+        self.assertNotEqual(modes[0], "full")
+
+    def test_the_figure_pass_uses_it(self):
+        src = script_function_source("syncFigs") or ""
+        for bit in ("plateLayout(", "hovered", "selected"):
+            with self.subTest(bit=bit):
+                self.assertIn(bit, src, "syncFigs lays the plates out once per frame, the selected and hovered first")
+
+
+PROJECT_JS = r"""
+// the page's default floor view (resetView + fitDist + FOV), projected the way three.js does it
+function project(W, H, pts){
+  const a = W / Math.max(1, H), dist = (a < .9 ? Math.max(31, 24 / a) : 21) * Math.min(1.3, Math.max(1, 760 / Math.max(1, H)));
+  const az = -.62, el = .86, T = [0, 0, .3], cp = Math.cos(el);
+  const P = [T[0] + Math.sin(az) * cp * dist, T[1] + Math.sin(el) * dist, T[2] + Math.cos(az) * cp * dist];
+  const sub = (u, v) => [u[0] - v[0], u[1] - v[1], u[2] - v[2]], dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  const cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const norm = u => { const l = Math.hypot(u[0], u[1], u[2]); return [u[0] / l, u[1] / l, u[2] / l]; };
+  const f = norm(sub(T, P)), r = norm(cross(f, [0, 1, 0])), u = cross(r, f), t = Math.tan(FOV * Math.PI / 360);
+  return pts.map(p => { const v = sub([p.x, 2.2, p.z], P), zc = dot(v, f);
+    return { x: (dot(v, r) / (zc * t * a) + 1) / 2 * W, y: (1 - dot(v, u) / (zc * t)) / 2 * H }; });
+}
+// a plate's width as the page's CSS draws it: chip (10px bold, padding 6) + gap 5 + name (12px, max 130) + padding 15 + border 3
+const textW = (s, px) => [...String(s)].reduce((n, ch) => n + (ch.charCodeAt(0) > 0x2e80 ? px : px * .58), 0);
+function plateItems(W, H){
+  const ps = live().filter(c => isDrawn(c) && c.at === c.terr);
+  const at = project(W, H, ps.map(c => { const t = floorOfC(c); return { x: c.x - t.cx, z: c.y - t.cz }; }));
+  return ps.map((c, i) => { const chip = 12 + textW(plateWord(c), 10);
+    return { x: at[i].x, y: at[i].y, w: chip + 5 + Math.min(130, textW(nameOf(c), 12)) + 18, wChip: chip + 18, h: 22, pri: 0 }; });
+}
+"""
+
+
+class TestPlatesOnTheCrowdFloor(unittest.TestCase):
+    """Fix 1 on the 30-person crowd floor (6 managers x 4 workers), projected as the page's default floor view at the
+    laptop's 1440x713 and at phone width 390x844: the plate boxes the layout computes do not intersect."""
+
+    def test_no_two_plates_intersect(self):
+        agents = []
+        for i in range(6):
+            agents.append(agent("s:m%d" % i, "task-manager", up=GOV, label="task-%d Task Manager" % i, task="task-%d" % i))
+            agents += [agent("w%d-%d" % (i, k), "worker", up="s:m%d" % i, task="task-%d Worker %d: slice %d" % (i, k, k))
+                       for k in range(1, 5)]
+        out = sim(PROJECT_JS + r"""
+snap(__payload.view, __payload.agents);
+settle(40);
+const res = {};
+for (const [W, H] of [[1440, 713], [390, 844]]) { const items = plateItems(W, H); res[W] = { items, modes: plateLayout(items) }; }
+__out = { n: live().filter(isDrawn).length, res };
+""", {"view": view(), "agents": agents}, required=REQUIRED + ("plateLayout", "FOV"))
+        self.assertEqual(out["n"], 30)
+        for width in ("1440", "390"):
+            with self.subTest(width=width):
+                items, modes = out["res"][width]["items"], out["res"][width]["modes"]
+                self.assertEqual(len(modes), 30)
+                self.assertEqual(overlapping(boxes_of(items, modes)), [])
+                self.assertGreater(sum(m != "none" for m in modes), 0)
+
+
+class TestOthersStayWhenOneLeaves(unittest.TestCase):
+    """Fix 2 (rule 3, the others stay): a leaving agent frees its desk; nobody else moves, also when a new one comes."""
+
+    def test_the_other_three_keep_their_seats(self):
+        agents = [agent("s:t", "task-manager", up=GOV)] + [agent("w%d" % i, "worker", up="s:t", task="city-x Worker %d: s%d" % (i, i))
+                                                         for i in range(1, 5)]
+        out = sim(r"""
+snap(__payload.view, __payload.agents);
+settle(40);
+const ids = ['w2', 'w3', 'w4'];
+const before = ids.map(seatOfId);
+apply({ type: 'done', id: 'w1' });
+settle(40);
+const gone = !byId('w1');
+const after = ids.map(seatOfId), pos = ids.map(posOfId);
+apply({ type: 'spawn', id: 'w5', role: 'worker', label: 'worker', task: 'city-x Worker 5: new', terr: __payload.t1, up: 's:t' });
+settle(40);
+__out = { gone, before, after, pos, later: ids.map(seatOfId), w5: seatOfId('w5'), desks: deskSeats(__payload.t1), tm: seatOfId('s:t') };
+""", {"view": view(), "t1": T1, "agents": agents})
+        self.assertTrue(out["gone"], "worker 1 left")
+        for i, wid in enumerate(("w2", "w3", "w4")):
+            with self.subTest(worker=wid):
+                self.assertTrue(same_spot(out["before"][i], out["after"][i]), "kept its desk: %s -> %s" % (out["before"][i], out["after"][i]))
+                self.assertLess(dist(out["pos"][i], out["after"][i]), 0.3, "and sits there")
+                self.assertTrue(same_spot(out["before"][i], out["later"][i]), "a new one coming moves nobody")
+        self.assertTrue(any(same_spot(out["w5"], d) for d in out["desks"]), "the new one gets a desk")
+        for s in out["later"] + [out["tm"]]:
+            self.assertGreaterEqual(dist(out["w5"], s), MIN_GAP, "a free one")
+
+
+class TestFloorCount(unittest.TestCase):
+    """Fix 3 (main manager's decision): the floor label '<n> 人' (floorTag(terr).people, also the lift's number) counts
+    every character drawn on that floor, managers and agents; an agent that is not drawn does not count."""
+
+    def test_five_then_four(self):
+        agents = [agent("s:t", "task-manager", up=GOV)] + [agent("w%d" % i, "worker", up="s:t") for i in range(1, 5)] + \
+                 [agent("w9", "worker", up="s:nobody")]
+        out = sim(r"""
+apply({ type: 'snapshot', world: __payload.view, agents: __payload.agents, govs: [], gov: { state: 'idle', terr: __payload.view.floors[0] },
+        asks: [], governors: 0, adding: [], hist: {} });
+settle(30);
+const first = floorTag(__payload.t1).people;
+apply({ type: 'done', id: 'w1' });
+settle(40);
+__out = { first, after: floorTag(__payload.t1).people, other: floorTag(__payload.t2).people };
+""", {"view": view(), "t1": T1, "t2": T2, "agents": agents}, required=REQUIRED + ("floorTag",))
+        self.assertEqual(out["first"], 5, "1 manager + 4 agents (the agent of an unknown session is not drawn)")
+        self.assertEqual(out["after"], 4)
+        self.assertEqual(out["other"], 0)
+
 if __name__ == "__main__":
     unittest.main()
