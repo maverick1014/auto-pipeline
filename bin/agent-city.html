@@ -1735,7 +1735,7 @@ function plateLayout(items, opts){
   }
   return out;
 }
-/* plateName(c, long) -> the name on c's plate: a session's nameOf; an agent's description without the type its chip already
+/* plateName(c, long) -> the name on c's plate (long, for a hovered or selected plate, is kept for the caller; both forms read the same): a session's nameOf; an agent's description without the type its chip already
    says ('' when the description is only its type; two alike keep nameOf's '#<id>' ending). The short form (the default) also
    drops the task's own name in front (the task of a live session of the floor, followed by more text): 'city-x PR REVIEW' -> 'PR REVIEW'. */
 function plateName(c, long){
@@ -1744,7 +1744,7 @@ function plateName(c, long){
   const l = shortLabel(c.label, repoOf(c)) || c.label || '';
   let r = n;
   if (l && n.startsWith(l)) { r = n.slice(l.length); r = r.startsWith(' · ') ? r.slice(3) : r.trim(); }
-  if (!long) {   // only the task's own name goes: the task of a live session of this floor, followed by more text
+  {   // only the task's own name goes (the long form too: the whole description stays in the follow bar and the card): the task of a live session of this floor, followed by more text
     const m = /^(\S+)\s+(?=\S)/.exec(r);
     if (m && citizens.some(o => !o.gone && !isSub(o) && o.terr === c.terr && (o.task === m[1] || (/^(.+) Task Manager$/.exec(o.label || '') || [])[1] === m[1]))) r = r.slice(m[0].length);
   }
