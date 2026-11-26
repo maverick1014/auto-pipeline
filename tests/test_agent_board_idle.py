@@ -108,7 +108,7 @@ class IdleCase(BoardCase):
 
     def test_a_live_task_manager_pane_alone_is_running_never_idle(self):
         self.todo("t", "2026-11-02 14:35")
-        self.launch("tm-pane", "t", agent=None)
+        self.launch("tm-pane", "t", since="2026-11-02 14:59", agent=None)   # a pane with no handle: live for 2 minutes
         status = self.status_of("t")
         self.assertTrue(status.startswith(RUNNING[self.lang]), status)
         self.assertNotIn(self.word_idle(), status)
@@ -126,7 +126,8 @@ class IdleCase(BoardCase):
         self.assertEqual(self.warns(), [])
 
     def test_a_line_with_no_added_time_is_plain_and_does_not_crash(self):
-        self.repo.write("agent_todo.txt", "t | big | no time here | est 20m\n")
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("t | big | no time here | est 20m\n")
         self.assertEqual(self.status_of("t"), self.plain())
         self.assertEqual(self.warns(), [])
 
@@ -168,15 +169,15 @@ class IdleCase(BoardCase):
         return mod
 
     def test_the_status_line_marks_an_idle_task_at_every_width(self):
-        self.todo("idler", "2026-11-02 14:35")
+        self.todo("sitter", "2026-11-02 14:35")
         for width in (0, 70, 200):
             out = self.line(width)
-            rows = [l for l in out.splitlines() if "idler" in l]
+            rows = [l for l in out.splitlines() if "sitter" in l]
             self.assertEqual(len(rows), 1, (width, out))
             self.assertIn(self.mark(25), rows[0], (width, out))
 
     def test_the_status_line_marks_only_the_idle_one(self):
-        self.todo("idler", "2026-11-02 14:35")
+        self.todo("sitter", "2026-11-02 14:35")
         self.todo("fresh", "2026-11-02 14:57")
         out = self.line(200)
         self.assertEqual(out.count(self.word_idle()), 1, out)
