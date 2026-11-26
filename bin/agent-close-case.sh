@@ -2,7 +2,7 @@
 # agent-close-case.sh — UserPromptSubmit hook, one job: a session that was
 # released or replaced as main manager is told so once (the told-once mark below).
 # The "close case" rule itself is no keyword hook any more: it is the skill
-# /auto-pipeline:close-case (skills/close-case/SKILL.md, PRINCIPLES.md W13).
+# /auto-pipeline:close-case (skills/close-case/SKILL.md, rules/close-case.md W13).
 # Never blocks the prompt: always exit 0, nothing on stderr. The only file it
 # ever writes is the told-once mark of a closed session (below). Second mode:
 # --release-line (no stdin), prints the release line for the human. See

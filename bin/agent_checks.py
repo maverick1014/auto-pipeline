@@ -14,7 +14,6 @@ A refusal is one line on stderr and exit 1 (nothing written); a usage error is e
 Rules: requirements/check-blocks.md, section 9 C3 and section 11.
 """
 
-import fnmatch
 import json
 import os
 import re
@@ -1120,36 +1119,9 @@ def cmd_gate(ctx, a):
 
 # -- next
 
-def glob_dir(g):
-    m = re.search(r"[*?\[]", g)
-    if not m:
-        return None
-    pre = g[:m.start()]
-    return pre[:pre.rfind("/") + 1]
-
-
-def clash(a, b):
-    da, db = glob_dir(a), glob_dir(b)
-    if da is None and db is None:
-        return a == b
-    if da is None:
-        return fnmatch.fnmatchcase(a, b)
-    if db is None:
-        return fnmatch.fnmatchcase(b, a)
-    return da.startswith(db) or db.startswith(da)
-
-
 def scope_of(f):
     s = field_of(f, "scope")
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
-
-
-def clash_with(scope, other):
-    for x in scope:
-        for y in other:
-            if clash(x, y):
-                return y
-    return None
 
 
 def next_warns(ctx):
@@ -1179,13 +1151,11 @@ def next_lines(ctx, a):
     rows = [f for f in todo.open_lines() if len(f) >= 3]
     names_open = set(f[0] for f in rows)
     running = []     # open lines with a stage and no open wait
-    staged = []      # open lines with a stage (wait or not): their files are taken
     cands = []
     for f in rows:
         stage = field_of(f, "stage") is not None
         waiting = field_of(f, "waiting")
         if stage:
-            staged.append(f)
             if waiting is None:
                 running.append(f)
             continue
@@ -1201,7 +1171,6 @@ def next_lines(ctx, a):
               % (used, reserved, pane, limit))
         return
     starts, waits = [], []
-    taken = [(f[0], scope_of(f)) for f in staged]
     for f in cands:
         name = f[0]
         w = field_of(f, "waiting")
@@ -1210,15 +1179,6 @@ def next_lines(ctx, a):
             waits.append("WAIT %s: after %s still open" % (name, after))
             continue
         sc = scope_of(f)
-        hit = None
-        for tname, tscope in taken:
-            g = clash_with(sc, tscope) if sc and tscope else None
-            if g:
-                hit = (tname, g)
-                break
-        if hit:
-            waits.append("WAIT %s: clashes with %s on %s" % (name, hit[0], hit[1]))
-            continue
         if len(starts) >= free:
             waits.append("WAIT %s: no room for another pane" % name)
             continue
@@ -1227,7 +1187,6 @@ def next_lines(ctx, a):
         if not sc:
             line += " | scope unknown: judge"
         starts.append(line)
-        taken.append((name, sc))
     print("NEXT: %d can start (room %d MB under the %d%% limit)" % (len(starts), room, pct))
     for l in starts + waits:
         print(l)

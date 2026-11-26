@@ -2,7 +2,7 @@
 name: question
 description: List every question that waits on the owner (chat list, or an Artifact page when many), and read his answers afterwards ("done", "1A 2B"). Use when the human asks for pending questions or says he answered the page.
 ---
-# /question — list the questions, read the answers (PRINCIPLES.md W18)
+# /question — list the questions, read the answers (rules/questions.md W18)
 
 Words to the human: the Language setting. Headings: `## To decide` (zh: `## 要你决定`), recommended mark `(recommended)` (zh: `(建议)`), done word `done` (zh: `答完了`). A spawned worker, deputy or reviewer never runs this: do nothing.
 

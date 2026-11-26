@@ -2,7 +2,7 @@
 name: cloud-pack
 description: Lay the pipeline into a repo as committed files, so cloud sessions (claude.ai/code), which never install plugins, get it too. Use to set up or refresh a repo for cloud use.
 ---
-# /cloud-pack — pack this pipeline into a repo (PRINCIPLES.md S1)
+# /cloud-pack — pack this pipeline into a repo (rules/setup.md S1)
 
 1. Run:
    ```
