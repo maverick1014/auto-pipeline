@@ -35,6 +35,11 @@ Owner, 2026-11-26, his words:
 - Before a file in git is read for a decision (offer a task, take, assign, start, the board in a shared repo) the data branch is fetched and merged into the local file: finished records and ideas by union (no line is lost), todo lines by task name (the newest change of a task wins; a finished task is dropped).
 - Cloud: a cloud session can push only its own branch, so there the pack keeps the task files tracked in the tree and committed with the work, as today.
 
+Settings (owner 2026-11-26: "for this setting is able to set in configure right ?"; "default ap-data will be better. then othres can refer to tht one also. then at the configure there also able to switch brnach will do. if the user want it be main also can ya"):
+- Three settings in /plugin Configure, the person's default for his repos: "Task files in git" (`local` | `ideas` | `ideas,todo`, default `local`), "Who may take a task" (`owner` | `anyone`, default `owner`), "Data branch" (a branch name, default `ap-data`).
+- The repo value wins: a value in the committed `agent_repo.conf` is used whatever a member's Configure says, because every member of a repo must see the same. The command that turns sharing on writes the three values there. A member whose Configure differs gets one line at start naming the repo's value.
+- "Data branch" may name any branch, the production branch too ("main"). Then the files in git are written straight onto that branch and pushed at once, so everyone who pulls it sees them; the command that sets it says once that a commit on a production branch can start a deploy in that repo. The local working copies and the copies on that branch must never fight (a pull, a merge of production into the working branch, a new worktree): tests prove it for `ap-data` and for `main`.
+
 ## 3. A name on every record
 
 - The name = the git user name of the clone (`git config user.name`; the working branch name uses the same source).
