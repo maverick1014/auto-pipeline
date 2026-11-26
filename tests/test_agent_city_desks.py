@@ -598,6 +598,38 @@ class TestPlateOffScreen(unittest.TestCase):
         self.assertEqual(round(out["items"][3]["x"]), 80, "a head on screen near the edge: its plate moves in")
 
 
+class TestDoingLineFollowsThePlate(unittest.TestCase):
+    """Fix round (my zoom check: zoomed in, the 'what it does' lines of people whose plates were hidden piled up at the
+    top right and ran under the lift panel). An item may carry wd, hd: the doing line above its plate (width, height).
+    A 'full' item's box is then [x - max(w, wd)/2, y - h - hd, x + max(w, wd)/2, y]; a 'chip' item shows no doing line
+    (its box is the chip alone); syncFigs shows the doing line only over a 'full' plate, at the plate's moved spot."""
+
+    def test_the_doing_line_is_part_of_the_full_box(self):
+        items = [{"x": 300, "y": 300, "w": 120, "wChip": 32, "h": 22, "pri": 0, "wd": 200, "hd": 20},
+                 {"x": 300, "y": 270, "w": 120, "wChip": 32, "h": 22, "pri": 0, "wd": 0, "hd": 0}]
+        out = sim("__out = plateLayout(__payload.items, { bounds: { l: 0, t: 0, r: 1440, b: 713 }, blocks: [] });",
+                  {"items": items}, required=("plateLayout",))
+        self.assertEqual(out, ["full", "none"], "the second plate sits where the first one's doing line is")
+
+    def test_a_doing_line_wider_than_its_plate(self):
+        items = [{"x": 300, "y": 300, "w": 120, "wChip": 32, "h": 22, "pri": 0, "wd": 300, "hd": 20},
+                 {"x": 520, "y": 280, "w": 120, "wChip": 32, "h": 22, "pri": 0, "wd": 0, "hd": 0}]
+        out = sim("__out = plateLayout(__payload.items, { bounds: { l: 0, t: 0, r: 1440, b: 713 }, blocks: [] });",
+                  {"items": items}, required=("plateLayout",))
+        self.assertEqual(out, ["full", "full"], "apart: both full (the doing line ends at 450)")
+        items[1]["x"] = 480
+        out = sim("__out = plateLayout(__payload.items, { bounds: { l: 0, t: 0, r: 1440, b: 713 }, blocks: [] });",
+                  {"items": items}, required=("plateLayout",))
+        self.assertEqual(out[0], "full")
+        self.assertNotEqual(out[1], "full", "its full box [420, 540] meets the doing line [150, 450]")
+
+    def test_the_figure_pass_places_the_doing_line(self):
+        src = script_function_source("syncFigs") or ""
+        for bit in ("doing", "wd", "hd"):
+            with self.subTest(bit=bit):
+                self.assertIn(bit, src, "syncFigs lays out the doing line with its plate")
+
+
 class TestSeatCache(unittest.TestCase):
     """Fix round (main manager's decision 6): agentSeatsOf(terr) keeps its seats object until the people on the floor or
     the floor plan change: ticks with no change reuse the same object; a join, a leave or a new design rebuilds it."""
