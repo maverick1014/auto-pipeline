@@ -744,12 +744,20 @@ class TestC13GateAgainAfterAWait(TestWaiterWaitsForTheHuman):
         with open(self.stub, "w") as fh:
             fh.write(waiter_stub_with_wait_hook())
 
+    def save_turn_hook(self, human_line):
+        """The first wait after the save prompt was sent: the human's line goes into the transcript, the turn takes
+        3 s. batch-fix: was "the 2nd wait"; on a loaded machine ready took 2 s or more before the save prompt, prep
+        ran the gate and ready again (C13), and the 2nd wait came before the save prompt was sent."""
+        self.stub_file("send_hook.sh", 'case "$1" in "AUTO CLEAR: save"*) touch "$ORCA_STUB_DIR/saved";; esac\n')
+        self.stub_file("wait_hook.sh", 'if [ -f "$ORCA_STUB_DIR/saved" ] && [ ! -f "$ORCA_STUB_DIR/typed" ]; then\n'
+                       '  touch "$ORCA_STUB_DIR/typed"; printf "%%s\\n" %s >> %s; /bin/sleep 3\nfi\nexit 0\n'
+                       % ("'" + human_line + "'", os.path.join(self.t.dir, "s1.jsonl")))
+
     def test_a_human_prompt_during_the_save_turn_stops_the_clear(self):
         self.t.write([oo.owner("ok go", ago(40))])
         human_now = json.dumps(oo.owner("wait, one more thing", T0))
-        # the 2nd wait is the save turn: the human types during it, and it takes 3 s (ready waited)
-        self.stub_file("wait_hook.sh", '[ "$1" = 2 ] && { printf "%%s\\n" %s >> %s; /bin/sleep 3; }\nexit 0\n'
-                       % ("'" + human_now + "'", os.path.join(self.t.dir, "s1.jsonl")))
+        # the first wait after the save prompt is the save turn: the human types during it, it takes 3 s (ready waited)
+        self.save_turn_hook(human_now)
         self.start()
         # batch-fix: 60 s, was 20 s: on a loaded machine the waiter's steps (python, stubs, a 3 s turn) ran longer
         self.assertTrue(wait_until(lambda: self.waiting_line(), 60), (self.sends(), self.state_lines()))
@@ -775,7 +783,9 @@ class TestC13PinnedOrder(ClearCase):
         self.write_state(["ROLE: x", ""])
         self.assertOk(self.waiter())
         seq = [c[1] if c[0] == "terminal" else c[0] for c in self.calls()]
-        self.assertEqual(seq, ["human-quiet", "wait", "read", "send"] * 3)
+        # batch-fix: one or more rounds of gate + ready before each send (when ready took 2 s or more, prep runs
+        # both again, C13; a loaded machine does that), never a send without a gate and a ready right before it
+        self.assertRegex(" ".join(seq), r"^((human-quiet wait read )+send ?){3}$", seq)
 
 
 @only_own
@@ -783,8 +793,7 @@ class TestC22EveryPane(TestC13GateAgainAfterAWait):
     def test_a_task_manager_pane_is_not_cleared_after_a_human_prompt(self):
         self.t.write([oo.owner("ok go", ago(40))])
         human_now = json.dumps(oo.owner("wait, keep going on the report", T0))
-        self.stub_file("wait_hook.sh", '[ "$1" = 2 ] && { printf "%%s\\n" %s >> %s; /bin/sleep 3; }\nexit 0\n'
-                       % ("'" + human_now + "'", os.path.join(self.t.dir, "s1.jsonl")))
+        self.save_turn_hook(human_now)
         proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", "--spawned", env=self.env())
         self.addCleanup(lambda: proc.poll() is None and proc.kill())
         # batch-fix: 60 s, was 20 s: on a loaded machine the waiter's steps (python, stubs, a 3 s turn) ran longer

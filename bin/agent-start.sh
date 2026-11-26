@@ -1327,6 +1327,12 @@ if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
     done
   fi
 fi
+# 4. still over with every row gone (a long human-direct role text): the AGENT FILES reminder goes, the very last
+# cut; every start repeats it until files move, so the next roomier start shows it again
+if [ $(( fixed + ptr_bytes )) -gt "$CAP" ] && printf '%s' "$NORMAL_TEXT" | grep -q '^AGENT FILES: '; then
+  NORMAL_TEXT=$(printf '%s' "$NORMAL_TEXT" | grep -v '^AGENT FILES: '; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
+  calc_fixed
+fi
 
 budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
 
