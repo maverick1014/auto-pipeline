@@ -1139,7 +1139,7 @@ class RunLock:
 
 WHERE_VALUES = ("either", "remote", "local")
 WHERE_LABEL = "connected machine"
-NOTE_PREFIXES = ("full_cmd exit", "the connected machine", "no room on the connected machine")   # a failed row that is not a test name
+NOTE_PREFIXES = ("full_cmd exit", "the connected machine", "no room on the connected machine", "... and ")   # a failed row that is not a test name
 SET_LINE = "set Full run machine in /plugin Configure"
 REMOTE = {}                     # the remote run going on (env, path, handle): a stop signal removes it
 
@@ -1263,9 +1263,10 @@ def remote_script(token, key="nightly"):
     """The one line the connected machine runs in its worktree. Markers carry the commit it ran and the result;
     the output itself stays in a file inside the worktree, so a long run never has to be read back.
     What is closed: the token is in this text only (never an argument, never exported, the file removes itself
-    first), the suite runs with every ORCA_* variable unset, and every echoed line of its output is cleaned of
-    control characters and of "@", so printed output can never form a marker. A deliberately hostile suite is out
-    of scope (it could read the open script or the shell history)."""
+    first) and every echoed line of the suite's output is cleaned of control characters and of "@", so printed
+    output can never form a marker. The ORCA_* variables are unset for the suite (harmless, not a guarantee).
+    Out of scope (a deliberately hostile suite): the open script, the shell history, and its own pane through
+    the orca CLI, found by folder."""
     lines = [
         'rm -f "$0"; T=%s; F=$(printf %%s "$1" | base64 -d); O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)' % token,
         "printf '@@NIGHTLY-%s %s\\n' BEGIN \"$T\"",
@@ -1414,6 +1415,7 @@ def remote_run(root, env, commit, cmd):
             out.update(state="noroom", failed=["no room on the connected machine: " + (got["tail"] or [""])[-1]])
         else:
             names = failed_tests("\n".join(got["fail"]))
+            names += [r for r in got["fail"] if r.startswith("... and ")][:1]     # the count line after a cut list stays
             out.update(state="ok", weight=got["weight"],
                        failed=[] if got["exit"] == 0 else (names or ["full_cmd exit %d" % got["exit"]]))
         return out
