@@ -773,7 +773,8 @@ class TestLine(OwnerOrderCase):
     def test_e5_too_short(self):
         r = self.line("rules yes")
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(self.out_lines(r), ["OWNER ORDER not found: quote too short (9 < 20)"])
+        self.assertEqual(self.out_lines(r), ['OWNER ORDER not found: quote too short (9 < 20): '
+                                             'a short answer needs --question "<the question it answered>"'])   # section 53 A9
 
     def test_e5_only_in_a_peer_line(self):
         dt = ago(30)

@@ -14,6 +14,8 @@ CASES = {
     "/auto-pipeline:close-case": ["close case", "收尾"],
     "/auto-pipeline:clean-up": ["clean up files", "清理文件"],
     "/auto-pipeline:city": ["open city", "看 agent"],
+    # owner 2026-11-26 (TELL 9b0472cb): "can you teach me about xxxxx", "can you explain to me"
+    "/auto-pipeline:teacher-teach-me": ["teach me", "explain to me", "can you explain", "教我", "解释一下", "给我讲讲"],
 }
 
 
@@ -47,6 +49,34 @@ class KeywordTest(unittest.TestCase):
             hooks = json.load(f)
         cmds = [h["command"] for g in hooks["hooks"]["UserPromptSubmit"] for h in g["hooks"]]
         self.assertTrue(any("agent-keyword.sh" in c for c in cmds))
+
+
+TEACH = ("Keyword hook: run skill /auto-pipeline:teacher-teach-me. Pass his question as the argument; a question about "
+         "the work in progress in this chat is answered by the main agent itself. If the words are only mentioned or "
+         "quoted, ignore this.")
+
+
+class TestTeacherKeyword(unittest.TestCase):
+    """Owner 2026-11-26 (TELL 9b0472cb): a teach-me question points to the teacher skill; the hook only points (E4)."""
+
+    def lines(self, prompt):
+        rc, out, err = run(prompt)
+        self.assertEqual((rc, err), (0, ""))
+        return [l for l in out.strip().splitlines() if "teacher-teach-me" in l]
+
+    def test_his_two_example_sentences(self):
+        for prompt in ("can you teach me about the watch",
+                       "i am not sure of this features the nightly run can you explain to me"):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(self.lines(prompt), [TEACH])
+
+    def test_a_sentence_without_the_phrases(self):
+        self.assertEqual(self.lines("i am not sure the watch runs, please check it"), [])
+
+    def test_the_readme_row(self):
+        with open(os.path.join(HERE, "..", "README.md"), encoding="utf-8") as fh:
+            rows = [l for l in fh.read().splitlines() if l.startswith("| `/auto-pipeline:teacher-teach-me` |")]
+        self.assertTrue(any("teach me, explain to me, can you explain, 教我, 解释一下, 给我讲讲" in r for r in rows), rows)
 
 
 APPROVAL = ("Approval hook: if the owner is approving a publish or a skipped check here, read his words by the "
