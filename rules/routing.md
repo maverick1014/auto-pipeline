@@ -19,4 +19,5 @@ W9. Task routing (main manager, before every dispatch)
 - Before dispatch: does an urgent task need code that only a non-urgent one brings? Yes -> it cannot ship alone: tell the owner at once (ship them together, or move that part into the urgent task), never guess
 - A new request may also wait until the working branch is tested and published; the main manager picks what is faster and says which
 - Shared first: before parallel features, find the code they share (models, components, APIs); the shared part is its own task, merged first; features that need it wait (`todo wait <name> on queue --after <task>`)
+- A task is started in the turn it is added, or its wait is recorded with the reason in that turn; what only the main manager can do and an agent waits on (a requirement doc, an answer, a decision) comes before work nothing waits on
 - The todo line comes first: `todo add` before the worktree, the pane or any agent. The guard refuses a main manager launch for a task that is not open (W14)

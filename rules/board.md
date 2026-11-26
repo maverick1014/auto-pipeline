@@ -9,6 +9,7 @@ W14. Todo board
 - One row per task: agents under a task (deputy, merge deputy, reviewer, worker, its task manager pane) show as ` · N agents` on its row, never as rows; one with no todo row keeps its own
 - A task's owner shows as `[<name>]` after its name
 - Status of a wait: `waiting <who> · <what> · waited <n>`, held `hold · <what> · waited <n>`, queued `queue · after <task>`; no stage, no wait: not started. Time cells `-` (not started keeps est)
+- Idle: no stage, no wait, no live agent or pane, added under 24 hours ago and not started for 10 minutes: `not started · idle <n>` (status line too), and the warn hook says `WARN idle <task>`
 - Sort: waiting on the owner, running, waiting on others, queued and not started, held, OWNER TODO, parked questions last; oldest first in each group
 - Times come from the files, never guessed. Work counts from the first stage minus later waits. Waited: since a run of waits began
 - Done by = p50 / p85 clock time (work left + review and merge tail, each from history), `eta` the same
