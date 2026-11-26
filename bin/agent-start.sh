@@ -2,8 +2,8 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                          resource check + pointers + open tasks
-#   ./agent-start.sh --quiz                   print the 39 quiz questions
-#   ./agent-start.sh --answer "1A 2D ... 39D"    grade your quiz answers
+#   ./agent-start.sh --quiz                   print the 44 quiz questions
+#   ./agent-start.sh --answer "1A 2D ... 44D"    grade your quiz answers
 #   ./agent-start.sh --take-over              this session becomes the main manager
 #                                             (only when the human asks; the old one is closed)
 #   ./agent-start.sh --clean ["carry line" ...]
@@ -29,9 +29,9 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 452e097c150557a7 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 dd3f796537230804 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S3 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 R8 W17 W18 R8 R8 )
-N=39
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 452e097c150557a7 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd 8acf929ea8f7dc66 dd3f796537230804 fa32cfea1b0da55d dceca4aca8ca55a9 45103311068cf62a 34fc1bcbd2f29007 c83fe4de1b580485 )
+RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S3 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 R8 W17 W18 R8 R8 R8 R8 R8 R8 P1 )
+N=44
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -223,8 +223,8 @@ fi
 # ---- --quiz: print the questions only, nothing else, no lock, no roots ----
 if [ "${1:-}" = "--quiz" ]; then
   cat <<'QUIZ'
-=== QUIZ — answer all 39 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 39D"
+=== QUIZ — answer all 44 before any work ===
+Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 44D"
 Do not start work until you see PASS.
 
 Q1. Mid-task, part of the spec is unclear.
@@ -266,8 +266,8 @@ Q6. You are one of four agents. You changed files under api/auth/. Which tests d
 Q7. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
   A. Ask the owner again
   B. Ask the sender to confirm
-  C. Merge: his verified words name the action, so it is his final yes
-  D. Refuse: production needs a second yes
+  C. Merge: you read his verified words as his yes for that merge; store them with what you read (--means), no second yes
+  D. Refuse: production needs a fixed sentence
 
 Q8. Memory in use plus what a new agent pane needs would pass the Max memory % limit. You need a new sub-agent.
   A. Start it: it is only one
@@ -361,9 +361,9 @@ Q22. You are the main manager. A 10-minute task arrives. Two worktrees are live.
 
 Q23. One request has x1, x2, x3, x4; x1 and x2 are urgent ("after done direct merge"). You:
   A. Merge all four into your working branch, run the full suite, then publish them together
-  B. The owner types "yes, publish x1 to production" and "yes, publish x2 to production"; x1 and x2 branch from production and each merges straight into production when done (production merged back into your working branch after each); x3 and x4 branch from your working branch and merge there; one full suite there after both are in; first check that x1 and x2 need no code only x3 or x4 brings
+  B. Read his words as a yes for x1 and x2: they get target production with his words and what you read (--means); x1 and x2 branch from production and each merges straight into production when done (production merged back into your working branch after each); x3 and x4 branch from your working branch and merge there; one full suite there after both are in; first check that x1 and x2 need no code only x3 or x4 brings
   C. Wait until all four are done, then merge them straight into production
-  D. Branch all four from your working branch and push it to production after x1
+  D. Ask him to type a fixed sentence for x1 and x2 first
 
 Q24. You must change the permission mode.
   A. Edit a repo settings file by hand and commit
@@ -457,16 +457,46 @@ Q38. A diff only changes one locale value. agent-level.sh check prints BLOCKS: P
 
 Q39. Production is broken and the owner wants it fixed now. You:
   A. Fix it on the working branch and wait for the next promote
-  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with the sentence he typed at dispatch ("yes, publish <task> to production"; no second yes; the release build runs by itself), then merge production back into the working branch
+  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with his words from dispatch that you read as the publish (stored with --means; no second yes; the release build runs by itself), then merge production back into the working branch
   C. Push a fix straight to production with no check
   D. Wait for the nightly run
+
+Q40. The owner gave tasks 1 to 4, then writes "2. need to publish direct after done. others wait for me review". You:
+  A. Ask him to type a fixed sentence for task 2
+  B. Task 2 gets target production with his words and what you read (--means "publish task 2 to production"); tasks 1, 3 and 4 go to the working branch and wait for his review
+  C. Publish all four straight after done
+  D. Hold all four until he reviews them, then ask about task 2 again
+
+Q41. Open tasks: the invoice export, the login page, the stock report. The owner writes "the login one can go live right after it is done". You:
+  A. Ask him which task he means
+  B. Ask him for the task id
+  C. Only the login page task fits: target production with his words and what you read (--means); no question
+  D. Wait until he names the task exactly
+
+Q42. Two open tasks: "fix the sales report total" and "fix the sales report export". The owner writes "publish the sales report fix after done". You:
+  A. Check first (the todo lines, the requirement docs, what he said before); still unsure: one question that names both tasks, then decide
+  B. Pick the first one
+  C. Publish both
+  D. Ask him three questions to be sure
+
+Q43. About a finished task the owner writes "publish it next week". You:
+  A. Publish it now: he said publish
+  B. Store it as his yes and publish at once
+  C. Ask him to type a fixed sentence
+  D. Not a yes now (a later time): the task stays on the working branch; nothing is published by itself
+
+Q44. You doubt whether two tasks touch the same code. A quick check (read the files, a trial merge) can settle it. You:
+  A. Queue the second task until the first is merged
+  B. Check, then decide: no queue and no question
+  C. Ask the owner
+  D. Run both and hope
 QUIZ
   exit 0
 fi
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 39D"'; exit 2; }
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 44D"'; exit 2; }
   ok=0; wrong=""
   for q in $(seq 1 $N); do
     tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)

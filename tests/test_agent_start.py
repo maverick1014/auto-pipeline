@@ -1191,7 +1191,7 @@ QUIZ_Q44 = """Q44. You doubt whether two tasks touch the same code. A quick chec
   D. Run both and hope"""
 
 
-LEVEL_WORDS = re.compile(r"(?i)(\brisk types?\b|\btype [A-D]\b|\b[A-D] = (?:text|ui|logic|danger)\b|--level\b|"
+LEVEL_WORDS = re.compile(r"(?i)(\brisk types?\b|(?-i:\btype [A-D]\b)|\b[A-D] = (?:text|ui|logic|danger)\b|--level\b|"
                          r"\btodo level\b|--declared\b|\bRAISE\b|REQUIRED TYPE|\blevel [0-4]\b|\(R8 check)")
 
 

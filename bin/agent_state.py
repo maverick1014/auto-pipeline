@@ -198,6 +198,18 @@ class Lock(object):
 # ---------------------------------------------------------------- state add
 
 
+GUESSED_CLOCK = re.compile(r"~ ?\d{1,2}:\d{2}(?!\d)|(?<![\w:])[0-2x][\dx]:[0-5x][\dx](?!\w)")
+
+
+def guessed_time(text):
+    """The first guessed clock time in text (a digit replaced by x, or a tilde clock), else None."""
+    for m in GUESSED_CLOCK.finditer(text):
+        g = m.group(0)
+        if g.startswith("~") or "x" in g:
+            return g
+    return None
+
+
 def add(state_dir, now, args, allow_check=False):
     if len(args) != 1:
         raise Refuse("state add: needs exactly one text in quotes (got %d arguments)" % len(args))
@@ -215,6 +227,9 @@ def add(state_dir, now, args, allow_check=False):
         with open(path, "ab") as fh:
             fh.write(prefix + to_bytes("%s | %s\n" % (text, now)))
     sys.stdout.write("state add: %s\n" % text[:60])
+    guess = guessed_time(text)
+    if guess:
+        sys.stdout.write('state add: warning: "%s" looks guessed; the stamp is the time\n' % guess)
 
 
 # ---------------------------------------------------------------- reading the project files

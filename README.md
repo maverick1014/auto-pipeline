@@ -61,6 +61,7 @@ You can also just type a keyword instead of the command (case does not matter):
 | `/auto-pipeline:close-case` | close case, 收尾 |
 | `/auto-pipeline:clean-up` | clean up files, 清理文件 |
 | `/auto-pipeline:city` | open city, 看 agent |
+| `/auto-pipeline:teacher-teach-me` | teach me, explain to me, can you explain, 教我, 解释一下, 给我讲讲 |
 
 ## Change settings
 

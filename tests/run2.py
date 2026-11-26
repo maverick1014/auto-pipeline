@@ -21,6 +21,8 @@ Load (owner 2026-11-25): CPU stays under 80% (the default -j), and a process is
 started only while memory in use + about 30 MB for it stays under 80%; else it
 waits for a running one to end. No slot or lock: long light runs just go.
 
+With no test file named (the full suite: the release run, the nightly) every process it starts gets AGENT_FULL_RUN=1; named files do not.
+
 Plain `python3 -m unittest discover -s tests` still runs everything in one process.
 Exit code: 0 when every process passed and, for each file, the tests run equal the tests
 the loader discovers in it (else the line COUNT MISMATCH: discovered x, ran y in <file>),
@@ -286,6 +288,8 @@ def main():
     ap.add_argument("--root")
     ap.add_argument("--out")
     args = ap.parse_args()
+    if not args.files:
+        os.environ["AGENT_FULL_RUN"] = "1"
 
     if args.j is None:
         args.j = default_jobs()
