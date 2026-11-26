@@ -6,9 +6,12 @@ W14. Todo board
 - One script, no agent: `bin/agent-file.sh board`. Show its table as printed, every row, then the decide section (H3)
 - Main manager: the whole repo. Task manager or Helper: `board --self`, its own task and its workers only. Subagents never
 - Rows: open tasks, waits on the owner (mock check, owner question, owner review), `OWNER TODO:` and `PARKED:` lines. Each: task, what in a few words, status, where, est, work, wait, progress, done by
+- A task's owner shows as `[<name>]` after its name
 - Status of a wait: `waiting <who> · <what> · waited <n>`, held `hold · <what> · waited <n>`, queued `queue · after <task>`; no stage, no wait: not started. Time cells `-` (not started keeps est)
 - Sort: waiting on the owner, running, waiting on others, queued and not started, held, OWNER TODO, parked questions last; oldest first in each group
-- Times come from the files, never guessed. Work counts from the first stage minus later waits. Waited: since a run of waits began. Done by = now + est - work; over: by progress, else 超出 <n>m
+- Times come from the files, never guessed. Work counts from the first stage minus later waits. Waited: since a run of waits began
+- Done by = p50 / p85 clock time (work left + review and merge tail, each from history), `eta` the same
+- Today's cell (under 10 clean rows): now + est - work; over est: by progress, else 超出 <n>m
 - Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary.
 - Stages, task manager: brief register mock tests workers verify push report. Main manager: e2e (the review and the checks), merge
 - Stage weights are fixed (`bin/agent_conf.py`)

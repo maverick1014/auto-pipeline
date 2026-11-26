@@ -13,7 +13,7 @@ Scripts, not agents (cost no tokens):
   bin/agent_blocks.py  the one table of blocks and triggers (R8)
   bin/agent-owner-order.sh  relayed owner orders between repo managers: `line` prints the OWNER ORDER header (sender), `verify` checks the words are a typed owner prompt in the sender's transcript (receiver)
   bin/agent-file.sh    the only writer of agent_*.txt
-  bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric
+  bin/agent_estimate.py  the time estimator: learns work minutes from the finished tasks, backtests against the rubric; prints a p50 and a p85
   bin/agent-settings.sh  show the settings (/plugin -> Configure changes them)
   bin/agent-resume.sh    one command to bring the pipeline back after a restart
   bin/agent-cleanup.sh   the main manager's sweep: removes merged, clean, idle worktrees and branches; lists the rest in one table
@@ -49,10 +49,10 @@ Scripts, not agents (cost no tokens):
 ./bin/agent-settings.sh          # show the settings, no agent (change them in /plugin -> Installed -> auto-pipeline -> Configure)
 bin/agent-file.sh time              # est, work, wait, clock of every finished task
 bin/agent-file.sh data              # the same data of every repo on this machine, one table
-bin/agent-file.sh eta <name>        # work left as minutes and a clock time, and when the human is needed next
-bin/agent-file.sh estimate ... [--guess <m>]   # work minutes of a new task, with a range and the 3 nearest past tasks; --guess blends in your own minutes
+bin/agent-file.sh eta <name>        # work left as a p50 and a p85 clock time (the board's Done by), and when the human is needed next
+bin/agent-file.sh estimate ... [--guess <m>]   # work minutes of a new task, with p50, p85 and the 3 nearest past tasks; its number is the est, --guess is your own minutes (est equal to it is refused without --why)
 bin/agent-file.sh backtest          # estimator, blend and rubric on the finished tasks, who wins
-bin/agent-file.sh retrain           # learn the estimate again from the finished tasks, keep it only if better
+bin/agent-file.sh retrain           # learn the estimate again from the finished tasks (after every 10 new ones, also by itself); a worse model is never kept
 bin/agent-file.sh next              # the queued tasks that can start now, then the board warnings
 bin/agent-file.sh checks gate <task> --dir <path>  # the merge gate
 bin/agent-nightly.sh --status | --misses | --release-ok   # the nightly run of all tests: its state, the selection misses, the release check

@@ -83,7 +83,7 @@ The board (rules/board.md W14) reads these. Write each as it happens, never late
 
 ## Time question from the human
 
-The human asks how long a task takes or when it is done (a time question) → run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh eta "<name>" --step <n> --work-so-far <m> [--wait <m>]`. Step and work come from the last HEARTBEAT; `--wait` = known waiting still ahead.
+The human asks how long a task takes or when it is done (a time question) → run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh eta "<name>" [--wait <m>]`: it prints the board's Done by numbers (p50 and p85, waits never inside); with `--step <n>` / `--work-so-far <m>` (from the last HEARTBEAT) it uses the old rule instead; `--wait` = known waiting still ahead.
 Answer with its line: a duration AND a clock time, and when he is needed next. Never "soon".
 
 ## Task manager brief (fill the <>)
@@ -107,7 +107,7 @@ STEPS (at the start of each step run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh to
  7 report: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh todo stage "<name>" report; done, set status final (R7), stay idle
 REPORT: append it to agent_state.txt in your worktree (`agent-file.sh state add`) under "=== REPORT ===", nothing else. First line "DONE PASS <name>" or "DONE FAIL <name>: <why>". Then Result (test count), What changed (files), What to decide. Then the task's CHECK lines (copy of its agent_state.txt CHECK lines), each indented by two spaces (state add refuses a line that starts with CHECK). Then the E2E click path: start command, URL, exact clicks, expected result, how to restore. Then one line: TIME: est <n>m, actual <n>m, wait <n>m (actual = agent work only; wait = mock gate, owner question or review, hold, suite run). Then one line: FACTS: type <page|server|script|docs|cloud|app|data|mixed>, lane full, mock <yes|no>, bounces <n>, workers <n>, tests <n added>, scope adds <n>.
 ASK: append a line starting "QUESTION:" to agent_state.txt (`agent-file.sh state add`). Wait max 10 min, then default + log + continue (W1). Mock gate always waits. A question for later: ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh park add "<question>"
-HEARTBEAT: every 15 min run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh heartbeat "<name>" <step 0-7> <work minutes> "<what runs now>"`; it writes the one valid line "HEARTBEAT <name>: step <n> of 7, work <m>m, <text>" into agent_state.txt (never write it by hand).
+HEARTBEAT: every 15 min run `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh heartbeat "<name>" <step 0-7> "<what runs now>"`; the work minutes are computed, never typed; it writes the one valid line "HEARTBEAT <name>: step <n> of 7, work <m>m, <text>" into agent_state.txt (never write it by hand).
 CLOSE: on "close case" from me or the human: start nothing new, commit + push (WIP if unfinished), report into agent_state.txt (`agent-file.sh state add`), first line "CLOSE CASE <name>: finished" or "CLOSE CASE <name>: unfinished", then done, left + next steps, tests, click path, ideas, TIME. Wait for my decision; never close yourself.
 STATE: write agent_state.txt after every step (S7, S8): one line = `${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh state add "<line>"`, never echo >>.
 NEVER: Claude in Chrome (W5). Product code. Files outside the worktree except via ${CLAUDE_PLUGIN_ROOT}/bin/agent-file.sh.
