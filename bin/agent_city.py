@@ -3105,7 +3105,10 @@ class CityState:
                 ev["terr"] = terr
                 self.agent_terr[ev["id"]] = terr
                 ev["from"] = self._spawn_from_locked(obj, reducer, terr)
-                ev["up"] = self.agent_up[ev["id"]] = _spawn_up(reducer, terr, obj)   # city-rail-tree
+                up = _spawn_up(reducer, terr, obj)   # city-rail-tree
+                if up == "" and isinstance(obj.get("aid"), str) and obj["aid"]:
+                    up = self._parent_on_another_floor_locked(reducer, obj)   # its session works in another repo: the page draws it there
+                ev["up"] = self.agent_up[ev["id"]] = up
                 self._decorate_spawn(ev, obj, identity, terr)
                 if self._remember_name_locked(ev["id"], ev["label"], ev["task"]):
                     names_dirty = True
@@ -3305,6 +3308,20 @@ class CityState:
     # tests never see "repo"); CityState gives every territory its own
     # Reducer instance instead, so each runs that single-governor state
     # machine independently.
+
+    def _parent_on_another_floor_locked(self, reducer, obj):
+        """The page id of the session that started the subagent of line OBJ when it is live in another repo's reducer
+        ("s:<sid>", or "gov:<its terr>" for that repo's governor), else ""."""
+        sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
+        if not sid:
+            return ""
+        for identity, other in self.reducers.items():
+            if other is reducer:
+                continue
+            found = _session_page_id(other, sid, self._terr_for(identity))
+            if found:
+                return found
+        return ""
 
     def _reducer_for(self, identity, create=True):
         """Caller holds self.lock. The Reducer for this territory (None:
