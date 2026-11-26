@@ -54,6 +54,21 @@ exit 0
 """
 
 
+_HOUSEKEEP = {}
+
+
+def housekeep_module():
+    """bin/agent_housekeep.py, loaded once per test process for the in-process runs."""
+    if "mod" not in _HOUSEKEEP:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "agent_housekeep__inproc", os.path.join(BIN, "agent_housekeep.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _HOUSEKEEP["mod"] = mod
+    return _HOUSEKEEP["mod"]
+
+
 def epoch_of(text):
     return int(time.mktime(time.strptime(text, "%Y-%m-%d %H:%M")))
 
@@ -110,23 +125,34 @@ class HousekeepCase(tc.CleanupCase):
                            .replace("@LOG@", self.cleanup_log)
                            .replace("@OUT@", self.cleanup_out))
         self.gone = os.path.join(self.wts, "gone-one")
+        # test-slim-3: the pass asks `agent-nightly.sh --due` after every --apply (a real bash + python
+        # start, ~0.1 s). In these fixtures nothing configures a nightly run, so the real one answers
+        # "not due" (exit 1) and the pass adds nothing; no test here is about the nightly run
+        # (test_agent_nightly is). The tests that keep the real command line keep the real script too.
+        if self.IN_PROCESS and not getattr(getattr(self, self._testMethodName), "real_shell", False):
+            r.write_bin_script("agent-nightly.sh", "#!/usr/bin/env bash\nexit 1\n")
 
     # ---- running
 
     # test-slim: the Python pass runs in this process (repo.run_py). The wrapper's own work
     # (usage, roles, roots from a worktree) keeps real starts: TestUsage, TestMainManagerOnly*,
     # TestBlockInStateFile, and every call with a folder or a role. The runtime kind is still
-    # asked of the real agent-runtime.sh each time.
+    # worked out the way the real agent-runtime.sh does (tc.CleanupCase.runtime_kind: the same
+    # stub call, the same log line). A test marked @tc.real_shell keeps the real start.
     IN_PROCESS = True
 
     def hk(self, *args, **kwargs):
         env = {"AGENT_FAKE_NOW": NOW}
         env.update(kwargs.pop("env", None) or {})
         if (self.IN_PROCESS and not kwargs and set(args) <= {"--apply"}
-                and "AGENT_ROLE" not in env and "CLAUDE_PID" not in env):
-            kind = self.repo.run("agent-runtime.sh", "kind", env=env).stdout.strip()
+                and "AGENT_ROLE" not in env and "CLAUDE_PID" not in env
+                and not getattr(getattr(self, self._testMethodName), "real_shell", False)):
+            kind = self.runtime_kind(env)
             argv = ["--root", self.repo.dir, "--plugin", self.repo.plugin,
                     "--gitdir", os.path.join(self.repo.dir, ".git"), "--kind", kind] + list(args)
+            # the module is loaded from bin/ once per test process (same file as the plugin copy)
+            self.repo.__dict__.setdefault("_py_modules", {})[
+                os.path.join(self.repo.plugin_bin, "agent_housekeep.py")] = housekeep_module()
             return self.repo.run_py("agent_housekeep", *argv, env=env)
         return self.repo.run("agent-housekeep.sh", *args, env=env, **kwargs)
 
@@ -305,11 +331,13 @@ class TestClean(HousekeepCase):
 
 
 class TestBlockInStateFile(HousekeepCase):
-    IN_PROCESS = False   # test-slim: real starts through agent-housekeep.sh
+    # test-slim-3: the pass runs in this process; the three tests that look at the wrapper's own
+    # output (block printed, list mode, from a worktree) keep the real start (@tc.real_shell)
     def setUp(self):
         super().setUp()
         self.repo.set_worktree_lines([(self.gone, "gone-one", "idle")])
 
+    @tc.real_shell
     def test_the_block_is_printed_and_written(self):
         out = self.apply()
         self.assertIn("=== HOUSEKEEP %s ===" % NOW, out)
@@ -380,6 +408,7 @@ class TestBlockInStateFile(HousekeepCase):
                 if n.startswith("agent_state.txt") and n != "agent_state.txt"]
         self.assertEqual(left, [])
 
+    @tc.real_shell
     def test_list_mode_prints_and_writes_nothing(self):
         write(self.repo.path("agent_state.txt"), "top\n")
         before_wt = self.repo.read("agent_worktree.txt")

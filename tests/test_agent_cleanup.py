@@ -162,6 +162,7 @@ Wiring (main manager or takeover only; never compact, never clear):
                       line. A failed sweep never fails todo done.
 """
 
+import atexit
 import json
 import os
 import shutil
@@ -176,9 +177,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from scripthelp import ROOT, ScriptCase
+from scripthelp import ROOT, ScriptCase, ScriptRepo
 from scripthelp import pointer_part
 from scripthelp import BIN  # noqa: E402
+from sharedrepo import REPO_BASE, shared_fixture  # noqa: E402
 
 HEADER = "what | where | why kept | suggestion"
 REPO_ID = "repo-1"
@@ -195,23 +197,87 @@ def git(path, *args, **kwargs):
     return result.stdout.strip()
 
 
+# test-slim-3: every CleanupCase test starts from the same project: a bare origin, main
+# pushed, an empty wts folder. One is built per test process and copied per test (the
+# remote URL in .git/config rewritten); rebuilt when a minute old, like the seeded
+# template of scripthelp, so the seed commit is never older than that.
+# AGENT_TEST_NO_TEMPLATE=1 builds every one the old way.
+_FIXTURE = {"repo": None, "made": 0.0}
+FIXTURE_MAX_AGE = 60
+
+
+def _drop_fixture():
+    if _FIXTURE["repo"] is not None:
+        _FIXTURE["repo"].cleanup()
+
+
+atexit.register(_drop_fixture)
+
+
+def _build_project(r):
+    """Origin, main pushed, wts folder in a fresh ScriptRepo r (the old setUp)."""
+    origin = os.path.join(r.base, "origin.git")
+    subprocess.run(["git", "init", "-q", "--bare", origin],
+                   check=True, capture_output=True)
+    git(r.dir, "branch", "-M", "main")
+    git(r.dir, "remote", "add", "origin", origin)
+    git(r.dir, "push", "-q", "-u", "origin", "main")
+    os.mkdir(os.path.join(r.base, "wts"))
+
+
+def _fixture_repo():
+    if _FIXTURE["repo"] is None or time.time() - _FIXTURE["made"] > FIXTURE_MAX_AGE:
+        _drop_fixture()
+        built = ScriptRepo()
+        _build_project(built)
+        _FIXTURE["repo"] = built
+        _FIXTURE["head"] = git(built.dir, "rev-parse", "HEAD")
+        _FIXTURE["made"] = time.time()
+    return _FIXTURE["repo"]
+
+
+def _project_from_fixture(r):
+    """Put the built project (project, origin.git, wts) into the fresh ScriptRepo r."""
+    src = _fixture_repo()
+    shutil.rmtree(r.dir)
+    for name in ("project", "origin.git", "wts"):
+        shutil.copytree(os.path.join(src.base, name), os.path.join(r.base, name),
+                        symlinks=True)
+    config = os.path.join(r.dir, ".git", "config")
+    with open(config, "rb") as fh:
+        data = fh.read()
+    with open(config, "wb") as fh:
+        fh.write(data.replace(src.base.encode(), r.base.encode()))
+
+
+_CLEANUP_MOD = {}
+
+
+def real_shell(test):
+    """This test keeps the real command line (agent-cleanup.sh): the usage, role and
+    runtime-kind wiring of the wrapper, one test per verb and flag."""
+    test.real_shell = True
+    return test
+
+
 class CleanupCase(ScriptCase):
     """A project with a bare origin, main pushed, Orca knowing the repo."""
 
     script = "agent-cleanup.sh"
+    REAL_SHELL = False   # a class that keeps the real command line for every test
 
     def setUp(self):
         super().setUp()
         r = self.repo
         self.origin = os.path.join(r.base, "origin.git")
-        subprocess.run(["git", "init", "-q", "--bare", self.origin],
-                       check=True, capture_output=True)
-        git(r.dir, "branch", "-M", "main")
-        git(r.dir, "remote", "add", "origin", self.origin)
-        git(r.dir, "push", "-q", "-u", "origin", "main")
         self.wts = os.path.join(r.base, "wts")
-        os.mkdir(self.wts)
-        self.list_rows = [self.list_row(r.dir, "main", main=True)]
+        head = None
+        if os.environ.get("AGENT_TEST_NO_TEMPLATE"):
+            _build_project(r)
+        else:
+            _project_from_fixture(r)
+            head = _FIXTURE["head"]    # the copy has the very same main
+        self.list_rows = [self.list_row(r.dir, "main", main=True, head=head)]
         self.terminals = []
         self.save_orca()
 
@@ -308,7 +374,70 @@ class CleanupCase(ScriptCase):
     # ---- running ----
 
     def sweep(self, *args, **kwargs):
+        if self.in_process(args, kwargs):
+            return self.sweep_in_process(args, kwargs)
         return self.repo.run("agent-cleanup.sh", *args, **kwargs)
+
+    # ---- the sweep in this process ----
+    # test-slim-3: the Python sweep (agent_cleanup.main) runs here, with the roots, role
+    # and runtime kind the wrapper would hand over. The wrapper keeps its own real starts
+    # in the tests marked @real_shell, in the REAL_SHELL classes, and in every call that
+    # has a role, a session pid, a lock, another folder or a flag besides --apply/--short.
+
+    def in_process(self, args, kwargs):
+        r = self.repo
+        env = kwargs.get("env") or {}
+        test = getattr(self, self._testMethodName)
+        if (self.REAL_SHELL or getattr(test, "real_shell", False)
+                or os.environ.get("AGENT_TEST_REAL_SHELL")
+                or not set(args) <= {"--apply", "--short"}
+                or set(kwargs) - {"env", "timeout"}
+                or "AGENT_ROLE" in env or "CLAUDE_PID" in env or "AGENT_RUNTIME" in env
+                or "HOME" in env or "PATH" in env or "CLAUDE_CODE_REMOTE" in env
+                or r.home is not None or r.hidden):
+            return False
+        gitdir = os.path.join(r.dir, ".git")
+        return not (os.path.exists(os.path.join(gitdir, "agent_main.lock"))
+                    or os.path.exists(os.path.join(gitdir, "agent_main.closed")))
+
+    def runtime_kind(self, env):
+        """agent-runtime.sh kind: AGENT_RUNTIME, the runtime setting, else orca when the
+        stub answers `orca worktree ps --json` (the same call, so the same log line)."""
+        r = self.repo
+        full = r._env(env)
+        if full.get("AGENT_RUNTIME") in ("orca", "plain", "cloud"):
+            return full["AGENT_RUNTIME"]
+        try:
+            with open(os.path.join(r.claude_dir(), "settings.json")) as fh:
+                value = json.load(fh)["pluginConfigs"]["auto-pipeline@auto-pipeline"][
+                    "options"].get("runtime")
+        except (OSError, ValueError, KeyError):
+            value = None
+        if value in ("orca", "plain", "cloud"):
+            return value
+        orca = shutil.which("orca", path=full["PATH"])
+        if not orca:
+            return "plain"
+        probe = subprocess.run([orca, "worktree", "ps", "--json"], env=full,
+                               stdin=subprocess.DEVNULL, capture_output=True)
+        return "orca" if probe.returncode == 0 else "plain"
+
+    def sweep_in_process(self, args, kwargs):
+        r = self.repo
+        env = dict(kwargs.get("env") or {})
+        mod = _CLEANUP_MOD.get("mod")
+        if mod is None:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "agent_cleanup__inproc", os.path.join(BIN, "agent_cleanup.py"))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            _CLEANUP_MOD["mod"] = mod
+        r.__dict__.setdefault("_py_modules", {})[
+            os.path.join(r.plugin_bin, "agent_cleanup.py")] = mod
+        argv = ["--root", r.dir, "--plugin", r.plugin,
+                "--kind", self.runtime_kind(env)] + list(args)
+        return r.run_py("agent_cleanup", *argv, env=env)
 
     def ok(self, *args, **kwargs):
         return self.assertOk(self.sweep(*args, **kwargs))
@@ -338,6 +467,8 @@ class CleanupCase(ScriptCase):
 
 
 class TestUsage(CleanupCase):
+    REAL_SHELL = True    # test-slim-3: usage, list mode and --apply through agent-cleanup.sh
+
     def test_help_names_apply(self):
         out = self.ok("-h")
         self.assertIn("--apply", out)
@@ -357,6 +488,8 @@ class TestUsage(CleanupCase):
 
 
 class TestMainManagerOnly(CleanupCase):
+    REAL_SHELL = True    # test-slim-3: the role check is the wrapper's
+
     def setUp(self):
         super().setUp()
         self.path, self.branch = self.merged_worktree()
@@ -395,6 +528,7 @@ class TestMainManagerOnly(CleanupCase):
 # ---------------------------------------------------------------- list mode
 
 
+@shared_fixture(guard=REPO_BASE)   # test-slim-3: one set-up and one run for the class; the tests only read
 class TestListChangesNothing(CleanupCase):
     def setUp(self):
         super().setUp()
@@ -431,6 +565,7 @@ class TestListChangesNothing(CleanupCase):
 # ---------------------------------------------------------------- apply: safe
 
 
+@shared_fixture(guard=REPO_BASE)   # test-slim-3: one set-up and one run for the class; the tests only read
 class TestApplyRemovesAMergedWorktree(CleanupCase):
     def setUp(self):
         super().setUp()
@@ -574,6 +709,7 @@ class TestKept(KeptCase):
         for word in ("uncommitted changes", "unpushed", "unmerged"):
             self.assertIn(word, why)
 
+    @real_shell
     def test_plain_mode_never_removes_a_worktree(self):
         self.repo.set_conf("runtime", "plain")
         path, branch = self.merged_worktree()
@@ -588,6 +724,7 @@ class TestKept(KeptCase):
                          [row[0] for row in self.rows(out)])
 
 
+@shared_fixture(guard=REPO_BASE)   # test-slim-3: one set-up and one run for the class; the tests only read
 class TestTheTable(KeptCase):
     def setUp(self):
         super().setUp()
@@ -999,7 +1136,8 @@ class TestUnreachable(RemoteCase):
     def test_a_hang_never_hangs_the_sweep(self):
         self.repo.set_orca_env_state(self.ENV, "hang")
         started = time.time()
-        out = self.ok("--apply", timeout=40)
+        # test-slim-3: a 1 s cut-off per orca call (test env: 3) against the stub's 60 s hang
+        out = self.ok("--apply", timeout=40, env={"AGENT_CLEANUP_TIMEOUT": "1"})
         self.assertLess(time.time() - started, 20)
         self.assertIn("%s unreachable, not checked" % self.ENV,
                       self.lines(out))
@@ -1071,6 +1209,7 @@ class TestShort(CleanupCase):
     def test_nothing_to_do_prints_nothing(self):
         self.assertEqual(self.ok("--apply", "--short"), "")
 
+    @real_shell
     def test_removed_only(self):
         self.merged_worktree()
         out = self.ok("--apply", "--short")
@@ -1091,6 +1230,7 @@ class TestShort(CleanupCase):
         out = self.ok("--apply", "--short")
         self.assertEqual(self.lines(out)[0], "CLEANUP: removed 2, kept 0.")
 
+    @real_shell
     def test_list_mode_says_would(self):
         path, _ = self.merged_worktree()
         out = self.ok("--short")
@@ -1352,6 +1492,7 @@ class TestStartWiringLongPath(TestStartWiring):
     LONG = 160
 
     def setUp(self):
+        _fixture_repo()   # test-slim-3: built here, not under the long temp folder set below
         base = os.path.realpath(tempfile.gettempdir())
         pad = max(1, self.LONG - len(base) - 1)
         long_dir = os.path.join(base, "p" * pad)
