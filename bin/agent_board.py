@@ -94,11 +94,10 @@ HEAD = {
 STATUS = {
     "zh": {"running": "进行中", "owner": "你的待办", "parked": "搁置的问题", "waiting": "等待", "hold": "暂缓",
            "queue": "排队", "notstarted": "未开始", "after": "在 %s 之后", "waited": "已等 %s", "you": "你",
-           "fold": "+%d 排队/暂缓", "count": "看板 %d 个任务", "count_owner": " · %d 个等你"},
+           "fold": "+%d 排队/暂缓"},
     "en": {"running": "running", "owner": "your to-do", "parked": "parked question", "waiting": "waiting",
            "hold": "hold", "queue": "queue", "notstarted": "not started", "after": "after %s",
-           "waited": "waited %s", "you": "you", "fold": "+%d queued/held", "count": "board %d tasks",
-           "count_one": "board 1 task", "count_owner": " · %d waiting on you"},
+           "waited": "waited %s", "you": "you", "fold": "+%d queued/held"},
 }
 DEFAULT_WHAT = {
     "zh": {"mock": "确认样稿或规则表", "question": "回答问题", "review": "合并前签字"},
@@ -1142,37 +1141,41 @@ def pane_keepers(main, top, wt_folders, now):
     return names
 
 
-def wide_layout(entries, head, room, width):
+def wide_layout(entries, head, room, width, fold_word):
     """The lines of the wide status line. entries: [(name, body)] in order; head: lines before the cells;
-    room: lines left for cells and the fold; width: terminal columns."""
+    room: lines left for cells; width: terminal columns; fold_word: "+%d ..." for the tasks not shown.
+    Top down first, then left to right: a column holds up to room rows, the next column opens when it is full.
+    More tasks than room x columns: the last cell (bottom of the last column) says how many are not shown."""
     cols = column_plan(width)[0]
     n = len(entries)
-    # top down first, then left to right: the first column fills to the room before the next opens
     rows = min(n, room)
-    fold = 0
+    more = 0
     if n > room * cols:
-        rows = max(room - 1, 0)
-        fold = n - rows * cols
-        entries = entries[:rows * cols]
-        n = len(entries)
-    cols = max(1, -(-n // rows)) if rows else 1
-    cell_w = (max(width - 2, 1) - (cols - 1) * len(SEP)) // cols
+        rows = room
+        more = n - (rows * cols - 1)
+        entries = entries[:rows * cols - 1]
+    used = max(1, -(-len(entries) // rows)) if rows else 1
+    if more:
+        used = cols
+    cell_w = (max(width - 2, 1) - (used - 1) * len(SEP)) // used
     name_w = max(4, min(MAX_NAME, max([display_width(e[0]) for e in entries] or [0]), cell_w // 2))
-    grid = [entries[c * rows:(c + 1) * rows] for c in range(cols)]
+    grid = [entries[c * rows:(c + 1) * rows] for c in range(used)]
     out = []
     for r in range(rows):
         cells = []
-        for c in range(cols):
+        for c in range(used):
             if r < len(grid[c]):
                 name, body = grid[c][r]
                 text = fit(name, name_w) + "  " + body
                 cells.append(fit(text, cell_w))
+            elif more and r == rows - 1 and c == used - 1:
+                cells.append(fit(fold_word % more, cell_w))
         out.append(SEP.join(cells).rstrip())
-    return out, fold
+    return out
 
 
 def wide_status(board, args, main, top, own, width):
-    """The wide status line: count line, a warning line, then every open task as a cell in up to 3 columns."""
+    """The wide status line: a warning line, then every open task as a cell, top down, up to 3 columns."""
     lang, zh = args.lang, args.lang == "zh"
     infos = [info for _, _, info in sorted(board.rows, key=lambda r: r[0]) if info is not None]
     infos = [i for _, i in sorted(enumerate(infos), key=lambda x: (status_rank(x[1]), x[0]))]
@@ -1203,9 +1206,6 @@ def wide_status(board, args, main, top, own, width):
     words = STATUS[lang]
     head = []
     if not own:
-        mine = sum(1 for i in infos if i["group"] == G_OWNER_WAIT)
-        head.append((words["count_one"] if len(infos) == 1 and not zh else words["count"] % len(infos))
-                    + (words["count_owner"] % mine if mine else ""))
         if board.w_on and board.unconfirmed_names and board.w_live:
             head.append(fit_cut(WARN_NAMES[lang] % ", ".join(board.unconfirmed_names), width))
         else:
@@ -1214,11 +1214,8 @@ def wide_status(board, args, main, top, own, width):
                 head.append(warn)
     if not entries and not own:
         return ""
-    cells, fold = wide_layout(entries, head, STATUS_LINES - len(head), width)
-    out = head + cells
-    if fold:
-        out.append(words["fold"] % fold)
-    return "\n".join(out)
+    cells = wide_layout(entries, head, STATUS_LINES - len(head), width, words["fold"])
+    return "\n".join(head + cells)
 
 
 def fit_cut(text, cols):
@@ -1230,7 +1227,7 @@ def statusline_text(stdin_text, width=None):
     """The status line: todo rows only, the board's order: a run with a stage (name, bar, stage, done by), a wait on
     the owner or on others; queue, hold and not started rows fold into "+N queued/held"; at most 5 lines in all;
     "" for none. width (columns, None or 0 = unknown): the wide layout of statusline-wide, up to 3 columns, every
-    open task, a count line first."""
+    open task, top down, no count line."""
     folder = None
     try:
         data = json.loads(stdin_text)
