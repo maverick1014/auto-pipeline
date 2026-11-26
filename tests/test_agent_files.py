@@ -39,9 +39,12 @@ Where a file lives (section 2), place data:
   No git identity: a fallback identity is used; nothing asks who you are, git's own words never reach the output.
 Place tree (cloud): the task files stay tracked in the tree, nothing extra is ignored, committed with the work.
 
-The name (section 3) = `git config user.name` of the clone, trimmed. Empty: no name.
-  idea add      "<text> | <date> | by <name>"   (no name: "by <role>" as before)
-  park add      "PARKED: ... | by <name>"        (the last field; no name: no field)
+The name (section 3, TELL c4ec5b42) = `git config user.name` of the clone, trimmed, spaces kept ("King Lun"); git has
+none: the login name. ONE function (estimate-improve's agent_conf.user_name once merged; until then this contract).
+Stored and shown raw; two names are the same person when their cleaned forms are equal (lower case, every run of
+other characters one "-"), so a stored "maverick" matches "Maverick". A field value ends at the next " | ".
+  idea add      "<text> | <date> | by <name>"
+  park add      "PARKED: ... | by <name>"        (the last field)
   todo line     " | owner <name>" (written by todo add, task estimate-improve), " | assignee <name>", " | taken <name>"
   idea list, board, questions   "[<name>]" beside the record (questions --json: "by")
 
@@ -760,12 +763,22 @@ class TestNamesOnIdeasAndQuestions(FilesCase):
         q = [x for x in data["questions"] if x["title"] == "which DB for reports?"][0]
         self.assertEqual(q.get("by"), "Maverick")
 
-    def test_no_name_no_field(self):
+    def test_no_git_name_takes_the_login_name(self):
+        # TELL c4ec5b42: git has no name -> the login name; no prompt, no refusal
+        import getpass
         git(self.dir, "config", "--unset", "user.name")
-        self.af("park", "add", "a question?", env=no_identity(self.repo.base))
+        env = no_identity(self.repo.base)
+        self.af("park", "add", "a question?", env=env)
         line = [l for l in read(os.path.join(self.dir, "agent_state.txt")).splitlines()
                 if l.startswith("PARKED: a question?")][0]
-        self.assertNotIn(" | by ", line)
+        self.assertTrue(line.endswith(" | by %s" % getpass.getuser()), line)
+        self.af("idea", "add", "an idea", env=env)
+        self.assertTrue(read(os.path.join(self.dir, "agent_ideas.txt")).endswith(" | by %s\n" % getpass.getuser()))
+
+    def test_a_cleaned_name_is_the_same_person(self):
+        # an old stored 'maverick' matches 'Maverick' (TELL c4ec5b42); shown raw as stored
+        write(os.path.join(self.dir, "agent_ideas.txt"), "x | 2026-11-26 09:00 | by King Lun\n")
+        self.assertIn("[King Lun]", self.af("idea", "list").stdout)
 
 
 class Ex11TheBoardShowsTheOwner(FilesCase):
