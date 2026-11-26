@@ -1290,7 +1290,7 @@ class TestSettingAndTexts(unittest.TestCase):
         s = agent_conf.BY_KEY[KEY]
         self.assertEqual((s["title"], s["type"], s["default"]), ("Approval: Leader transcript folder", "string", ""))
         self.assertEqual(agent_conf.SETTINGS[-1]["key"], KEY)
-        self.assertEqual(len(agent_conf.SETTINGS), 21)
+        self.assertEqual(len(agent_conf.SETTINGS), 22)
         for good in ("", "/abs/folder", "~/folder"):
             self.assertIsNone(agent_conf.validate_value(KEY, good), good)
         for bad in ("rel/folder", "/a\nb", "/a | b"):
@@ -1299,9 +1299,9 @@ class TestSettingAndTexts(unittest.TestCase):
     def test_the_size_limit_is_a_fixed_constant(self):
         self.assertEqual(agent_conf.CONSTANTS["leader_transcript_max_mb"], 200)
 
-    def test_the_count_is_21(self):
-        self.assertIn("21 auto-pipeline settings", self.read("bin", "agent_conf.py"))
-        self.assertIn("21 settings", self.read("rules", "setup.md"))
+    def test_the_count_is_22(self):
+        self.assertIn("22 auto-pipeline settings", self.read("bin", "agent_conf.py"))
+        self.assertIn("22 settings", self.read("rules", "setup.md"))
 
     def test_the_usage_texts_name_the_option(self):
         head = self.read("bin", "agent-owner-order.sh")

@@ -581,6 +581,19 @@ class Housekeep(object):
         if subprocess.call([script, "--due"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60) != 0:
             return
+        # nightly-on-machine: a full run placed on the connected machine (full_run_where, "Full run machine") is
+        # started by --start itself: it runs there, or says in one line why it does not (never here)
+        where = subprocess.run([script, "--where"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True,
+                               timeout=60).stdout.strip()
+        if where in ("remote", "refused"):
+            res = subprocess.run([script, "--start"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True,
+                                 timeout=60)
+            line = (res.stdout.strip().splitlines() or [""])[0]
+            self.nightly.append(line if res.returncode != 0 and line else
+                                "nightly: started on the connected machine (agent-nightly.sh --status)")
+            return
         try:
             import agent_nightly
             paired, reachable = agent_nightly.machines(self.root)
