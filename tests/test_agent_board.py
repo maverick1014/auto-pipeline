@@ -1320,13 +1320,13 @@ class TestWork(WaitCase):
     def test_6_3_not_started(self):
         self.put(OR)
         r = self.row(self.rows(now=NOW_NOV20_1231), task="owner-relay")
-        self.assertEqual(r["Status"], "未开始")
+        self.assertEqual(r["Status"], "未开始 · 闲置 56分钟")   # idle-task-flag: added 56 minutes before now
         self.assertDash(r, est="42m")
         self.assertEqual((r["Where"], r["Checks"]), ("-", "level C"))
 
     def test_6_3_not_started_is_never_over_its_estimate(self):
         r = self.one("", base="x | big | w | est 30m | opened 2026-11-20 08:00 | by main")
-        self.assertEqual((r["Status"], r["Work"], r["Done by"]), ("未开始", "-", "-"))
+        self.assertEqual((r["Status"], r["Work"], r["Done by"]), ("未开始 · 闲置 4小时31分", "-", "-"))   # idle-task-flag
 
     def test_6_4_old_line_with_a_stage_and_no_started(self):
         r = self.one("", base="x | big | w | est 60m | opened 2026-11-20 10:31 | by main | waited 30m | "
@@ -1393,7 +1393,7 @@ class TestSimulation(WaitCase):
         self.assertEqual(got["usage-track"]["Status"], "暂缓 · 你说合并监控之后再做 · 已等 3天19小时")
         self.assertEqual(got["one-watcher"]["Status"], "暂缓 · owner close case 2026-11-18: next… · 已等 2天4小时")
         for name in ("owner-relay", "comment-shape"):
-            self.assertEqual(got[name]["Status"], "未开始")
+            self.assertEqual(got[name]["Status"], "未开始 · 闲置 56分钟")   # idle-task-flag
         self.assertEqual((got["owner-relay"]["Est"], got["comment-shape"]["Est"]), ("42m", "28m"))
         for name in ("v4plus-followups", "pc2-plugin-update", "board-waiting", "usage-track", "one-watcher"):
             self.assertDash(got[name])
@@ -1406,7 +1406,7 @@ class TestSimulation(WaitCase):
             name_col("state-trim") + "██░░░░░░░░  20%  写测试  13:12",
             name_col("v4plus-followups") + "等待 v4-Manager · 已等 3天20小时",
             name_col("pc2-plugin-update") + "等待 v4-Manager · 已等 2天19小时",
-            name_col("owner-relay") + "未开始",   # one-watcher K: an own row while there is room
+            name_col("owner-relay") + "未开始 · 闲置 56分钟",   # one-watcher K: an own row while there is room
             "+4 个任务"]))
 
     def test_the_owner_moment(self):
@@ -1419,7 +1419,7 @@ class TestSimulation(WaitCase):
             name_col("state-trim") + "等待 你 · 合并前签字 · 已等 5分钟",
             name_col("v4plus-followups") + "等待 v4-Manager · 已等 3天20小时",
             name_col("pc2-plugin-update") + "等待 v4-Manager · 已等 2天19小时",
-            name_col("owner-relay") + "未开始",   # one-watcher K: an own row while there is room
+            name_col("owner-relay") + "未开始 · 闲置 56分钟",   # one-watcher K: an own row while there is room
             "+4 个任务"]))
 
 
@@ -1433,8 +1433,8 @@ class TestSimulationEnglish(WaitCase):
             "state-trim": "running",
             "v4plus-followups": "waiting v4-Manager · 回复插件更新和同步脚本 · waited 3d 20h",
             "pc2-plugin-update": "waiting v4-Manager · pc2 空闲时更新 plugin · waited 2d 19h",
-            "owner-relay": "not started",
-            "comment-shape": "not started",
+            "owner-relay": "not started · idle 56m",   # idle-task-flag
+            "comment-shape": "not started · idle 56m",
             "board-waiting": "queue · after state-trim",
             "usage-track": "hold · 你说合并监控之后再做 · waited 3d 19h",
             "one-watcher": "hold · owner close case 2026-11-18: next… · waited 2d 4h",
@@ -1446,7 +1446,7 @@ class TestSimulationEnglish(WaitCase):
             name_col("state-trim") + "██░░░░░░░░  20%  tests  13:12",
             name_col("v4plus-followups") + "waiting v4-Manager · waited 3d 20h",
             name_col("pc2-plugin-update") + "waiting v4-Manager · waited 2d 19h",
-            name_col("owner-relay") + "not started",   # one-watcher K
+            name_col("owner-relay") + "not started · idle 56m",   # one-watcher K
             "+4 tasks"]))
 
     def test_the_owner_moment_and_defaults(self):
@@ -1473,12 +1473,12 @@ class TestOldLines(WaitCase):
             "usage-track": "暂缓 · owner close case 2026-11-16: after… · 已等 3天19小时",
             "pc2-plugin-update": "暂缓 · handed to v4-Manager 2026-11-18… · 已等 2天19小时",
             "one-watcher": "暂缓 · owner close case 2026-11-18: next… · 已等 2天4小时",
-            "owner-relay": "未开始",
-            "comment-shape": "未开始",
+            "owner-relay": "未开始 · 闲置 56分钟",   # idle-task-flag
+            "comment-shape": "未开始 · 闲置 56分钟",
         })
         # one-watcher K: 6 rows, 5 lines: 4 own rows by board order, the rest fold
         self.assertEqual(self.line(), "\n".join([
-            name_col("owner-relay") + "未开始", name_col("comment-shape") + "未开始",
+            name_col("owner-relay") + "未开始 · 闲置 56分钟", name_col("comment-shape") + "未开始 · 闲置 56分钟",
             name_col("v4plus-followups") + "暂缓 · 已等 3天20小时", name_col("usage-track") + "暂缓 · 已等 3天19小时",
             "+2 个任务"]))
 
@@ -1544,7 +1544,8 @@ class TestBoardRow(WatchBoardCase):
         beta = self.repo.make_worktree("beta", as_repo=False)
         self.add("beta", "bank recon", 60, opened="2026-11-02 14:20", started=False)
         self.worktree_lines((self.alpha, "alpha", "working"), (beta, "beta", "working"))
-        self.assertEqual(self.status_of("beta"), self.st("not_started") + self.warn(40))
+        idle = " · 闲置 40分钟" if self.lang == "zh" else " · idle 40m"      # idle-task-flag
+        self.assertEqual(self.status_of("beta"), self.st("not_started") + idle + self.warn(40))
 
     def test_live_means_a_sweep_at_most_2_intervals_plus_2_minutes_old(self):
         self.watch(sweep="2026-11-02 14:48", changed="2026-11-02 14:55")
@@ -1995,7 +1996,7 @@ class TestOneRowPerTask(BoardCase):
         self.assertEqual(rows[0]["Status"], self.st("running") + self.mark(len(kinds)))
 
     def test_a_finished_agent_adds_nothing(self):
-        self.add("t", "the task", 20, started=False)
+        self.add("t", "the task", 20, started=False, opened="2026-11-02 14:55")   # idle-task-flag: not idle
         self.launch("deputy", "t", pid=dead_pid())
         rows = self.rows()
         self.assertEqual(len(rows), 1, rows)
@@ -2011,7 +2012,7 @@ class TestOneRowPerTask(BoardCase):
                          (1, self.st("running") + self.mark(1), "15m"))
 
     def test_an_agent_without_a_todo_row_keeps_its_own_row(self):
-        self.add("t", "the task", 20, started=False)
+        self.add("t", "the task", 20, started=False, opened="2026-11-02 14:55")   # idle-task-flag: not idle
         self.launch("deputy", "ghost", since="2026-11-02 14:30")
         self.launch("tm-pane", "ghost", since="2026-11-02 14:59", agent=None)
         rows = self.rows()
@@ -2022,7 +2023,7 @@ class TestOneRowPerTask(BoardCase):
         self.assertEqual(self.row(rows, task="ghost " + word[0])["Work"], "30m")
 
     def test_a_task_with_no_agent_is_unchanged(self):
-        self.add("t", "the task", 20, started=False)
+        self.add("t", "the task", 20, started=False, opened="2026-11-02 14:55")   # idle-task-flag: not idle
         r = self.rows()[0]
         self.assertEqual((r["Status"], r["Work"], r["Where"]), (self.st("not_started"), "-", "-"))
 
