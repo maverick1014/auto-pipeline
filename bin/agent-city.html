@@ -1666,8 +1666,9 @@ function subBadge(rowId){
    none) }. opts.bounds { l, t, r, b }: every box is kept inside by its own width (a chip stays over its head); a head
    outside the bounds is 'none' and not moved. opts.blocks [[l, t, r, b], ...]: the panels, never covered. Order: higher
    pri first; equal pri: the larger y (nearer the viewer) first, then input order. Three steps:
-   1. pri >= 2: 'full' first, starting from where its plate was laid out last frame (px, py) when given, moved by what its head
-      moved since (hx0, hy0: last frame's head), else from its head; a panel or an
+   1. pri >= 2: 'full' first, starting from its HEAD; only an item with keep: true (the hovered person while the pointer rests
+      on its own plate) starts from where its plate was laid out last frame (px, py) moved by what its head moved since
+      (hx0, hy0: last frame's head); a panel or an
       earlier selected / hovered plate in the way: it takes the nearest free spot in any direction inside the bounds.
    2. everyone else: a chip over its head; else nudged left or right by 0.6 chip widths, else one row up (h + 2); the first
       spot that meets no panel and no box laid out before; none fits: 'none'.
@@ -1699,7 +1700,7 @@ function plateLayout(items, opts){
     const ew = fullW(it), eh = fullH(it);
     // it starts where its plate was laid out last frame (px, py), so a hovered chip stays under the pointer
     // ... moved by exactly what its head moved since (hx0, hy0: last frame's head): it stays where it was put relative to its head
-    const kept = it.px != null && it.py != null;
+    const kept = it.keep === true && it.px != null && it.py != null;   // only the hovered person with the pointer resting on its own plate keeps a spot
     let p = clampTo(ew, eh, kept ? it.px + (heads[i].x - (it.hx0 != null ? it.hx0 : heads[i].x)) : heads[i].x, kept ? it.py + (heads[i].y - (it.hy0 != null ? it.hy0 : heads[i].y)) : heads[i].y);
     const taken = c => blocks.some(q => hit(q, fullBox(it, c.x, c.y))) || boxes.some(q => q && hit(q, fullBox(it, c.x, c.y), GAP));   // the panels, and the selected / hovered laid out before (GAP apart)
     if (!inside(ew, eh, p) || taken(p)) {   // the nearest free spot, in any direction: candidates aligned with the edges of the panels and plates, and of the bounds
@@ -1994,6 +1995,7 @@ let cid = 0;
 let selected = null;
 /* the {t, id} under a head tag the pointer is over, or null */
 let hovered = null;
+let hoverKeep = false;   // the hover came from pointing at the person's own plate and the pointer has not really moved off it since
 /* V1 (sim): follow -- the rail row id (a citizen id, or 'gov:<terr>') the camera is locked onto, or
    null. select() sets it, stopFollow() clears it. */
 let follow = null;
@@ -4748,6 +4750,7 @@ function syncFigs(dt){
     items.push({ x:o.tag._px, y:o.tag._py, w:o.wFull, wChip:o.wChip, h:o.hTag || 22, pri:platePri(f),
       px:o.lastOn ? o.lastX : undefined, py:o.lastOn ? o.lastY : undefined,   // where this plate was laid out last frame ...
       hx0:o.lastOn ? o.lastHX : undefined, hy0:o.lastOn ? o.lastHY : undefined,   // ... and where its head was then
+      keep:hoverKeep && platePri(f) === 2,   // the hovered person, the pointer resting on its own plate: its plate keeps its spot
       wd:dn ? o.wd : 0, hd:dn ? o.hdRaw + Math.max(0, 26 - (o.hTag || 22)) : 0 });
     ovs.push(o);
   }
@@ -6721,7 +6724,7 @@ ovRoot.addEventListener('click', e => {
 ovRoot.addEventListener('pointerover', e => {
   const tag = e.target.closest('[data-pick-t]');
   if (!tag) return;
-  hovered = pickOfTag(tag.dataset.pickT, tag.dataset.pickId);
+  hovered = pickOfTag(tag.dataset.pickT, tag.dataset.pickId); hoverKeep = true;
   needFrame = true;
 });
 $('#detail').addEventListener('click', e => {
@@ -6804,6 +6807,7 @@ let hoverAt = null;
 canvas.addEventListener('pointermove', e => {
   if (e.buttons || pointers.size || view !== 'inside') return;
   if (!e.movementX && !e.movementY) return;   // the page moved a plate under a still pointer: the hover stays as it is
+  hoverKeep = false;   // a real move: nothing keeps a spot any more
   const r = canvas.getBoundingClientRect(), first = !hoverAt;
   hoverAt = { x:e.clientX - r.left, y:e.clientY - r.top };
   if (!first) return;
@@ -6813,11 +6817,11 @@ canvas.addEventListener('pointermove', e => {
     if ((h ? h.t + (h.id || h.terr) : '') !== (hovered ? hovered.t + (hovered.id || hovered.terr) : '')) { hovered = h; needFrame = true; }
   });
 });
-canvas.addEventListener('pointerleave', () => { if (hovered) { hovered = null; needFrame = true; } });
+canvas.addEventListener('pointerleave', () => { hoverKeep = false; if (hovered) { hovered = null; needFrame = true; } });
 ovRoot.addEventListener('pointerout', e => {
   const tag = e.target.closest('[data-pick-t]');
   const to = e.relatedTarget;   // to the canvas (a plate moved away from the pointer) or to another plate: the hover stays; to a panel or off the page: it ends
-  if (tag && hovered && !(to && (tag.contains(to) || to === canvas || ovRoot.contains(to)))) { hovered = null; needFrame = true; }
+  if (tag && hovered && !(to && (tag.contains(to) || to === canvas || ovRoot.contains(to)))) { hovered = null; hoverKeep = false; needFrame = true; }
 });
 canvas.addEventListener('pointerdown', e => {
   canvas.setPointerCapture(e.pointerId);
