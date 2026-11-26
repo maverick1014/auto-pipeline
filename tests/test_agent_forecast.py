@@ -10,7 +10,8 @@ bin/agent_forecast.py (new; Python 3.9 standard library; the board, eta and the 
   BUILD = (brief register mock tests workers verify push), TAIL = (report e2e merge): the stage words.
 
   history(root) -> rows from <root>/agent_completed.txt: clean lines only (part A's rule after fix order 1:
-      clock a number, work <= clock <= 1440; the wait may be missing), each a dict
+      clock a number, work <= clock, active time (clock - wait, or clock when no wait) <= 1440; the wait
+      may be missing), each a dict
         est    est0 when a number, else est, else None
         label  built when a number, else work
         tail   work - built when built is a number, else max(0, clock - wait - work) when wait is a number,
@@ -225,6 +226,17 @@ def history_lines(n=12):
                 wait=0, clock=80 if i % 2 == 0 else 100) for i in range(n)]
 
 
+class TestWaitsStayOut(tb.BoardCase):
+    """The owner (2026-11-26): "remove the waiting time": a row that waited is kept, its wait taken out."""
+
+    def test_the_tail_learner_takes_the_wait_out(self):
+        with open(self.repo.path("agent_completed.txt"), "w") as fh:
+            fh.write(row(day(1), "w", "w", lane="full", est=50, work=30, wait=200, clock=240) + "\n"
+                     + row(day(2), "long", "w", lane="full", est=50, work=60, wait=2900, clock=3000) + "\n")
+        rows = load("agent_forecast").history(self.repo.dir)
+        self.assertEqual([(r["label"], r["tail"]) for r in rows], [(30, 10), (60, 40)])
+
+
 class BoardForecastCase(tb.BoardCase):
     lang = "en"
 
@@ -277,6 +289,23 @@ class TestBoardDoneBy(BoardForecastCase):
         self.history(lines)
         self.verify_line()
         self.assertEqual(self.row(self.rows(now=NOW), task="x")["Done by"], "15:10")
+
+
+class TestOwnerWaitIsNotWork(BoardForecastCase):
+
+    def test_two_hours_on_the_owner_do_not_move_the_done_by(self):
+        # x waited 120 minutes on the owner after its start; y never waited: both have 50 minutes of work
+        self.history(history_lines())
+        self.put("x | big | the login form | est 60m | opened 2026-11-02 12:00 | by main | waited 120m"
+                 " | started 2026-11-02 12:10 | stage verify since 2026-11-02 14:50",
+                 "y | big | the login form | est 60m | opened 2026-11-02 14:00 | by main"
+                 " | started 2026-11-02 14:10 | stage verify since 2026-11-02 14:50")
+        rows = self.rows(now=NOW)
+        x, y = self.row(rows, task="x"), self.row(rows, task="y")
+        self.assertEqual((x["Work"], y["Work"]), ("50m", "50m"))
+        self.assertEqual(x["Done by"], y["Done by"])
+        self.assertIsNotNone(CELL2.match(x["Done by"]), x)
+        self.assertNotEqual(x["Wait"], y["Wait"])          # the wait has its own cell
 
 
 class TestEtaIsTheBoard(BoardForecastCase):

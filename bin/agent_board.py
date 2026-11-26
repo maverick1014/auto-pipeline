@@ -693,7 +693,7 @@ class Board:
                 if m.group(1).strip():
                     t["who"] = m.group(1).strip()
                 continue
-            m = re.match(r"owner (\S+)$", x.strip())
+            m = re.match(r"owner (.+)$", x.strip())
             if m and t["owner"] is None:
                 t["owner"] = m.group(1)
                 continue

@@ -346,6 +346,10 @@ stage_facts() {
 dkey() {
   local w
   case "$1" in *' | data '*) ;; *) return 0;; esac
+  if [ "$2" = by ]; then   # by= is the last key and holds the name as written, to the end of the line
+    case "$1" in *' by='*) printf '%s' "${1##* by=}";; esac
+    return 0
+  fi
   for w in ${1##* | data }; do
     case "$w" in "$2="*) printf '%s' "${w#*=}"; return 0;; esac
   done
@@ -498,11 +502,13 @@ DATA_SEEN="
 "
 # dload "<line>": d_* from the data block of the line ("-" for a key it does not say)
 dload() {
-  local w k
+  local w k rest
   dreset
-  for w in ${1##* | data }; do
+  rest=${1##* | data }
+  case "$rest" in *' by='*) d_by=${rest##* by=}; rest=${rest% by=*};; esac
+  for w in $rest; do
     k=${w%%=*}
-    case " $DATA_KEYS " in *" $k "*) eval "d_$k=\${w#*=}";; esac
+    case " $DATA_KEYS " in *" $k "*) [ "$k" = by ] || eval "d_$k=\${w#*=}";; esac
   done
 }
 # the repo folders named by the keys of "territories" in world.json: "<repo>/.git" gives <repo>
@@ -1454,8 +1460,8 @@ case "${1:-}:${2:-}" in
       echo "=== $(basename "$f") ==="
       if [ -s "$f" ]; then
         case "$f" in
-          "$TODO") sed -E 's/^(.* \| owner ([^ |]+)( \|.*)?)$/\1 [\2]/' "$f";;
-          "$DONE") sed -E '/ data .* by=-$/!s/^(.* data .* by=([^ ]+))$/\1 [\2]/' "$f";;
+          "$TODO") sed -E 's/^(.* \| owner ([^|]*[^| ])( \| .*)?)$/\1 [\2]/' "$f";;
+          "$DONE") sed -E '/ data .* by=-$/!s/^(.* data .* by=(.+))$/\1 [\2]/' "$f";;
           *) cat "$f";;
         esac
       else echo "(empty)"; fi

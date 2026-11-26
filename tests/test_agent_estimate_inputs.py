@@ -39,8 +39,12 @@ A4  todo add: an est equal to --guess is refused unless --why "<reason>" is give
     written. --why with an empty value, " | " or a line break: refused.
 A5  Clean rows (bin/agent_estimate.py). Fix order 1 (main manager, 2026-11-26): the wait is needed only by
     the END learner.
-    A row is clean when clock is a number, work <= clock and clock <= 1440 (one day); its wait may be
-    missing. The END learner (the tail of the end measure, the forecast's tail) also needs the wait.
+    A row is clean when clock is a number, work <= clock, and its active time <= 1440 (one day): active =
+    clock - wait when the wait is a number, else clock. The owner (2026-11-26): "for those who have waiting
+    time in the task, remove the waiting time": a row is never dropped for having waited, its waiting
+    minutes are taken out (the label is work, which never holds a wait). Its wait may be missing; the END
+    learner (the tail of the end measure, the forecast's tail) also needs the wait, because an unknown wait
+    cannot be taken out there.
     The label a learner learns = built when the row has it, else work.
     Only clean rows are neighbours (like lines), pick the setting, make the ranges, the weight, the bias
     and the fit. The backtest scores only clean rows, each from the clean rows before it (10 or more).
@@ -358,6 +362,20 @@ class TestCleanRows(EstimateCase):
         m, likes = self.estimate("fast", "no", "page", "fix a small thing on the page")
         self.assertIn("d-41", [l.group(1) for l in likes])
         self.assertNotEqual(m.group(1), "3")
+
+    def test_a_row_that_waited_teaches_its_work_without_the_wait(self):
+        # the owner's rule: work 30, wait 200, clock 240 trains the work learner with 30
+        rows = [row(day(i), "w-%02d" % i, "one shell script with tests", type="script", lane="full", mock="no",
+                    est=50, work=30, wait=200, clock=240) for i in range(12)]
+        self.completed(rows)
+        m, likes = self.estimate("full", "no", "script", "one shell script with tests")
+        self.assertEqual(m.group(1), "30")
+
+    def test_a_long_owner_wait_is_not_a_long_task(self):
+        # 2 days of owner review: clock 3000, wait 2900, work 60 is kept; the one day goes by clock - wait
+        self.completed(clean_rows() + [self.dirty("d-40", 40, work=60, wait=2900, clock=3000)])
+        m, likes = self.estimate("fast", "no", "page", "fix a small thing on the page")
+        self.assertIn("d-40", [l.group(1) for l in likes])
 
     def test_one_day_is_still_clean(self):
         self.completed(clean_rows() + [self.dirty("d-40", 40, work=500, clock=1440)])
