@@ -10,9 +10,9 @@ P1. Fastest correct way
 - Owner 2026-11-25: "use the most fast and efficiency way for any of your works". This comes first, for every agent, at every step
 - Before each step ask: what is the quickest way to the correct result? Take that way
 - Check, do not wait: a quick check (read the file, a trial merge) settles a doubt faster than a queue or a question
-- Tasks run in parallel on their own branches; the one that merges second resolves the conflict. For an agent that is minutes
-- A task waits for another, or joins its task manager, only when resolving would cost more than waiting
-- That is two cases: one moves or renames many files the other edits; or both rewrite the same logic or paragraph. "Same file" alone is no reason
+- Parallel first: tasks run on their own branches; the one that merges second resolves the conflict. For an agent that is minutes, cheaper than waiting
+- Parallel also for the same module in a different part, and for a conflict in text that is not logic (docs, lists, wording)
+- One exception: a follow-up on the logic an agent is changing right now goes to that agent. Two agents changing the same logic is a disaster
 - Decide, do not ask: when the owner's words or a rule already answer it, or a default can be taken and logged, go on
 - Ask the owner only an owner-level or irreversible call (W1)
 - Challenged on a decision: check the facts first, then keep it with the evidence, or change it and say what was wrong
@@ -277,13 +277,13 @@ W9. Task routing (main manager, before every dispatch)
 - Read `agent_worktree.txt` first
 - Small task (fast lane) → a new deputy subagent in its own git worktree (Agent isolation worktree); it pushes a branch, a merge deputy merges it
 - Several small tasks run side by side and never share a checkout (owner 1A 2026-11-25; 21 tasks done this way, median 22 minutes)
-- A new task gets its own branch and its own agent, also when it touches a live worktree's module
-- It joins a live task manager only when the owner adds to that task's own feature, or in the two cases of P1
+- A new task gets its own branch and its own agent, also when it touches a live worktree's module in a different part
+- A follow-up on the logic a live task manager is changing right now must go to that task manager (P1), never to a second agent
 - Task manager in final stage (compiling worker results) → do not disturb. Hold the task until it finishes
 - Otherwise → new worktree (W7). Never an Orca worktree and a task manager for a small task
 - `todo done <X>` releases every task queued after X
 - The main manager runs `agent-file.sh next` at every wake (a report, a watch signal, a human message) and dispatches what can start: room under the Max memory % limit (S3)
-- Only a queue line set for the two cases of P1 holds a task back
+- A task waits only for a real dependency: it needs code that another open task brings (shared first, below)
 - A task the owner already approved needs no new question
 - A new worktree or pane goes to the connected machine first that has room (W7, S3)
 - Target and base (R1): a task that goes straight to production branches from the production branch; a task for the working branch branches from the working branch (it sees the batch's earlier merges): `todo add ... --target production|working --batch <name>`

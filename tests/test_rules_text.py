@@ -3661,10 +3661,24 @@ class TestParallelDefault(unittest.TestCase):
         text = read("PRINCIPLES.md")
         block = text.split("P1. Fastest correct way", 1)[1].split("\n\n", 1)[0]
         for phrase in (
-            "- Tasks run in parallel on their own branches; the one that merges second resolves the conflict. For an agent that is minutes",
-            "- A task waits for another, or joins its task manager, only when resolving would cost more than waiting",
-            '- That is two cases: one moves or renames many files the other edits; or both rewrite the same logic or paragraph. "Same file" alone is no reason',
+            "- Parallel first: tasks run on their own branches; the one that merges second resolves the conflict. For an agent that is minutes, cheaper than waiting",
+            "- Parallel also for the same module in a different part, and for a conflict in text that is not logic (docs, lists, wording)",
+            "- One exception: a follow-up on the logic an agent is changing right now goes to that agent. Two agents changing the same logic is a disaster",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, block)
+        for gone in (
+            "only when resolving would cost more than waiting",
+            "one moves or renames many files the other edits",
+        ):
+            with self.subTest(gone=gone):
+                self.assertNotIn(gone, text)
         self.assertNotIn("only when that check shows a real overlap", text)
+
+    def test_w9_follow_up_goes_to_the_task_manager(self):
+        text = read("PRINCIPLES.md")
+        block = text.split("W9. Task routing", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("must go to that task manager (P1), never to a second agent", block)
+        for path in ("PRINCIPLES.md", "skills/dispatch/SKILL.md"):
+            with self.subTest(path=path):
+                self.assertNotIn("in the two cases of P1", read(path))
