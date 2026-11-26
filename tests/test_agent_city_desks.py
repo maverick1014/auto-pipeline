@@ -914,6 +914,19 @@ class TestHoverStaysWhenThePlateMoves(unittest.TestCase):
         self.assertRegex(blk, r"movementX", "a pointermove with no movement (the page moved, not the pointer) changes nothing")
 
 
+class TestOpenWindowsArePanels(unittest.TestCase):
+    """Fix round 3 (my live check at 390x844: selecting a person opens its detail window as a sheet over the lower half of
+    the stage, and plates were laid out under it, unseen and unreachable for the pointer). Every panel that can lie over
+    the floor view is a block for the plates: also the detail window (#win), its tab (#win-tab), the ask panel (#ask)
+    and the design popup (#dPop), whenever they show."""
+
+    def test_panel_blocks_name_the_windows(self):
+        src = script_function_source("panelBlocks") or ""
+        for sel in ("#floorSign", "#rail", "#rail-tab", "#follow", "#proto", "#lift", ".cam", "#win", "#win-tab", "#ask", "#dPop"):
+            with self.subTest(sel=sel):
+                self.assertIn(sel, src)
+
+
 class TestAgentOnItsParentsFloor(unittest.TestCase):
     """Fix round 3, item 5 (main manager's decision): an agent sits near its parent, so an agent whose own repo is another
     floor (its lines carry its own repo) is drawn on its parent's floor: at a desk there, counted there, not on its own."""
