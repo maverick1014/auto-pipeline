@@ -2,14 +2,20 @@
 
 The contract the workers build to. One class per feature; the examples of section 7 are the classes named Ex<n>.
 
-Facts, in the committed agent_repo.conf ("key=value"; "key = value" reads the same; a missing key = the default):
+Facts, in the committed agent_repo.conf ("key=value"; "key = value" reads the same). task_files and task_take are
+also settings of the person (/plugin Configure: "Task files in git", "Who may take a task"): a repo value wins, no repo
+value = the person's Configure, no setting = the default. init writes neither key:
   task_files=local (default) | ideas | ideas,todo      which task files are in git besides the history
   task_take=owner (default) | anyone                    who may work a task of a todo in git
   task_place=data (default) | tree                      where the files in git go: the data branch, or the code tree
                                                         (written by the cloud pack only)
 
-The place is ONE function (bin/agent_share.py place()); the data branch name is the constant data_branch = "ap-data"
-of bin/agent_conf.py CONSTANTS. A change of the place or of a default costs one line.
+The place is ONE function (bin/agent_share.py place()). The data branch name is a third value with the same rule as
+task_files and task_take: agent_repo.conf data_branch= wins, else the Configure setting "Data branch", default
+"ap-data" (bin/agent_conf.py SETTINGS). A change of the place or of a default costs one line. A branch that holds code
+(the production or the working branch, or a branch with any file that is not an agent file) is refused with one line
+naming "holds code": `files set data_branch` exits 1; a Configure or repo value that names one leaves the files on
+the default ap-data and every write says so in one line.
 
 Where a file lives (section 2), place data:
   Every agent file (agent_todo.txt, agent_ideas.txt, agent_worktree.txt, agent_completed.txt, agent_estimate.txt) is
@@ -76,6 +82,11 @@ todo stage, todo done, the merge gate, and the approval words: todo target, todo
   todo assign with a local todo: refused, the line says the todo is local
   todo take with task_take=owner: "todo take: task_take is owner; ask <owner> to assign it"
 A local todo: no check, no name asked. The logic lives in bin/agent_share.py (python3, stdlib only).
+
+The settings (owner 2026-11-26): files move with a Configure value that shares (task_files not local, or task_take
+anyone) and no repo value writes that value into agent_repo.conf (one code-branch commit) and says so in one line
+naming agent_repo.conf. agent-start.sh prints one line per fact when the person's Configure differs from the repo value:
+it names the repo value ("task_files=<v>") and agent_repo.conf.
 """
 
 import glob
@@ -249,11 +260,13 @@ class Ex1SetupInANewRepo(FilesCase):
                 self.assertNotIn(name, status)
                 self.assertTrue(ignored(self.dir, name), "%s is not ignored" % name)
 
-    def test_the_default_facts_are_written(self):
+    def test_init_writes_no_sharing_fact(self):
+        # owner 2026-11-26 (TELL 3a14d2f4): the person's Configure is the default; only a repo value overrides it
         conf = self.conf()
-        self.assertEqual(conf.get("task_files"), "local")
-        self.assertEqual(conf.get("task_take"), "owner")
+        self.assertNotIn("task_files", conf)
+        self.assertNotIn("task_take", conf)
         self.assertFalse(ignored(self.dir, "agent_repo.conf"))
+        self.assertIn("files: task_files=local task_take=owner", self.af("files", "show").stdout)
 
     def test_init_twice_changes_nothing(self):
         before = {n: read(os.path.join(self.dir, n)) for n in (".gitignore", "agent_repo.conf")}
@@ -275,13 +288,114 @@ class Ex1SetupInANewRepo(FilesCase):
         self.assertIn("task_files=ideas", out)
         self.assertIn("agent_ideas.txt: in git", out)
 
-    def test_the_data_branch_name_is_one_constant(self):
+    def test_the_data_branch_is_one_setting_with_the_default_ap_data(self):
         sys.path.insert(0, self.repo.plugin_bin)
         try:
             import agent_conf
-            self.assertEqual(agent_conf.CONSTANTS.get("data_branch"), DATA)
+            row = [x for x in agent_conf.SETTINGS if x["key"] == "data_branch"]
+            self.assertEqual(len(row), 1)
+            self.assertEqual(row[0]["default"], DATA)
+            self.assertNotIn("data_branch", agent_conf.CONSTANTS)
         finally:
             sys.path.remove(self.repo.plugin_bin)
+
+
+class TestTheSettingsAreThePersonsDefault(FilesCase):
+    """Owner 2026-11-26 (TELL 3a14d2f4): two settings in Configure are the person's default; the repo value wins."""
+
+    def test_the_settings_table_shows_both(self):
+        out = self.assertOk(self.repo.run("agent-settings.sh"))
+        self.assertIn("Task files in git", out)
+        self.assertIn("Who may take a task", out)
+        manifest = json.load(open(os.path.join(ROOT, ".claude-plugin", "plugin.json")))["userConfig"]
+        self.assertEqual(manifest["task_files"]["default"], "local")
+        self.assertEqual(manifest["task_take"]["default"], "owner")
+        self.assertEqual(manifest["task_files"]["options"], ["local", "ideas", "ideas,todo"])
+        self.assertEqual(manifest["task_take"]["options"], ["owner", "anyone"])
+
+    def test_no_repo_value_configure_decides(self):
+        self.repo.set_conf("task_files", "ideas")
+        self.repo.set_conf("task_take", "anyone")
+        out = self.af("files", "show").stdout
+        self.assertIn("task_files=ideas", out)
+        self.assertIn("task_take=anyone", out)
+        self.assertIn("agent_ideas.txt: in git", out)
+
+    def test_the_repo_value_wins_and_the_start_says_so(self):
+        self.commit_all()
+        self.af("files", "set", "task_files", "local")
+        self.repo.set_conf("task_files", "ideas,todo")
+        self.assertIn("task_files=local", self.af("files", "show").stdout)
+        out = self.repo.run("agent-start.sh").stdout
+        said = [l for l in out.splitlines() if "task_files=local" in l and "agent_repo.conf" in l]
+        self.assertEqual(len(said), 1, out)
+
+    def test_no_line_at_start_when_they_agree(self):
+        self.commit_all()
+        self.af("files", "set", "task_take", "owner")
+        out = self.repo.run("agent-start.sh").stdout
+        self.assertEqual([l for l in out.splitlines() if "task_take=" in l], [], out)
+
+    def test_the_move_writes_a_shared_default_into_the_repo(self):
+        self.commit_all()
+        self.repo.set_conf("task_files", "ideas,todo")
+        out = self.af("files", "move").stdout
+        self.assertEqual(self.conf().get("task_files"), "ideas,todo")
+        # "the command that turns sharing on writes the three values there" (section 2, Settings)
+        self.assertEqual(self.conf().get("task_take"), "owner")
+        self.assertEqual(self.conf().get("data_branch"), DATA)
+        self.assertIn("task_files=ideas,todo", git(self.dir, "show", "HEAD:agent_repo.conf"))
+        said = [l for l in out.splitlines() if "agent_repo.conf" in l and "task_files=ideas,todo" in l]
+        self.assertEqual(len(said), 1, out)
+        self.assertIsNotNone(data_file(self.dir, "agent_todo.txt"))
+
+    def test_a_repo_data_branch_wins(self):
+        self.commit_all()
+        path = os.path.join(self.dir, "agent_repo.conf")
+        write(path, read(path) + "data_branch=team-data\n")
+        self.repo.set_conf("data_branch", "mine-data")
+        self.af("todo", "add", "t", "small", "the t task", "30")
+        self.af("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
+        self.assertIn("| t |", data_file(self.dir, "agent_completed.txt", ref="team-data") or "")
+        self.assertEqual(tip(self.dir, "mine-data"), "")
+        self.assertEqual(tip(self.dir, DATA), "")
+
+    def test_a_configure_data_branch_is_used_when_the_repo_has_none(self):
+        self.repo.set_conf("data_branch", "mine-data")
+        self.af("todo", "add", "t", "small", "the t task", "30")
+        self.af("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
+        self.assertIn("| t |", data_file(self.dir, "agent_completed.txt", ref="mine-data") or "")
+        self.assertIn("place=mine-data", self.af("files", "show").stdout)
+
+    def test_a_branch_that_holds_code_is_refused_with_one_line(self):
+        # owner 2026-11-26 (TELL 50d02f90): a code branch is allowed only once tests prove the copies never fight;
+        # until then the setting refuses it with one clear line and the files go to the default
+        self.commit_all()
+        code = git(self.dir, "symbolic-ref", "--short", "HEAD").strip()
+        r = self.af("files", "set", "data_branch", code, ok=False)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("holds code", r.stderr)
+        self.assertNotIn("data_branch", self.conf())
+        self.repo.set_conf("data_branch", code)
+        self.af("todo", "add", "t", "small", "the t task", "30")
+        sha = head(self.dir)
+        r = self.af("todo", "done", "t", "--work", "5", "--type", "script", "--lane", "fast")
+        self.assertEqual(len([l for l in (r.stdout + r.stderr).splitlines() if "holds code" in l]), 1,
+                         r.stdout + r.stderr)
+        self.assertEqual(head(self.dir), sha)
+        self.assertNotIn("agent_completed.txt", git(self.dir, "ls-tree", "--name-only", code))
+        self.assertIn("| t |", data_file(self.dir, "agent_completed.txt") or "")
+
+    def test_the_settings_table_shows_the_data_branch(self):
+        out = self.assertOk(self.repo.run("agent-settings.sh"))
+        self.assertIn("Data branch", out)
+        manifest = json.load(open(os.path.join(ROOT, ".claude-plugin", "plugin.json")))["userConfig"]
+        self.assertEqual(manifest["data_branch"]["default"], DATA)
+
+    def test_the_move_writes_nothing_for_the_local_default(self):
+        self.commit_all()
+        self.af("files", "move")
+        self.assertNotIn("task_files", self.conf())
 
 
 # ---------------------------------------------------------------- section 5 and 7: the move command

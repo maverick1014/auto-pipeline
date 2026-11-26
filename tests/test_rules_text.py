@@ -422,7 +422,7 @@ class TestSettingsTexts(unittest.TestCase):
         self.assertRegex(text, r"(?i)settings live only in")
         # owner 1A 2026-11-25: core paths are repo facts in agent_repo.conf, not a setting
         self.assertIn("agent_repo.conf", text)
-        self.assertRegex(text, r"(?i)17 settings|seventeen settings")   # + Auto clear after quiet (TELL 9bb87b13)
+        self.assertRegex(text, r"(?i)20 settings|twenty settings")   # + Task files in git, Who may take a task, Data branch (agent-files, TELL 3a14d2f4, 50d02f90)
 
     # test_r8_is_main_s_text (R8 frozen as on main 85b99de) is gone: the owner approved check-blocks on
     # 2026-11-25, R8 is "Check blocks" now (TestPrinciplesR8 pins it)
