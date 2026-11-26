@@ -724,6 +724,21 @@ class TestNoQuizForSubagents(StartCase):
         out = pointer_part(self.assertOk(self.start(env=self.sid())))
         self.assertLessEqual(len(out.encode()), 2000)
 
+    def test_an_old_pointer_marker_is_cleaned_at_startup(self):
+        # md-slim-principles C 10: the moment pointers' markers (agent_point_<sid>_<moment>) go like the others
+        old = self.repo.path(".git", "agent_point_old-sess_dispatch")
+        cur = self.repo.path(".git", "agent_point_cur-p_merge")
+        for path in (old, cur):
+            with open(path, "w") as fh:
+                fh.write("x\n")
+        when = time.time() - 8 * 86400
+        os.utime(old, (when, when))
+        os.utime(cur, (when, when))
+        stdin = json.dumps({"cwd": self.repo.dir, "session_id": "cur-p", "source": "startup"})
+        self.assertOk(self.start(stdin=stdin, env={"AGENT_ROLE": "task-manager"}))
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.exists(cur), "the current session's own marker stays")
+
     def test_an_old_quiz_marker_is_cleaned_at_startup(self):
         old = self.quiz_marker("old-sess")
         with open(old, "w") as fh:

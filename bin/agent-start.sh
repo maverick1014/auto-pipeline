@@ -1091,18 +1091,18 @@ fi
 
 # ---- drop stale session markers. Only on a real startup run (never
 # compact, handled above by the earlier `exit 0`). agent_started_*/
-# agent_compact_* older than AGENT_MARKER_DAYS (default 7, env override for
+# agent_compact_*/agent_point_* (moment pointers) older than AGENT_MARKER_DAYS (default 7, env override for
 # tests) days are deleted so they don't pile up in the git dir forever. The
 # current session's own markers are excluded by name, whatever their age.
 # `-mtime +N -delete` works the same on GNU and BSD/macOS find; wrapped in
 # `2>/dev/null || true` so a failure here never breaks the hook. ----
 MARKER_DAYS="${AGENT_MARKER_DAYS:-7}"
 if [ -n "$SID" ]; then
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_rules_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' \) \
-    ! -name "agent_started_$SID" ! -name "agent_rules_$SID" ! -name "agent_compact_$SID" ! -name "agent_quiz_$SID" ! -name "agent_stale_$SID" ! -name "agent_autoclear_$SID" \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_rules_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' -o -name 'agent_point_*' \) \
+    ! -name "agent_started_$SID" ! -name "agent_rules_$SID" ! -name "agent_compact_$SID" ! -name "agent_quiz_$SID" ! -name "agent_stale_$SID" ! -name "agent_autoclear_$SID" ! -name "agent_point_${SID}_*" \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 else
-  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_rules_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' \) \
+  find "$PROJECT_GITDIR" -maxdepth 1 \( -name 'agent_started_*' -o -name 'agent_rules_*' -o -name 'agent_compact_*' -o -name 'agent_quiz_*' -o -name 'agent_stale_*' -o -name 'agent_autoclear_*' -o -name 'agent_point_*' \) \
     -mtime "+$MARKER_DAYS" -delete 2>/dev/null || true
 fi
 
