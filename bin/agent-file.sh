@@ -773,6 +773,15 @@ est_lock() {
   done
   return 1
 }
+# est_gate: a test hook, read only when AGENT_ESTIMATE_GATE names a file: write this pid to <file>.reached, then wait
+# while the file exists (at most 120 s). Unset (production): nothing happens.
+est_gate() {
+  local n=0
+  [ -n "${AGENT_ESTIMATE_GATE:-}" ] || return 0
+  printf '%s\n' "$$" > "$AGENT_ESTIMATE_GATE.reached" 2>/dev/null || true
+  while [ -e "$AGENT_ESTIMATE_GATE" ] && [ "$n" -lt 1200 ]; do sleep 0.1; n=$((n + 1)); done
+  return 0
+}
 # est_runner: oldest queue file first: the retrain when due, then one measures entry; every line goes to the log
 est_runner() {
   local gd q lock f
@@ -782,6 +791,7 @@ est_runner() {
   printf '%s\n' "$$" > "$lock/pid"
   while :; do
     while f=$(ls "$q" 2>/dev/null | sort | head -n 1) && [ -n "$f" ]; do
+      est_gate
       rm -f "$q/$f"
       retrain_auto || true
     done

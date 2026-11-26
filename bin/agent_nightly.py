@@ -895,7 +895,7 @@ def due(cwd):
 
 # ------------------------------------------------------------------ the run
 
-UNITTEST = re.compile(r"^(?:FAIL|ERROR): (\S.*)$")
+UNITTEST = re.compile(r"^\s*(?:FAIL|ERROR): (\S.*)$")     # run2.py prints them indented
 PYTEST = re.compile(r"^(?:FAILED|ERROR) (\S*(?:::|\.py)\S*)")
 
 
@@ -1311,6 +1311,22 @@ def tip_of(root):
             or git(root, "rev-parse", "HEAD"))
 
 
+def version_only(root, old, new):
+    """True when two versions of plugin.json (commits old and new) differ only in the "version" value: the JSON
+    and every changed line."""
+    texts = [git(root, "show", "%s:.claude-plugin/plugin.json" % c) for c in (old, new)]
+    try:
+        a, b = json.loads(texts[0]), json.loads(texts[1])
+    except ValueError:
+        return False
+    if not (isinstance(a, dict) and isinstance(b, dict)
+            and isinstance(a.pop("version", None), str) and isinstance(b.pop("version", None), str)):
+        return False
+    import difflib
+    changed = [l for l in difflib.ndiff(texts[0].splitlines(), texts[1].splitlines()) if l[:2] in ("- ", "+ ")]
+    return a == b and all('"version"' in l for l in changed)
+
+
 def released_commits(root):
     """The commits a green nightly may have run on for a release: the tip of the working branch, and its parent
     when the tip only bumps the plugin version (a nightly started after the bump runs on the tip)."""
@@ -1318,7 +1334,7 @@ def released_commits(root):
     if not tip:
         return []
     files = git(root, "diff", "--name-only", tip + "^", tip).splitlines()
-    if files == [".claude-plugin/plugin.json"]:
+    if files == [".claude-plugin/plugin.json"] and version_only(root, tip + "^", tip):
         parent = git(root, "rev-parse", tip + "^")
         return [tip] + ([parent] if parent else [])
     return [tip]

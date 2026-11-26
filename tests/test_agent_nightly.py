@@ -183,6 +183,38 @@ class TestNightly(NetCase):
         self.git("commit", "-q", "-m", "more code")
         self.assertEqual(self.nightly("--release-ok").returncode, 1, "HEAD moved after the nightly")
 
+    def test_the_tip_counts_as_its_parent_only_for_a_version_only_bump(self):
+        # release-check-loosen KEEP 1: a tip that changes another key of plugin.json is not its parent
+        self.nightly("--start", "--wait")
+        g = self.git("rev-parse", "HEAD")
+        for body in ('{"name": "q", "version": "0.2.0"}\n', '{"name": "q", "version": "0.1.0"}\n'):
+            with self.subTest(body=body):
+                self.git("reset", "-q", "--hard", g)
+                self.put({".claude-plugin/plugin.json": body})
+                self.git("commit", "-q", "-am", "plugin.json")
+                self.assertEqual(self.nightly("--release-ok").returncode, 1)
+        self.git("reset", "-q", "--hard", g)
+        self.put({".claude-plugin/plugin.json": '{"name": "p", "version": "0.2.0"}\n'})
+        self.git("commit", "-q", "-am", "bump")
+        self.assertEqual(self.nightly("--release-ok").returncode, 0)
+
+    def test_a_red_full_run_through_run2_names_its_failing_test(self):
+        # release-check-loosen KEEP 2: run2.py prints FAIL/ERROR lines indented
+        with open(os.path.join(os.path.dirname(BIN), "tests", "run2.py")) as fh:
+            runner = fh.read()
+        self.put({"agent_repo.conf": "version=1\nfull_cmd=python3 tests/run2.py\n"
+                                     "related_cmd=python3 tests/run2.py {tests}\n",
+                  "tests/run2.py": runner,
+                  "tests/test_q.py": "import unittest\n\n\nclass X(unittest.TestCase):\n"
+                                     "    def test_x_red(self):\n        self.fail('red')\n"})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "run2 and a red test")
+        self.nightly("--start", "--wait")
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertTrue(any("test_x_red" in f for f in st["failed"]), st)
+        self.assertIn("test_x_red", self.nightly("--failures").stdout)
+
     def test_due(self):
         late = {"AGENT_FAKE_NOW": "2026-11-25 23:00"}
         self.assertEqual(self.nightly("--due", env=late).returncode, 0)
@@ -294,9 +326,37 @@ class Nightly(TestNightly):
 @only_own
 class TestC2NightlyIsMonitored(Nightly):
     def test_the_peak_is_recorded(self):
-        self.set_full("python3 -c \"import os, time; b = os.urandom(60 * 1024 * 1024); time.sleep(1.5)\"")
-        r = self.nightly("--start", "--wait", env=self.env())
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # The measured process holds 60 MB (touched again and again, so it stays resident) until the monitor has
+        # seen it: the test waits for the run's reservation to grow to the peak, then releases the process.
+        hold = os.path.join(self.repo.base, "hold_60mb")
+        open(hold, "w").close()
+        holder = os.path.join(self.repo.base, "hold_60mb.py")
+        with open(holder, "w") as fh:
+            fh.write("import os, time\n"
+                     "b = bytearray(os.urandom(60 * 1024 * 1024))\n"
+                     "end = time.time() + 120\n"
+                     "while os.path.exists(%r) and time.time() < end:\n"
+                     "    b[::4096] = b'x' * len(b[::4096])\n"
+                     "    time.sleep(0.05)\n" % hold)
+        self.set_full("python3 %s" % holder)
+        env = self.env()
+        reserve = env["AGENT_RESERVE_FILE"]
+        full_env = self.repo._env(env)
+        proc = subprocess.Popen([self.repo.script_path("agent-nightly.sh"), "--start", "--wait"], cwd=self.repo.cwd,
+                                env=full_env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+
+        def seen():
+            try:
+                with open(reserve) as fh:
+                    return any(int(j.get("mb", 0) or 0) >= 50 for j in json.load(fh).get("jobs", []))
+            except (OSError, ValueError):
+                return False
+        self.assertTrue(wait_until(seen, 120), "the monitor never saw the 60 MB process")
+        os.remove(hold)
+        out, err = proc.communicate(timeout=120)
+        self.assertEqual(proc.returncode, 0, out + err)
         self.assertEqual(self.status().get("result"), "green", self.status())
         w = self.weights().get("nightly", "")
         self.assertRegex(w, r"^\d+ s \d+ MB$")
