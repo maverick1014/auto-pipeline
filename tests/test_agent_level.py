@@ -378,7 +378,9 @@ class TestKinds(BlocksCase):
 
     def test_rule_files(self):
         for path in ("PRINCIPLES.md", "CLAUDE.md", "AGENTS.md", "skills/merge/SKILL.md", "agents/worker.md",
-                     ".claude/skills/x/SKILL.md", ".claude/agents/w.md"):
+                     ".claude/skills/x/SKILL.md", ".claude/agents/w.md",
+                     # md-slim-principles A 1: the rule files beside the core are rule text too
+                     "rules/checks.md", "GLOSSARY.md"):
             with self.subTest(path=path):
                 self.tearDown_repo()
                 self.assertEqual(self.kind({path: "- a\n"}, {path: "- b\n"}, path)[0], "rule")
@@ -656,6 +658,16 @@ class TestRelated(BlocksCase):
                           {"PRINCIPLES.md": after}, conf="related_cmd=python3 -m unittest {modules}\n")
         self.assertEqual(self.detail(r, "RELATED TESTS"), "tests/test_w4.py | run: python3 -m unittest tests.test_w4")
         self.assertNotIn("BUILD", self.blocks(r))
+
+    def test_a_rule_file_change_takes_the_tests_that_name_its_section(self):
+        # md-slim-principles: rules/<file>.md sections are found like the core's
+        before = "# Tests\nRead when: x.\n\nW3. TDD\n- a\n\nW4. Tests\n- run the touched tests\n"
+        after = before.replace("- run the touched tests", "- run the related tests")
+        r = self.run_case({"rules/tests.md": before,
+                           "tests/test_w4.py": "assert 'W4' in text\n",
+                           "tests/test_w3.py": "assert 'W3' in text\n"},
+                          {"rules/tests.md": after}, conf="related_cmd=python3 -m unittest {modules}\n")
+        self.assertEqual(self.detail(r, "RELATED TESTS"), "tests/test_w4.py | run: python3 -m unittest tests.test_w4")
 
     def test_style_only_change_takes_the_components_own_tests(self):
         r = self.run_case({"src/components/Button.css": ".b{color:red}\n",

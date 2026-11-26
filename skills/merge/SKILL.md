@@ -2,7 +2,7 @@
 name: merge
 description: Main manager only. After a task manager reports DONE PASS, send the reviewer and the check deputy, then send the merge deputy to merge, push, delete the branch, close the terminal, remove the worktree, update the agent files. Use when a feature is done.
 ---
-# /merge — finish one feature (PRINCIPLES.md W5, W8)
+# /merge — finish one feature (rules/ui.md W5, rules/worktrees.md W8)
 
 0. A CLOSE CASE report instead of DONE PASS? → run `/close-case` first. Finished → it sends you back here to continue. Unfinished → it decides finish first or close now.
 

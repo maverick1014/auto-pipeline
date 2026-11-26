@@ -859,5 +859,5 @@ class TestG6ReleaseWhileProductionIsCheckedOut(PromoteCase):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertFalse(os.path.exists(log))
         self.assertIn("release: not run: local main is checked out in %s; switch that checkout to the working branch "
-                      "(section 33), then run bin/agent-release.sh --push" % os.path.realpath(self.repo.dir),
+                      "(section 33 of requirements/check-blocks.md), then run bin/agent-release.sh --push" % os.path.realpath(self.repo.dir),
                       [l.replace(self.repo.dir, os.path.realpath(self.repo.dir)) for l in r.stdout.splitlines()])

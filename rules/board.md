@@ -12,7 +12,7 @@ W14. Todo board
 - Progress: `agent-file.sh todo stage <name> <stage> [i/m]` at each step boundary.
 - Stages, task manager: brief register mock tests workers verify push report. Main manager: e2e (the review and the checks), merge
 - Stage weights are fixed (`bin/agent_conf.py`)
-- Live: `board --watch` · `statusline` on or off, 5 lines at most (a warning line counts), queued/held/not started own row if room, rest `+N queued/held`. Language: the Language setting
+- Live: `board --watch` · `statusline` on or off, 5 lines at most (a warning line counts), queued/held/not started own row if room, rest `+N tasks`. Language: the Language setting
 - Record as it happens: `todo wait <name> on <kind> ["<note>"] [--who <name>] [--after <task>]|off` at every mock check, owner question, owner review, hold, queue; `todo where` at dispatch
 - `park add` for a parked question (H1); `OWNER TODO:` lines are written with `agent-file.sh state add`
 - `agent-guard.sh` records launches by task. The "Rules: Todo before agent" setting, on (default), refuses a main manager launch naming no open todo task: `todo add` first; off records only

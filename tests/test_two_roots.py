@@ -62,8 +62,10 @@ class TestPluginRoot(_TestPluginRootFixture, RootsCase):
 
     def test_the_rules_line_points_into_the_plugin(self):
         out = self.assertOk(self.start())
-        self.assertIn("RULES: read %s/PRINCIPLES.md now (S8)." % self.repo.plugin,
-                      out)
+        self.assertIn("RULES: the core (PRINCIPLES.md) and your reading list come in the rules block; "
+                      "no rules block: run %s/bin/agent-start.sh --rules (S8)." % self.repo.plugin, out)
+        # md-slim-principles A 2: the core's pointers lead into the plugin from any repo
+        self.assertIn("PATHS: rules/*.md, GLOSSARY.md and NOTICE.md are under %s/" % self.repo.plugin, out)
 
     def test_the_quiz_line_points_into_the_plugin(self):
         out = self.assertOk(self.start())

@@ -68,7 +68,7 @@ _Avoid_: safety net (same thing)
 **Release run**: the one full suite on the working branch before a publish; the batch run on that commit counts.
 
 ## Machines, sessions, records
-**Connected machine**: another machine paired in Orca that can take jobs; placement tries it first (inferred: the old text says both "connected machine" and "paired Orca machine" and never equates them; the owner decides).
+**Connected machine**: another machine paired in Orca that can take jobs; placement tries it first.
 _Avoid_: paired machine, remote machine, another machine (when it means this)
 **Pane**: an Orca terminal running one agent or shell.
 **The lock**: the main-manager lock line in the shared git dir: pid, date, session id, terminal.

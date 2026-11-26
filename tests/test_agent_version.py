@@ -173,7 +173,7 @@ class TestHook(Versions, ScriptCase):
         tail = "(claude --resume %s)." % sid if sid else "(claude --resume)."
         return ("STALE PLUGIN: this session runs %s, %s is installed. Call %s/%s/bin/... for "
                 "every script and in every subagent brief. Restart this session at the next "
-                "quiet point %s\n" % (running, newest, cache, newest, tail))
+                "quiet point %s Rule: rules/traps.md (W16).\n" % (running, newest, cache, newest, tail))
 
     def test_stale_prints_one_line(self):
         cache = self.stale_setup()

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # agent-keyword.sh — UserPromptSubmit hook: a keyword in the human's prompt
 # adds one line telling the agent to run the matching skill. The hook only
-# points; the logic lives in the skill (PRINCIPLES.md E4).
+# points; the logic lives in the skill (rules/output.md E4).
 # Always exit 0, no network, nothing on stderr.
 # Edit the KEYWORDS table below: one line per skill, keywords split by "|".
 set -u
@@ -14,7 +14,7 @@ read -r -d '' KEYWORDS <<'TABLE' || true
 /auto-pipeline:settings	show settings|看设置|改设置
 /auto-pipeline:todo	show todo|看任务|进度
 /auto-pipeline:question	show question|有什么问题|要我决定什么
-/auto-pipeline:close-case	close case|收尾
+/auto-pipeline:close-case	close case|收尾	Its rule: rules/close-case.md (W13).
 /auto-pipeline:clean-up	clean up files|清理文件
 /auto-pipeline:city	open city|看 agent
 /auto-pipeline:teacher-teach-me	teach me|explain to me|can you explain|教我|解释一下|给我讲讲	Pass his question as the argument; a question about the work in progress in this chat is answered by the main agent itself.
@@ -53,7 +53,7 @@ if [ "${WANT:-}" = 1 ] && [ -z "${AGENT_ROLE:-}" ]; then
     repo_set_up 2>/dev/null || exit 0
     role_read 2>/dev/null
     [ "${role:-}" = main ] || exit 0
-    echo "Approval hook: if the owner is approving a publish or a skipped check here, read his words by the approval cases (PRINCIPLES.md R8) and the per-task target (W9). If the words are only mentioned or quoted, ignore this."
+    echo "Approval hook: if the owner is approving a publish or a skipped check here, read his words by the approval cases (rules/approval.md R8) and the per-task target (rules/routing.md W9). If the words are only mentioned or quoted, ignore this."
   ) 2>/dev/null
 fi
 exit 0

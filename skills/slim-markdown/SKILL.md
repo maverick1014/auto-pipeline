@@ -12,7 +12,7 @@ Words to the human: the Language setting.
 | Files | Reader | What applies |
 |---|---|---|
 | PRINCIPLES.md, CLAUDE.md, AGENTS.md, skills/*/SKILL.md, agents/*.md, requirement docs | agent | all of this skill |
-| README.md, replies and reports to the human | human | W3, W4, W5, W6 only; plain words stay (PRINCIPLES H2) |
+| README.md, replies and reports to the human | human | W3, W4, W5, W6 only; plain words stay (rules/human.md H2) |
 
 Writing rules: any agent that edits an agent-read file. Slim pass: the main manager, or a deputy it sends.
 

@@ -944,6 +944,22 @@ class TestSweepAndWake(AllCase):
         self.assertIn(" | stage workers 1/2 since ", self.todo_line("alpha"))
         self.assertTrue([l for l in self.lines(text) if re.match(r"^%s stage alpha: workers 1/2$" % HHMM, l)], text)
 
+    def test_a_wake_points_to_the_watch_rules_once_per_session(self):
+        # md-slim-principles C 9, C 10: a watch signal -> rules/watch.md, one line after the events
+        point = "Handle it: rules/watch.md (W15). The watch only points."
+        for n, want in ((1, True), (2, False)):
+            with self.subTest(run=n):
+                self.setUp()
+                self.task("alpha")
+                self.on_task_read("alpha", {2: "DONE PASS alpha"})
+                env = {"CLAUDE_CODE_SESSION_ID": "s-watch"}
+                if n == 2:
+                    marker = os.path.join(self.repo.dir, ".git", "agent_point_s-watch_watch")
+                    open(marker, "w").close()
+                text = self.text(self.run_all(env=env))
+                self.assertEqual(self.one_watch(text), "WATCH SIGNAL alpha: DONE PASS alpha")
+                self.assertEqual(point in self.lines(text), want, text)
+
     def test_b4_two_events_in_one_sweep_two_watch_lines_in_target_order_one_exit(self):
         self.task("zeta")
         self.task("alpha")

@@ -1007,7 +1007,7 @@ class TestF3NoStandingPushToProduction(WorkingInitCase):
         self.assertIn('allow "Bash(git push origin ap-main-t)"', out)
 
     def test_w16_and_clean_up(self):
-        w16 = rule("W16. ", "W17. ")
+        w16 = read("rules", "traps.md")   # md-slim-principles: W16 is rules/traps.md (it holds only W16)
         self.assertNotIn("integration branch", w16)
         self.assertIn("working branch", w16)
         cu = read("skills", "clean-up", "SKILL.md")

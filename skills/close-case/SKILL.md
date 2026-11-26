@@ -2,7 +2,7 @@
 name: close-case
 description: Run when the human or the main manager says close case. Task manager or human-direct session - settle down and send the CLOSE CASE report. Main manager - decide on a CLOSE CASE report (finish first or close now), or wrap up the whole repo.
 ---
-# /close-case — settle a case, or wrap up the whole repo (PRINCIPLES.md W13)
+# /close-case — settle a case, or wrap up the whole repo (rules/close-case.md W13)
 
 `[<model> <effort>]` = yours, from the `YOU:` line of your start text.
 
@@ -26,7 +26,7 @@ The report's TIME line keeps work and wait apart: est, actual (agent work only),
 
 1. Start nothing new. Running workers finish their slice or stop cleanly.
 2. Save `agent_state.txt`. Commit + push the branch, a WIP commit if unfinished. Never lose work.
-3. Report to the upper level: the main manager `<repo> Manager` (not listed: the `<repo>-<xx>` row) with `SendMessage` (another machine: print it in this terminal and say so). No live main manager: print the report here, the human decides. First line `CLOSE CASE <name>: finished` or `CLOSE CASE <name>: unfinished`. Then: what is done, what is left + next steps, tests run + results, E2E click path, new ideas, `TIME: est <n>m, actual <n>m, wait <n>m`.
+3. Report to the upper level: a task manager writes its report into its `agent_state.txt` with `agent-file.sh state add` (one block); the watch wakes the main manager. A human-direct session reports to the main manager `<repo> Manager` (not listed: the `<repo>-<xx>` row) with `SendMessage`. Another machine: print it in this terminal and say so. No live main manager: print the report here, the human decides. First line `CLOSE CASE <name>: finished` or `CLOSE CASE <name>: unfinished`. Then: what is done, what is left + next steps, tests run + results, E2E click path, new ideas, `TIME: est <n>m, actual <n>m, wait <n>m`.
 4. Wait for the decision: finish first, or close now. Never close yourself.
 
 ## B. The human says close case (whole repo)

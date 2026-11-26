@@ -688,12 +688,23 @@ class TestNext(Case):
         self.assertIn("WAIT b: after a still open", out)
         self.assertFalse(any(l.startswith("START b") for l in out), out)
 
-    def test_a_clash_on_the_same_files_waits(self):
+    def test_the_same_files_are_no_hold(self):
+        # md-slim-principles D 13 (decision 3, parallel first): task A runs with scope
+        # bin/x.py, queued task B has scope bin/x.py: todo next offers B
+        self.add("a", "--scope", "bin/x.py")
+        self.ok("todo", "stage", "a", "workers")
+        self.add("b", "--scope", "bin/x.py")
+        out = self.next().stdout.splitlines()
+        self.assertIn("START b | est 10m | what b", out)
+        self.assertFalse(any("clashes" in l for l in out), out)
+
+    def test_a_queued_task_on_a_running_tasks_files_starts(self):
         self.add("a", "--scope", "bin/agent-file.sh,tests/**")
         self.ok("todo", "stage", "a", "workers")
         self.add("b", "--scope", "bin/agent-file.sh")
+        self.ok("todo", "wait", "b", "on", "queue")
         out = self.next().stdout.splitlines()
-        self.assertTrue(any(l.startswith("WAIT b: clashes with a on ") for l in out), out)
+        self.assertIn("START b | est 10m | what b", out)
 
     def test_no_room_for_a_pane_starts_nothing(self):
         self.add("a", "--scope", "x/**")
@@ -1217,7 +1228,7 @@ class TestF2CoreReviewIsNoBuildersJob(TestGate):
             self.assertIn("CORE REVIEW: pass by the builder (t Task Manager), not accepted", r.stdout.splitlines())
 
     def test_r8_names_it(self):
-        self.assertIn("CORE REVIEW", [x for x in rule("R8. ", "W1. ").splitlines()
+        self.assertIn("CORE REVIEW", [x for x in read("rules", "checks.md").splitlines()   # md-slim-principles: R8 stands in rules/checks.md
                                       if "not the builder" in x and "PR REVIEW" in x][0])   # FIX ORDER 1: the late-yes line names the builder too
 
 

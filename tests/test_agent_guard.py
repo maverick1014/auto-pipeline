@@ -714,6 +714,94 @@ class TestSwitch(GuardCase):
         self.assertEqual(r.returncode, 1)
 
 
+# md-slim-principles C 9, C 10: the hook that already runs at the moment adds one
+# short pointer line to the agent's context (PreToolUse additionalContext JSON on
+# stdout, exit 0), at most once per session and moment. A pointer is never a gate:
+# what was allowed stays allowed, what was refused stays refused.
+POINT_DISPATCH = ("Dispatch: route it by rules/routing.md (W9); its blocks (--checks) by rules/checks.md (R8). "
+                  "The hook only points.")
+POINT_MERGE = ("Merge: the gate by rules/checks.md (R8); the merge and the cleanup by rules/worktrees.md (W8). "
+               "The hook only points.")
+POINT_PUSH = "Push: a push that is denied: rules/traps.md (W16). The hook only points."
+
+
+class TestMomentPointers(GuardCase):
+
+    def context(self, r):
+        self.assertAllowed(r)
+        if not r.stdout.strip():
+            return None
+        data = json.loads(r.stdout)
+        self.assertEqual(data["hookSpecificOutput"]["hookEventName"], "PreToolUse")
+        self.assertNotIn("permissionDecision", data["hookSpecificOutput"])
+        return data["hookSpecificOutput"]["additionalContext"]
+
+    def test_a_todo_add_points_to_routing(self):
+        self.make_main()
+        r = self.pre_bash('"/p/bin/agent-file.sh" todo add "t" small "x" 10 --checks "PR REVIEW"')
+        self.assertEqual(self.context(r), POINT_DISPATCH)
+
+    def test_once_per_session_and_moment(self):
+        self.make_main()
+        self.assertEqual(self.context(self.pre_bash("bin/agent-file.sh todo add a small x 5")), POINT_DISPATCH)
+        self.assertIsNone(self.context(self.pre_bash("bin/agent-file.sh todo add b small x 5")))
+        # another session: again
+        r = self.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash", "session_id": "s2",
+                       "tool_input": {"command": "bin/agent-file.sh todo add c small x 5", "description": "x"},
+                       "tool_use_id": self.tid()})
+        self.assertEqual(self.context(r), POINT_DISPATCH)
+
+    def test_a_deputy_launch_points_to_routing(self):
+        self.make_main()
+        self.put_todo("t")
+        r = self.pre_agent("t Deputy", stype="auto-pipeline:fast-lane-deputy")
+        self.assertEqual(self.context(r), POINT_DISPATCH)
+
+    def test_a_merge_deputy_launch_points_to_the_gate_and_cleanup(self):
+        self.make_main()
+        self.put_todo("t")
+        r = self.pre_agent("t Merge", stype="auto-pipeline:merge-deputy")
+        self.assertEqual(self.context(r), POINT_MERGE)
+
+    def test_a_gate_call_points_to_the_gate_and_cleanup(self):
+        self.make_main()
+        r = self.pre_bash('bin/agent-file.sh checks gate "t" --dir /x --branch b')
+        self.assertEqual(self.context(r), POINT_MERGE)
+
+    def test_the_two_moments_are_counted_apart(self):
+        self.make_main()
+        self.assertEqual(self.context(self.pre_bash("bin/agent-file.sh todo add a small x 5")), POINT_DISPATCH)
+        self.assertEqual(self.context(self.pre_bash("bin/agent-file.sh checks gate a --dir /x")), POINT_MERGE)
+
+    def test_a_push_points_to_the_traps(self):
+        for role in (None, "task-manager"):
+            with self.subTest(role=role):
+                sid = "s-push-%s" % role
+                r = self.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash", "session_id": sid,
+                               "tool_input": {"command": "git push origin feat", "description": "x"},
+                               "tool_use_id": self.tid()}, role=role)
+                self.assertEqual(self.context(r), POINT_PUSH)
+
+    def test_a_worker_launch_or_a_plain_command_gets_nothing(self):
+        self.make_main()
+        self.put_todo("t")
+        self.assertIsNone(self.context(self.pre_agent("t Worker 1: slice", stype="auto-pipeline:worker")))
+        self.assertIsNone(self.context(self.pre_bash("ls -la")))
+        self.assertIsNone(self.context(self.pre_bash("git status")))
+
+    def test_a_refused_launch_stays_refused(self):
+        self.make_main()
+        r = self.pre_agent("nope Deputy", stype="auto-pipeline:fast-lane-deputy")
+        self.assertEqual(r.returncode, 2, r.stderr)
+
+    def test_never_after_the_call(self):
+        self.make_main()
+        tid = self.tid()
+        r = self.post_bash("bin/agent-file.sh todo add a small x 5", tid)
+        self.assertAllowed(r)
+        self.assertNotIn("additionalContext", r.stdout)
+
+
 class TestReviewFixes(GuardCase):
     def setUp(self):
         super().setUp()

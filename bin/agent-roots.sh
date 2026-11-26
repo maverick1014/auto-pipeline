@@ -33,7 +33,7 @@
 # (--release, --take-over), one line per closed session:
 #   "<pid> <released|replaced> <YYYY-MM-DD> <HH:MM>"   (dead pids pruned on write)
 #
-# PLUGIN root  = the folder above bin/. Read only: PRINCIPLES.md, the quiz,
+# PLUGIN root  = the folder above bin/. Read only: PRINCIPLES.md, rules/, GLOSSARY.md, NOTICE.md, the quiz,
 #                agent_conf.py. No script writes here. The settings are not
 #                in any file of PROJECT_ROOT: they live in Claude Code,
 #                /plugin -> Installed -> auto-pipeline -> Configure.
