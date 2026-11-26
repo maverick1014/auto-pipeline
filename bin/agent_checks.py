@@ -113,14 +113,14 @@ class Todo(object):
 
 def field_of(fields, prefix):
     for f in fields[3:]:
-        if f.startswith(prefix + " "):
+        if f.startswith(prefix + " ") and not (prefix == "stage" and f.startswith("stage log ")):
             return f[len(prefix) + 1:]
     return None
 
 
 def field_index(fields, prefix):
     for i in range(3, len(fields)):
-        if fields[i].startswith(prefix + " "):
+        if fields[i].startswith(prefix + " ") and not (prefix == "stage" and fields[i].startswith("stage log ")):
             return i
     return -1
 
