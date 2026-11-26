@@ -294,9 +294,37 @@ class Nightly(TestNightly):
 @only_own
 class TestC2NightlyIsMonitored(Nightly):
     def test_the_peak_is_recorded(self):
-        self.set_full("python3 -c \"import os, time; b = os.urandom(60 * 1024 * 1024); time.sleep(1.5)\"")
-        r = self.nightly("--start", "--wait", env=self.env())
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # The measured process holds 60 MB (touched again and again, so it stays resident) until the monitor has
+        # seen it: the test waits for the run's reservation to grow to the peak, then releases the process.
+        hold = os.path.join(self.repo.base, "hold_60mb")
+        open(hold, "w").close()
+        holder = os.path.join(self.repo.base, "hold_60mb.py")
+        with open(holder, "w") as fh:
+            fh.write("import os, time\n"
+                     "b = bytearray(os.urandom(60 * 1024 * 1024))\n"
+                     "end = time.time() + 120\n"
+                     "while os.path.exists(%r) and time.time() < end:\n"
+                     "    b[::4096] = b'x' * len(b[::4096])\n"
+                     "    time.sleep(0.05)\n" % hold)
+        self.set_full("python3 %s" % holder)
+        env = self.env()
+        reserve = env["AGENT_RESERVE_FILE"]
+        full_env = self.repo._env(env)
+        proc = subprocess.Popen([self.repo.script_path("agent-nightly.sh"), "--start", "--wait"], cwd=self.repo.cwd,
+                                env=full_env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+
+        def seen():
+            try:
+                with open(reserve) as fh:
+                    return any(int(j.get("mb", 0) or 0) >= 50 for j in json.load(fh).get("jobs", []))
+            except (OSError, ValueError):
+                return False
+        self.assertTrue(wait_until(seen, 120), "the monitor never saw the 60 MB process")
+        os.remove(hold)
+        out, err = proc.communicate(timeout=120)
+        self.assertEqual(proc.returncode, 0, out + err)
         self.assertEqual(self.status().get("result"), "green", self.status())
         w = self.weights().get("nightly", "")
         self.assertRegex(w, r"^\d+ s \d+ MB$")

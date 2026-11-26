@@ -39,6 +39,7 @@ D13 the slip flag (bin/agent-file.sh todo stage, bin/agent_board.py).
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import unittest
@@ -197,13 +198,44 @@ class TestTodoDoneInTheBackground(LearnCase):
         return out, time.time() - start
 
     def test_todo_done_does_not_wait_for_the_backtest(self):
+        # Proved by order, not by seconds: the detached runner is held at a gate this test controls
+        # (AGENT_ESTIMATE_GATE names a file; the runner waits while it exists). todo done must return while the
+        # gate is closed and no measure is written; then the gate opens and exactly one measure appears.
         self.completed(steady(120))
         self.model(checked=120, date=TODAY)
         self.todo()
-        out, took = self.quick_done("t-new")
-        self.assertLess(took, 3.0, out)
+        gate = os.path.join(self.repo.base, "estimate.gate")
+        reached = gate + ".reached"
+        with open(gate, "w") as fh:
+            fh.write("closed\n")
+        self.addCleanup(lambda: os.path.exists(gate) and os.remove(gate))
+        env = self.repo._env({"AGENT_FAKE_NOW": "2026-10-05 16:00", "AGENT_ESTIMATE_GATE": gate})
+        env.pop("AGENT_ESTIMATE_WAIT", None)
+        proc = subprocess.Popen([self.repo.script_path("agent-file.sh"), "todo", "done", "t-new", "--wait", "0",
+                                 "--lane", "full", "--mock", "no", "--type", "script"],
+                                cwd=self.repo.cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        end = time.time() + 120                          # a hard stop for a broken run only
+        while proc.poll() is None and time.time() < end:
+            if os.path.exists(reached):
+                with open(reached) as fh:
+                    self.assertNotEqual(fh.read().strip(), str(proc.pid),
+                                        "todo done runs the estimator itself (in the foreground)")
+            time.sleep(0.02)
+        self.assertIsNotNone(proc.poll(), "todo done did not return while the runner waits at the gate")
+        out, err = proc.communicate()
+        self.assertEqual(proc.returncode, 0, out + err)
+        self.assertTrue(os.path.exists(gate), "the gate is still closed")
         self.assertIn("todo done: t-new", out)
         self.assertEqual([l for l in self.lines(out) if l.startswith("estimate retrain")], [])
+        self.assertEqual(self.model_json().get("measures", []), [], "a measure was written before the gate opened")
+        end = time.time() + 120                          # the detached runner reaches the gate on its own
+        while not os.path.exists(reached) and time.time() < end:
+            time.sleep(0.05)
+        self.assertTrue(os.path.exists(reached), "the detached runner never started")
+        self.assertEqual(self.model_json().get("measures", []), [])
+        os.remove(gate)
         self.settle()
         self.assertEqual(len(self.model_json()["measures"]), 1)
         self.assertNotIn("Traceback", self.log())
