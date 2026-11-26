@@ -4,3 +4,8 @@ __pycache__/
 agent_state.txt
 agent_monitor.txt
 agent_monitor.txt.tmp.*
+agent_todo.txt
+agent_ideas.txt
+agent_worktree.txt
+agent_completed.txt
+agent_estimate.txt
