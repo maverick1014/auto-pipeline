@@ -1031,7 +1031,8 @@ class Board:
 
         words = KIND_WORD[self.lang]
         kids = {}
-        under = {}      # task -> [(since, folder)] of its live agents (panes are no agents)
+        under = {}      # task -> [(since, folder)] of its live agents
+        panes = {}      # the same for its live panes (someone works, but a pane is no agent: no count)
         finished = finished_tasks(self.root)
         for folder, rec in self.records:
             if rec["is_pane"]:
@@ -1046,16 +1047,15 @@ class Board:
             if hand is not None and hand in self.rows:
                 self.rows.remove(hand)
             if rec["task"] in self.todo_rows:
-                if not rec["is_pane"]:
-                    under.setdefault(rec["task"], []).append((rec["since"], folder))
+                (panes if rec["is_pane"] else under).setdefault(rec["task"], []).append((rec["since"], folder))
                 continue
             work = fmt_min(minutes(parse_time(rec["since"]), now))
             cells = [cell(label), cell(cut_what(rec["title"])), cell(self.word("running")), "-",
                      cell(self.where_here(folder)), "-", "-", cell(work), "-", "-"]
             kids.setdefault(rec["task"], []).append((rec["since"], label, cells))
         counts = agent_counts([r for _, r in self.records], now, finished)
-        for task, items in under.items():
-            self.fold_into(task, counts.get(task, len(items)), min(items))
+        for task in list(under) + [t for t in panes if t not in under]:
+            self.fold_into(task, counts.get(task, 0), min(under.get(task) or panes[task]))
         for task, items in kids.items():
             for since, label, cells in sorted(items, key=lambda x: x[0]):
                 self.seq += 1
@@ -1071,7 +1071,8 @@ class Board:
         if cells[2] == cell(self.word("notstarted")):
             cells[2] = cell(self.word("running"))
             key = (G_RUNNING,) + key[1:]
-        cells[2] += agent_mark(self.lang, n)
+        if n:
+            cells[2] += agent_mark(self.lang, n)
         if cells[7] == "-":
             cells[7] = cell(fmt_min(minutes(parse_time(since), self.now)))
         if cells[4] == "-":
@@ -1349,6 +1350,20 @@ def agent_counts(records, now, finished):
     return counts
 
 
+def live_panes(records):
+    """Tasks that have a pane record whose session pid lives (the status line never asks orca)."""
+    return {r["task"] for r in records if r["is_pane"] and pid_alive(r["pid"])}
+
+
+def read_running(board, records, main):
+    """A not started task (no wait) with a live agent or a live task manager pane reads running in the status line
+    too: only its text changes, never its place or rank."""
+    busy = set(agent_counts(records, board.now, finished_tasks(main))) | live_panes(records)
+    for _, _, info in board.rows:
+        if info is not None and info["type"] == "short" and info["notstarted"] and info["name"] in busy:
+            info["text"] = board.word("running")
+
+
 def agent_mark(lang, n):
     """" · 2 代理" / " · 2 agents" (one: " · 1 agent")."""
     return " · " + ("%d 代理" % n if lang == "zh" else "%d agent%s" % (n, "" if n == 1 else "s"))
@@ -1475,6 +1490,7 @@ def statusline_text(stdin_text, width=None):
     args = argparse.Namespace(root=main, state_dir=top, cwd=folder, now=clock_now(), lang=lang, host="-",
                               self_mode=own)
     board = build(args, records=False)
+    read_running(board, launch_records(top), main)
     if width:
         return wide_status(board, args, main, top, own, width)
     zh = lang == "zh"

@@ -2062,6 +2062,63 @@ class TestOneRowPerTask(BoardCase):
         self.assertTrue(rows[0]["Status"].startswith(self.st("running")), rows)
         self.assertTrue(rows[0]["Status"].endswith(self.mark(1)), rows)
 
+    # ---- follow-ups of the review (main manager): the status line says running too; a live pane alone is someone working
+
+    def line(self, width):
+        env = {"AGENT_FAKE_NOW": NOW, "AGENT_FAKE_HOST": HOST, "AGENT_STATUSLINE_WIDTH": str(width)}
+        res = self.statusline_py(json.dumps({"cwd": self.repo.dir}), env=env, cwd=self.repo.dir)
+        return res.stdout
+
+    def test_status_line_reads_running_with_a_live_agent_at_every_width(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("deputy", "t", since="2026-11-02 14:30")
+        for width in (0, 70, 200):
+            text = self.line(width)
+            self.assertIn(self.st("running") + self.mark(1), text, (width, text))
+            self.assertNotIn(self.st("not_started"), text, (width, text))
+
+    def test_status_line_without_an_agent_still_reads_not_started(self):
+        self.add("t", "the task", 20, started=False)
+        for width in (0, 70, 200):
+            text = self.line(width)
+            self.assertIn(self.st("not_started"), text, (width, text))
+            self.assertNotIn(self.st("running"), text, (width, text))
+
+    def test_a_pane_alone_is_running_with_no_count_on_the_board(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("tm-pane", "t", since="2026-11-02 14:58", agent=None)    # a pane with no handle: 2 minutes of life
+        rows = self.rows()
+        self.assertEqual(len(rows), 1, rows)
+        r = rows[0]
+        self.assertEqual((r["Status"], r["Work"], r["Where"]), (self.st("running"), "2m", "pc2, " + self.repo.dir))
+
+    def test_a_pane_alone_keeps_the_tasks_own_work_and_place(self):
+        self.add("t", "the task", 60, opened="2026-11-02 14:00")
+        self.af("todo", "where", "t", "box9", "/srv/t")
+        self.launch("tm-pane", "t", since="2026-11-02 14:58", agent=None)
+        r = self.rows()[0]
+        # the watch's "not confirmed" warning may follow the word; no agent mark ever
+        self.assertTrue(r["Status"].startswith(self.st("running")) and "代理" not in r["Status"]
+                        and "agent" not in r["Status"], r)
+        self.assertEqual((r["Work"], r["Where"]), ("1h", "box9, /srv/t"))
+
+    def test_a_pane_alone_is_running_in_the_status_line_with_no_count(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("tm-pane", "t", since="2026-11-02 14:45", agent=None)
+        for width in (0, 70, 200):
+            text = self.line(width)
+            self.assertIn(self.st("running"), text, (width, text))
+            self.assertNotIn(self.st("not_started"), text, (width, text))
+            self.assertNotIn("代理", text)
+            self.assertNotIn("agent", text)
+
+    def test_with_an_agent_and_a_pane_the_agents_minutes_count(self):
+        self.add("t", "the task", 20, started=False)
+        self.launch("tm-pane", "t", since="2026-11-02 14:59", agent=None)
+        self.launch("deputy", "t", since="2026-11-02 14:40")
+        r = self.rows()[0]
+        self.assertEqual((r["Status"], r["Work"]), (self.st("running") + self.mark(1), "20m"))
+
 
 class TestOneRowPerTaskEnglish(TestOneRowPerTask):
     lang = "en"
