@@ -779,11 +779,17 @@ class TestRealRepo(unittest.TestCase):
         self.assertIsNotNone(left, r.stdout)
         names = left.group(1).split()
         for name in ("tests", "mock", "requirements", "README.md", "CLAUDE.md", "AGENTS.md",
-                     ".claude", ".gitignore", "agent_todo.txt",   # settings-configure: no agent.conf
-                     "agent_completed.txt", "agent_ideas.txt", "agent_estimate.txt"):
+                     ".claude", ".gitignore"):   # settings-configure: no agent.conf
             self.assertIn(name, names)
         for name in SHIP:
             self.assertNotIn(name, names)
+        # batch-fix: since 4ff7307 (requirements/agent-files.md line 30: no agent file is tracked on a code branch)
+        # the agent files are not in the release's source tree at all; the twin of the old check: none is in the
+        # ship set, and each is git-ignored here, so it cannot come back into the tree by a plain git add
+        for name in ("agent_todo.txt", "agent_completed.txt", "agent_ideas.txt", "agent_estimate.txt"):
+            self.assertNotIn(name, SHIP)
+            ignored = subprocess.run(["git", "-C", ROOT, "check-ignore", "-q", name])
+            self.assertEqual(ignored.returncode, 0, "%s is not git-ignored" % name)
         self.assertEqual(refs(), before, "--dry-run wrote a ref in this repo")
 
 

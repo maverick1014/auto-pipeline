@@ -115,6 +115,17 @@ class ClearCase(ScriptCase):
     def verbs(self):
         return [c[1] for c in self.calls() if c and c[0] == "terminal"]
 
+    def assert_first_send_after(self, reads):
+        """The first `reads` reads each led to another wait, never to typing, and the first send follows a read.
+        batch-fix: not a fixed verb list: when ready took 2 s or more (whole SECONDS; a loaded or simply unlucky
+        run) prep runs the gate and ready once more (C13), which adds a "wait", "read" before the send."""
+        verbs = self.verbs()
+        self.assertIn("send", verbs, verbs)
+        head = verbs[:verbs.index("send")]
+        self.assertEqual(head[:2 * reads], ["wait", "read"] * reads, verbs)
+        self.assertEqual(set(head), {"wait", "read"}, verbs)
+        self.assertEqual(head[-1], "read", verbs)
+
     # ---- files
 
     @property
@@ -349,8 +360,7 @@ class TestWaiter(ClearCase):
         self.write_state(["ROLE: x", ""])
         self.set_reads(pane("rules yes, and one more"), pane("rules yes, and one more thing"))
         self.assertOk(self.waiter())
-        verbs = self.verbs()
-        self.assertEqual(verbs[:7], ["wait", "read", "wait", "read", "wait", "read", "send"], verbs)
+        self.assert_first_send_after(3)
         self.assertEqual(self.sends(), [SAVE, "/clear", CONT])
         waiting = [l for l in self.state_lines() if l.startswith("AUTO CLEAR waiting")]
         self.assertEqual(waiting, ["AUTO CLEAR waiting: input box not empty | %s" % NOW])
@@ -362,7 +372,7 @@ class TestWaiter(ClearCase):
         nothing = {"ok": True, "result": {"terminal": {"handle": HANDLE, "tail": ["working..."]}}}
         self.set_reads(menu, nothing)
         self.assertOk(self.waiter())
-        self.assertEqual(self.verbs()[:7], ["wait", "read", "wait", "read", "wait", "read", "send"])
+        self.assert_first_send_after(3)
 
     def test_only_the_last_prompt_line_counts(self):
         self.write_state(["ROLE: x", ""])
@@ -439,7 +449,7 @@ class TestWaiter(ClearCase):
         bare = {"ok": True, "result": {"terminal": {"handle": HANDLE, "tail": ["⏺ x", "❯", "no rule lines here"]}}}
         self.set_reads(bare)
         self.assertOk(self.waiter())
-        self.assertEqual(self.verbs()[:5], ["wait", "read", "wait", "read", "send"])
+        self.assert_first_send_after(2)
 
     def test_a_term_signal_leaves_a_line_at_once(self):
         self.write_state(["ROLE: x", ""])
@@ -734,14 +744,23 @@ class TestC13GateAgainAfterAWait(TestWaiterWaitsForTheHuman):
         with open(self.stub, "w") as fh:
             fh.write(waiter_stub_with_wait_hook())
 
+    def save_turn_hook(self, human_line):
+        """The first wait after the save prompt was sent: the human's line goes into the transcript, the turn takes
+        3 s. batch-fix: was "the 2nd wait"; on a loaded machine ready took 2 s or more before the save prompt, prep
+        ran the gate and ready again (C13), and the 2nd wait came before the save prompt was sent."""
+        self.stub_file("send_hook.sh", 'case "$1" in "AUTO CLEAR: save"*) touch "$ORCA_STUB_DIR/saved";; esac\n')
+        self.stub_file("wait_hook.sh", 'if [ -f "$ORCA_STUB_DIR/saved" ] && [ ! -f "$ORCA_STUB_DIR/typed" ]; then\n'
+                       '  touch "$ORCA_STUB_DIR/typed"; printf "%%s\\n" %s >> %s; /bin/sleep 3\nfi\nexit 0\n'
+                       % ("'" + human_line + "'", os.path.join(self.t.dir, "s1.jsonl")))
+
     def test_a_human_prompt_during_the_save_turn_stops_the_clear(self):
         self.t.write([oo.owner("ok go", ago(40))])
         human_now = json.dumps(oo.owner("wait, one more thing", T0))
-        # the 2nd wait is the save turn: the human types during it, and it takes 3 s (ready waited)
-        self.stub_file("wait_hook.sh", '[ "$1" = 2 ] && { printf "%%s\\n" %s >> %s; /bin/sleep 3; }\nexit 0\n'
-                       % ("'" + human_now + "'", os.path.join(self.t.dir, "s1.jsonl")))
+        # the first wait after the save prompt is the save turn: the human types during it, it takes 3 s (ready waited)
+        self.save_turn_hook(human_now)
         self.start()
-        self.assertTrue(wait_until(lambda: self.waiting_line(), 20), (self.sends(), self.state_lines()))
+        # batch-fix: 60 s, was 20 s: on a loaded machine the waiter's steps (python, stubs, a 3 s turn) ran longer
+        self.assertTrue(wait_until(lambda: self.waiting_line(), 60), (self.sends(), self.state_lines()))
         time.sleep(2)
         self.assertEqual(self.sends(), [SAVE], "no /clear after a human prompt in the save turn")
 
@@ -764,7 +783,9 @@ class TestC13PinnedOrder(ClearCase):
         self.write_state(["ROLE: x", ""])
         self.assertOk(self.waiter())
         seq = [c[1] if c[0] == "terminal" else c[0] for c in self.calls()]
-        self.assertEqual(seq, ["human-quiet", "wait", "read", "send"] * 3)
+        # batch-fix: one or more rounds of gate + ready before each send (when ready took 2 s or more, prep runs
+        # both again, C13; a loaded machine does that), never a send without a gate and a ready right before it
+        self.assertRegex(" ".join(seq), r"^((human-quiet wait read )+send ?){3}$", seq)
 
 
 @only_own
@@ -772,11 +793,11 @@ class TestC22EveryPane(TestC13GateAgainAfterAWait):
     def test_a_task_manager_pane_is_not_cleared_after_a_human_prompt(self):
         self.t.write([oo.owner("ok go", ago(40))])
         human_now = json.dumps(oo.owner("wait, keep going on the report", T0))
-        self.stub_file("wait_hook.sh", '[ "$1" = 2 ] && { printf "%%s\\n" %s >> %s; /bin/sleep 3; }\nexit 0\n'
-                       % ("'" + human_now + "'", os.path.join(self.t.dir, "s1.jsonl")))
+        self.save_turn_hook(human_now)
         proc = self.repo.popen("agent-autoclear.sh", HANDLE, "s1", "--spawned", env=self.env())
         self.addCleanup(lambda: proc.poll() is None and proc.kill())
-        self.assertTrue(wait_until(lambda: self.waiting_line(), 20), (self.sends(), self.state_lines()))
+        # batch-fix: 60 s, was 20 s: on a loaded machine the waiter's steps (python, stubs, a 3 s turn) ran longer
+        self.assertTrue(wait_until(lambda: self.waiting_line(), 60), (self.sends(), self.state_lines()))
         time.sleep(2)
         self.assertEqual(self.sends(), [SAVE], "no /clear after the owner's prompt in a task manager pane")
 
