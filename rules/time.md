@@ -17,5 +17,6 @@ W11. Time
 - Scope grows → re-estimate, on the record: `todo est <task> +<m>` keeps the first estimate (est0) and the added minutes apart
 - Before a new estimate: `bin/agent-file.sh time`, then `bin/agent-file.sh estimate` (dispatch skill)
 - A time question from the human → a duration AND a clock time, and when he is needed next: `bin/agent-file.sh eta`; it prints the board's Done by numbers (p50 and p85)
-- The estimator trains its first version at 30 clean tasks, then retrains after every 10 new finished tasks, in the background after `todo done`; a worse model is never kept
+- The estimator trains its first version at 30 clean tasks, then retrains after every 10 new finished tasks, in the background after `todo done`
+- A worse model is never kept
 - Each `todo done` adds a measures entry
