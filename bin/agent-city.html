@@ -3715,10 +3715,20 @@ function spawnDemo(role, task, terr, up){
   if (c) c.feed = makeFeed(role, undefined, terr);
   return c;
 }
+/* demoCrew(): #demo's fake agents finish and leave like real ones, so each call starts at most one new one, under a live
+   demo manager (any floor) that has fewer than 2 live drawn agents that are not done: mostly a worker, sometimes a deputy */
+function demoCrew(){
+  const crew = m => citizens.filter(c => !c.gone && !c.doneFlag && isSub(c) && isDrawn(c) && (c.up || c.lead) === m.id).length;
+  const open = citizens.filter(m => !m.gone && m.role === 'task-manager' && !m.doneFlag && crew(m) < 2);
+  if (!open.length) return null;
+  const m = pick(open), r = rand();
+  return spawnDemo(r < .7 ? 'worker' : r < .85 ? 'fast-lane-deputy' : 'merge-deputy', undefined, m.terr, m.id);
+}
 let nextSpawn = 6;
 function spawner(){
   if (simT < nextSpawn) return;
   nextSpawn = simT + rnd(7, 13);
+  demoCrew();
   if (!(map.territories || []).length) return;
   const active = citizens.filter(c => !c.gone && !isSub(c) && STATE[c.state][0] !== 'rest' && c.state !== 'leaving').length;
   if (active >= 8) return;
