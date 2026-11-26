@@ -872,6 +872,84 @@ __out = res;
                     self.assertEqual([b for b in bx for q in out[w]["panels"] if overlapping([b, tuple(q)])], [])
 
 
+FRAMES_JS = r"""
+// feed plateLayout frame by frame the way syncFigs does: each frame's items carry px, py (last frame's laid-out spot)
+// and hx0, hy0 (last frame's head) of the plates that showed last frame
+function frames(n, headsAt, base, opts){
+  let last = null; const trace = [];
+  for (let f = 0; f < n; f++) {
+    const items = base.map((o, i) => { const h = headsAt(f, i), it = Object.assign({}, o, { x: h[0], y: h[1] });
+      if (last && last.modes[i] !== 'none') Object.assign(it, { px: last.items[i].x, py: last.items[i].y, hx0: last.heads[i][0], hy0: last.heads[i][1] });
+      return it; });
+    const heads = items.map(o => [o.x, o.y]);
+    const modes = plateLayout(items, opts);
+    last = { items, modes, heads };
+    trace.push({ heads, spots: items.map(o => [o.x, o.y]), modes });
+  }
+  return trace;
+}
+"""
+
+
+class TestPlateFollowsItsHead(unittest.TestCase):
+    """Fix round 4, item 2 (PR REVIEW pass 4, blocker): a selected or hovered plate froze at last frame's screen spot and
+    no longer followed its person (the camera easing onto a selected person, a walk, an orbit or a zoom). Behaviour, frame
+    by frame in the node harness: a selected head moves 300 px over 60 frames and its plate ends over it; a hovered chip
+    under a still pointer keeps its spot while its head stays still; and moves with the head once it moves."""
+
+    OPTS = {"bounds": {"l": 0, "t": 0, "r": 1440, "b": 713}, "blocks": []}
+
+    def test_a_selected_plate_follows_a_moving_head(self):
+        out = sim(FRAMES_JS + r"""
+const base = [{ w: 160, wChip: 32, h: 22, pri: 3 }];
+const tr = frames(60, (f, i) => [300 + 300 * f / 59, 300 + 120 * f / 59], base, __payload.opts);
+__out = tr.map(t => [t.heads[0], t.spots[0], t.modes[0]]);
+""", {"opts": self.OPTS}, required=("plateLayout",))
+        for f, (head, spot, mode) in enumerate(out):
+            with self.subTest(frame=f):
+                self.assertEqual(mode, "full")
+                self.assertLess(abs(spot[0] - head[0]) + abs(spot[1] - head[1]), 1.0, "over its head at frame %d: %s %s" % (f, head, spot))
+
+    def test_a_hovered_chip_keeps_its_spot_while_still_then_follows(self):
+        out = sim(FRAMES_JS + r"""
+// three people side by side, heads still: one chip gets nudged off its head
+const base = [{ w: 160, wChip: 40, h: 22, pri: 0 }, { w: 160, wChip: 40, h: 22, pri: 0 }, { w: 160, wChip: 40, h: 22, pri: 0 }];
+const tr = frames(3, (f, i) => [[200, 212, 188][i], 300], base, __payload.opts);
+const nudged = [0, 1, 2].filter(i => tr[2].modes[i] === 'chip' && Math.hypot(tr[2].spots[i][0] - tr[2].heads[i][0], tr[2].spots[i][1] - tr[2].heads[i][1]) > .5);
+__out = { k: nudged.length ? nudged[0] : null };
+""", {"opts": self.OPTS}, required=("plateLayout",))
+        self.assertIsNotNone(out["k"], "a chip was nudged off its head")
+        # the frame-by-frame run with the hover switched on at frame 3
+        out = sim(FRAMES_JS + r"""
+const base = [{ w: 160, wChip: 40, h: 22, pri: 0 }, { w: 160, wChip: 40, h: 22, pri: 0 }, { w: 160, wChip: 40, h: 22, pri: 0 }];
+const k = __payload.k;
+const at = (f, i) => { const move = f < 8 ? 0 : (f - 7) * 10; return [[200, 212, 188][i] + move, 300]; };
+let last = null; const trace = [];
+for (let f = 0; f < 20; f++) {
+  const items = base.map((o, i) => { const h = at(f, i), it = Object.assign({}, o, { x: h[0], y: h[1], pri: i === k && f >= 3 ? 2 : 0 });
+    if (last && last.modes[i] !== 'none') Object.assign(it, { px: last.items[i].x, py: last.items[i].y, hx0: last.heads[i][0], hy0: last.heads[i][1] });
+    return it; });
+  const heads = items.map(o => [o.x, o.y]);
+  const modes = plateLayout(items, __payload.opts);
+  last = { items, modes, heads };
+  trace.push({ head: heads[k], spot: [items[k].x, items[k].y], mode: modes[k], box: [items[k].x, items[k].y, items[k].w] });
+}
+__out = trace;
+""", {"opts": self.OPTS, "k": out["k"]}, required=("plateLayout",))
+        chip_spot = out[2]["spot"]
+        pointer = (chip_spot[0], chip_spot[1] - 11)
+        for f in range(3, 8):     # hovered, the head still: the full plate covers the pointer on the nudged chip
+            with self.subTest(frame=f):
+                self.assertEqual(out[f]["mode"], "full")
+                x, y, w = out[f]["box"]
+                self.assertTrue(x - w / 2 <= pointer[0] <= x + w / 2 and y - 22 <= pointer[1] <= y, "frame %d: %s" % (f, out[f]))
+        for f in range(9, 20):    # the head moves 10 px a frame: the plate moves with it
+            with self.subTest(frame=f):
+                moved = out[f]["spot"][0] - out[f - 1]["spot"][0]
+                self.assertAlmostEqual(moved, out[f]["head"][0] - out[f - 1]["head"][0], delta=1.0,
+                                       msg="frame %d follows its head: %s" % (f, out[f]))
+
+
 class TestPlateGap(unittest.TestCase):
     """Fix round 3 (my live check at 500x713: a full plate and a chip ended edge to edge, 0.6 px into each other, because
     the page measured whole-pixel widths of fractional plates). Two plates keep a gap of at least 2 px (panels: no gap
@@ -905,7 +983,8 @@ class TestPlateGap(unittest.TestCase):
 class TestHoveredChipKeepsItsSpot(unittest.TestCase):
     """Fix round 3, item 3 (PR REVIEW pass 3): a chip nudged aside or a row up jumped back over its head when hovered, out
     from under a still pointer, so the hover ended at once (flicker). An item may carry px, py: where its plate was laid
-    out last frame; a pri >= 2 item starts from there (not its head), so its full plate covers the spot it was hovered in."""
+    out last frame, and hx0, hy0: where its head was then (fix round 4); a pri >= 2 item starts from px, py while its head
+    has moved less than 1 px since, so its full plate covers the spot it was hovered in; else from its head."""
 
     def test_the_hovered_chip_stays_where_the_pointer_is(self):
         items = [{"x": 200, "y": 300, "w": 160, "wChip": 40, "h": 22, "pri": 0},
@@ -922,6 +1001,7 @@ class TestHoveredChipKeepsItsSpot(unittest.TestCase):
         again = [dict(it) for it in items]
         again[k]["pri"] = 2
         again[k]["px"], again[k]["py"] = first["items"][k]["x"], first["items"][k]["y"]
+        again[k]["hx0"], again[k]["hy0"] = items[k]["x"], items[k]["y"]   # its head then: it has not moved since
         out = sim("const items = __payload.items; __out = { modes: plateLayout(items, __payload.opts), items };",
                   {"items": again, "opts": opts}, required=("plateLayout",))
         self.assertEqual(out["modes"][k], "full")
