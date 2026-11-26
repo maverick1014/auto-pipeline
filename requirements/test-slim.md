@@ -217,3 +217,116 @@ Same machine (pc2, 8 cores, 8 GB), same runner (tests/run2.py --time -j 6, each 
 Slowest after: test_agent_start 260, test_agent_watch 232, test_agent_city_server 164, test_agent_cleanup 155, test_agent_checks 127, test_agent_housekeep 122, test_agent_autoclear 108, test_agent_level 105.
 
 Audit: `bin/agent_test_audit.py --before <ids of main b4392c7> --after <ids of this branch> --table <the "Removed checks (test-slim-2)" table>`: before 4754, kept 3052, moved 1697, removed with twin 5, AUDIT PASS. (The earlier table above names tests that were already gone at b4392c7; give the audit this section only.)
+
+## Follow-up: test-slim-3 (done, target missed)
+
+Owner 2026-11-26: "full test is good. but then slow"; on slimming the slowest files: "1. this forsure you can do it". Target: the full run (python3 tests/run2.py, 6 processes) under 5 minutes on pc2 with the same checks. Tests and test helpers only (main manager, TELL f8a2b798: script speed-ups are the next round's task; exactly 6 processes).
+
+| | Before (base 2aae0b3) | After (this branch, base ea020e2 merged) |
+|---|---|---|
+| Wall, normal run2.py -j 6 | 683 s (processes 543-683 s) | 413 s (processes 402-412 s): -40% |
+| Test seconds, all files | 3599 | 2444: -32% |
+| Test files / tests run | 54 / 5230 | 57 / 5429 (+192 from the merged base, +7 new here) |
+
+Both runs measured per test inside the normal run (a wrapper around run2.py's runner), Spotlight busy on one core in both. A first AFTER run (879 s) caught a defect of this task (below) and is not counted.
+
+### Levers
+
+| Lever | Where | Gain |
+|---|---|---|
+| git and python3 without the macOS xcrun shim; the CLT python's bytecode of temp projects in a per-run folder (tests/fasttools.py, from run2.py and scripthelp.py; AGENT_TEST_SHIMS=1 = old way) | every test that starts a script | 85.5 -> 70.2 s on 67 sample tests (-18%) |
+| run2.py deals a big file out by its classes' measured seconds; --time writes a row per class | the split | processes end within 10 s of each other (were 543-683 s) |
+| fixture built once per process, copied per test (absolute paths rewritten) | files family, checks, cleanup, housekeep, promote, cleanfiles, cloud_pack | files -60%, checks -56%, cloud_pack -77% |
+| Python logic in-process (run_py, per repo), a REAL_SHELL set keeps one test per verb, flag and exit code on the command line | checks, promote, init, estimate, cleanfiles, watch (--all), cleanup, housekeep | estimate -58%, promote -52% |
+| one run per class or per process for read-only tests (guard on: a test that changes the shared repo fails) | start, init, two_roots | start -14% (most start tests depend on an earlier run) |
+| no cleanup sweep / no detached estimate runner where a test is not about them (their wiring stays in test_agent_cleanup and the estimate files), replay of an identical verb run on an identical state | file, resume, board, statusline, estimate | board -51%, statusline -40% |
+| polls for sleeps that waited for a state; shorter fake pauses where the waits still cover as many rounds | city_server, autoclear, board, files_fix3 | city_server -26%, autoclear -32% |
+
+### Per file (seconds in the full run)
+
+| File | Slice | Tests before -> after | s before | s after | change |
+|---|---|---|---|---|---|
+| agent_start | 1 | 327 -> 327 | 357 | 308 | -14% |
+| agent_watch | 3 | 211 -> 211 | 273 | 222 | -19% |
+| agent_files | 2 | 79 -> 79 | 222 | 89 | -60% |
+| agent_checks | 4 | 135 -> 135 | 197 | 88 | -56% |
+| agent_cleanup | 5 | 137 -> 137 | 168 | 105 | -37% |
+| agent_city_server | 6 | 267 -> 267 | 166 | 123 | -26% |
+| agent_cloud_pack | 7 | 73 -> 73 | 132 | 30 | -77% |
+| agent_file | 8 | 196 -> 196 | 123 | 78 | -37% |
+| agent_housekeep | 5 | 145 -> 145 | 122 | 89 | -27% |
+| agent_statusline | 11 | 158 -> 158 | 112 | 67 | -40% |
+| agent_board | 11 | 155 -> 191 | 111 | 54 | -51% |
+| agent_autoclear | 9 | 54 -> 54 | 108 | 74 | -32% |
+| agent_level | 9 | 291 -> 291 | 107 | 74 | -30% |
+| agent_promote | 10 | 57 -> 57 | 103 | 49 | -52% |
+| agent_init | 10 | 104 -> 104 | 99 | 47 | -52% |
+| agent_resume | 8 | 78 -> 78 | 97 | 63 | -35% |
+| two_roots | 7 | 47 -> 47 | 96 | 58 | -39% |
+| agent_estimate | 12 | 93 -> 93 | 79 | 33 | -58% |
+| agent_cleanfiles | 12 | 70 -> 70 | 73 | 37 | -49% |
+| agent_files_fix1 | 2 | 21 -> 21 | 68 | 42 | -37% |
+| agent_files_codebranch | 2 | 11 -> 11 | 62 | 35 | -44% |
+| agent_release | F | 52 -> 54 | 61 | 39 | -37% |
+| agent_nightly | - | 31 -> 33 | 61 | 54 | -12% |
+| agent_questions | - | 49 -> 49 | 55 | 51 | -8% |
+| agent_owner_order | - | 128 -> 128 | 53 | 32 | -38% |
+| check_blocks_demo | - | 1 -> 1 | 48 | 33 | -31% |
+| agent_room | - | 45 -> 45 | 42 | 45 | +8% |
+| agent_runtime | - | 75 -> 75 | 40 | 36 | -10% |
+| agent_files_fix3 | 2 | 4 -> 4 | 25 | 5 | -80% |
+| agent_files_fix2 | 2 | 8 -> 8 | 21 | 12 | -44% |
+| run2 | L | 9 -> 14 | 2 | 2 | +0% |
+| all files | | 5230 -> 5429 | 3599 | 2444 | -32% |
+
+### Audit (no check lost)
+
+- Ids: `bin/agent_test_audit.py --before <ids at ea020e2> --after <ids here>`: 5373 -> 5380, kept 5359, moved 14 (11 two_roots and 3 init tests into reader/writer classes, names unchanged), removed with twin 0, AUDIT PASS (also against the ids at 2aae0b3).
+- Loader counts: 5422 -> 5429; +2 test_agent_release, +5 test_run2, every other file the same count.
+- Assertions (AST of every assert call, per test method, against the merged base): 20 of 24 changed files identical. The four others:
+
+| File::test | Before | After | Why |
+|---|---|---|---|
+| test_agent_files_fix1::TestDAHangingRemoteCostsOneTimeout.test_one_timeout_then_the_network_is_skipped | first command < 5 s, second < 2 s (red at 5.17 s under load) | the hanging remote is called exactly once by the first command and not by the second; the first ends in < 30 s against a 60 s hang (timeout 1 s) | fragile test: same facts, not machine speed |
+| test_agent_level::TestKinds.test_rule_files, test_ci_and_test_config; TestTypesPerPart.test_a_component_file_is_b | one project and one check per path | one project and one check for all paths, each path's own FILE line asserted (same expected kind), plus "path is listed" | batching, as ShapeCase in test-slim-2 |
+| test_agent_release (2 new) | - | TestBehindTheLiveRelease | fragile test, below |
+| test_run2 (5 new) | - | TestDirectTools, TestClassSeconds | the two runner levers |
+
+### The two fragile tests
+
+- test_agent_release::TestRealRepo.test_dry_run_on_this_repo read the live origin/release: a release made during the run (or after the branch was cut) made a lower version red. Now (real_repo_verdict) a release tip built from a commit HEAD does not contain allows a lower version; one built from a commit HEAD contains is still red (2 fixture tests).
+- test_agent_files_fix1 (above).
+
+### Found and fixed on the way
+
+- The first AFTER run: slice 12's EstimateCase speed-ups reached subclasses in test_agent_estimate_learn (4 tests waited 120 s for a background runner whose lock the test held) and test_agent_version (the stale-retrain guard skipped in-process): the speed-ups now apply to the file's own classes only. Every other changed base class was checked against its users in other files.
+- Taken back from worker changes: threads inside a test (the runner's CPU cap), a lock hold cut from 4 s to 3.6 s against a >= 3.0 s assertion, a plugin folder linked to the per-minute template (can dangle), one production-path refusal moved off the real agent-promote.sh, a `sleep 3000` lock holder (now ends with its test process).
+- The CLT python had written the bytecode of every temp project under ~/Library/Caches/com.apple.python (about 130,000 folders, 5.8 GB on pc2); test runs no longer add to it. The folder itself was not touched.
+
+### Left, and why
+
+- About 160 start tests need their own agent-start.sh run (dedupe, locks, release, clean); agent-start.sh costs about 1 s a call under load.
+- Waits that prove something does not happen (city_server, autoclear, watch cadence); the tell read-back loop (20 x 0.5 s, no env knob); single-mode watch starts.
+- Not slimmed: nightly, questions, room, runtime, name, state, guard, leader_relay (each under 55 s).
+
+### Follow-up: the scripts (next round)
+
+Script calls of the AFTER run (ScriptRepo.run / run_py only): 4725 calls, 1654 s of the 2444 s.
+
+| Script (verb) | Calls | Seconds | s a call | Files that pay most (s) |
+|---|---|---|---|---|
+| agent-start.sh | 468 | 453 | 0.97 | agent_start 280, two_roots 50, agent_cleanup 30 |
+| agent-file.sh todo | 983 | 309 | 0.31 | agent_file 51, agent_statusline 35, agent_files 33 |
+| agent_watch (in-process) | 174 | 97 | 0.56 | agent_watch 97 |
+| agent_housekeep (in-process) | 106 | 62 | 0.59 | agent_housekeep 60, agent_state 2 |
+| agent-resume.sh | 79 | 61 | 0.77 | agent_resume 51, agent_cleanup 4, agent_start 3 |
+| agent-file.sh tell | 31 | 51 | 1.65 | agent_watch 51 |
+| agent-watch.sh | 77 | 46 | 0.60 | agent_watch 46 |
+| agent-init.sh | 89 | 43 | 0.48 | agent_init 33, agent_files 4, agent_files_fix1 4 |
+| agent-owner-order.sh | 341 | 42 | 0.12 | agent_leader_relay 21, agent_owner_order 20, agent_autoclear 1 |
+| agent-city.sh | 73 | 36 | 0.49 | agent_city_server 30, agent_city_script 6 |
+
+- agent-start.sh: 27 python3 and about 35 git starts a call; --answer runs one shasum per question.
+- agent-file.sh: a verb is bash plus 8-12 python3/git starts; todo done and agent-resume.sh sweep (0.3-0.45 s) unless AGENT_CLEANUP_DONE=1.
+- agent-file.sh tell: the read-back loop waits 20 x 0.5 s when the block does not read back (a test env knob would cut it).
+- Projected: halving agent-start.sh and a third off agent-file.sh todo, tell and resume removes about 390 s of test time, about 65 s of wall: about 350 s. 300 s needs more than the scripts (Spotlight indexing takes one of the 8 cores on pc2).
