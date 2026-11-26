@@ -14,8 +14,13 @@ R8 (branches, the net, release)
 - A failure the nightly finds that the causing task's own RELATED or MODULE run did not find is a selection miss: one line, the test and the merge (`agent-nightly.sh --misses`)
 - After two weeks the owner reads the selection miss count and decides whether the nightly goes too
 - The watch's housekeep pass starts it once a day after 22:00 (`nightly_hour`) when no heavy test runs; no watch alive: the next session start, when the last run is older than 24 hours
-- A release needs a green full run on the working branch: the last nightly on that commit, or one background run; no other pre-release run
+- A release needs a green full run on the tip of the working branch (or on its parent when the tip only bumps the plugin version): the last nightly on that commit, or one background run; no other pre-release run
 - `agent-nightly.sh --start` runs the full suite in the background; `agent-nightly.sh --release-ok` only checks that a green run covers the commit
+- Where the full run goes: the repo fact `full_run_where` (agent_repo.conf): `either` (default), `remote` (only the connected machine, never here), `local`
+- The connected machine is the person's setting "Load: Full run machine" (an Orca environment name); it is never written into a repo file
+- `agent-nightly.sh --start` then cuts a worktree of the exact commit there (Orca only), runs `full_cmd` there and records it only when that machine reports the commit it ran
+- A different or missing commit, unreadable output or a run cut short is a failed run, never green; the remote worktree and terminal go after success, failure and timeout, a left one at the next start
+- `agent-nightly.sh --status` says where the last full run ran; `--release-ok` and the publish take a green run from the connected machine like a local one
 - The working branch (setting "Flow: Working branch", default `ap-main-<name>`) is only a branch
 - Everything merged or pushed lands there first, never on the production branch by accident: the main checkout is switched to the working branch
 - init switches the main checkout of a new repo to the working branch; in a repo that already uses the plugin the main manager switches it at a quiet point after the start's WORKING BRANCH line

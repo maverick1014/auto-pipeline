@@ -1048,6 +1048,13 @@ ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
 if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-nightly.sh" ]; then
   if ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_watchfile as w; sys.exit(0 if w.live(w.read_status(sys.argv[2])) else 1)' "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null; then
     if ( cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --due ) >/dev/null 2>&1 </dev/null; then
+      # nightly-on-machine: a repo whose full run goes to the connected machine (full_run_where, "Full run machine"):
+      # --start itself places it there (or says in one line why not); no local room check, no "a machine runs it" line
+      nl_where=$(cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --where 2>/dev/null </dev/null) || nl_where=""
+      if [ "$nl_where" = remote ] || [ "$nl_where" = refused ]; then
+        nl_said=$(cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --start 2>&1 </dev/null | head -n 1) || nl_said=""
+        [ "$nl_where" = refused ] && NIGHTLY_LINE="$nl_said"
+      else
       # C23 (section 48): the shared function lists the reachable paired machines (one per line) and a
       # "NIGHTLY: ... did not answer" line for a paired one that did not answer
       nl_out=$(cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --machines 2>/dev/null </dev/null) || nl_out=""
@@ -1072,6 +1079,7 @@ print(w[1] if w else 0)' "$PLUGIN_ROOT/bin" 2>/dev/null </dev/null) || nl_mb=0
         nl_host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
         NIGHTLY_LINE="${NIGHTLY_LINE:+$NIGHTLY_LINE
 }NIGHTLY: due, no room on $nl_host: start it where there is room (W7): agent-nightly.sh --start"
+      fi
       fi
       fi
     fi

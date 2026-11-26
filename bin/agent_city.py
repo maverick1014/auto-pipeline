@@ -2123,6 +2123,7 @@ class CityState:
 
         # -- world: territories, floors, persistence ----------------------
         self.world_path = world_path
+        self._ghost_checked_at = None   # monotonic time sweep_gone_floors last looked
         if world_path is None:
             self.world, self.notice = new_world(), None
         else:
@@ -2213,6 +2214,12 @@ class CityState:
         if self.chat_path is not None:
             for row in load_chat(self.chat_path):
                 self.feed_chat(row)
+
+        # A floor whose local folder is gone is dropped (see _drop_gone_locked): after the roster is
+        # back, so a floor with a live restored session stays.
+        with self.lock:
+            if self._drop_gone_locked():
+                self._save_world_locked()
 
     # -- SSE clients ----------------------------------------------------
 
@@ -2333,6 +2340,53 @@ class CityState:
         with self.lock:
             known = {territory_id(i) for i in self.world["territories"]}
             return {tid: d for tid, d in self._designs.items() if tid in known}
+
+    GHOST_CHECK_SEC = 60.0
+
+    def _territory_live_locked(self, identity):
+        """Caller holds self.lock. True when IDENTITY's territory has a live session or citizen
+        (or a live lock holder): such a floor is never dropped."""
+        reducer = self.reducers.get(identity)
+        if reducer is not None and (reducer.sessions or reducer.agents or reducer.gov_sid is not None):
+            return True
+        return self._main(identity) is not None
+
+    def _drop_gone_locked(self):
+        """Caller holds self.lock. Drops every territory whose local folder is gone
+        (territory_folder_gone) and has nothing live (_territory_live_locked), except the start
+        territory: out of "territories", "order", "floors" and "gov_seen". Floor design files and
+        history stay. Saves and tells nobody: the caller does. Returns the identities dropped."""
+        gone = [i for i in self.world["territories"]
+                if i != self.start_repo and territory_folder_gone(i)
+                and not self._territory_live_locked(i)]
+        if not gone:
+            return []
+        for i in gone:
+            del self.world["territories"][i]
+        self.world["order"] = [i for i in self.world["order"] if i not in gone]
+        if isinstance(self.world.get("floors"), list):
+            self.world["floors"] = [i for i in self.world["floors"] if i not in gone]
+        seen = self.world.get("gov_seen")
+        if isinstance(seen, dict):
+            for i in gone:
+                seen.pop(i, None)
+        print("agent_city: dropped %d floor(s) whose folder is gone" % len(gone), file=sys.stderr)
+        return gone
+
+    def sweep_gone_floors(self, now):
+        """The recount loop calls this every tick; it looks at most once per GHOST_CHECK_SEC
+        (NOW: time.monotonic()). Floors whose folder is gone are dropped: world.json saved, every
+        page told (a "world" event, then a fresh snapshot, as set_floors does). Returns how many."""
+        with self.lock:
+            last = self._ghost_checked_at
+            if last is not None and now - last < self.GHOST_CHECK_SEC:
+                return 0
+            self._ghost_checked_at = now
+            gone = self._drop_gone_locked()
+            if gone:
+                self._emit_world_locked({"kind": "floors"})
+                self._broadcast(self._snapshot_locked())
+            return len(gone)
 
     def set_floors(self, ids):
         """The owner's ticks: IDS, a list of 1..64 territory ids (no repeat), are the floors, bottom first
@@ -3051,7 +3105,10 @@ class CityState:
                 ev["terr"] = terr
                 self.agent_terr[ev["id"]] = terr
                 ev["from"] = self._spawn_from_locked(obj, reducer, terr)
-                ev["up"] = self.agent_up[ev["id"]] = _spawn_up(reducer, terr, obj)   # city-rail-tree
+                up = _spawn_up(reducer, terr, obj)   # city-rail-tree
+                if up == "" and isinstance(obj.get("aid"), str) and obj["aid"]:
+                    up = self._parent_on_another_floor_locked(reducer, obj)   # its session works in another repo: the page draws it there
+                ev["up"] = self.agent_up[ev["id"]] = up
                 self._decorate_spawn(ev, obj, identity, terr)
                 if self._remember_name_locked(ev["id"], ev["label"], ev["task"]):
                     names_dirty = True
@@ -3251,6 +3308,20 @@ class CityState:
     # tests never see "repo"); CityState gives every territory its own
     # Reducer instance instead, so each runs that single-governor state
     # machine independently.
+
+    def _parent_on_another_floor_locked(self, reducer, obj):
+        """The page id of the session that started the subagent of line OBJ when it is live in another repo's reducer
+        ("s:<sid>", or "gov:<its terr>" for that repo's governor), else ""."""
+        sid = obj.get("sid") if isinstance(obj.get("sid"), str) else ""
+        if not sid:
+            return ""
+        for identity, other in self.reducers.items():
+            if other is reducer:
+                continue
+            found = _session_page_id(other, sid, self._terr_for(identity))
+            if found:
+                return found
+        return ""
 
     def _reducer_for(self, identity, create=True):
         """Caller holds self.lock. The Reducer for this territory (None:
@@ -5029,6 +5100,10 @@ def recount_loop(city, stop_event):
         except Exception as exc:
             print("agent_city: sweep_adding failed: %s" % exc, file=sys.stderr)
         try:
+            city.sweep_gone_floors(time.monotonic())
+        except Exception as exc:
+            print("agent_city: sweep_gone_floors failed: %s" % exc, file=sys.stderr)
+        try:
             city.sweep_history(time.time())
         except Exception as exc:
             print("agent_city: sweep_history failed: %s" % exc, file=sys.stderr)
@@ -5811,6 +5886,55 @@ def repo_name(identity):
     elif base.endswith(".git"):
         base = base[:-len(".git")]
     return base
+
+
+# Where disks are mounted. A path whose first missing part is one of these, or sits directly in one
+# (/Volumes/<disk>; /media/<user>/<disk>; /run/media/<user>/<disk>; /mnt/<disk>), is an unmounted disk,
+# never a gone folder: the disk may come back. A list so a test can point it at a temp folder.
+VOLUME_PARENTS = ("/Volumes", "/media", "/run/media", "/mnt")
+
+
+def _volume_root(missing):
+    """True when MISSING (the first missing part of a path) is a mount point of a disk that may be
+    unplugged: a VOLUME_PARENTS folder itself, directly in one, or two levels in under /media or
+    /run/media (the user folder, then the disk)."""
+    up = os.path.dirname(missing)
+    return (missing in VOLUME_PARENTS or up in VOLUME_PARENTS
+            or os.path.dirname(up) in ("/media", "/run/media") and up not in ("/", ""))
+
+
+def territory_folder_gone(identity):
+    """The one place that decides a floor's folder is gone. The kinds of territory identity the city
+    knows: a git common dir path (".../shop/.git", or a bare ".../shop.git"; a worktree has its repo's),
+    a plain folder path (a repo-less folder, realpath), "dir:<name>" (old data, dropped at load), and the
+    demo office's "/demo/..." (never in world.json). Only an absolute path of this machine is checked:
+    True only when the OS says the folder does not exist (FileNotFoundError or NotADirectoryError); any
+    other error (no permission ...) is not gone, and a path on an unmounted disk (VOLUME_PARENTS) is
+    not gone. "dir:" names, relative names, anything else that is no absolute path, and "/demo/..."
+    are never gone."""
+    if not isinstance(identity, str) or not identity or not os.path.isabs(identity):
+        return False
+    if identity == "/demo" or identity.startswith("/demo/"):
+        return False
+    try:
+        os.stat(repo_folder(identity))
+        return False
+    except (FileNotFoundError, NotADirectoryError):
+        pass
+    except (OSError, ValueError):
+        return False
+    path = os.sep
+    for part in repo_folder(identity).split(os.sep):
+        if not part:
+            continue
+        path = os.path.join(path, part)
+        try:
+            os.stat(path)
+        except (FileNotFoundError, NotADirectoryError):
+            return not _volume_root(path)
+        except (OSError, ValueError):
+            return False
+    return False
 
 
 def new_world():

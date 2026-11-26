@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # agent-board-warn.sh — UserPromptSubmit and PostToolUse hook: the board's warnings (watch not running, a task
-# not confirmed, a pane without a task line) reach the main manager's context, so it acts with no human.
+# not confirmed, a task idle 10 minutes or more, a pane without a task line) reach the main manager's context, so it acts with no human.
 # Main manager only (role main, AGENT_ROLE unset). Prints the WARN set when it is new or changed since the last
 # print and at least one minute after it; state: $PROJECT_GITDIR/agent_warn_seen.json.
 # UserPromptSubmit: plain lines; PostToolUse: the hookSpecificOutput JSON.

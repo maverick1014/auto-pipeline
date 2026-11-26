@@ -110,10 +110,10 @@ HEAD = {
 STATUS = {
     "zh": {"running": "进行中", "owner": "你的待办", "parked": "搁置的问题", "waiting": "等待", "hold": "暂缓",
            "queue": "排队", "notstarted": "未开始", "after": "在 %s 之后", "waited": "已等 %s", "you": "你",
-           "fold": "+%d 个任务", "fold_one": "+%d 个任务"},
+           "fold": "+%d 个任务", "fold_one": "+%d 个任务", "idle": "闲置 %s"},
     "en": {"running": "running", "owner": "your to-do", "parked": "parked question", "waiting": "waiting",
            "hold": "hold", "queue": "queue", "notstarted": "not started", "after": "after %s",
-           "waited": "waited %s", "you": "you", "fold": "+%d tasks", "fold_one": "+%d task"},
+           "waited": "waited %s", "you": "you", "fold": "+%d tasks", "fold_one": "+%d task", "idle": "idle %s"},
 }
 DEFAULT_WHAT = {
     "zh": {"mock": "确认样稿或规则表", "question": "回答问题", "review": "合并前签字"},
@@ -363,6 +363,8 @@ KIND_WORD = {
            "plan": "plan", "guide": "guide", "agent": "agent", "pane": "pane"},
 }
 LAUNCH_STALE_MIN = 2
+IDLE_AFTER_MIN = 10          # a task added and not started for this long is idle (idle-task-flag)
+IDLE_BACKLOG_MIN = 24 * 60   # a task not started and older than this is backlog, never idle
 ORCA_TIMEOUT = 5
 
 
@@ -505,6 +507,8 @@ class Board:
         self.plain = {}
         self.records = []       # (folder, record) of every LAUNCH line read
         self.hand_workers = {}  # label -> row of a hand WORKER line
+        self.idle = {}          # task name -> idle minutes of each not started task that is idle
+        self.todo_rows = {}     # task name -> its todo row (the agents under it show on it, never as rows)
         self.unconfirmed = 0    # target rows that got the "not confirmed" warning
         self.warned = {}        # task name -> minutes (None: unknown) of each "not confirmed" row
         self.unconfirmed_names = []  # and their task names
@@ -775,6 +779,30 @@ class Board:
             parts.append(w["waited"] % fmt_waited(self.lang, n))
         return " · ".join(parts)
 
+    def idle_minutes(self, t):
+        """Minutes a not started task (no stage, no wait) has sat idle, None when it is not idle: the minutes since it
+        was added minus the waits it has closed are 10 or more and under 24 hours. No added time: never idle."""
+        opened = parse_time(t["opened"]) if t["opened"] else None
+        age = minutes(opened, self.now)
+        if age is None:
+            return None
+        n = max(0, age - (t["waited"] or 0))      # the 24 hour cutoff counts these same minutes
+        return n if IDLE_AFTER_MIN <= n < IDLE_BACKLOG_MIN else None
+
+    def idle_mark(self, n):
+        return " · " + self.word("idle") % fmt_waited(self.lang, n)
+
+    def mark_idle(self):
+        """The Status cell of a todo row still not started after the agents are folded in ends with the idle mark."""
+        for task, n in self.idle.items():
+            row = self.todo_rows.get(task)
+            plain = cell(self.word("notstarted"))
+            if row is None or row not in self.rows or not (row[1][2] == plain or row[1][2].startswith(plain + " · ")):
+                continue
+            cells = list(row[1])
+            cells[2] = plain + self.idle_mark(n) + cells[2][len(plain):]      # before the not confirmed mark
+            self.rows[self.rows.index(row)] = (row[0], cells, row[2])
+
     def queue_text(self, t):
         w = self.words
         task = t["after"]
@@ -817,6 +845,10 @@ class Board:
             status = self.word("notstarted")
             wait = None
             info = {"type": "short", "name": t["name"], "text": status}
+            idle = self.idle_minutes(t)
+            if idle is not None:
+                info["idle"] = idle
+                self.idle[t["name"]] = idle
         else:
             group, when = G_RUNNING, t["opened"]
             status = self.word("running")
@@ -854,6 +886,7 @@ class Board:
         self.add(group, when, t["name"] + (" [%s]" % t["owner"] if t["owner"] else ""), t["what"] or "-", status, where,
                  est=est, work=work, wait=wait_cell, done=done, progress=progress,
                  level=checks_cell(t), info=info, plain=t["name"])
+        self.todo_rows.setdefault(t["name"], self.rows[-1])
 
     def helper_row(self, f):
         what = "-"
@@ -1016,7 +1049,9 @@ class Board:
     # -- the LAUNCH records
 
     def add_launches(self):
-        """One row per visible record, right under its task's row; a hand WORKER row of the same label goes."""
+        """The agents and panes under a task that has a todo row show on that row (fold_into), never as rows of
+        their own. A live record whose task has no todo row keeps its own row, right under nothing. A hand WORKER
+        row of the same label as a live record goes."""
         now = self.now
         cache = {}
 
@@ -1025,11 +1060,10 @@ class Board:
                 cache[env] = terminal_handles(env)
             return cache[env]
 
-        parents = {}
-        for row in self.rows:
-            parents.setdefault(row[1][0], row)
         words = KIND_WORD[self.lang]
         kids = {}
+        under = {}      # task -> [(since, folder)] of its live agents
+        panes = {}      # the same for its live panes (someone works, but a pane is no agent: no count)
         finished = finished_tasks(self.root)
         for folder, rec in self.records:
             if rec["is_pane"]:
@@ -1043,20 +1077,38 @@ class Board:
             hand = self.hand_workers.get(label)
             if hand is not None and hand in self.rows:
                 self.rows.remove(hand)
+            if rec["task"] in self.todo_rows:
+                (panes if rec["is_pane"] else under).setdefault(rec["task"], []).append((rec["since"], folder))
+                continue
             work = fmt_min(minutes(parse_time(rec["since"]), now))
             cells = [cell(label), cell(cut_what(rec["title"])), cell(self.word("running")), "-",
                      cell(self.where_here(folder)), "-", "-", cell(work), "-", "-"]
             kids.setdefault(rec["task"], []).append((rec["since"], label, cells))
+        counts = agent_counts([r for _, r in self.records], now, finished)
+        for task in list(under) + [t for t in panes if t not in under]:
+            self.fold_into(task, counts.get(task, 0), min(under.get(task) or panes[task]))
         for task, items in kids.items():
-            parent = parents.get(task)
-            for i, (since, label, cells) in enumerate(sorted(items, key=lambda x: x[0])):
-                if parent is not None and parent in self.rows:
-                    group, flag, when, seq = parent[0]
-                    key = (group, flag, when, seq + (i + 1) / 100000.0)
-                else:
-                    self.seq += 1
-                    key = (G_RUNNING, 0, since, self.seq)
-                self.rows.append((key, cells, None))
+            for since, label, cells in sorted(items, key=lambda x: x[0]):
+                self.seq += 1
+                self.rows.append(((G_RUNNING, 0, since, self.seq), cells, None))
+
+    def fold_into(self, task, n, oldest):
+        """The todo row of task says its n live agents: " · N 代理" ends the status; a task not started (no wait)
+        is running; an empty work cell gets the minutes since the oldest agent began, an empty place its place."""
+        row = self.todo_rows[task]
+        key, cells, info = row
+        cells = list(cells)
+        since, folder = oldest
+        if cells[2] == cell(self.word("notstarted")):
+            cells[2] = cell(self.word("running"))
+            key = (G_RUNNING,) + key[1:]
+        if n:
+            cells[2] += agent_mark(self.lang, n)
+        if cells[7] == "-":
+            cells[7] = cell(fmt_min(minutes(parse_time(since), self.now)))
+        if cells[4] == "-":
+            cells[4] = cell(self.where_here(folder))
+        self.rows[self.rows.index(row)] = (key, cells, info)
 
     # -- print
 
@@ -1086,6 +1138,7 @@ def build(args, now=None, records=True):
         board.whole_repo()
     if records:
         board.add_launches()
+        board.mark_idle()
     return board
 
 
@@ -1211,17 +1264,19 @@ WATCH_LINE = {
 
 def board_warnings(root, plugin, now):
     """The board's warnings as the WARN lines of `agent-file.sh next` and the warn hook: watch not running
-    (alone: every target is then unconfirmed), else each not confirmed task in board order, then each pane
-    without a task line. No orca call. [] for none (no watch runs here, no targets)."""
+    (alone: every target is then unconfirmed), else each not confirmed task in board order, then each idle task
+    (idle_warnings, also when no watch runs), then each pane without a task line. No orca call.
+    [] for none (no watch runs here, no targets, no idle task)."""
     args = argparse.Namespace(root=root, state_dir=root, cwd=root, now=now, lang="en", host="-", self_mode=False)
     board = build(args, records=False)
+    idle = idle_warnings(board)
     if not board.w_on:
-        return []
+        return idle
     if not board.w_live:
         if not board.w_target_count:
-            return []
+            return idle
         return ["WARN watch not running -> start it now: %s/bin/agent-watch.sh --all (Bash run_in_background)"
-                % plugin]
+                % plugin] + idle
     out, said = [], set()
     for key, cells, _info in sorted(board.rows, key=lambda r: r[0]):
         name = board.plain.get(key[3], cells[0])
@@ -1230,9 +1285,23 @@ def board_warnings(root, plugin, now):
             n = board.warned[name]
             out.append("WARN not confirmed %s%s -> read its pane or its newest state line, then fix the record or "
                        "the agent" % (name, "" if n is None else " (%dm)" % n))
+    out += idle
     for path in board.w_orphans:
         out.append("WARN pane without a task line %s -> add the todo line or close the pane" % path)
     return out
+
+
+def idle_warnings(board):
+    """One WARN line per idle task (not started 10 minutes or more, no live agent, no live task manager pane),
+    the longest idle first. The hook that prints them repeats a set only when it changes (agent-board-warn.sh),
+    the same limit as the not confirmed kind."""
+    if not board.idle:
+        return []
+    recs = [r for _, r in board.records]
+    busy = set(agent_counts(recs, board.now, finished_tasks(board.root))) | live_panes(recs)
+    names = sorted((n for n in board.idle if n not in busy), key=lambda n: (-board.idle[n], n))
+    return ['WARN idle %s (%dm) -> start it now, or record why it waits: agent-file.sh todo wait "%s" on queue '
+            '--after <other task> | on hold "<why>"' % (n, board.idle[n], n) for n in names]
 
 
 def watch_status_line(board):
@@ -1319,6 +1388,38 @@ def column_plan(width):
     return 1, usable
 
 
+def agent_counts(records, now, finished):
+    """{task: live agents}: the agent records (panes never count) whose pid lives and that are linked or young, of
+    a task not finished. The one count of the status line and of the board's task rows."""
+    counts = {}
+    for r in records:
+        if not r["is_pane"] and agent_visible(r, now) and r["task"] not in finished:
+            counts[r["task"]] = counts.get(r["task"], 0) + 1
+    return counts
+
+
+def live_panes(records):
+    """Tasks that have a pane record whose session pid lives (the status line never asks orca)."""
+    return {r["task"] for r in records if r["is_pane"] and pid_alive(r["pid"])}
+
+
+def read_running(board, records, main):
+    """A not started task (no wait) with a live agent or a live task manager pane reads running in the status line
+    too: only its text changes, never its place or rank."""
+    busy = set(agent_counts(records, board.now, finished_tasks(main))) | live_panes(records)
+    for _, _, info in board.rows:
+        if info is not None and info["type"] == "short" and info["notstarted"]:
+            if info["name"] in busy:
+                info["text"] = board.word("running")
+            elif info.get("idle") is not None:
+                info["text"] += board.idle_mark(info["idle"])
+
+
+def agent_mark(lang, n):
+    """" · 2 代理" / " · 2 agents" (one: " · 1 agent")."""
+    return " · " + ("%d 代理" % n if lang == "zh" else "%d agent%s" % (n, "" if n == 1 else "s"))
+
+
 def pane_keepers(main, top, wt_folders, now):
     """Task names that have a live pane LAUNCH record (the pane of a human-direct session kept open under that task)."""
     names = set()
@@ -1378,11 +1479,7 @@ def wide_status(board, args, main, top, own, width):
         keep = pane_keepers(main, top, [f[0] for f in wt if f and f[0]], board.now)
         infos = [i for i in infos if not (i["type"] in ("plain", "short") and i["name"] in keep
                                           and (i["type"] == "plain" or i["notstarted"]))]
-    counts = {}
-    finished = finished_tasks(main)
-    for r in launch_records(top):
-        if not r["is_pane"] and agent_visible(r, board.now) and r["task"] not in finished:
-            counts[r["task"]] = counts.get(r["task"], 0) + 1
+    counts = agent_counts(launch_records(top), board.now, finished_tasks(main))
     entries = []
     for i in infos:
         if i["type"] == "run":
@@ -1395,7 +1492,7 @@ def wide_status(board, args, main, top, own, width):
             body = i["text"]
         n = counts.get(i["name"], 0)
         if n:
-            body += " · " + ("%d 代理" % n if zh else "%d agent%s" % (n, "" if n == 1 else "s"))
+            body += agent_mark(lang, n)
         entries.append((i["name"], body))
     words = STATUS[lang]
     head = []
@@ -1444,6 +1541,7 @@ def statusline_text(stdin_text, width=None):
     args = argparse.Namespace(root=main, state_dir=top, cwd=folder, now=clock_now(), lang=lang, host="-",
                               self_mode=own)
     board = build(args, records=False)
+    read_running(board, launch_records(top), main)
     if width:
         return wide_status(board, args, main, top, own, width)
     zh = lang == "zh"
@@ -1463,18 +1561,11 @@ def statusline_text(stdin_text, width=None):
     room = STATUS_LINES - (1 if warn else 0)
     cands = lines
     shown = cands if len(cands) <= room else cands[:room - 1]
-    counts = {}
-    now = parse_time(args.now)
-    finished = finished_tasks(main)
-    for r in launch_records(top):
-        if not r["is_pane"] and agent_visible(r, now) and r["task"] not in finished:
-            counts[r["task"]] = counts.get(r["task"], 0) + 1
+    counts = agent_counts(launch_records(top), parse_time(args.now), finished_tasks(main))
 
     def tail(name):
         n = counts.get(name, 0)
-        if not n:
-            return ""
-        return " · " + ("%d 代理" % n if zh else "%d agent%s" % (n, "" if n == 1 else "s"))
+        return agent_mark(lang, n) if n else ""
 
     wide = max([display_width(l[2]) for l in shown if l[0] == "run"] or [0])
     out = []

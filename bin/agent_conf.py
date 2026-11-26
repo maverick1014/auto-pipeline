@@ -1,4 +1,4 @@
-"""The one reader of the 20 auto-pipeline settings.
+"""The one reader of the 22 auto-pipeline settings.
 
 The settings live only in Claude Code: /plugin -> Installed -> auto-pipeline -> Configure.
 They are stored in <claude config dir>/settings.json under
@@ -95,6 +95,10 @@ SETTINGS = [
        options=["owner", "anyone"]),
     _s("data_branch", "Team: Data branch", "string", "ap-data",
        "Branch for the shared agent files; the repo value wins. Any branch works, production too: then they live under .ap-data/ there, it needs an origin, and a commit can start a deploy."),
+    _s("full_run_machine", "Load: Full run machine", "string", "",
+       "Name of the connected Orca environment where the full test run goes, when the repo's full_run_where asks for it. Empty = none. Personal: never written into a repo file."),
+    _s("leader_transcript_folder", "Approval: Leader transcript folder", "string", "",
+       "Folder of the Leader bot's Claude transcripts (/... or ~/...). An owner approval Leader passes on is checked in a file directly in it. Empty = off: every relay by Leader is refused."),
 ]
 
 CONSTANTS = {
@@ -106,7 +110,7 @@ CONSTANTS = {
     "state_warn_lines": 300, "state_header_lines": 40, "state_trim_auto": "on",
     "compact_clear_at": 2, "compact_clear_check_sec": 30, "cleanup_days": 14,
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
-    "check_budget_s": 60, "unused_pane_min": 30,
+    "check_budget_s": 60, "unused_pane_min": 30, "leader_transcript_max_mb": 200,
     "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024, "verify_box_min": 15,
     "share_net_timeout_s": 15, "share_offline_min": 5,
 }
@@ -295,6 +299,20 @@ def _string_problem(key, value):
         return _validate_globs(value)
     if setting is not None and "options" in setting:
         return _validate_picker(setting, value)
+    if key == "leader_transcript_folder":
+        return _validate_leader_folder(value)
+    return None
+
+
+def _validate_leader_folder(value):
+    if not isinstance(value, str):
+        return "Must be text."
+    if value == "":
+        return None
+    if not (value.startswith("/") or value.startswith("~/")):
+        return "Must be an absolute folder (/... or ~/...), or empty."
+    if "\n" in value or "\r" in value or " | " in value:
+        return "Must hold no line break and no ' | '."
     return None
 
 
@@ -416,7 +434,8 @@ def repo_paths(project_root):
 
 
 REPO_V1_SINGLE = ("version", "production_branch", "core_paths", "guard_tests", "build_cmd", "related_cmd", "full_cmd",
-                  "test_config", "data_scripts", "real_data", "build_seconds", "guard_seconds", "build_mb")
+                  "test_config", "data_scripts", "real_data", "build_seconds", "guard_seconds", "build_mb",
+                  "full_run_where")
 REPO_V1_GLOBS = ("core_paths", "test_config", "data_scripts")
 
 
