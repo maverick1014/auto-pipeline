@@ -643,7 +643,7 @@ class TestDoingLineFollowsThePlate(unittest.TestCase):
                 self.assertIn(bit, src, "syncFigs lays out the doing line with its plate")
 
 
-TEAM_AGENTS = [agent("s:t", "task-manager", up=GOV, label="task-manager", task="team-floor"),
+TEAM_AGENTS = [agent("s:t", "task-manager", up=GOV, label="task-manager", task="city-agents-at-desks"),
                agent("w1", "worker", up="s:t", task="city-agents-at-desks Worker 1: seats"),
                agent("w2", "worker", up="s:t", task="city-agents-at-desks Worker 2: plates"),
                agent("rv", "other", up="s:t", label="reviewer", task="city-agents-at-desks PR REVIEW"),
@@ -737,12 +737,15 @@ __out = __el.innerHTML;
 
 class TestPlateNameShort(unittest.TestCase):
     """Fix round 2, item 2 (main manager's decision): an agent's plate drops the leading task name when its description
-    starts with one (a kebab-case word such as 'city-agents-at-desks' followed by more text): '审查员 · PR REVIEW',
+    starts with the task's own name (fix round 3: the task of a live session of its floor -- its worktree folder, c.task,
+    or the '<task>' of a '<task> Task Manager' label -- followed by more text): '审查员 · PR REVIEW',
     '合并副手 · merge', '工人 · Worker 1 · seats'. plateName(c, true), the hovered or selected plate, keeps the whole
     description; the tag's title keeps nameOf."""
 
     def test_short_and_long_forms(self):
         agents = [agent("s:t", "task-manager", up=GOV, label="city-x Task Manager", task="city-x"),
+                  agent("s:u", "task-manager", up=GOV, label="task-manager", task="city-agents-at-desks"),
+                  agent("s:v", "task-manager", up=GOV, label="city-y Task Manager", task="some-folder"),
                   agent("rv", "other", up=GOV, label="reviewer", task="city-agents-at-desks PR REVIEW"),
                   agent("md", "merge-deputy", up=GOV, label="merge-deputy", task="city-agents-at-desks merge"),
                   agent("w1", "worker", up="s:t", label="worker", task="city-agents-at-desks Worker 1: seats"),
@@ -750,16 +753,22 @@ class TestPlateNameShort(unittest.TestCase):
                   agent("p1", "other", up=GOV, label="reviewer", task="PR REVIEW of the plates"),
                   agent("o1", "worker", up="s:t", label="worker", task="city-x"),
                   agent("c1", "other", up=GOV, label="check-deputy", task="city-y UI CHECK"),
-                  agent("c2", "other", up=GOV, label="check-deputy", task="city-y UI CHECK")]
+                  agent("c2", "other", up=GOV, label="check-deputy", task="city-y UI CHECK"),
+                  agent("r2", "worker", up="s:t", label="worker", task="re-run the tests"),
+                  agent("x1", "merge-deputy", up=GOV, label="merge-deputy", task="other-task merge")]
         out = sim(r"""
 snap(__payload.view, __payload.agents);
 settle(2);
-const ids = ['rv', 'md', 'w1', 'e1', 'p1', 'o1', 'c1', 'c2'];
+const ids = ['rv', 'md', 'w1', 'e1', 'p1', 'o1', 'c1', 'c2', 'r2', 'x1'];
 __out = { short: ids.map(id => plateName(byId(id))), long: ids.map(id => plateName(byId(id), true)),
           tm: [plateName(byId('s:t')), plateName(byId('s:t'), true), nameOf(byId('s:t'))] };
 """, {"view": view(), "agents": agents}, required=REQUIRED + ("plateName",))
-        sh = dict(zip(["rv", "md", "w1", "e1", "p1", "o1", "c1", "c2"], out["short"]))
-        lg = dict(zip(["rv", "md", "w1", "e1", "p1", "o1", "c1", "c2"], out["long"]))
+        keys = ["rv", "md", "w1", "e1", "p1", "o1", "c1", "c2", "r2", "x1"]
+        sh, lg = dict(zip(keys, out["short"])), dict(zip(keys, out["long"]))
+        # fix round 3 (PR REVIEW pass 3): only the task's own name goes: a word that is the task of a live session of the
+        # floor (its worktree folder, or the '<task>' of a '<task> Task Manager' name); any other hyphenated word stays
+        self.assertEqual(sh["r2"], "re-run the tests", "a hyphenated word that is no task stays")
+        self.assertEqual(sh["x1"], "other-task merge", "the name of a task nobody runs here stays")
         self.assertEqual(sh["rv"], "PR REVIEW")
         self.assertEqual(sh["md"], "merge")
         self.assertEqual(sh["w1"], "Worker 1 · seats")
@@ -777,6 +786,128 @@ __out = { short: ids.map(id => plateName(byId(id))), long: ids.map(id => plateNa
     def test_the_plate_picks_the_form(self):
         src = script_function_source("pinOv") or ""
         self.assertRegex(src, r"plateName\(\s*c\s*,", "pinOv asks for the long form when the plate is hovered or selected")
+
+
+class TestSelectedAndHoveredNeverOverlap(unittest.TestCase):
+    """Fix round 3, item 1 (PR REVIEW pass 3, blocker): step 1 placed the selected (pri 3) and the hovered (pri 2) plates
+    in full but checked them only against the panels. Now the second one moves the least way out of the first's box
+    (down, left or right, inside the bounds, off the panels), as step 1 does for a panel: both full, never overlapping."""
+
+    def test_the_two_item_repro(self):
+        items = [{"x": 300, "y": 300, "w": 160, "wChip": 32, "h": 22, "pri": 3},
+                 {"x": 330, "y": 305, "w": 160, "wChip": 32, "h": 22, "pri": 2}]
+        out = sim("const items = __payload.items; __out = { modes: plateLayout(items, { bounds: { l: 0, t: 0, r: 1440, b: 713 }, blocks: [] }), items };",
+                  {"items": items}, required=("plateLayout",))
+        self.assertEqual(out["modes"], ["full", "full"])
+        self.assertEqual(overlapping(boxes_of(out["items"], out["modes"])), [])
+
+    def test_every_selected_and_hovered_pair_on_the_team_floor(self):
+        out = sim(PROJECT_JS + r"""
+snap(__payload.view, __payload.agents);
+settle(40);
+const ppl = live().filter(c => isDrawn(c) && c.at === c.terr);
+const res = {};
+for (const [W, H, panels] of __payload.sizes) {
+  const base = plateItems(W, H).map((o, i) => Object.assign(o, { pri: platePri({ c: ppl[i] }) }));
+  const opts = { bounds: { l: 4, t: 4, r: W - 4, b: H - 4 }, blocks: panels }, pairs = [];
+  for (let a = 0; a < base.length; a++) for (let b = 0; b < base.length; b++) if (a !== b) {
+    const its = base.map((o, j) => Object.assign({}, o, { pri: j === a ? 3 : j === b ? 2 : o.pri }));
+    const m = plateLayout(its, opts);
+    pairs.push({ a, b, ma: m[a], mb: m[b], items: its, modes: m });
+  }
+  res[W] = { pairs, panels };
+}
+__out = res;
+""", {"view": view(), "agents": TEAM_AGENTS, "sizes": [[w, PANELS[w][0], PANELS[w][1]] for w in (468, 358)]},
+            required=REQUIRED + ("plateLayout", "platePri", "FOV"))
+        for w in ("468", "358"):
+            with self.subTest(stage=w):
+                pairs = out[w]["pairs"]
+                self.assertEqual(len(pairs), 20)
+                for pr in pairs:
+                    self.assertEqual((pr["ma"], pr["mb"]), ("full", "full"), "selected %d, hovered %d" % (pr["a"], pr["b"]))
+                    bx = boxes_of(pr["items"], pr["modes"])
+                    self.assertEqual(overlapping(bx), [], "selected %d, hovered %d" % (pr["a"], pr["b"]))
+                    self.assertEqual([b for b in bx for q in out[w]["panels"] if overlapping([b, tuple(q)])], [])
+
+
+class TestHoveredChipKeepsItsSpot(unittest.TestCase):
+    """Fix round 3, item 3 (PR REVIEW pass 3): a chip nudged aside or a row up jumped back over its head when hovered, out
+    from under a still pointer, so the hover ended at once (flicker). An item may carry px, py: where its plate was laid
+    out last frame; a pri >= 2 item starts from there (not its head), so its full plate covers the spot it was hovered in."""
+
+    def test_the_hovered_chip_stays_where_the_pointer_is(self):
+        items = [{"x": 200, "y": 300, "w": 160, "wChip": 40, "h": 22, "pri": 0},
+                 {"x": 212, "y": 300, "w": 160, "wChip": 40, "h": 22, "pri": 0},
+                 {"x": 188, "y": 300, "w": 160, "wChip": 40, "h": 22, "pri": 0}]
+        opts = {"bounds": {"l": 0, "t": 0, "r": 1440, "b": 713}, "blocks": []}
+        first = sim("const items = __payload.items; __out = { modes: plateLayout(items, __payload.opts), items };",
+                    {"items": items, "opts": opts}, required=("plateLayout",))
+        moved = [i for i in range(3) if first["modes"][i] == "chip" and
+                 (abs(first["items"][i]["x"] - items[i]["x"]) > 0.5 or abs(first["items"][i]["y"] - items[i]["y"]) > 0.5)]
+        self.assertTrue(moved, "a chip was nudged: %s" % first)
+        k = moved[0]
+        spot = (first["items"][k]["x"], first["items"][k]["y"] - 11)   # the pointer rests on the middle of that chip
+        again = [dict(it) for it in items]
+        again[k]["pri"] = 2
+        again[k]["px"], again[k]["py"] = first["items"][k]["x"], first["items"][k]["y"]
+        out = sim("const items = __payload.items; __out = { modes: plateLayout(items, __payload.opts), items };",
+                  {"items": again, "opts": opts}, required=("plateLayout",))
+        self.assertEqual(out["modes"][k], "full")
+        b = boxes_of([out["items"][k]], ["full"])[0]
+        self.assertTrue(b[0] <= spot[0] <= b[2] and b[1] <= spot[1] <= b[3], "the full plate still covers the pointer: %s %s" % (b, spot))
+        self.assertEqual(overlapping(boxes_of(out["items"], out["modes"])), [])
+
+    def test_the_figure_pass_passes_the_last_spot(self):
+        src = script_function_source("syncFigs") or ""
+        for key in ("px", "py"):
+            with self.subTest(key=key):
+                self.assertRegex(src, r"[{,]\s*%s\s*:" % key, "the items carry %s (last frame's spot)" % key)
+
+
+class TestAgentOnItsParentsFloor(unittest.TestCase):
+    """Fix round 3, item 5 (main manager's decision): an agent sits near its parent, so an agent whose own repo is another
+    floor (its lines carry its own repo) is drawn on its parent's floor: at a desk there, counted there, not on its own."""
+
+    def test_drawn_on_the_parents_floor(self):
+        out = sim(r"""
+snap(__payload.view, __payload.agents);
+apply({ type: 'spawn', id: 'w2', role: 'worker', label: 'worker', task: 'city-x Worker 2: b', terr: __payload.t2, up: 's:t' });
+settle(40);
+const w1 = byId('w1'), w2 = byId('w2');
+__out = { drawn: [isDrawn(w1), isDrawn(w2)], terr: [w1.terr, w2.terr], at: [w1.at, w2.at],
+          seats: [seatOfId('w1'), seatOfId('w2')], desks: deskSeats(__payload.t1),
+          count: [floorTag(__payload.t1).people, floorTag(__payload.t2).people] };
+""", {"view": view(), "t1": T1, "t2": T2, "agents": [agent("s:t", "task-manager", up=GOV), agent("w1", "worker", up="s:t", terr=T2)]},
+            required=REQUIRED + ("floorTag",))
+        self.assertEqual(out["drawn"], [True, True], "from the snapshot and from a live spawn")
+        self.assertEqual(out["terr"], [T1, T1], "on its parent's floor")
+        self.assertEqual(out["at"], [T1, T1])
+        for s_ in out["seats"]:
+            self.assertTrue(any(same_spot(s_, d) for d in out["desks"]), "at a desk there: %s" % s_)
+        self.assertEqual(out["count"], [3, 0], "counted on the parent's floor, not on its own")
+
+    def test_the_server_names_a_parent_on_another_floor(self):
+        sys.path.insert(0, HERE)
+        from cityhelp import TalkServerCase, A_REPO, B_REPO, TALK_TA, TALK_TB
+
+        class Probe(TalkServerCase):
+            def runTest(self):
+                pass
+        t = Probe()
+        t.setUp()
+        try:
+            t.governor("g1", A_REPO)
+            t.lead("tm1", repo=A_REPO)
+            t.events()
+            t.line("SubagentStart", "tm1", B_REPO, role="task-manager", aid="w9", at="worker")
+            ev = t.spawn_of("w9")
+            self.assertEqual(ev["up"], "s:tm1", "its parent, found on the other floor")
+            self.assertEqual(ev["terr"], TALK_TB, "the server keeps its own repo; the page draws it at its parent")
+            t.line("SubagentStart", "g1", B_REPO, aid="d9", at="merge-deputy")
+            self.assertEqual(t.spawn_of("d9")["up"], "gov:" + TALK_TA, "the area manager of the other floor")
+        finally:
+            t.doCleanups()
 
 
 class TestSeatCache(unittest.TestCase):
@@ -818,6 +949,7 @@ class TestPlateName(unittest.TestCase):
 
     def test_names(self):
         agents = [agent("s:t", "task-manager", up=GOV, label="city-x Task Manager", task="city-x"),
+                  agent("s:y", "task-manager", up=GOV, label="task-manager", task="city-y"),
                   agent("r1", "other", up=GOV, label="reviewer", task="city-x PR REVIEW"),
                   agent("m1", "merge-deputy", up=GOV, label="merge-deputy", task="city-x merge"),
                   agent("w1", "worker", up="s:t", label="worker", task="city-x Worker 1: seats"),
