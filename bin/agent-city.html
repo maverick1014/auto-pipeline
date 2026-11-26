@@ -6799,6 +6799,7 @@ function pickAt(px, py){
 let hoverAt = null;
 canvas.addEventListener('pointermove', e => {
   if (e.buttons || pointers.size || view !== 'inside') return;
+  if (!e.movementX && !e.movementY) return;   // the page moved a plate under a still pointer: the hover stays as it is
   const r = canvas.getBoundingClientRect(), first = !hoverAt;
   hoverAt = { x:e.clientX - r.left, y:e.clientY - r.top };
   if (!first) return;
@@ -6811,7 +6812,8 @@ canvas.addEventListener('pointermove', e => {
 canvas.addEventListener('pointerleave', () => { if (hovered) { hovered = null; needFrame = true; } });
 ovRoot.addEventListener('pointerout', e => {
   const tag = e.target.closest('[data-pick-t]');
-  if (tag && hovered && !(e.relatedTarget && tag.contains(e.relatedTarget))) { hovered = null; needFrame = true; }
+  const to = e.relatedTarget;   // to the canvas (a plate moved away from the pointer) or to another plate: the hover stays; to a panel or off the page: it ends
+  if (tag && hovered && !(to && (tag.contains(to) || to === canvas || ovRoot.contains(to)))) { hovered = null; needFrame = true; }
 });
 canvas.addEventListener('pointerdown', e => {
   canvas.setPointerCapture(e.pointerId);
