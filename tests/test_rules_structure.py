@@ -285,6 +285,7 @@ class TestTheProofFolder(unittest.TestCase):
 
 
 CITE = re.compile(r"PRINCIPLES(?:\.md)? ((?:[PRWHSE]\d+)(?:, (?:[PRWHSE]\d+))*)")
+PART = re.compile(r"^(?:#+ |- )?([PRWHSE]\d+) \(")
 CITE_RULE = re.compile(r"(rules/[a-z0-9-]+\.md) ((?:[PRWHSE]\d+)(?:, (?:[PRWHSE]\d+))*)")
 
 
@@ -314,16 +315,35 @@ class TestTheCitedCodes(unittest.TestCase):
                             bad.append("%s:%d %s (lives in %s)" % (path, i, code, homes.get(code)))
         self.assertEqual(bad, [])
 
-    def test_a_rules_cite_names_the_file_of_its_code(self):
-        homes = self.homes()
+    def parts(self):
+        """{code: {files}}: the file of its anchor plus every file that opens a part of it
+        ("R8 (owner approval)", "S8 (cont.)": codes.md, the "also" column)."""
+        out = collections.defaultdict(set)
+        for code, file in self.homes().items():
+            out[code].add(file)
+        for name, text in rule_texts().items():
+            for line in text.splitlines():
+                m = PART.match(line)
+                if m:
+                    out[m.group(1)].add(name)
+        return out
+
+    def test_a_rules_cite_names_a_file_of_its_code(self):
+        parts = self.parts()
         bad = []
         for path in cited_files():
             for i, line in enumerate(read(path).splitlines(), 1):
                 for m in CITE_RULE.finditer(line):
                     for code in m.group(2).split(", "):
-                        if code in homes and homes[code] != m.group(1):
-                            bad.append("%s:%d %s %s (lives in %s)" % (path, i, m.group(1), code, homes[code]))
+                        if code in parts and m.group(1) not in parts[code]:
+                            bad.append("%s:%d %s %s (lives in %s)" % (path, i, m.group(1), code,
+                                                                      ", ".join(sorted(parts[code]))))
         self.assertEqual(bad, [])
+
+    def test_a_part_of_a_code_counts(self):
+        # rules/approval.md opens "R8 (owner approval)": a cite "rules/approval.md R8" is right
+        self.assertIn("rules/approval.md", self.parts()["R8"])
+        self.assertNotIn("rules/ui.md", self.parts()["R8"])
 
     def test_the_close_case_line_names_its_rule_file(self):
         # section 4: grep -rn 'PRINCIPLES.md W13' skills agents bin finds nothing
