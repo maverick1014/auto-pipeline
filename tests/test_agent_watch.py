@@ -21,12 +21,14 @@ import time
 from watchhelp import (ENV, EXITED, LOGIN_TEXTS, STILL, AllCase, dead_pid, frame, idle,  # noqa: E402
                        moving, now_text, sh_quote)
 from watchhelp import ENV, AllCase, now_text, sha8  # noqa: E402
+from watchhelp import ALL_STUB  # noqa: E402
 import tempfile  # noqa: E402
+import functools  # noqa: E402
 from scripthelp import BIN  # noqa: E402
 
 WATCH_STUB = r'''#!/usr/bin/env python3
 """Fake orca for agent-watch tests. Never talks to the real app."""
-import json, os, subprocess, sys
+import json, os, sys
 
 args = sys.argv[1:]
 with open(os.environ["ORCA_STUB_LOG"], "a") as fh:
@@ -70,7 +72,7 @@ if verb == "terminal read" and os.path.isdir(screens):
     frame = open(os.path.join(screens, str(min(n, frames[-1])))).read()
     hook = os.path.join(screens, "hook.sh")
     if os.path.exists(hook):
-        subprocess.run(["bash", hook, str(n)])
+        __import__('subprocess').run(["bash", hook, str(n)])
     if frame.startswith("FAIL"):
         sys.stderr.write("orca: terminal read failed\n")
         sys.exit(1)
@@ -82,7 +84,7 @@ elif verb == "terminal read" and os.path.isdir(shell):
     answer(lines[int(cursor):] if cursor else lines[-40:], len(lines))
 elif verb == "terminal send" and os.path.isdir(shell):
     text = opt("--text") or ""
-    run = subprocess.run(["bash", "-c", text], capture_output=True, text=True)
+    run = __import__('subprocess').run(["bash", "-c", text], capture_output=True, text=True)
     with open(os.path.join(shell, "buf"), "a") as fh:
         fh.write("$ " + text + "\n" + run.stdout + run.stderr)
     print(json.dumps({"ok": True, "result": {}}))
@@ -127,6 +129,109 @@ def frame(n, extra=()):
 
 
 STILL = frame(0)
+
+# The all-mode sweeps ask orca two idle questions every sweep (terminal list, worktree list) and
+# nearly every test leaves them empty. This front answers exactly those two, byte for byte as the
+# python fake does and with the same CALL line, with no python start; every other call (and those
+# two once a test puts something in their files) goes to the python fake next to it.
+FAST_ORCA = r'''#!/bin/bash
+case "$*" in
+  "terminal list --json") f="$ORCA_STUB_DIR/lists/local.json"
+    out='{"ok": true, "result": {"terminals": [], "totalCount": 0, "truncated": false}}';;
+  "worktree list --json") f="$ORCA_STUB_DIR/worktrees/local.json"
+    out='{"ok": true, "result": {"worktrees": []}}';;
+  *) exec "${0%/*}/orca_py" "$@";;
+esac
+if [ -e "$f" ]; then
+  body=""; read -r body < "$f"
+  [ "$body" = "[]" ] || exec "${0%/*}/orca_py" "$@"
+fi
+{ printf 'CALL'; for a in "$@"; do printf '\t%s' "$a"; done; printf '\n'; } >> "$ORCA_STUB_LOG"
+printf '%s\n' "$out"
+'''
+
+
+# the python fake without its `import subprocess` (only a hook or a shell-pane send needs it): a read starts sooner
+PY_ORCA = ALL_STUB.replace("import json, os, subprocess, sys", "import json, os, sys") \
+                  .replace("subprocess.run(", "__import__('subprocess').run(")
+
+def real_command_line(test):
+    """The test's run_all calls go through the real agent-watch.sh (a bash start and a python start)."""
+    @functools.wraps(test)
+    def wrapper(self, *args, **kwargs):
+        self.real_watch = True
+        return test(self, *args, **kwargs)
+    return wrapper
+
+
+_TODO_LINES = {}   # name -> the line a real `agent-file.sh todo add <name> big ... 60` appended
+
+
+class AllCase(AllCase):
+    def setUp(self):
+        super().setUp()
+        self.repo.stub_tool("orca_py", PY_ORCA)
+        self.repo.stub_tool("orca", FAST_ORCA)
+
+    def todo(self, name, *where):
+        """The todo line of a task. The first add of a name in this process runs the real agent-file.sh
+        todo add; the next ones append the line it wrote (a set-up, not what the tests look at)."""
+        if where:
+            return super().todo(name, *where)
+        if name in _TODO_LINES:
+            # the line as the real command writes it now: its "opened" minute is this minute, not the first add's
+            line = re.sub(r"opened \d{4}-\d{2}-\d{2} \d{2}:\d{2}",
+                          "opened " + time.strftime("%Y-%m-%d %H:%M"), _TODO_LINES[name])
+            with open(self.repo.path("agent_todo.txt"), "a") as fh:
+                fh.write(line)
+            return None
+        before = self.repo.read("agent_todo.txt") or ""
+        super().todo(name)
+        _TODO_LINES[name] = (self.repo.read("agent_todo.txt") or "")[len(before):]
+        return None
+
+    def run_all(self, *extra, env=None, max_sweeps="6", timeout=90, ok=True, real=False):
+        """watchhelp.run_all, except that the Python watch (bin/agent_watch.py main) runs inside this process:
+        the bash wrapper (agent-watch.sh: runtime check, argument check) and a new python start cost about
+        0.17 s a run. real=True, @real_command_line, or any argument but --interval-min keeps the real command line; the tests
+        of the wrapper, of a replaced watch and of a signal always do."""
+        minutes = "5"
+        for i, a in enumerate(extra):
+            if a == "--interval-min" and i + 1 < len(extra):
+                minutes = extra[i + 1]
+        if real or getattr(self, "real_watch", False) or [a for a in extra if a not in ("--interval-min", minutes)]:
+            return super().run_all(*extra, env=env, max_sweeps=max_sweeps, timeout=timeout, ok=ok)
+        args = ["--all", "--interval-min", minutes] + (["--max", max_sweeps] if max_sweeps else [])
+        run_env = {"AGENT_RUNTIME": "orca", "AGENT_WATCH_INTERVAL_S": "0", "AGENT_WATCH_RETRY_S": "0"}
+        run_env.update(env or {})
+        result = self.watch_in_process(args, run_env, timeout)
+        self.assertNoSendToTm()
+        if ok:
+            self.assertOk(result)
+        return result
+
+    def watch_in_process(self, args, env, timeout):
+        """agent_watch.main(args) with the plugin copy's own modules, a clean signal state, and a time limit."""
+        saved = {k: sys.modules.pop(k) for k in ("agent_conf", "agent_state") if k in sys.modules}
+        before_path = list(sys.path)
+        old_term = signal.getsignal(signal.SIGTERM)
+        old_alarm = signal.getsignal(signal.SIGALRM)
+
+        def too_long(signum, frame):
+            raise TimeoutError("agent_watch --all ran over %s s in process" % timeout)
+
+        signal.signal(signal.SIGALRM, too_long)
+        signal.setitimer(signal.ITIMER_REAL, timeout)
+        try:
+            return self.repo.run_py("agent_watch", *args, env=env, cwd=self.repo.dir)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, old_alarm)
+            signal.signal(signal.SIGTERM, old_term)
+            sys.path[:] = before_path
+            for k in ("agent_conf", "agent_state"):
+                sys.modules.pop(k, None)
+            sys.modules.update(saved)
 
 
 class WatchCase(ScriptCase):
@@ -892,6 +997,7 @@ class TestTargets(AllCase):
 
 
 class TestSweepAndWake(AllCase):
+    @real_command_line
     def test_b1_remote_one_short_command_per_sweep_read_with_cursor(self):
         t = self.task("alpha", env=ENV)
         self.on_task_read("alpha", {4: "DONE PASS alpha"})
@@ -1201,11 +1307,13 @@ class TestSweepAndWake(AllCase):
         text = self.text(self.run_all(max_sweeps="1"))
         self.assertTrue(self.sweeps(text)[0].startswith("09:41 sweep: "), text)
 
+    @real_command_line
     def test_b14_max_and_zero_targets_keep_sweeping(self):
         text = self.text(self.run_all(max_sweeps="3"))
         self.assertEqual(self.one_watch(text), "WATCH MAX all")
         self.assertEqual(len(self.sweeps(text)), 3, text)
 
+    @real_command_line
     def test_b15_a_new_all_watch_stops_an_older_live_one(self):
         old = subprocess.Popen(["bash", "-c", 'exec -a "agent-watch.sh --all" sleep 60'])
         self.addCleanup(self.kill, old)
@@ -1220,6 +1328,7 @@ class TestSweepAndWake(AllCase):
             time.sleep(0.1)
         self.assertIsNotNone(old.poll(), "the older watch still runs")
 
+    @real_command_line
     def test_b15_never_stops_a_pid_that_is_not_an_all_watch(self):
         for name in ("sleep-helper", "agent-watch.sh --terminal term_1"):
             with self.subTest(name=name):
@@ -1233,6 +1342,7 @@ class TestSweepAndWake(AllCase):
                 self.assertNotIn("replaced pid", text)
                 self.assertIsNone(other.poll(), "a pid that is not an --all watch was stopped")
 
+    @real_command_line
     def test_b15_a_dead_pid_in_the_status_file_is_not_replaced(self):
         self.write_status({"pid": dead_pid(), "started": now_text(10), "sweep": now_text(0), "interval_min": 5,
                            "tasks": {}, "orphans": []})
@@ -1358,6 +1468,7 @@ class TestAllReviewFixes(AllCase):
         self.assertEqual(self.one_watch(text), "WATCH MAX all")
         self.assertLess(took, 14, "sleeping the whole interval after every sweep drifts (%.1f s)" % took)
 
+    @real_command_line
     def test_r9_a_replaced_watch_says_so_and_exits_0(self):
         self.task("alpha")
         old = self.repo.popen("agent-watch.sh", "--all", "--max", "200",
