@@ -94,7 +94,7 @@ SETTINGS = [
        "In a shared todo, who may work a task: owner (only the owner or the one assigned) or anyone (take it first). The repo value in agent_repo.conf wins.",
        options=["owner", "anyone"]),
     _s("data_branch", "Team: Data branch", "string", "ap-data",
-       "The branch that holds the shared agent files. The repo value in agent_repo.conf wins. A branch that holds code is refused for now (ap-data is used)."),
+       "Branch for the shared agent files; the repo value wins. Any branch works, production too: then they live under .ap-data/ there, it needs an origin, and a commit can start a deploy."),
 ]
 
 CONSTANTS = {
@@ -978,6 +978,10 @@ def working_branch(repo, derive=False):
 
 # ------------------------------------------------------------------ repo value against the person's Configure
 
+def _row(key):
+    return [r for r in SETTINGS if r["key"] == key][0]
+
+
 TEAM_KEYS = ("task_files", "task_take", "data_branch")
 
 
@@ -998,7 +1002,10 @@ def shared_lines(project_root, env=None):
             mine = text(get(key, env)).replace(" ", "")
         except Exception:
             continue
-        if repo != mine:
+        if repo not in _row(key).get('options', [repo]):
+            out.append("SHARED FILES: this repo says %s=%s in %s: not valid, the default %s is used"
+                       % (key, repo, REPO_FILE, _row(key)['default']))
+        elif repo != mine:
             out.append("SHARED FILES: this repo says %s=%s in %s; your Configure says %s; the repo value counts"
                        % (key, repo, REPO_FILE, mine))
     return out

@@ -51,6 +51,7 @@
 #   agent-file.sh todo cross "<name>" <repo>                  -> the todo line says the other repo of a two-repo task: " | cross <repo>" (replaced in place, else appended)
 #   agent-file.sh estimate --lane fast|full --mock yes|no --type <t> [--name <name>] [--guess <m>] "<what>"   -> work minutes, range, like tasks
 #   agent-file.sh backtest [--tasks]                          -> the estimator against the rubric and the todo est, rolling
+#   agent-file.sh estimate-queue                              -> queues one estimator run and starts its background runner (agent_share after a sync that brought finished records); never waits
 #   agent-file.sh retrain [--force]                           -> learn agent_estimate.txt when 30 tasks, then once a week
 #                                                             -> an older plugin than installed: one line "retrain skipped: <running> is older than installed <newest>", nothing changes
 #   agent-file.sh eta <name> [--step <n>] [--work-so-far <m>] [--wait <m>]    -> one line: work left, done around, owner needed next; with neither --step nor --work-so-far the numbers are the board's "Done by" cell (p50 and p85 from the history, agent_forecast.py); with one of them, the old rule
@@ -291,7 +292,7 @@ kept_end() {     # a run that ended 0 copies each of the five files it changed t
   return 0
 }
 kept_start
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the files in git (agent_share.py): a snapshot before and after, one commit on the data branch when a run changed them.
 # Bash only (no python start when nothing changed): the facts are read from agent_repo.conf with grep and sed.
@@ -327,7 +328,7 @@ share_exit() {
   exit "$rc"
 }
 case "${1:-}" in files) ;; *) trap share_exit EXIT;; esac
-case "${1:-}" in show|time|data|repos|estimate|backtest|eta) SHARE_COMMITS=0;; esac
+case "${1:-}" in show|time|data|repos|estimate|estimate-queue|backtest|eta) SHARE_COMMITS=0;; esac
 
 # a shared todo (agent_share.py): the newest data before a decision (quiet, a failed fetch never blocks), and who may work a task
 share_pull() {
@@ -1718,6 +1719,8 @@ case "${1:-}:${2:-}" in
     repos_list;;
   estimate-runner:*)
     est_runner;;
+  estimate-queue:*)
+    est_after_done; exit 0;;
   estimate:*|backtest:*|retrain:*)
     cmd="$1"; shift
     if [ "$cmd" = retrain ] && stale_skip; then exit 0; fi

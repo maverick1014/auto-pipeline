@@ -174,7 +174,7 @@
     "data_branch": {
       "type": "string",
       "title": "Team: Data branch",
-      "description": "The branch that holds the shared agent files. The repo value in agent_repo.conf wins. A branch that holds code is refused for now (ap-data is used).",
+      "description": "Branch for the shared agent files; the repo value wins. Any branch works, production too: then they live under .ap-data/ there, it needs an origin, and a commit can start a deploy.",
       "default": "ap-data"
     }
   }

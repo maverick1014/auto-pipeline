@@ -376,9 +376,9 @@ def refusal(root, b):
     if b == DEFAULT_BRANCH or not is_repo(root):
         return ""
     if b.startswith("-") or b == "HEAD" or "@{" in b or not run(root, "check-ref-format", "--branch", b).ok:
-        return "data branch %s is not a branch name: refused for now, the files in git stay on %s" % (b, DEFAULT_BRANCH)
+        return "data branch %s is not a branch name: not used, the files in git stay on %s" % (b, DEFAULT_BRANCH)
     if holds_code(root, b) and not has_origin(root):
-        return "data branch %s holds code and needs an origin: refused for now, the files in git stay on %s" % (
+        return "data branch %s holds code and needs an origin: not used, the files in git stay on %s" % (
             b, DEFAULT_BRANCH)
     return ""
 
@@ -510,7 +510,8 @@ def may_work(root, line):
         return None if agent_conf.same_person(me, assignee) else "%s is assigned to %s" % (task, assignee)
     if owner:
         if facts(root)["task_take"] == "owner":
-            return None if agent_conf.same_person(me, owner) else "%s belongs to %s; ask them to assign it" % (task, owner)
+            return None if agent_conf.same_person(me, owner) else ("%s belongs to %s; ask them to assign it (your git name is %s; if %s was your name, set git user.name back to \"%s\", "
+                                                                       "then todo assign your tasks to the new name)" % (task, owner, me, owner, owner))
         return "%s is free: take it first (agent-file.sh todo take %s)" % (task, task)
     return None
 
@@ -532,7 +533,7 @@ def pull(root):
     try:
         if not todo_shared(root) or not active(root) or not has_origin(root):
             return
-        quietly(sync, root, "files sync", False)
+        quietly(sync, root, "files sync")
     except Exception:
         pass
 
@@ -755,6 +756,13 @@ def publish(root, guard=None):
 
 
 def code_cycle(root, message, force=(), guard=None):
+    new_done = _code_cycle(root, message, force, guard)
+    if new_done:
+        start_estimator(root)
+    return new_done
+
+
+def _code_cycle(root, message, force=(), guard=None):
     """A write or a sync on a branch that holds code. The remote tip is fetched (refs/auto-pipeline/remote/<b>);
     theirs = its .ap-data/ files, base = the data of the last remote commit this clone synced with or pushed
     (refs/auto-pipeline/data-base/<b>), ours = the working copies. The merge goes into the working copies; when it
@@ -1005,31 +1013,32 @@ def sync_core(root, message):
         made = make_commit(root, new, [], message)
         if made:
             move_ref(root, made, "")
+    if new_done:
+        start_estimator(root)
     return new_done
 
 
-def retrain(root):
+def start_estimator(root):
+    """New finished records came in: the estimator's own background runner (agent-file.sh estimate-queue). Never waited for."""
     script = os.path.join(HERE, "agent-file.sh")
     try:
-        subprocess.run([script, "retrain"], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, timeout=180)
-    except (OSError, subprocess.TimeoutExpired):
+        subprocess.Popen([script, "estimate-queue"], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
         pass
 
 
-def sync(root, message="files sync", train=True, force=()):
+def sync(root, message="files sync", force=()):
     if not active(root):
         return
     announce(root)
     if on_code_branch(root):
-        new_done = code_cycle(root, message, force)
+        code_cycle(root, message, force)
     else:
-        new_done = sync_core(root, message)
+        sync_core(root, message)
         local = tip(root)
         if local and has_origin(root) and local != tip(root, remote_ref(root)):
             publish(root)
-    if new_done and train:
-        retrain(root)
 
 
 # ------------------------------------------------------------------ show, ignore, set
@@ -1255,6 +1264,9 @@ def move(root):
     if not in_main_checkout(root):
         sys.stderr.write("files move: run it in the main checkout (%s)\n" % root)
         return 1
+    if os.path.exists(os.path.join(run(root, "rev-parse", "--path-format=absolute", "--git-dir").out.strip(), "MERGE_HEAD")):
+        sys.stderr.write("files move: a merge is in progress; nothing moved\n")
+        return 1
     staged = [p for p in run(root, "diff", "--cached", "--name-only", "--no-renames", "-z").out.split("\0")
               if p and p not in AGENT_FILES]
     if staged:
@@ -1367,7 +1379,9 @@ def move(root):
         keep(root, n)
     for n in AGENT_FILES:
         state = "in git" if n in shared else "local"
-        if n in changed:
+        if n in shared and n not in after and not os.path.exists(os.path.join(root, n)):
+            say("%s: missing" % n)
+        elif n in changed:
             if n in shared:
                 say("%s: in git (on %s)" % (n, branch(root)))
             else:
