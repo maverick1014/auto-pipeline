@@ -224,5 +224,103 @@ class TestCountCheck(unittest.TestCase):
         self.assertIsNone(run2.count_mismatch(7, 7))
 
 
+
+class TestClassSeconds(unittest.TestCase):
+    """test-slim-3: a big file is dealt out class by class; its classes cost what was
+    measured for them (rows "<seconds> <tests> <file>.<Class>" in timings.txt, written by
+    --time), not the file's seconds shared out by test count (one class of start costs
+    5 s a test, another 0.1 s). A class with no row keeps the old share."""
+
+    def test_the_split_uses_the_measured_class_seconds(self):
+        run2 = load_run2()
+        listing = {"test_big": [("TestFast", 9), ("TestSlow", 1)], "test_x": None, "test_y": None}
+        timings = {"test_big": 90.0, "test_big.TestSlow": 80.0, "test_big.TestFast": 10.0,
+                   "test_x": 30.0, "test_y": 30.0}
+        groups = run2.split(["test_big", "test_x", "test_y"], timings, 2, listing)
+        self.assertEqual(groups, [(["test_big.TestSlow"], 80.0),
+                                  (["test_x", "test_y", "test_big.TestFast"], 70.0)])
+
+    def test_without_class_rows_the_share_follows_the_test_count(self):
+        run2 = load_run2()
+        listing = {"test_big": [("TestFast", 9), ("TestSlow", 1)], "test_x": None, "test_y": None}
+        groups = run2.split(["test_big", "test_x", "test_y"], {"test_big": 90.0, "test_x": 30.0,
+                                                               "test_y": 30.0}, 2, listing)
+        self.assertEqual(groups, [(["test_big.TestFast"], 81.0),
+                                  (["test_x", "test_y", "test_big.TestSlow"], 69.0)])
+
+    def test_time_writes_a_row_per_class(self):
+        root = tempfile.mkdtemp(prefix="run2_test_")
+        self.addCleanup(shutil.rmtree, root, True)
+        tests = os.path.join(root, "tests")
+        os.makedirs(tests)
+        for name, text in (("helper_base.py", HELPER), ("test_big.py", BIG), ("test_small.py", SMALL)):
+            with open(os.path.join(tests, name), "w") as fh:
+                fh.write(text)
+        out_file = os.path.join(root, "t.txt")
+        done = subprocess.run([sys.executable, RUN2, "--root", root, "-j", "2", "--time", "--out", out_file],
+                              capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        rows = {}
+        with open(out_file) as fh:
+            for line in fh:
+                if line.strip() and not line.startswith("#"):
+                    secs, n, name = line.rstrip("\n").split("\t")
+                    rows[name] = int(n)
+        self.assertEqual(rows, {"test_big": 6, "test_small": 1, "test_big.BaseCase": 2,
+                                "test_big.TestInherited": 2, "test_big.TestOwnA": 1,
+                                "test_big.TestOwnB": 1, "test_small.TestSmall": 1})
+        timings = load_run2().read_timings(out_file)
+        self.assertEqual(sorted(timings), sorted(rows))
+
+
+class TestDirectTools(unittest.TestCase):
+    """test-slim-3 (tests/fasttools.py): on macOS the test run finds git and python3
+    without the xcrun shim: the very binaries the shim would start; elsewhere,
+    or with AGENT_TEST_SHIMS=1, nothing changes."""
+
+    def call(self, env_extra, code):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("AGENT_TEST_TOOLS", "PYTHONPYCACHEPREFIX")}
+        env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep)
+                                      if "agent_test_tools_" not in p)
+        env.update(env_extra)
+        script = ("import json, os, shutil, sys; sys.path.insert(0, %r)\n"
+                  "from fasttools import direct_tools\n%s" % (HERE, code))
+        done = subprocess.run([sys.executable, "-c", script], env=env,
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return done.stdout
+
+    def test_the_same_binaries_without_the_shim(self):
+        if sys.platform != "darwin":
+            # no xcrun shims: nothing changes
+            out = self.call({}, "print(json.dumps([direct_tools(), os.environ.get('AGENT_TEST_TOOLS'),"
+                                " os.environ.get('PYTHONPYCACHEPREFIX')]))")
+            self.assertEqual(__import__("json").loads(out), [None, None, None])
+            return
+        out = self.call({}, "folder = direct_tools()\n"
+                            "print(json.dumps([folder, os.environ['PATH'].split(os.pathsep)[0],"
+                            " shutil.which('git'), shutil.which('python3'),"
+                            " os.environ.get('PYTHONPYCACHEPREFIX'), direct_tools(),"
+                            " os.path.realpath(shutil.which('git')), os.path.realpath(shutil.which('python3'))]))")
+        folder, first, git, py, prefix, again, git_real, py_real = __import__("json").loads(out)
+        self.assertIsNone(again, "a second call changes nothing")
+        for name, found, found_real in (("git", git, git_real), ("python3", py, py_real)):
+            shim = shutil.which(name) == "/usr/bin/" + name or found.startswith(folder or "-")
+            if not shim:
+                continue
+            self.assertEqual(first, folder)
+            self.assertEqual(found, os.path.join(folder, name))
+            real = subprocess.run(["xcrun", "--find", name], capture_output=True, text=True).stdout.strip()
+            self.assertEqual(found_real, os.path.realpath(real))
+        if getattr(sys, "pycache_prefix", None):
+            self.assertEqual(prefix, os.path.join(folder, "pycache"))
+
+    def test_the_old_way_on_request(self):
+        out = self.call({"AGENT_TEST_SHIMS": "1"},
+                        "print(json.dumps([direct_tools(), os.environ.get('AGENT_TEST_TOOLS'),"
+                        " os.environ.get('PYTHONPYCACHEPREFIX')]))")
+        self.assertEqual(__import__("json").loads(out), [None, None, None])
+
 if __name__ == "__main__":
     unittest.main()

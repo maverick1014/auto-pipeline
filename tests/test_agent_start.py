@@ -89,6 +89,134 @@ from watchhelp import dead_pid  # noqa: E402
 from watchhelp import now_text  # noqa: E402
 import tempfile  # noqa: E402
 import agent_conf  # noqa: E402
+import atexit  # noqa: E402
+from sharedrepo import changed_paths, remember_runs, tree_state  # noqa: E402
+
+
+# test-slim-3: a few classes only READ one fixture and start the script with the very same inputs in
+# test after test. Those tests share one repo per process (SHARED = a key below), and each identical
+# call runs once (sharedrepo.remember_runs). A test that writes, or that must be the first run of its
+# own repo, is named in the class's OWN and keeps a repo of its own, as before. The guard: after every
+# shared test the repo folder (plugin copy and project) must be what the last real run left; a test
+# that changed it fails, it belongs in OWN.
+_SHARED_REPOS = {}
+
+
+class _SharedEntry:
+    def __init__(self, repo, holder=None):
+        self.repo = repo
+        self.holder = holder
+        self.early = []
+        remember_runs(repo, after=self.take, before=self.check)
+        self.take()
+
+    def take(self):
+        self.snap = tree_state(self.repo.base)
+
+    def check(self):
+        # right before a new real run: what the test wrote so far must not become the baseline
+        now = tree_state(self.repo.base)
+        if now != self.snap:
+            self.early.extend(changed_paths(self.snap, now))
+
+    def verdict(self):
+        now = tree_state(self.repo.base)
+        paths = sorted(set(self.early) | set(changed_paths(self.snap, now)))
+        self.early = []
+        self.snap = now
+        return paths
+
+    def close(self):
+        if self.holder is not None:
+            self.holder.kill()
+            self.holder.wait()
+        self.repo.cleanup()
+
+
+def _build_busy():
+    """TestItFitsThePreviewOnARealProject: four long worktree lines, a 60-line state file, one todo."""
+    repo = ScriptRepo()
+    with open(repo.path("agent_worktree.txt"), "w") as fh:
+        for i in range(4):
+            fh.write("/very/long/path/to/worktree/number_%d | module_%d | "
+                     "working | since 2026-09-22 10:00\n" % (i, i))
+    with open(repo.path("agent_state.txt"), "w") as fh:
+        for i in range(60):
+            fh.write("%02d %s\n" % (i, "x" * 400))
+    with open(repo.path("agent_todo.txt"), "w") as fh:
+        fh.write("alpha | big | one\n")
+    return repo, None
+
+
+def _build_second():
+    """A session whose lock is held by another live process: a human-direct session."""
+    repo = ScriptRepo()
+    # a live process that is not this session; it ends by itself when the test process is gone
+    holder = subprocess.Popen([sys.executable, "-c",
+                               "import os, time\nwhile os.getppid() != 1:\n    time.sleep(0.5)\n"])
+    with open(repo.path(".git", "agent_main.lock"), "w") as fh:
+        fh.write("%d 2026-11-26 10:00 sess-x -\n" % holder.pid)
+    return repo, holder
+
+
+def _build_first_run():
+    """A project that never ran the start, the plugin enabled in its own settings (BareProjectCase)."""
+    repo = ScriptRepo(init_project=False)
+    open(repo.orca_log, "w").close()
+    repo.set_panes([])
+    repo.git_init(repo.dir)
+    repo.enable_plugin()
+    return repo, None
+
+
+_SHARED_BUILDERS = {
+    "plain": lambda: (ScriptRepo(), None),     # the template project, as every test got it
+    "quiz": lambda: (ScriptRepo(), None),      # --quiz and --answer; they read no project file
+    "task": lambda: (ScriptRepo(), None),      # a spawned task manager's start, by hand
+    "compact": lambda: (ScriptRepo(), None),   # the compact hook of session s1
+    "clear": lambda: (ScriptRepo(), None),     # the clear hook of session s2
+    "rules": lambda: (ScriptRepo(), None),
+    "busy": _build_busy,
+    "second": _build_second,
+    "first_run": _build_first_run,
+}
+
+
+def shared_entry(key):
+    entry = _SHARED_REPOS.get(key)
+    if entry is None:
+        repo, holder = _SHARED_BUILDERS[key]()
+        entry = _SHARED_REPOS[key] = _SharedEntry(repo, holder)
+        atexit.register(entry.close)
+    return entry
+
+
+class SharedRepoMixin:
+    """Put first in the bases: class TestX(SharedRepoMixin, StartCase). SHARED names the repo, OWN the
+    tests that keep their own."""
+
+    SHARED = None
+    OWN = ()
+    ONLY = None    # when set: only these tests share, the others keep their own repo
+    ALSO = {}      # test name -> the key of another shared repo (a test whose one run is another class's run)
+
+    def setUp(self):
+        self._entry = None
+        key = self.ALSO.get(self._testMethodName)
+        if key is None and (self.SHARED is None or self._testMethodName in self.OWN
+                            or (self.ONLY is not None and self._testMethodName not in self.ONLY)):
+            return super().setUp()
+        if self.script and not os.path.exists(os.path.join(BIN, self.script)):
+            self.fail("bin/%s does not exist yet. Write it." % self.script)
+        self._entry = shared_entry(key or self.SHARED)
+        self.repo = self._entry.repo
+
+    def tearDown(self):
+        super().tearDown()
+        if self._entry is not None:
+            paths = self._entry.verdict()
+            if paths:
+                self.fail("this test changed the shared repo (name it in OWN): %s" % ", ".join(paths[:10]))
 
 # md-slim-principles: the start part points at the rules block (the second
 # SessionStart entry, agent-start.sh --rules; by hand it follows the start part)
@@ -159,7 +287,10 @@ class StartCase(ScriptCase):
         return QUIZ_LINE % self.repo.plugin
 
 
-class TestItFitsThePreview(StartCase):
+class TestItFitsThePreview(SharedRepoMixin, StartCase):
+    SHARED = "plain"
+    OWN = ("test_no_principles_text",)   # writes the plugin copy
+
     def test_an_empty_project_stays_under_two_kilobytes(self):
         out = pointer_part(self.assertOk(self.start()))
         self.assertLess(len(out.encode()), 2048,
@@ -190,13 +321,15 @@ class TestItFitsThePreview(StartCase):
         self.assertEqual(lines[-1], self.quiz_line())
 
 
-class TestItFitsThePreviewOnARealProject(StartCase):
+class TestItFitsThePreviewOnARealProject(SharedRepoMixin, StartCase):
     """30 lines is not a size. A state file whose first 30 lines are a brief
     is 8 KB on its own, and the preview cuts it just the same. The whole
     output stays at or under 2000 bytes, always, by giving the state block
     whatever budget is left and saying so when it trims."""
 
     CAP = 2000
+    SHARED = "busy"   # the busy project is built once (_build_busy), the same start serves five tests
+    OWN = ("test_a_single_huge_line_does_not_break_the_cap", "test_the_compact_path_fits_too")
 
     def start(self, *args, **kwargs):
         # A session pid with no --model/--effort flags (this runner), so the
@@ -268,7 +401,10 @@ class TestItFitsThePreviewOnARealProject(StartCase):
                              "compact output is %d bytes" % len(out.encode()))
 
 
-class TestTheRootsLine(StartCase):
+class TestTheRootsLine(SharedRepoMixin, StartCase):
+    SHARED = "plain"
+    OWN = ("test_it_follows_the_hook_cwd",)
+
     def test_it_names_both_roots(self):
         out = self.assertOk(self.start())
         self.assertIn("PROJECT: %s | PLUGIN: %s"
@@ -298,7 +434,10 @@ class TestTheRootsLine(StartCase):
         self.assertIn("PROJECT: %s | PLUGIN: %s" % (other, self.repo.plugin), out)
 
 
-class TestTheCounts(StartCase):
+class TestTheCounts(SharedRepoMixin, StartCase):
+    SHARED = "plain"
+    OWN = ("test_the_count_is_the_real_one", "test_the_task_lines_themselves_are_not_printed")
+
     def test_every_task_file_gets_one_line(self):
         out = self.assertOk(self.start())
         for name in ("agent_todo.txt", "agent_completed.txt",
@@ -319,7 +458,9 @@ class TestTheCounts(StartCase):
         self.assertNotIn("the open task", out)
 
 
-class TestTheWorktreeLines(StartCase):
+class TestTheWorktreeLines(SharedRepoMixin, StartCase):
+    SHARED = "plain"
+    OWN = ("test_they_are_printed_in_full",)
     LINE = "/tmp/wt_alpha | alpha | working | since 2026-09-21 10:00"
 
     def test_they_are_printed_in_full(self):
@@ -335,7 +476,10 @@ class TestTheWorktreeLines(StartCase):
         self.assertFalse(after.strip().startswith("|"), after[:80])
 
 
-class TestTheStateFile(StartCase):
+class TestTheStateFile(SharedRepoMixin, StartCase):
+    SHARED = "plain"
+    OWN = ("test_a_short_one_is_printed_whole", "test_a_long_one_is_capped_at_thirty")
+
     def test_a_short_one_is_printed_whole(self):
         with open(self.repo.path("agent_state.txt"), "w") as fh:
             fh.write("STEP: 3 of 7\nNEXT: write the tests\n")
@@ -359,7 +503,9 @@ class TestTheStateFile(StartCase):
         self.assertNotIn("agent_state.txt:", out)
 
 
-class TestQuizFlag(StartCase):
+class TestQuizFlag(SharedRepoMixin, StartCase):
+    SHARED = "quiz"
+
     def test_it_prints_the_main_managers_questions_with_no_lock(self):
         # md-slim-principles B 8: no lock, no AGENT_ROLE -> the main manager's set
         out = self.assertOk(self.start("--quiz"))
@@ -381,7 +527,10 @@ class TestQuizFlag(StartCase):
                                                        "agent_main.lock")))
 
 
-class TestCompactPath(StartCase):
+class TestCompactPath(SharedRepoMixin, StartCase):
+    SHARED = "compact"
+    OWN = ("test_the_state_file_is_capped_the_same_way",)
+
     def compact(self, **kwargs):
         return self.start(
             stdin='{"cwd": "%s", "session_id": "s1", "source": "compact"}'
@@ -415,7 +564,11 @@ class TestCompactPath(StartCase):
         self.assertIn("(truncated, read the file)", out)
 
 
-class TestClearPath(StartCase):
+class TestClearPath(SharedRepoMixin, StartCase):
+    SHARED = "clear"
+    # the state file is written; the second clear must be the second run of its own repo
+    OWN = ("test_it_prints_the_state_block", "test_a_second_clear_within_the_window_is_silent")
+
     def clear(self, **kwargs):
         return self.start(
             stdin='{"cwd": "%s", "session_id": "s2", "source": "clear"}'
@@ -555,7 +708,8 @@ class TestResourcesHelper(StartCase):
         self.assertIn("over", out)
 
 
-class TestQuizStillWorks(StartCase):
+class TestQuizStillWorks(SharedRepoMixin, StartCase):
+    SHARED = "quiz"
     ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
                "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B")   # check-blocks: Q38 is a blocks question now
 
@@ -569,11 +723,15 @@ class TestQuizStillWorks(StartCase):
         self.assertIn("FAIL", result.stdout)
 
 
-class TestQuizPerRole(StartCase):
+class TestQuizPerRole(SharedRepoMixin, StartCase):
     """md-slim-principles B 8 and section 4. The 36 questions and their answers do
     not change; which role gets which does. A wrong answer names the file to
     re-read, never a rule code."""
     ANSWERS = TestQuizStillWorks.ANSWERS
+    SHARED = "quiz"
+    # a lock written into the project, or a session id (a pass writes its marker): their own repo
+    OWN = ("test_a_live_lock_of_another_session_is_a_human_direct_session", "test_each_role_passes_with_its_own_set",
+           "test_a_main_manager_cannot_pass_with_the_task_managers_set")
 
     def quiz(self, *args, **kwargs):
         return self.assertOk(self.start("--quiz", *args, **kwargs))
@@ -809,9 +967,13 @@ class TestNoQuizForSubagents(StartCase):
         self.assertFalse(os.path.exists(old))
 
 
-class TestAutoResume(StartCase):
+class TestAutoResume(SharedRepoMixin, StartCase):
     """The hook runs agent-resume.sh by itself for a main manager, new or
     taken over, on a real startup, when auto_resume=yes (default)."""
+
+    SHARED = "plain"
+    OWN = ("test_spawned_role_does_not_print_it", "test_auto_resume_no_does_not_print_it",
+           "test_compact_path_does_not_print_it")
 
     def test_main_manager_startup_prints_it_and_stays_under_cap(self):
         out = pointer_part(self.assertOk(self.start()))
@@ -1128,7 +1290,12 @@ class BareProjectCase(ScriptCase):
                       if n not in (".git", "stubbin", "seed.txt"))
 
 
-class TestFirstRunInAnEnabledRepo(BareProjectCase):
+class TestFirstRunInAnEnabledRepo(SharedRepoMixin, BareProjectCase):
+    # six tests read the one first run of an enabled, never-started project (_build_first_run)
+    SHARED = "first_run"
+    ONLY = ("test_it_creates_every_file", "test_it_says_what_it_did", "test_it_points_at_the_init_skill_for_the_two_blocks",
+            "test_the_two_lines_come_first", "test_the_normal_output_still_follows", "test_it_still_fits_the_preview")
+
     def test_it_creates_every_file(self):
         self.repo.enable_plugin()
         self.assertOk(self.start())
@@ -1417,18 +1584,13 @@ def answer_as(case, q, answers):
         return case.repo.run("agent-start.sh", "--answer", answers)
     if q in TASK_QUESTIONS:
         return case.repo.run("agent-start.sh", "--answer", answers, env={"AGENT_ROLE": "task-manager"})
-    holder = subprocess.Popen(["sleep", "60"])
-    case.addCleanup(holder.kill)
-    with open(case.repo.path(".git", "agent_main.lock"), "w") as fh:
-        fh.write("%d 2026-11-26 10:00 sess-x -\n" % holder.pid)
-    try:
-        return case.repo.run("agent-start.sh", "--answer", answers)
-    finally:
-        os.remove(case.repo.path(".git", "agent_main.lock"))
+    # a session whose lock another live process holds: the "second" repo is built with that lock (_build_second)
+    return shared_entry("second").repo.run("agent-start.sh", "--answer", answers)
 
 
-class TestQuiz(ScriptCase):
+class TestQuiz(SharedRepoMixin, ScriptCase):
     script = "agent-start.sh"
+    SHARED = "quiz"
 
     def answer_as(self, q, answers):
         return answer_as(self, q, answers)
@@ -1459,8 +1621,9 @@ class TestQuiz(ScriptCase):
 
     def test_the_approval_questions_name_their_rule(self):
         # approval-design (section 53 D): the cases live in R8, the quick check in P1
-        for good, code in (("29B", "R8"), ("30C", "R8"), ("31A", "R8"), ("32D", "R8"), ("33B", "P1"), ("34C", "R8"),
-                           ("7C", "S3"), ("8D", "H3"), ("18D", "S1"), ("26C", "W17"), ("35C", "W9"), ("36B", "P1")):
+        cases = (("29B", "R8"), ("30C", "R8"), ("31A", "R8"), ("32D", "R8"), ("33B", "P1"), ("34C", "R8"),
+                 ("7C", "S3"), ("8D", "H3"), ("18D", "S1"), ("26C", "W17"), ("35C", "W9"), ("36B", "P1"))
+        for good, code in cases:
             for letter in "ABCD":
                 wrong = good[:-1] + letter
                 if wrong == good:
@@ -1562,7 +1725,12 @@ class RulesCase(ScriptCase):
         return PATHS_LINE % self.repo.plugin
 
 
-class TestTheRulesBlock(RulesCase):
+class TestTheRulesBlock(SharedRepoMixin, RulesCase):
+    # five tests read the one startup rules block of the main manager (session s-rules)
+    SHARED = "rules"
+    ONLY = ("test_a_fresh_main_manager_start", "test_the_core_is_printed_whole_then_the_output_rules",
+            "test_the_output_rules_are_printed_from_e1_to_the_end", "test_the_order_core_output_paths_role",
+            "test_no_quiz_no_role_text_in_the_block")
 
     def test_a_fresh_main_manager_start(self):
         # section 4: the core's first line, the line "Read when", the folder, a role
@@ -2891,8 +3059,9 @@ class TestResumeLine(StartResumeCase):
         self.assertEqual(self.watch_lines(self.resume()), [])
 
 
-class TestStartRoleLine(ScriptCase):
+class TestStartRoleLine(SharedRepoMixin, ScriptCase):
     script = "agent-start.sh"
+    SHARED = "task"
 
     def test_e3_the_task_manager_role_line_says_report_into_agent_state(self):
         out = self.assertOk(self.repo.run("agent-start.sh", env={"AGENT_ROLE": "task-manager"}))
@@ -2902,10 +3071,11 @@ class TestStartRoleLine(ScriptCase):
         self.assertNotIn("SendMessage", role)
 
 
-class TestTheQuiz(ScriptCase):
+class TestTheQuiz(SharedRepoMixin, ScriptCase):
     """W8 changed, and the quiz covers W8: question 32, answer C."""
 
     script = "agent-start.sh"
+    SHARED = "quiz"
     ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
                "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B")   # check-blocks: Q38 is a blocks question now
 
@@ -2950,8 +3120,11 @@ class TestStartLineRefusesDefault(ScriptCase):
         self.assertEqual(lines, ["PERMISSION: bypassPermissions (from default)"])
 
 
-class TestStartPermissionLine(ScriptCase):
+class TestStartPermissionLine(SharedRepoMixin, ScriptCase):
     script = "agent-start.sh"
+    SHARED = "plain"
+    ONLY = ("test_the_main_manager_gets_it_too",)
+    ALSO = {"test_not_set": "task", "test_still_under_the_cap": "task"}
 
     def start(self, env=None):
         env = dict(env or {})
@@ -3046,7 +3219,11 @@ class TestModeMatchNotice(ScriptCase):
         self.assertIn("held because permission modes differ", read("rules", "traps.md"))
 
 
-class TestStart(StartCase):
+class TestStart(SharedRepoMixin, StartCase):
+    SHARED = "plain"
+    ONLY = ("test_a_repo_with_task_files_and_no_agent_conf_is_set_up", "test_no_old_settings_lines")
+    ALSO = {"test_the_quiz_never_names_an_old_settings_file": "quiz"}
+
     def test_a_repo_with_task_files_and_no_agent_conf_is_set_up(self):
         out = self.assertOk(self.start())
         self.assertNotIn("not set up", out)
@@ -3344,7 +3521,9 @@ class TestStartYou(ScriptCase):
         self.assertEqual(lines, ["YOU: opus high (model: settings.json, effort: settings.json)"])
 
 
-class TestQuiz36(ScriptCase):
+class TestQuiz36(SharedRepoMixin, ScriptCase):
+    SHARED = "quiz"
+
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz", "--role", "all"))
 
@@ -3397,7 +3576,8 @@ class TestQuiz36(ScriptCase):
         self.assertIn("36-question quiz", read("rules", "map.md"))
 
 
-class TestQuiz34(ScriptCase):
+class TestQuiz34(SharedRepoMixin, ScriptCase):
+    SHARED = "quiz"
     ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
                "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B")   # check-blocks: Q38 is a blocks question now
 

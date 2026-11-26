@@ -12,6 +12,8 @@ import os  # noqa: E402
 import subprocess  # noqa: E402
 import sys  # noqa: E402
 from scripthelp import ScriptCase  # noqa: E402
+import atexit  # noqa: E402
+import shutil  # noqa: E402
 import tempfile  # noqa: E402
 import time  # noqa: E402
 import test_agent_checks as tcr  # noqa: E402
@@ -20,8 +22,78 @@ import test_agent_checks as tcr  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+# tests that keep the real agent-file.sh command line for check / checks gate (one per verb and exit path;
+# the gate also runs for real inside every agent-promote.sh --task run)
+REAL_SHELL = {
+    "TestW1PromoteSeesTheTasksLines.test_lines_in_the_task_worktree_pass_the_direct_gate",
+    "TestA10FastLaneProduction.test_the_main_managers_gate_brings_the_lines_promote_needs",
+    "TestS4GateSaysIt.test_s4_the_gate_refuses_a_branch_cut_from_the_working_branch",
+}
+# tests that keep the real agent-promote.sh command line for each way it runs and each exit code
+# (publish 0 and 1, the direct path 0 and 1, sync); a run with an env of its own, or in a repo that
+# has a release build (its output goes to the runner's own stdout), is always real
+PROMOTE_REAL = {
+    "TestPromote.test_green_and_verified_goes_to_production",
+    "TestPromote.test_not_verified_is_refused",
+    "TestSync.test_sync_merges_production_in_and_pushes",
+    "TestF1DirectPath.test_the_stored_words",
+    "TestDirectToProduction.test_a_conflict_is_refused_and_cleaned_up",
+}
+
+
 class PromoteCase(ScriptCase):
     script = "agent-promote.sh"
+
+    # test-slim: the Python of agent-promote.sh (a bare exec of agent_promote.py) runs in this process
+    def pr(self, *args, **kw):
+        key = "%s.%s" % (type(self).__name__, self._testMethodName)
+        if (key in PROMOTE_REAL or kw.get("env") or set(kw) - {"env", "cwd"}
+                or os.path.exists(os.path.join(self.repo.dir, "bin", "agent-release.sh"))):
+            return self.repo.run("agent-promote.sh", *args, **kw)
+        return self.promote_in_process(args, kw)
+
+    def promote_in_process(self, args, kw):
+        """agent_promote.main with this repo's own plugin modules: what it imports (agent_conf, agent_nightly,
+        agent_state, agent_checks) is loaded from this test's plugin copy, never from another test's folder,
+        and the process's modules and sys.path are put back afterwards (as the watch tests do)."""
+        mine = lambda k: k.startswith("agent_") and "__inproc_" not in k
+        saved = {k: sys.modules.pop(k) for k in [k for k in sys.modules if mine(k)]}
+        before_path = list(sys.path)
+        sys.path.insert(0, self.repo.plugin_bin)
+        try:
+            return self.repo.run_py("agent_promote", *args, **kw)
+        finally:
+            sys.path[:] = before_path
+            for k in [k for k in sys.modules if mine(k)]:
+                sys.modules.pop(k, None)
+            sys.modules.update(saved)
+
+    # test-slim: check and checks gate/gather are Python (agent_checks.py): run in this process with the roots
+    # and clock agent-file.sh hands over; the tests named in REAL_SHELL keep the real command line.
+    def af(self, *args, **kw):
+        cmd = None
+        if args[:1] == ("check",):
+            cmd, rest = "check", args[1:]
+        elif args[:2] in (("checks", "gate"), ("checks", "gather")):
+            cmd, rest = args[1], args[2:]
+        env = kw.get("env") or {}
+        key = "%s.%s" % (type(self).__name__, self._testMethodName)
+        if cmd is None or key in REAL_SHELL or env or set(kw) - {"cwd"}:
+            return self.repo.run("agent-file.sh", *args, **kw)
+        merged = self.repo._env(env)
+        cwd = kw.get("cwd") or self.repo.cwd
+        start = os.path.realpath(merged.get("CLAUDE_PROJECT_DIR") or cwd)
+        roots = self.__dict__.setdefault("_roots", {})          # the main folder and top of a folder stay as they are
+        if start not in roots:
+            lst = subprocess.run(["git", "-C", start, "worktree", "list", "--porcelain"], capture_output=True,
+                                 text=True).stdout.splitlines()
+            top = subprocess.run(["git", "-C", start, "rev-parse", "--show-toplevel"], capture_output=True,
+                                 text=True).stdout.strip() or start
+            roots[start] = (([l.split(" ", 1)[1] for l in lst if l.startswith("worktree ")] or [start])[0], top)
+        root, top = roots[start]
+        now = merged.get("AGENT_FAKE_NOW") or time.strftime("%Y-%m-%d %H:%M")
+        tcr.TestGate.share_level_runs(self)
+        return self.repo.run_py("agent_checks", "agent_checks.py", root, top, now, cmd, *rest, env=env, cwd=cwd)
 
     def git(self, *args, cwd=None):
         return subprocess.run(["git", "-C", cwd or self.repo.dir] + list(args), check=True, capture_output=True,
@@ -33,13 +105,27 @@ class PromoteCase(ScriptCase):
         with open(full, "w") as fh:
             fh.write(body)
 
+    # test-slim: the set-up below (origin, working branch, one merge commit, "verified") is built once per
+    # process and a test gets a copy; the origin path is the one absolute path in it (set again).
+    # Rebuilt after a minute, like the seeded template, so no commit in it is older.
+    _SNAP = {}
+
     def setUp(self):
         super().setUp()
         sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
-        import agent_conf
         self.wb = "ap-main-t"   # section 34: per person; the fixture's git user.name is t
-        self.git("branch", "-M", "main")
         self.origin = os.path.join(self.repo.base, "origin.git")
+        snap = self._SNAP.get("dir")
+        if snap and time.time() - self._SNAP["made"] < 60 and not os.environ.get("AGENT_TEST_NO_TEMPLATE"):
+            shutil.rmtree(self.repo.dir)
+            shutil.copytree(os.path.join(snap, "project"), self.repo.dir, symlinks=True)
+            shutil.copytree(os.path.join(snap, "origin.git"), self.origin, symlinks=True)
+            shutil.copy2(os.path.join(snap, "agent-owner-order.sh"),
+                         os.path.join(self.repo.plugin_bin, "agent-owner-order.sh"))
+            self.git("remote", "set-url", "origin", self.origin)
+            self.tip = self._SNAP["tip"]
+            return
+        self.git("branch", "-M", "main")
         subprocess.run(["git", "init", "-q", "--bare", self.origin], check=True, capture_output=True)
         self.git("remote", "add", "origin", self.origin)
         self.git("push", "-q", "-u", "origin", "main")
@@ -47,6 +133,15 @@ class PromoteCase(ScriptCase):
         self.git("config", "--local", "auto-pipeline.workingbranch", self.wb)   # stored by init (section 37 F10)
         self.commit_wb({"src/a.py": "x = 2\n"}, "Merge feat-a (W8)")
         self.verified(True)
+        if not os.environ.get("AGENT_TEST_NO_TEMPLATE"):
+            if self._SNAP.get("dir"):
+                shutil.rmtree(self._SNAP["dir"], ignore_errors=True)
+            snap = tempfile.mkdtemp(prefix="promote_fixture_")
+            atexit.register(shutil.rmtree, snap, True)
+            shutil.copytree(self.repo.dir, os.path.join(snap, "project"), symlinks=True)
+            shutil.copytree(self.origin, os.path.join(snap, "origin.git"), symlinks=True)
+            shutil.copy2(os.path.join(self.repo.plugin_bin, "agent-owner-order.sh"), snap)
+            self._SNAP.update(dir=snap, made=time.time(), tip=self.tip)
 
     def commit_wb(self, files, msg):
         for rel, body in files.items():
@@ -74,26 +169,67 @@ class PromoteCase(ScriptCase):
         self.commit_wb({}, "release build")
         return log
 
+    # test-slim: `todo add --target production` (the owner's words verified and stored) is real the first time per
+    # process for a given shape; the next run in the very same start state (empty todo file, no stored words, the
+    # same verifier stub, the same arguments but the task name) replays what the first one wrote: the todo line
+    # and the stored words, with the minute of now. The tests of todo add itself call the real command.
+    _ADD = {}
+
+    def todo_add_production(self, task, quote, means):
+        d = self.repo.dir
+        gd = self.git("rev-parse", "--path-format=absolute", "--git-common-dir")
+        todo, words = os.path.join(d, "agent_todo.txt"), os.path.join(gd, "agent_owner_words.json")
+        with open(os.path.join(self.repo.plugin_bin, "agent-owner-order.sh")) as fh:
+            stub = fh.read()
+        with open(todo) as fh:
+            todo_before = fh.read()
+        nm = lambda text: text.replace(task, "\0TASK\0")
+        fresh = todo_before == "" and not os.path.exists(words) and self.git("status", "--short") == ""
+        key = (nm(quote), nm(means), stub, os.environ.get("AGENT_TEST_NO_TEMPLATE"))
+        now = time.strftime("%Y-%m-%d %H:%M")
+        rec = self._ADD.get(key)
+        if rec and task not in (rec["todo"] + rec["words"]).replace("\0TASK\0", "").replace("\0NOW\0", "") \
+                and fresh:
+            with open(todo, "w") as fh:
+                fh.write(rec["todo"].replace("\0TASK\0", task).replace("\0NOW\0", now))
+            with open(words, "w") as fh:
+                fh.write(rec["words"].replace("\0TASK\0", task).replace("\0NOW\0", now))
+            return subprocess.CompletedProcess([], 0, rec["stdout"].replace("\0TASK\0", task), "")
+        r = self.repo.run("agent-file.sh", "todo", "add", task, "small", "publish " + task, "10",
+                          "--target", "production", "--owner-quote", quote, "--means", means)
+        if r.returncode == 0 and fresh and key not in self._ADD:
+            with open(todo) as fh:
+                todo_after = fh.read()
+            with open(words) as fh:
+                words_after = fh.read()
+            import re
+            m = re.search(r"opened (\d{4}-\d\d-\d\d \d\d:\d\d)", todo_after)
+            if m and todo_after.count(m.group(1)) == 1 and words_after.count(m.group(1)) <= 1 and r.stderr == "" \
+                    and self.git("status", "--short").split() == ["M", "agent_todo.txt"]:
+                self._ADD[key] = {"todo": nm(todo_after).replace(m.group(1), "\0NOW\0"),
+                                  "words": nm(words_after).replace(m.group(1), "\0NOW\0"),
+                                  "stdout": nm(r.stdout)}
+        return r
+
     def ready_direct(self, task, branch, quote=None):
         """Section 44 F1: dispatch stores the owner's words with the target; the main manager's reviewer passed."""
         import time as _t
         sys.path.insert(0, HERE)
         import test_agent_checks as _tcr
         quote = quote or "%s can go live straight after done" % task          # approval-design: his own words
-        r = self.repo.run("agent-file.sh", "todo", "add", task, "small", "publish " + task, "10",
-                          "--target", "production", "--owner-quote", quote, "--means", "publish %s to production" % task)
+        r = self.todo_add_production(task, quote, "publish %s to production" % task)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         _tcr.main_launched(self.repo.dir, task)                      # G8: within the task instance (now)
         self.git("fetch", "-q", "origin")
         sha = self.git("rev-parse", "origin/" + branch)
         for block in ("PR REVIEW", "DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS",
                       "CORE REVIEW", "EXAMPLES TEST"):
-            r = self.repo.run("agent-file.sh", "check", task, block, "pass", "--by", task + " Reviewer",
+            r = self.af("check", task, block, "pass", "--by", task + " Reviewer",
                               "--evidence", "ok", "--commit", sha)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def promote(self, *extra):
-        return self.repo.run("agent-promote.sh", "--owner-quote", "yes ship it to production",
+        return self.pr("--owner-quote", "yes ship it to production",
                              "--means", "publish the working branch to production", *extra)
 
 
@@ -175,7 +311,7 @@ class TestDirectToProduction(PromoteCase):
 
     def direct(self, branch, *extra):
         self.ready_direct("feat-p", branch)                          # section 44 F1: words come from the task
-        return self.repo.run("agent-promote.sh", "--task", "feat-p", "--branch", branch, *extra)
+        return self.pr("--task", "feat-p", "--branch", branch, *extra)
 
     def test_straight_into_production_then_merged_back(self):
         b = self.task_branch({"src/total.py": "t = 1\n"})
@@ -224,7 +360,7 @@ class TestDirectToProduction(PromoteCase):
         before = self.git("rev-parse", "origin/main")
         before_wt = self.worktree_paths()
         self.ready_direct("feat-c", b)
-        r = self.repo.run("agent-promote.sh", "--task", "feat-c", "--branch", b)
+        r = self.pr("--task", "feat-c", "--branch", b)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.git("fetch", "-q", "origin")
         self.assertEqual(self.git("rev-parse", "origin/main"), before)
@@ -244,7 +380,7 @@ class TestSync(PromoteCase):
 
     def test_sync_merges_production_in_and_pushes(self):
         self.production_moves()
-        r = self.repo.run("agent-promote.sh", "--sync")
+        r = self.pr("--sync")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertTrue(r.stdout.splitlines()[0].startswith("sync: main merged into %s (" % self.wb), r.stdout)
         self.git("fetch", "-q", "origin")
@@ -253,13 +389,13 @@ class TestSync(PromoteCase):
         self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD"), self.wb)
 
     def test_sync_when_already_in(self):
-        r = self.repo.run("agent-promote.sh", "--sync")
+        r = self.pr("--sync")
         self.assertEqual(r.stdout.strip(), "sync: %s already has main" % self.wb)
 
     def test_sync_waits_on_a_dirty_checkout(self):
         self.production_moves()
         self.put("src/a.py", "half done\n")
-        r = self.repo.run("agent-promote.sh", "--sync")
+        r = self.pr("--sync")
         self.assertTrue(r.stdout.strip().startswith("sync waits: "), r.stdout)
         with open(os.path.join(self.repo.dir, "src", "a.py")) as fh:
             self.assertEqual(fh.read(), "half done\n")
@@ -294,7 +430,7 @@ class TestG4PublishWords(PromoteCase):
         self.git("commit", "-q", "-m", "p")
         self.git("push", "-q", "-u", "origin", "p")
         self.git("switch", "-q", self.wb)
-        r = self.repo.run("agent-promote.sh", "--task", "p", "--branch", "p")
+        r = self.pr("--task", "p", "--branch", "p")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("no owner words stored for p", r.stdout + r.stderr)
 
@@ -326,7 +462,7 @@ class TestF1DirectPath(PromoteCase):
 
     def test_a_quote_at_promote_is_refused(self):
         b = self.branch_from_main("feat-q")
-        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b, "--owner-quote", "please fix the footer typo")
+        r = self.pr("--task", b, "--branch", b, "--owner-quote", "please fix the footer typo")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("the owner's words come from the task (todo add --target production --owner-quote), "
                       "not from promote", r.stdout + r.stderr)
@@ -335,7 +471,7 @@ class TestF1DirectPath(PromoteCase):
         b = self.branch_from_main("feat-w")
         self.repo.run("agent-file.sh", "todo", "add", b, "small", "x", "10")
         before = self.git("rev-parse", "origin/main")
-        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
+        r = self.pr("--task", b, "--branch", b)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("%s is not a production task (todo add --target production)" % b, r.stdout + r.stderr)
         self.git("fetch", "-q", "origin")
@@ -355,7 +491,7 @@ class TestF1DirectPath(PromoteCase):
         b = self.branch_from_main("feat-s")
         with open(os.path.join(self.repo.dir, "agent_todo.txt"), "a") as fh:
             fh.write("%s | small | x | est 10m | opened %s | target production\n" % (b, minute(-600)))
-        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
+        r = self.pr("--task", b, "--branch", b)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("no owner words stored for %s" % b, r.stdout + r.stderr)
 
@@ -365,7 +501,7 @@ class TestF1DirectPath(PromoteCase):
                           "--owner-quote", "%s can go live after done" % b, "--means", "publish %s to production" % b)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         before = self.git("rev-parse", "origin/main")
-        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)     # no reviewer, no check lines
+        r = self.pr("--task", b, "--branch", b)     # no reviewer, no check lines
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("GATE REFUSED", r.stdout)
         self.git("fetch", "-q", "origin")
@@ -379,7 +515,7 @@ class TestF1DirectPath(PromoteCase):
             rec = json.load(fh)[b]["publish"]
         self.assertEqual(rec["quote"], "%s can go live straight after done" % b)
         self.assertEqual(rec["means"], "publish %s to production" % b)
-        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
+        r = self.pr("--task", b, "--branch", b)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         # approval-design (section 53 A8): promote prints the stored pair
         self.assertIn('OWNER WORDS publish: "%s can go live straight after done" (typed 2026-11-26 08:40) read as: '
@@ -392,7 +528,7 @@ class TestF1DirectPath(PromoteCase):
         with open(os.path.join(gd, "agent_owner_words.json"), "w") as fh:
             json.dump({b: {"quote": "yes, publish %s to production" % b, "time": "2026-11-25 10:00", "verified": True}}, fh)
         before = self.git("rev-parse", "origin/main")
-        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
+        r = self.pr("--task", b, "--branch", b)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("no owner words stored for %s" % b, r.stdout + r.stderr)
         self.git("fetch", "-q", "origin")
@@ -402,7 +538,7 @@ class TestF1DirectPath(PromoteCase):
         b = self.branch_from_main("feat-m")
         for extra in (("--means", "publish it"), ("--question", "1. publish? A. yes")):
             with self.subTest(extra=extra):
-                r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b, *extra)
+                r = self.pr("--task", b, "--branch", b, *extra)
                 self.assertNotEqual(r.returncode, 0, r.stdout)
 
 
@@ -417,7 +553,7 @@ class TestF7AgentFilesNeverBlock(PromoteCase):
         self.git("switch", "-q", self.wb)
         with open(os.path.join(self.repo.dir, "agent_todo.txt"), "a") as fh:
             fh.write("x | small | x | est 5m\n")                             # " M agent_todo.txt"
-        r = self.repo.run("agent-promote.sh", "--sync")
+        r = self.pr("--sync")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertTrue(r.stdout.splitlines()[0].startswith("sync: main merged into %s (" % self.wb), r.stdout)
 
@@ -439,7 +575,7 @@ class TestF8PushTheCheckedSha(PromoteCase):
                      "                    'moved after the check'], check=True)\n"
                      "    return rc\n"
                      "agent_nightly.release_ok = _moved\n")
-        r = self.repo.run("agent-promote.sh", "--owner-quote", "yes ship it to production",
+        r = self.pr("--owner-quote", "yes ship it to production",
                           "--means", "publish the working branch to production",
                           env={"PYTHONPATH": site, "F8_BIN": os.path.join(self.repo.plugin, "bin"),
                                "F8_REPO": self.repo.dir})
@@ -478,7 +614,7 @@ class TestF12OnlyItsOwnMerge(PromoteCase):
         gd = self.git("rev-parse", "--git-dir")
         merge_head = os.path.join(self.repo.dir, gd, "MERGE_HEAD") if not os.path.isabs(gd) else os.path.join(gd, "MERGE_HEAD")
         self.assertTrue(os.path.exists(merge_head))
-        r = self.repo.run("agent-promote.sh", "--sync")
+        r = self.pr("--sync")
         self.assertIn("a merge is in progress in", r.stdout)
         self.assertIn("(not started by this run)", r.stdout)
         self.assertTrue(os.path.exists(merge_head), "someone else's merge was aborted")
@@ -489,7 +625,7 @@ class TestF14StaleWorktrees(PromoteCase):
         gd = self.git("rev-parse", "--path-format=absolute", "--git-common-dir")
         stale = os.path.join(gd, "agent_promote_wt_999999")
         self.git("worktree", "add", "-q", "--detach", stale, "main")
-        self.repo.run("agent-promote.sh", "--sync")
+        self.pr("--sync")
         self.assertFalse(os.path.exists(stale))
 
 
@@ -542,10 +678,10 @@ class TestW1PromoteSeesTheTasksLines(PromoteCase):
         head = subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         for block in ("PR REVIEW", "DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "CORE REVIEW",
                       "EXAMPLES TEST"):
-            r = self.repo.run("agent-file.sh", "check", "p1", block, "pass", "--by", "p1 Review", "--evidence", "ok",
+            r = self.af("check", "p1", block, "pass", "--by", "p1 Review", "--evidence", "ok",
                               "--commit", head, cwd=wt)                     # written in the task's worktree
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        r = self.repo.run("agent-promote.sh", "--task", "p1", "--branch", "p1")
+        r = self.pr("--task", "p1", "--branch", "p1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_results_file_for_a_remote_task(self):
@@ -571,16 +707,16 @@ class TestA10FastLaneProduction(PromoteCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         head = subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         for block in ("DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "EXAMPLES TEST"):
-            self.repo.run("agent-file.sh", "check", "u1", block, "pass", "--by", "u1 Deputy", "--evidence", "ok",
+            self.af("check", "u1", block, "pass", "--by", "u1 Deputy", "--evidence", "ok",
                           "--commit", head, cwd=wt)                     # the deputy's lines, in its worktree
         tcr.main_launched(self.repo.dir, "u1")
         for block in ("PR REVIEW", "CORE REVIEW"):
-            self.repo.run("agent-file.sh", "check", "u1", block, "pass", "--by", "u1 Review", "--evidence", "ok",
+            self.af("check", "u1", block, "pass", "--by", "u1 Review", "--evidence", "ok",
                           "--commit", head)                              # the reviewer, from the main checkout
-        r = self.repo.run("agent-file.sh", "checks", "gate", "u1", "--dir", wt, "--branch", "u1",
+        r = self.af("checks", "gate", "u1", "--dir", wt, "--branch", "u1",
                           "--base", "origin/main")                       # /merge step 4
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        r = self.repo.run("agent-promote.sh", "--task", "u1", "--branch", "u1")
+        r = self.pr("--task", "u1", "--branch", "u1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_the_demo_has_the_third_walk(self):
@@ -620,7 +756,7 @@ class TestApprovalPublish(PromoteCase):
 
     def test_no_means_is_refused_and_nothing_moves(self):
         self.green()
-        r = self.repo.run("agent-promote.sh", "--owner-quote", "yes ship it to production")
+        r = self.pr("--owner-quote", "yes ship it to production")
         self.assertNotEqual(r.returncode, 0, r.stdout)
         self.assertIn("--means", r.stdout + r.stderr)
         self.assertNotEqual(self.git("rev-parse", "origin/main"), self.tip)
@@ -638,7 +774,7 @@ class TestApprovalPublish(PromoteCase):
                                    "echo 'OWNER ORDER verified ~/.claude/projects/-r/s1.jsonl 2026-11-26 08:40'\n" % log)
         self.green()
         q = "1. Publish the working branch now? A. yes B. wait"
-        r = self.repo.run("agent-promote.sh", "--owner-quote", "1A", "--question", q,
+        r = self.pr("--owner-quote", "1A", "--question", q,
                           "--means", "publish the working branch to production")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(log) as fh:
@@ -671,7 +807,7 @@ class TestPublishRecord(PromoteCase):
         # the task's own record ends at todo done; this line stays
         b = TestF1DirectPath.branch_from_main(self, "feat-r")
         self.ready_direct(b, b)
-        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
+        r = self.pr("--task", b, "--branch", b)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.git("fetch", "-q", "origin")
         sha = self.git("rev-parse", "origin/main")[:7]
@@ -709,7 +845,7 @@ class TestS4GateSaysIt(PromoteCase):
         self.ready_direct("feat-l", "feat-l")
         wt = os.path.join(self.repo.base, "wt-feat-l")
         self.git("worktree", "add", "-q", wt, "feat-l")
-        r = self.repo.run("agent-file.sh", "checks", "gate", "feat-l", "--dir", wt, "--branch", "feat-l", "--base", "origin/main")
+        r = self.af("checks", "gate", "feat-l", "--dir", wt, "--branch", "feat-l", "--base", "origin/main")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("feat-l carries commits of %s that are not in main" % self.wb, r.stdout)
         self.assertNotIn("GATE PASS", r.stdout)
@@ -719,7 +855,7 @@ class TestS4GateSaysIt(PromoteCase):
         self.ready_direct(b, b)
         wt = os.path.join(self.repo.base, "wt-feat-n")
         self.git("worktree", "add", "-q", wt, b)
-        r = self.repo.run("agent-file.sh", "checks", "gate", b, "--dir", wt, "--branch", b, "--base", "origin/main")
+        r = self.af("checks", "gate", b, "--dir", wt, "--branch", b, "--base", "origin/main")
         self.assertNotIn("carries commits of", r.stdout)
 
 
@@ -741,7 +877,7 @@ class TestT5NothingToPublish(PromoteCase):
         b = self.empty_branch("feat-e")
         self.ready_direct(b, b)
         before = self.git("rev-parse", "origin/main")
-        r = self.repo.run("agent-promote.sh", "--task", b, "--branch", b)
+        r = self.pr("--task", b, "--branch", b)
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("nothing to publish: feat-e has no commit on top of main", r.stdout + r.stderr)
         self.assertNotIn("promote: feat-e -> main", r.stdout)
@@ -754,7 +890,7 @@ class TestT5NothingToPublish(PromoteCase):
         self.ready_direct(b, b)
         wt = os.path.join(self.repo.base, "wt-feat-f")
         self.git("worktree", "add", "-q", wt, b)
-        r = self.repo.run("agent-file.sh", "checks", "gate", b, "--dir", wt, "--branch", b, "--base", "origin/main")
+        r = self.af("checks", "gate", b, "--dir", wt, "--branch", b, "--base", "origin/main")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("nothing to publish: feat-f has no commit on top of", r.stdout)
         self.assertNotIn("GATE PASS", r.stdout)
@@ -772,7 +908,7 @@ class TestG15Gather(PromoteCase):
         self.ready_direct("g1", "g1")
         with open(os.path.join(self.repo.dir, "agent_worktree.txt"), "a") as fh:
             fh.write("/no/such/folder | g1 | final | since 2026-11-25 19:00\n")
-        r = self.repo.run("agent-promote.sh", "--task", "g1", "--branch", "g1")
+        r = self.pr("--task", "g1", "--branch", "g1")
         self.assertIn("gather: skipped /no/such/folder: missing", r.stdout)
 
 
@@ -788,7 +924,7 @@ class TestP1P2P3P6Promote(PromoteCase):
 
     def direct(self, branch):
         self.ready_direct(branch, branch)                            # section 44 F1
-        return self.repo.run("agent-promote.sh", "--task", branch, "--branch", branch)
+        return self.pr("--task", branch, "--branch", branch)
 
     def test_p1_the_release_runs_on_a_production_commit(self):
         # like agent-release.sh: it refuses a commit that is not on the local production branch
@@ -855,7 +991,7 @@ class TestG6ReleaseWhileProductionIsCheckedOut(PromoteCase):
         self.git("push", "-q", "-u", "origin", "feat-r")
         self.git("switch", "-q", "main")
         self.ready_direct("feat-r", "feat-r")                        # section 44 F1
-        r = self.repo.run("agent-promote.sh", "--task", "feat-r", "--branch", "feat-r")
+        r = self.pr("--task", "feat-r", "--branch", "feat-r")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertFalse(os.path.exists(log))
         self.assertIn("release: not run: local main is checked out in %s; switch that checkout to the working branch "

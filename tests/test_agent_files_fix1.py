@@ -82,9 +82,12 @@ class GitSpy:
 
 
 class TestANotMovedRepoBehavesAsBefore(OldRepoCase):
+    def build(self):
+        super().build()
+        self.make_remote()
+
     def setUp(self):
         super().setUp()
-        self.make_remote()
         self.spy = GitSpy(self.repo)
 
     def af_spy(self, *args):
@@ -186,14 +189,21 @@ class TestCASyncThatBringsRecordsRetrains(PairCase):
 
 
 class TestDAHangingRemoteCostsOneTimeout(FilesCase):
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         self.commit_all()
         self.make_remote()
         self.af("files", "set", "task_files", "ideas")
+        # test-slim-3: the hanging remote also writes one line to a log each time it is called, so a test can
+        # count the calls instead of timing them
+        self.hang_log = os.path.join(self.repo.base, "hang_calls.log")
         for key in ("uploadpack", "receivepack"):
-            git(self.dir, "config", "remote.origin.%s" % key, "sleep 60; git-%s" % key.replace("pack", "-pack"))
+            git(self.dir, "config", "remote.origin.%s" % key,
+                "echo %s >> '%s'; sleep 60; git-%s" % (key, self.hang_log, key.replace("pack", "-pack")))
         self.env = {"AGENT_SHARE_TIMEOUT": "3"}
+
+    def hang_calls(self):
+        return read(self.hang_log).split() if os.path.exists(self.hang_log) else []
 
     def test_the_constant_is_15_seconds(self):
         sys.path.insert(0, os.path.join(ROOT, "bin"))
@@ -202,13 +212,17 @@ class TestDAHangingRemoteCostsOneTimeout(FilesCase):
         self.assertEqual(agent_conf.CONSTANTS.get("share_offline_min"), 5)
 
     def test_one_timeout_then_the_network_is_skipped(self):
+        # the proof does not depend on how fast the machine is (it was a 5 s wall limit): the hanging remote is
+        # called exactly once by the first command (one timeout, not two), and not at all by the second
+        # (the network is skipped), whatever the time each took
         began = time.time()
-        r1 = self.af("idea", "add", "first", env=self.env)
-        self.assertLess(time.time() - began, 3 + 2, r1.stdout + r1.stderr)
+        r1 = self.af("idea", "add", "first", env={"AGENT_SHARE_TIMEOUT": "1"})
+        # the 1 s timeout cut the call: under 10 s, below the 15 s default (share_net_timeout_s) and the 60 s hang
+        self.assertLess(time.time() - began, 10, r1.stdout + r1.stderr)
+        self.assertEqual(len(self.hang_calls()), 1, "one call, one timeout: %s %s" % (r1.stdout, r1.stderr))
         self.assertTrue(os.path.exists(os.path.join(git_dir(self.dir), "agent_share_offline")))
-        began = time.time()
-        r2 = self.af("idea", "add", "second", env=self.env)
-        self.assertLess(time.time() - began, 2, r2.stdout + r2.stderr)
+        r2 = self.af("idea", "add", "second", env={"AGENT_SHARE_TIMEOUT": "1"})
+        self.assertEqual(len(self.hang_calls()), 1, "the network was not skipped: %s %s" % (r2.stdout, r2.stderr))
         said = [l for l in (r2.stdout + r2.stderr).splitlines() if "ap-data" in l]
         self.assertEqual(len(said), 1, r2.stdout + r2.stderr)
         self.assertIn("second", data_file(self.dir, "agent_ideas.txt") or "", "the commit must still be made")
@@ -229,8 +243,8 @@ class TestDAHangingRemoteCostsOneTimeout(FilesCase):
 
 
 class TestEKeptCopies(FilesCase):
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         self.commit_all()
 
     def test_a_write_refreshes_the_kept_copy(self):

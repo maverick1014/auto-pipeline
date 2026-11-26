@@ -106,12 +106,65 @@ def version(**over):
     return v
 
 
+# test-slim-3: estimate, backtest and retrain run agent_estimate.py in this process (the table of data --what
+# comes from one real `data --what` run per distinct agent_completed.txt, kept for the process). The tests named
+# here keep the real agent-file.sh command line: one per verb and exit path, and the speed test (its bound is
+# the time of the real command line).
+REAL_SHELL = {
+    "TestEstimateInputs.test_bad_values_are_refused",
+    "TestEstimateLearned.test_the_like_lines_are_the_newest_on_a_tie",
+    "TestEstimateRubric.test_no_data_at_all",
+    "TestBacktest.test_a_steady_history_beats_the_rubric",
+    "TestBacktest.test_fewer_than_11_tasks",
+    "TestBacktest.test_backtest_writes_nothing",
+    "TestRetrainFirst.test_v1_estimator_when_it_wins",
+    "TestRetrainFirst.test_not_yet_under_30_tasks",
+    "TestRetrainCheck.test_force_checks_when_not_due",
+    "TestRetrainCheck.test_a_better_new_version_is_kept",
+    "TestRealData.test_the_backtest_table",
+    "TestSpeed.test_60_tasks",
+}
+_DATA_ROWS = {}
+_CONSTANTS = {}
+
+
+def quiet_done(repo):
+    """A `todo done` run does two things no test here is about: the cleanup sweep after the last task
+    (skipped when AGENT_CLEANUP_DONE=1) and the detached estimate runner (not started while a live process holds
+    <git dir>/agent_estimate.lock; this process holds it). Both are tested in test_agent_cleanup and
+    test_agent_estimate_learn."""
+    real = repo.run
+
+    def run(script, *args, **kwargs):
+        if script == "agent-file.sh" and tuple(args[:2]) == ("todo", "done"):
+            env = dict(kwargs.get("env") or {})
+            env.setdefault("AGENT_CLEANUP_DONE", "1")
+            kwargs["env"] = env
+            lock = os.path.join(repo.dir, ".git", "agent_estimate.lock")
+            if os.path.isdir(os.path.join(repo.dir, ".git")) and not os.path.exists(lock):
+                os.makedirs(lock)
+                with open(os.path.join(lock, "pid"), "w") as fh:
+                    fh.write("%d\n" % os.getpid())
+        return real(script, *args, **kwargs)
+
+    repo.run = run
+    return repo
+
+
 class EstimateCase(ScriptCase):
 
     def setUp(self):
         super().setUp()
+        if self.own_file():
+            quiet_done(self.repo)
         if not os.path.exists(os.path.join(ROOT, "bin", "agent_estimate.py")):
             self.fail("bin/agent_estimate.py does not exist yet. Write it.")
+
+    def own_file(self):
+        """test-slim-3: the speed-ups (no sweep and no background runner after todo done, estimate/backtest/retrain
+        in-process) are for the classes of this file only; a subclass in another file (estimate_learn, version,
+        inputs, fit, forecast) may be about exactly those and keeps the real command line."""
+        return type(self).__module__ == __name__
 
     def write(self, name, text):
         with open(self.repo.path(name), "w") as fh:
@@ -137,7 +190,34 @@ class EstimateCase(ScriptCase):
 
     def af(self, *args, **kwargs):
         env = {"AGENT_FAKE_NOW": kwargs.pop("now", NOW)}
-        return self.repo.run("agent-file.sh", *args, env=env, **kwargs)
+        key = "%s.%s" % (type(self).__name__, self._testMethodName)
+        if (args[:1] not in (("estimate",), ("backtest",), ("retrain",)) or kwargs or key in REAL_SHELL
+                or os.environ.get("AGENT_TEST_NO_TEMPLATE") or not self.own_file()):
+            return self.repo.run("agent-file.sh", *args, env=env, **kwargs)
+        return self.af_in_process(args, env)
+
+    def af_in_process(self, args, env):
+        """What agent-file.sh's est_py hands agent_estimate.py: the table of data --what on stdin, the model file
+        of the project root, today, the three constants and the repo name in the environment."""
+        try:
+            with open(self.repo.path("agent_completed.txt")) as fh:
+                text = fh.read()
+        except OSError:
+            text = None
+        name = os.path.basename(self.repo.dir).replace(" ", "_")
+        rkey = (text, name)
+        rows = _DATA_ROWS.get(rkey)
+        if rows is None:
+            res = self.repo.run("agent-file.sh", "data", "--what", env=dict(env))
+            rows = _DATA_ROWS[rkey] = res.stdout.rstrip("\n") + "\n"
+        if not _CONSTANTS:
+            _CONSTANTS.update(load_conf_module().CONSTANTS)
+        env = dict(env, AGENT_ESTIMATE_REPO=name,
+                   AGENT_ESTIMATE_TARGET_PCT=str(_CONSTANTS["estimate_target_pct"]),
+                   AGENT_ESTIMATE_BIAS_MIN=str(_CONSTANTS["estimate_bias_min"]),
+                   AGENT_ESTIMATE_BIG_MIN=str(_CONSTANTS["estimate_big_min"]))
+        return self.repo.run_py("agent_estimate", "agent_estimate.py", args[0], self.repo.path("agent_estimate.txt"),
+                                env["AGENT_FAKE_NOW"].split()[0], *args[1:], env=env, stdin=rows)
 
     def estimate(self, lane, mock, kind, what, *more):
         out = self.assertOk(self.af("estimate", "--lane", lane, "--mock", mock,

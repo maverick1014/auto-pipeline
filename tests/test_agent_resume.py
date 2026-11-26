@@ -25,8 +25,29 @@ import time  # noqa: E402
 import test_agent_room as trm  # noqa: E402
 
 
+def no_sweep(repo):
+    """test-slim-3: agent-resume.sh sweeps (agent-cleanup.sh --apply --short, ~0.3 s) before it reads the worktree
+    lines unless AGENT_CLEANUP_DONE=1 (what the start hook hands it). None of these tests is about the sweep (its
+    wiring is tests/test_agent_cleanup.py), so every resume run here starts with that variable set."""
+    real = repo.run
+
+    def run(script, *args, **kwargs):
+        if script == "agent-resume.sh":
+            env = dict(kwargs.get("env") or {})
+            env.setdefault("AGENT_CLEANUP_DONE", "1")
+            kwargs["env"] = env
+        return real(script, *args, **kwargs)
+
+    repo.run = run
+    return repo
+
+
 class ResumeCase(ScriptCase):
     script = "agent-resume.sh"
+
+    def setUp(self):
+        super().setUp()
+        no_sweep(self.repo)
 
     def resume(self, *args, **kwargs):
         return self.repo.run("agent-resume.sh", *args, **kwargs)
@@ -632,7 +653,7 @@ class TestAConfWrittenBeforeRuntimeExistedWrites(_TestAConfWrittenBeforeRuntimeE
             "no, plain mode")
 
 
-class TestResumeRefusesDefault(ScriptCase):
+class TestResumeRefusesDefault(ResumeCase):
     script = "agent-resume.sh"
 
     def command(self):
@@ -683,7 +704,7 @@ class ZshRun:
         return done.returncode, done.stdout.splitlines(), done.stderr
 
 
-class TestResumeLineRunsInZsh(ScriptCase):
+class TestResumeLineRunsInZsh(ResumeCase):
     script = "agent-resume.sh"
 
     def command(self, task_manager, module="alpha"):
@@ -723,7 +744,7 @@ class TestResumeLineRunsInZsh(ScriptCase):
         self.assertEqual(command, "AGENT_ROLE=task-manager claude --model opus --effort xhigh --permission-mode auto")
 
 
-class TestResumePermission(ScriptCase):
+class TestResumePermission(ResumeCase):
     script = "agent-resume.sh"
 
     def command(self):

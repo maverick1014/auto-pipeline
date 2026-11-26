@@ -741,22 +741,46 @@ class TestReadsCheckMore(Fixture):
         self.assertIn("agent-release.sh: not a git checkout: %s" % nested, r.stderr)
 
 
-def dry_run_verdict(case, r):
+BUMP_FIRST = (r"(?m)^agent-release\.sh: version (\S+) is not higher than release (\S+): "
+              r"bump \.claude-plugin/plugin\.json first$")
+
+
+def dry_run_verdict(case, r, behind=False):
     """check-blocks: the dry run of main is green, also between a release and the next version
-    bump. Then it prints the whole plan and ends with the "bump first" refusal (rule 8, exit 1)."""
+    bump. Then it prints the whole plan and ends with the "bump first" refusal (rule 8, exit 1).
+    behind (real_repo_verdict): the release was built from a commit this branch does not
+    contain, so a lower version is allowed; everything else is checked the same."""
     # check-blocks: main between a release and the next version bump is a normal state;
     # the dry run then says "bump first" (rule 8, exit 1) after the whole plan. Not red.
-    bump = re.search(r"(?m)^agent-release\.sh: version (\S+) is not higher than release (\S+): "
-                     r"bump \.claude-plugin/plugin\.json first$", r.stderr)
+    bump = re.search(BUMP_FIRST, r.stderr)
     if bump:
         case.assertEqual(r.returncode, 1, r.stderr)
-        case.assertEqual(bump.group(1), bump.group(2), "a version lower than the release is red")
+        if not behind:
+            case.assertEqual(bump.group(1), bump.group(2), "a version lower than the release is red")
     else:
         case.assertEqual(r.returncode, 0, "stdout:\n%s\nstderr:\n%s" % (r.stdout, r.stderr))
         case.assertRegex(r.stdout, r"(?m)^(would commit release \d+(\.\d+)*|release up to date: .*)$")
     case.assertNotIn("which is not shipped", r.stderr)
     case.assertRegex(r.stdout, r"(?m)^ship: \d+ files, \d+ bytes$")
     case.assertRegex(r.stdout, r"(?m)^reads check: \d+ ok, \d+ skipped \(variable\)$")
+
+
+def real_repo_verdict(case, r, root):
+    """test-slim-3: dry_run_verdict for the real repo, whose release tip is live (any fetch moves
+    it). A tip built from a commit this branch does not contain ("release <v> from <sha>", <sha>
+    not an ancestor of HEAD) is newer than the branch, not wrong in it: a lower version is
+    allowed then. A tip built from a commit this branch contains: a lower version stays red."""
+    behind = False
+    bump = re.search(BUMP_FIRST, r.stderr)
+    tip = re.search(r"(?m)^release tip: (\S+) version ", r.stdout)
+    if bump and tip and bump.group(1) != bump.group(2):
+        subject = subprocess.run(["git", "-C", root, "log", "-1", "--format=%s", tip.group(1)],
+                                 capture_output=True, text=True).stdout.strip()
+        source = re.match(r"release \S+ from (\S+)$", subject)
+        if source:
+            behind = subprocess.run(["git", "-C", root, "merge-base", "--is-ancestor",
+                                     source.group(1), "HEAD"], capture_output=True).returncode != 0
+    dry_run_verdict(case, r, behind=behind)
 
 
 # ---------------------------------------------------------------- the real repo
@@ -774,7 +798,7 @@ class TestRealRepo(unittest.TestCase):
         env = dict(os.environ, HOME=home, GIT_CONFIG_NOSYSTEM="1")
         r = subprocess.run([SCRIPT, "--dry-run"], cwd=HERE, capture_output=True, text=True,
                            env=env, timeout=180)
-        dry_run_verdict(self, r)
+        real_repo_verdict(self, r, ROOT)
         left = re.search(r"(?m)^left out: (.*)$", r.stdout)
         self.assertIsNotNone(left, r.stdout)
         names = left.group(1).split()
@@ -810,6 +834,31 @@ class TestBetweenReleaseAndBump(Fixture):
         r = self.run_release("--dry-run")
         with self.assertRaises(AssertionError):
             dry_run_verdict(self, r)
+
+
+class TestBehindTheLiveRelease(Fixture):
+    """test-slim-3: the real repo's release tip is live (any fetch moves it). A release
+    built from a commit this branch does not contain (made while the tests run, or
+    after the branch was cut) says nothing about this branch; one built from a commit
+    the branch contains still makes a lower version red."""
+
+    def test_a_branch_cut_before_a_newer_release_is_not_red(self):
+        self.git("branch", "feature")
+        self.set_version("0.99.0")
+        self.commit("bump on main")
+        self.build()
+        self.git("checkout", "-q", "feature")
+        r = self.run_release("--dry-run")
+        self.assertIn("is not higher than release 0.99.0", r.stderr)
+        real_repo_verdict(self, r, self.repo)
+
+    def test_a_lower_version_that_contains_the_release_stays_red(self):
+        self.build()
+        self.set_version("0.39.9")
+        self.commit("lower")
+        r = self.run_release("--dry-run")
+        with self.assertRaises(AssertionError):
+            real_repo_verdict(self, r, self.repo)
 
 
 # ---------------------------------------------------------------- rule 15

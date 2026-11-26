@@ -37,8 +37,8 @@ DIR = ".ap-data/"
 class CodeBranchCase(FilesCase):
     """Maverick's clone with an origin; the data branch is the code branch itself (main here)."""
 
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         git(self.dir, "config", "user.email", "maverick@example.invalid")
         self.commit_all()
         self.make_remote()
@@ -48,7 +48,14 @@ class CodeBranchCase(FilesCase):
     def remote(self, name):
         return data_file(self.bare, DIR + name, ref=self.branch)
 
+    uses_steps = True
+
     def finish(self, task, cwd=None):
+        if cwd is None:   # from an untouched copy: done once per process, then the folder it made is copied
+            return self.once_from_pristine(("finish", task), lambda: self._finish(task))
+        self._finish(task, cwd)
+
+    def _finish(self, task, cwd=None):
         self.af("todo", "add", task, "small", "the %s task" % task, "30", cwd=cwd)
         self.af("todo", "done", task, "--work", "5", "--type", "script", "--lane", "fast", cwd=cwd)
 

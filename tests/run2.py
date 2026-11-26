@@ -41,6 +41,9 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fasttools import direct_tools  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAN = re.compile(r"^Ran (\d+) tests? in ([\d.]+)s", re.M)
 RESULT = re.compile(r"^(OK|FAILED)\b(.*)$", re.M)
@@ -204,7 +207,9 @@ def split(names, timings, n, listing=None):
                 total = sum(c for _, c in classes)
                 if len(classes) > 1 and total:
                     for cname, c in classes:
-                        cost["%s.%s" % (name, cname)] = cost[name] * c / total
+                        key = "%s.%s" % (name, cname)
+                        # test-slim-3: the class's own measured seconds (a --time row), else its share by tests
+                        cost[key] = timings[key] if key in timings else cost[name] * c / total
                     del cost[name]
     names = list(cost)
     groups = [[] for _ in range(n)]
@@ -217,7 +222,7 @@ def split(names, timings, n, listing=None):
 
 
 RUNNER = r"""
-import json, os, sys, unittest
+import json, os, sys, time, unittest
 
 def walk(suite):
     if not isinstance(suite, unittest.TestSuite):
@@ -234,21 +239,35 @@ for name in sys.argv[1:]:
         owner[id(t)] = name
     suite.addTest(part)
 
+secs, last = {}, [time.perf_counter()]   # "<file>.<Class>": [seconds, tests]; set-up between two tests counts for the next
+
+
 class Result(unittest.TextTestResult):
     def startTest(self, test):
         name = owner.get(id(test), "?")
         counts[name] = counts.get(name, 0) + 1
         super().startTest(test)
 
+    def stopTest(self, test):
+        super().stopTest(test)
+        now = time.perf_counter()
+        key = "%s.%s" % (owner.get(id(test), "?").split(".")[0], type(test).__name__)
+        row = secs.setdefault(key, [0.0, 0])
+        row[0] += now - last[0]
+        row[1] += 1
+        last[0] = now
+
 res = unittest.TextTestRunner(resultclass=Result).run(suite)
 with open(os.environ["RUN2_COUNTS"], "w") as fh:
     json.dump(counts, fh)
+with open(os.environ["RUN2_COUNTS"] + ".secs", "w") as fh:
+    json.dump(secs, fh)
 sys.exit(0 if res.wasSuccessful() else 1)
 """
 
 
 def run_unittest(tests_dir, modules, log_path):
-    """(exit code, seconds, output, {module or module.Class: tests run})."""
+    """(exit code, seconds, output, {module or module.Class: tests run}, {file.Class: [seconds, tests]})."""
     start = time.time()
     runner, counts_path = log_path + ".runner.py", log_path + ".counts"
     with open(runner, "w") as fh:
@@ -268,7 +287,12 @@ def run_unittest(tests_dir, modules, log_path):
             counts = json.load(fh)
     except (OSError, ValueError):
         counts = {}
-    return code, time.time() - start, text, counts
+    try:
+        with open(counts_path + ".secs") as fh:
+            class_secs = json.load(fh)
+    except (OSError, ValueError):
+        class_secs = {}
+    return code, time.time() - start, text, counts, class_secs
 
 
 def summary(text):
@@ -288,6 +312,7 @@ def main():
     ap.add_argument("--root")
     ap.add_argument("--out")
     args = ap.parse_args()
+    direct_tools()   # test-slim-3: git and python3 without the macOS xcrun shim, for every process started
     if not args.files:
         os.environ["AGENT_FULL_RUN"] = "1"
     else:
@@ -303,9 +328,9 @@ def main():
     if args.time:
         def one(name):
             wait_for_room()
-            code, secs, text, _counts = run_unittest(tests_dir, [name], os.path.join(logs, name + ".log"))
+            code, secs, text, counts, class_secs = run_unittest(tests_dir, [name], os.path.join(logs, name + ".log"))
             tests, verdict = summary(text)
-            return name, code, secs, tests, verdict
+            return name, code, secs, tests, verdict, class_secs
 
         with ThreadPoolExecutor(max_workers=max(1, args.j)) as pool:
             rows = list(pool.map(one, names))
@@ -314,15 +339,20 @@ def main():
         with open(out, "w") as fh:
             fh.write("# seconds\ttests\tfile (python3 tests/run2.py --time -j %d, %s)\n"
                      % (args.j, time.strftime("%Y-%m-%d %H:%M")))
-            for name, code, secs, tests, verdict in rows:
+            for name, code, secs, tests, verdict, _classes in rows:
                 fh.write("%.1f\t%d\t%s\n" % (secs, tests, name))
+            # test-slim-3: one row per class, so split() deals a big file by measured seconds
+            fh.write("# classes: seconds\ttests\t<file>.<Class>\n")
+            classes = [(s, n, key) for r in rows for key, (s, n) in r[5].items()]
+            for s, n, key in sorted(classes, key=lambda c: (-c[0], c[2])):
+                fh.write("%.1f\t%d\t%s\n" % (s, n, key))
         bad = [r for r in rows if r[1] != 0]
-        for name, code, secs, tests, verdict in rows:
+        for name, code, secs, tests, verdict, _classes in rows:
             print("%7.1f  %5d  %s%s" % (secs, tests, name, "" if code == 0 else "  " + verdict))
         print("files %d  tests %d  sum of file seconds %.0f  wall %.0f s  (-j %d)  -> %s"
               % (len(rows), sum(r[3] for r in rows), sum(r[2] for r in rows),
                  time.time() - start, args.j, out))
-        for name, code, secs, tests, verdict in bad:
+        for name, code, secs, tests, verdict, _classes in bad:
             print("FAILED %s: see %s" % (name, os.path.join(logs, name + ".log")))
         return 1 if bad else 0
 
@@ -339,7 +369,7 @@ def main():
         results = list(pool.map(go, enumerate(groups)))
     failed = False
     ran_by_file = {}
-    for i, mods, est, (code, secs, text, counts) in results:
+    for i, mods, est, (code, secs, text, counts, _class_secs) in results:
         tests, verdict = summary(text)
         for item, n in counts.items():
             ran_by_file[item.split(".")[0]] = ran_by_file.get(item.split(".")[0], 0) + n

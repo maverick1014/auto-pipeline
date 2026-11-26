@@ -93,6 +93,8 @@ naming agent_repo.conf. agent-start.sh prints one line per fact when the person'
 it names the repo value ("task_files=<v>") and agent_repo.conf.
 """
 
+import atexit
+import copy
 import glob
 import json
 import os
@@ -107,6 +109,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 from scripthelp import ROOT, ScriptCase, ScriptRepo  # noqa: E402
+from sharedrepo import tree_state  # noqa: E402
 
 AGENT_FILES = ("agent_todo.txt", "agent_ideas.txt", "agent_worktree.txt", "agent_completed.txt",
                "agent_estimate.txt")
@@ -180,19 +183,131 @@ def no_identity(base):
     return {"HOME": home, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "XDG_CONFIG_HOME": home}
 
 
+# test-slim-3: what a case builds in its setUp (repo, init, remote, clones) is built ONCE per process in a
+# template folder and copied for every test (shutil.copytree, symlinks kept), like tests/scripthelp.py does for
+# the plain seeded project. The copy keeps absolute paths in exactly one kind of file, a git "config" (the
+# remote url of a clone): those are rewritten to the new folder. AGENT_TEST_NO_TEMPLATE=1 builds every test's
+# fixture the slow way.
+_TEMPLATES = {}
+
+
+def _remap(value, old, new):
+    """value with the folder `old` in every string replaced by `new`."""
+    if isinstance(value, str):
+        return value.replace(old, new)
+    if isinstance(value, dict):
+        return {_remap(k, old, new): _remap(v, old, new) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return type(value)(_remap(v, old, new) for v in value)
+    return value
+
+
+def _config_files(base):
+    """The git config files under base that name base (a remote url): their relative paths."""
+    found = []
+    for folder, dirs, files in os.walk(base):
+        dirs[:] = [d for d in dirs if d not in ("objects", "plugin")]
+        if "config" in files:
+            full = os.path.join(folder, "config")
+            if base in read(full):
+                found.append(os.path.relpath(full, base))
+    return found
+
+
+def _copy_of(template, configs):
+    """A ScriptRepo that is a copy of the template repo, in a folder of its own."""
+    base = os.path.realpath(tempfile.mkdtemp(prefix="auto_pipeline_"))
+    shutil.copytree(template.base, base, symlinks=True, dirs_exist_ok=True)
+    repo = ScriptRepo.__new__(ScriptRepo)
+    for key, value in vars(template).items():
+        setattr(repo, key, _remap(copy.copy(value), template.base, base))
+    for rel in configs:
+        full = os.path.join(base, rel)
+        write(full, read(full).replace(template.base, base))
+    return repo
+
+
+# a first step many tests of a class start with (a todo line put in, a task finished) is done once from the
+# template state and kept as a folder: key -> (folder, the base it was made in, its config files)
+_STEPS = {}
+
+
+def _drop_templates():
+    for value in _TEMPLATES.values():
+        if len(value) == 2:   # the packed project of Ex5
+            shutil.rmtree(value[0].base, ignore_errors=True)
+            continue
+        value[0].cleanup()
+    for folder, _old, _configs in _STEPS.values():
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+atexit.register(_drop_templates)
+
+
 class FilesCase(ScriptCase):
-    """A project made by init in a fresh git repo (only seed.txt tracked before it)."""
+    """A project made by init in a fresh git repo (only seed.txt tracked before it).
+
+    build() is the old setUp: it makes the fixture. setUp() runs it once per process (per build function and
+    name, see template_extra) and gives every test a copy. A subclass changes build(), not setUp(), for what the
+    copy should already hold; what must not be copied (a file that names its own folder) goes in its setUp()."""
 
     script = "agent-file.sh"
     name = "Maverick"
 
-    def setUp(self):
+    uses_steps = False   # True: setUp notes the state of the copy, so once_from_pristine can tell it is untouched
+
+    def template_extra(self):
+        return ()
+
+    def once_from_pristine(self, key, step):
+        """step() is the first thing a test does to its copy. The first test of the process runs it and keeps the
+        folder it made; a later test that starts from an untouched copy (same files, nothing run) gets that folder
+        instead of running it again. A copy that was touched before runs step() itself."""
+        state = getattr(self, "_start_state", None)
+        base = self.repo.base
+        if state is None or tree_state(base) != state:
+            return step()
+        skey = (self._template_key, key)
+        if skey in _STEPS:
+            folder, old, configs = _STEPS[skey]
+            shutil.rmtree(base)
+            shutil.copytree(folder, base, symlinks=True)
+            for rel in configs:
+                write(os.path.join(base, rel), read(os.path.join(base, rel)).replace(old, base))
+        else:
+            step()
+            folder = os.path.realpath(tempfile.mkdtemp(prefix="auto_pipeline_step_"))
+            shutil.copytree(base, folder, symlinks=True, dirs_exist_ok=True)
+            _STEPS[skey] = (folder, base, _config_files(base))
+        self._start_state = None
+
+    def build(self):
         self.repo = ScriptRepo(init_project=False)
-        self.addCleanup(self.repo.cleanup)
         self.dir = self.repo.dir
         self.repo.git_init(self.dir)
         git(self.dir, "config", "user.name", self.name)
         self.assertOk(self.repo.run("agent-init.sh", "--no-measure", "--no-branch"))
+
+    def setUp(self):
+        if os.environ.get("AGENT_TEST_NO_TEMPLATE"):
+            self.build()
+            self.addCleanup(self.repo.cleanup)
+            return
+        key = (type(self).build, self.name, self.template_extra())
+        if key not in _TEMPLATES:
+            scratch = type(self)(self._testMethodName)
+            start = set(vars(scratch))
+            scratch.build()
+            attrs = {k: v for k, v in vars(scratch).items() if k not in start and k != "repo"}
+            _TEMPLATES[key] = (scratch.repo, attrs, _config_files(scratch.repo.base))
+        template, attrs, configs = _TEMPLATES[key]
+        self._template_key = key
+        self.repo = _copy_of(template, configs)
+        self.addCleanup(self.repo.cleanup)
+        for name, value in attrs.items():
+            setattr(self, name, _remap(copy.deepcopy(value), template.base, self.repo.base))
+        self._start_state = tree_state(self.repo.base) if self.uses_steps else None
 
     def af(self, *args, cwd=None, ok=True, env=None):
         e = {"AGENT_FAKE_NOW": NOW}
@@ -235,8 +350,8 @@ class FilesCase(ScriptCase):
 class OldRepoCase(FilesCase):
     """A repo that tracks every agent file (the state before this task), with real lines in them."""
 
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         with open(os.path.join(self.dir, ".gitignore")) as fh:
             keep = [l for l in fh.read().splitlines() if l not in AGENT_FILES]
         write(os.path.join(self.dir, ".gitignore"), "".join(l + "\n" for l in keep))
@@ -403,8 +518,8 @@ class TestTheSettingsAreThePersonsDefault(FilesCase):
 
 
 class Ex2MoveARepoThatTracksTheTodo(OldRepoCase):
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         with open(os.path.join(self.dir, "agent_todo.txt"), "a") as fh:
             fh.write("".join(todo_line(n) + "\n" for n in ("a", "b", "c")))
         self.before = {n: read(os.path.join(self.dir, n)) for n in AGENT_FILES}
@@ -490,8 +605,8 @@ class TestMoveRefusals(OldRepoCase):
 class TestTheMoveInTheOtherClone(OldRepoCase):
     """Both clones track the agent files; Maverick moves and pushes; King Lun's move settles the pull."""
 
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         self.make_remote()
         self.b = os.path.join(self.repo.base, "kinglun")
         subprocess.run(["git", "clone", "-q", self.bare, self.b], check=True, capture_output=True)
@@ -521,8 +636,8 @@ class TestTheMoveInTheOtherClone(OldRepoCase):
 
 
 class TestFilesSet(FilesCase):
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         self.commit_all()
 
     def test_sharing_the_ideas_puts_them_on_the_data_branch(self):
@@ -606,8 +721,8 @@ class Ex3TodoDoneCommitsTheHistory(FilesCase):
 
 
 class Ex4SharedIdeasOnly(FilesCase):
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         self.commit_all()
         self.af("files", "set", "task_files", "ideas")
 
@@ -653,8 +768,21 @@ class Ex12AFailedPushNeverBlocks(FilesCase):
 
 class Ex5TheCloudPackSharesBoth(unittest.TestCase):
     def setUp(self):
+        # test-slim-3: the packed project is made once per process and copied for every test
+        if "pack" not in _TEMPLATES:
+            scratch = type(self)(self._testMethodName)
+            scratch.build()
+            _TEMPLATES["pack"] = (scratch, {k: v for k, v in vars(scratch).items()
+                                            if k in ("src", "target", "env", "out")})
+        scratch, attrs = _TEMPLATES["pack"]
         self.base = os.path.realpath(tempfile.mkdtemp(prefix="agent_files_pack_"))
         self.addCleanup(shutil.rmtree, self.base, True)
+        shutil.copytree(scratch.base, self.base, symlinks=True, dirs_exist_ok=True)
+        for name, value in attrs.items():
+            setattr(self, name, _remap(copy.deepcopy(value), scratch.base, self.base))
+
+    def build(self):
+        self.base = os.path.realpath(tempfile.mkdtemp(prefix="agent_files_pack_"))
         self.src = os.path.join(self.base, "src")
         os.makedirs(self.src)
         # the same source parts as tests/test_agent_cloud_pack.py (md-slim-principles-2: rules/, GLOSSARY.md, NOTICE.md)
@@ -819,9 +947,13 @@ class PairCase(FilesCase):
     """Maverick's clone (self.dir) and King Lun's clone (self.b) of one bare repo, the todo and ideas in git."""
 
     take = "owner"
+    uses_steps = True
 
-    def setUp(self):
-        super().setUp()
+    def template_extra(self):
+        return (self.take,)
+
+    def build(self):
+        super().build()
         git(self.dir, "config", "user.email", "maverick@example.invalid")
         self.commit_all()
         self.make_remote()
@@ -849,7 +981,11 @@ class PairCase(FilesCase):
         return self.af("files", "sync", cwd=path)
 
     def put_line(self, line):
-        """A todo line written by hand into Maverick's working copy, synced to both clones."""
+        """A todo line written by hand into Maverick's working copy, synced to both clones (done once per process
+        from the template state: a test that starts with it gets the folder the first one made)."""
+        self.once_from_pristine(("put_line", line), lambda: self._put_line(line))
+
+    def _put_line(self, line):
         with open(os.path.join(self.dir, "agent_todo.txt"), "a") as fh:
             fh.write(line + "\n")
         self.sync(self.dir)

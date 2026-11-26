@@ -52,6 +52,13 @@ BIN = os.path.join(ROOT, "bin")
 if BIN not in sys.path:
     sys.path.insert(0, BIN)
 
+TESTS = os.path.dirname(os.path.abspath(__file__))
+if TESTS not in sys.path:
+    sys.path.insert(0, TESTS)
+from fasttools import direct_tools  # noqa: E402
+
+direct_tools()   # test-slim-3: git and python3 without the macOS xcrun shim (tests/fasttools.py)
+
 # Copied into the temp plugin's bin/ when they exist. A script still being
 # written by another worker is simply skipped, so unrelated tests keep running.
 COPY_BIN = [

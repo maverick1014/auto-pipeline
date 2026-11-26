@@ -118,7 +118,20 @@ def blocks_module():
     return importlib.reload(agent_blocks)
 
 
-class BlocksCase(ScriptCase):
+# test-slim-3: a level test gets a normal ScriptRepo (a link to the template's plugin was tried: it saved about
+# 6 s for the file, but the template is rebuilt every minute and a link to it can dangle)
+LevelRepo = ScriptRepo
+
+
+class LevelBase(ScriptCase):
+    def setUp(self):
+        if self.script and not os.path.exists(os.path.join(BIN, self.script)):
+            self.fail("bin/%s does not exist yet. Write it." % self.script)
+        self.repo = LevelRepo()
+        self.addCleanup(self.repo.cleanup)
+
+
+class BlocksCase(LevelBase):
     script = "agent-level.sh"
 
     def git(self, *args, cwd=None):
@@ -361,6 +374,17 @@ class TestKinds(BlocksCase):
         self.assertIn(path, got, r.stdout)
         return got[path]
 
+    def kinds_of(self, cases):
+        """cases: (path, before, after); one project and one check for all of them (test-slim-3). A file's kind comes
+        from that file alone, and every path stays where it is (root-anchored rules), so each has the line it had in
+        a project of its own: path -> (kind, reason)."""
+        self.base({path: before for path, before, _ in cases})
+        self.put({path: after for path, _, after in cases})
+        got = self.files(self.check())
+        for path, _, _ in cases:
+            self.assertIn(path, got, got)
+        return got
+
     def test_code(self):
         self.assertEqual(self.kind({"src/a.py": "x = 1\n"}, {"src/a.py": "x = 2 + y\n"}, "src/a.py")[0], "code")
 
@@ -377,18 +401,18 @@ class TestKinds(BlocksCase):
         self.assertEqual(self.kind({"docs/a.md": "x\n"}, {"docs/a.md": "y\n"}, "docs/a.md"), ("text", "text file"))
 
     def test_rule_files(self):
-        for path in ("PRINCIPLES.md", "CLAUDE.md", "AGENTS.md", "skills/merge/SKILL.md", "agents/worker.md",
-                     ".claude/skills/x/SKILL.md", ".claude/agents/w.md",
-                     # md-slim-principles A 1: the rule files beside the core are rule text too
-                     "rules/checks.md", "GLOSSARY.md"):
+        paths = ("PRINCIPLES.md", "CLAUDE.md", "AGENTS.md", "skills/merge/SKILL.md", "agents/worker.md",
+                 ".claude/skills/x/SKILL.md", ".claude/agents/w.md",
+                 # md-slim-principles A 1: the rule files beside the core are rule text too
+                 "rules/checks.md", "GLOSSARY.md")
+        got = self.kinds_of([(path, "- a\n", "- b\n") for path in paths])
+        for path in paths:
             with self.subTest(path=path):
-                self.tearDown_repo()
-                self.assertEqual(self.kind({path: "- a\n"}, {path: "- b\n"}, path)[0], "rule")
+                self.assertEqual(got[path][0], "rule")
 
     def tearDown_repo(self):
         self.repo.cleanup()
-        from scripthelp import ScriptRepo
-        self.repo = ScriptRepo()
+        self.repo = LevelRepo()
         self.addCleanup(self.repo.cleanup)
 
     def test_style(self):
@@ -408,15 +432,16 @@ class TestKinds(BlocksCase):
         self.assertEqual(self.kind({"img/a.png": b"\x89PNG1"}, {"img/a.png": b"\x89PNG2"}, "img/a.png")[0], "asset")
 
     def test_deps(self):
-        for path, before, after in (("package-lock.json", '{"a":1}\n', '{"a":2}\n'),
-                                    ("yarn.lock", "a\n", "b\n"),
-                                    ("requirements.txt", "flask==2.0\n", "flask==2.1\n"),
-                                    ("pubspec.yaml", "a: 1\n", "a: 2\n"),
-                                    ("package.json", '{"dependencies": {"a": "1"}}\n',
-                                     '{"dependencies": {"a": "2"}}\n')):
+        cases = (("package-lock.json", '{"a":1}\n', '{"a":2}\n'),
+                 ("yarn.lock", "a\n", "b\n"),
+                 ("requirements.txt", "flask==2.0\n", "flask==2.1\n"),
+                 ("pubspec.yaml", "a: 1\n", "a: 2\n"),
+                 ("package.json", '{"dependencies": {"a": "1"}}\n',
+                  '{"dependencies": {"a": "2"}}\n'))
+        got = self.kinds_of(cases)
+        for path, before, after in cases:
             with self.subTest(path=path):
-                self.tearDown_repo()
-                k, why = self.kind({path: before}, {path: after}, path)
+                k, why = got[path]
                 self.assertEqual(k, "deps")
                 self.assertTrue(why.startswith("built-in: "), why)
 
@@ -426,11 +451,12 @@ class TestKinds(BlocksCase):
         self.assertEqual(k, "code")
 
     def test_ci_and_test_config(self):
-        for path in (".github/workflows/ci.yml", ".gitlab-ci.yml", "jest.config.js", "pytest.ini", "tox.ini",
-                     "conftest.py", "vitest.config.ts", "playwright.config.ts", "Jenkinsfile"):
+        paths = (".github/workflows/ci.yml", ".gitlab-ci.yml", "jest.config.js", "pytest.ini", "tox.ini",
+                 "conftest.py", "vitest.config.ts", "playwright.config.ts", "Jenkinsfile")
+        got = self.kinds_of([(path, "a: 1\n", "a: 2\n") for path in paths])
+        for path in paths:
             with self.subTest(path=path):
-                self.tearDown_repo()
-                self.assertEqual(self.kind({path: "a: 1\n"}, {path: "a: 2\n"}, path)[0], "ci")
+                self.assertEqual(got[path][0], "ci")
 
     def test_test_config_globs_of_the_repo_file(self):
         k, _ = self.kind({"tests/setup_env.py": "A = 1\n"}, {"tests/setup_env.py": "A = 2\n"}, "tests/setup_env.py",
@@ -1065,7 +1091,7 @@ def core_paths_of(stdout):
     return out
 
 
-class LevelCase(ScriptCase):
+class LevelCase(LevelBase):
     script = "agent-level.sh"
 
     def git(self, *args, cwd=None):
@@ -1109,7 +1135,7 @@ class LevelCase(ScriptCase):
         # a fresh project for the next subTest
         self.repo.cleanup()
         from scripthelp import ScriptRepo
-        self.repo = ScriptRepo()
+        self.repo = LevelRepo()
         self.addCleanup(self.repo.cleanup)
 
     def required(self, r):
@@ -1387,12 +1413,23 @@ class TestBuiltInLevelFour(LevelCase):
         self.assertEqual((need, lvl), ("D", "D"), why)
         self.assertIn("built-in: %s" % kind, why)
 
-    def test_lockfiles(self):
-        for path in ("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "app/pubspec.lock",
-                     "ios/Podfile.lock", "go.sum", "Cargo.lock"):
+    def danger_all(self, paths, before, after, kind):
+        """danger() for several paths in one project and one check (test-slim-3): each file has its own FILE line
+        and every path here is level D, so the required level of the whole diff is D as well."""
+        self.base({path: before for path in paths})
+        self.put({path: after for path in paths})
+        r = self.ok()
+        need, got = self.required(r), self.files(r)
+        for path in paths:
             with self.subTest(path=path):
-                self.danger(path, "a\n", "b\n", "lockfile")
-                self.tearDown_repo()
+                self.assertIn(path, got, r.stdout)
+                lvl, why = got[path]
+                self.assertEqual((need, lvl), ("D", "D"), why)
+                self.assertIn("built-in: %s" % kind, why)
+
+    def test_lockfiles(self):
+        self.danger_all(("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "app/pubspec.lock",
+                         "ios/Podfile.lock", "go.sum", "Cargo.lock"), "a\n", "b\n", "lockfile")
 
     def test_package_json_dependencies(self):
         for key in ("dependencies", "devDependencies", "peerDependencies", "overrides"):
@@ -1410,23 +1447,16 @@ class TestBuiltInLevelFour(LevelCase):
         self.danger("pubspec.yaml", "name: app\n", "name: app\ndependencies:\n  http: ^1.0.0\n", "pubspec")
 
     def test_dependency_lists(self):
-        for path in ("requirements.txt", "requirements-dev.txt", "go.mod", "Gemfile", "pyproject.toml"):
-            with self.subTest(path=path):
-                self.danger(path, "a\n", "b\n", "dependency list")
-                self.tearDown_repo()
+        self.danger_all(("requirements.txt", "requirements-dev.txt", "go.mod", "Gemfile", "pyproject.toml"),
+                        "a\n", "b\n", "dependency list")
 
     def test_migrations(self):
-        for path in ("db/migrations/001_init.py", "db/migrate/20240101_add.rb",
-                     "supabase/migration/x.ts", "alembic/versions/abc.py"):
-            with self.subTest(path=path):
-                self.danger(path, "a = 1\n", "a = 2\n", "migration")
-                self.tearDown_repo()
+        self.danger_all(("db/migrations/001_init.py", "db/migrate/20240101_add.rb",
+                         "supabase/migration/x.ts", "alembic/versions/abc.py"), "a = 1\n", "a = 2\n", "migration")
 
     def test_schema_files(self):
-        for path in ("prisma/schema.prisma", "db/schema.rb", "src/user.schema.json", "db/seed.sql"):
-            with self.subTest(path=path):
-                self.danger(path, "a\n", "b\n", "schema")
-                self.tearDown_repo()
+        self.danger_all(("prisma/schema.prisma", "db/schema.rb", "src/user.schema.json", "db/seed.sql"),
+                        "a\n", "b\n", "schema")
 
 
 class TestRepoPaths(LevelCase):
@@ -1545,16 +1575,22 @@ class TestTypesPerPart(LevelCase):
     """A kind per file; a component file change is code, its reason "component file" (old letter B)."""
 
     def test_a_component_file_is_b(self):
-        for path, before, after in (
+        cases = (
                 ("src/Banner.tsx", "export const A = () => <b>hi</b>;\n",
                  "export const A = () => { const n = items.length; return <div>{n}</div>; };\n"),
                 ("src/Card.vue", "<template><p>a</p></template>\n", "<template><p v-if=\"ok\">b</p></template>\n"),
-                ("src/Nav.jsx", "const a = 1;\n", "const a = compute(1);\n")):
+                ("src/Nav.jsx", "const a = 1;\n", "const a = compute(1);\n"))
+        # test-slim-3: one project and one check for the three files; each has its own FILE line, all B
+        self.base({path: before for path, before, _ in cases})
+        self.put({path: after for path, _, after in cases})
+        r = self.ok()
+        need, got = self.required(r), self.files(r)
+        for path, before, after in cases:
             with self.subTest(path=path):
-                need, typ, why = self.one({path: before}, {path: after}, path)
+                self.assertIn(path, got, r.stdout)
+                typ, why = got[path]
                 self.assertEqual((need, typ), ("B", "B"), why)
                 self.assertIn("component file", why)
-                self.tearDown_repo()
 
     def test_a_new_and_a_deleted_component_file_are_b(self):
         need, typ, why = self.one({"src/A.tsx": "x\n", "src/Old.tsx": "y\n"},
@@ -1650,7 +1686,19 @@ def run_level(case, args, cwd, env, script_dir=None):
     out, err = io.StringIO(), io.StringIO()
     here = os.getcwd()
     code = 0
-    with mock.patch.dict(os.environ, env, clear=True), \
+    # test-slim-3: one check reads the project with the same git command more than once (a fifth of its git
+    # starts); agent_level.py only reads (diff, show, ls-tree, ls-files, rev-parse, merge-base, grep) and the
+    # project does not change while it runs, so within one check the same command gives the same answer.
+    seen = {}
+    real_git = mod.git
+
+    def git_once(top, *args, **kw):
+        key = (top, args, kw.get("check", True))
+        if key not in seen:
+            seen[key] = real_git(top, *args, **kw)
+        return seen[key]
+
+    with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(mod, "git", git_once), \
             contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         os.chdir(cwd)
         try:
@@ -1683,7 +1731,7 @@ class ShapeCase(LevelCase):
     def fresh(self):
         """A new project for the next subTest."""
         self.repo.cleanup()
-        self.repo = ScriptRepo()
+        self.repo = LevelRepo()
         self.addCleanup(self.repo.cleanup)
 
     def got(self, path, before, after, conf=None, others=None):

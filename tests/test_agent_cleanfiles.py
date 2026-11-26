@@ -7,13 +7,18 @@ requirements/clean-up.md. One class per feature. Older task contracts: git log -
 import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+
+import atexit
 
 from scripthelp import BIN, ROOT, ScriptCase
 
@@ -33,6 +38,29 @@ def git(path, *args, **kw):
     return res.stdout.strip()
 
 
+# test-slim-3: --files and --files --yes run agent_cleanfiles.py in this process (the .sh wrapper only checks the
+# arguments and the role, and finds the roots and the runtime kind). The tests named here keep the real command
+# line: one per flag and exit path (dry run, --yes ids, all, none, a refusal), and the one that changes the
+# runtime kind.
+REAL_SHELL = {
+    "TestCommand.test_a1_dry_run_prints_the_table_and_changes_nothing",
+    "TestCommand.test_a2_yes_removes_exactly_the_picked_rows",
+    "TestCommand.test_a3_yes_all_removes_every_row_of_the_saved_table",
+    "TestCommand.test_a4_yes_none_changes_nothing",
+    "TestRemove.test_c1_no_saved_table_is_refused",
+    "TestEdges.test_e10_orca_not_answering_lists_no_worktree_lines",
+}
+_FILES_SNAP = {"dir": None, "made": 0.0}
+
+
+def _drop_snap():
+    if _FILES_SNAP["dir"]:
+        shutil.rmtree(_FILES_SNAP["dir"], True)
+
+
+atexit.register(_drop_snap)
+
+
 class FilesCase(ScriptCase):
     """A project with a bare origin and main pushed, plain runtime."""
 
@@ -41,8 +69,23 @@ class FilesCase(ScriptCase):
     def setUp(self):
         super().setUp()
         r = self.repo
-        r.set_conf("runtime", "plain")
         self.origin = os.path.join(r.base, "origin.git")
+        self.gitdir = os.path.join(r.dir, ".git")
+        # the runtime setting lives in this test's own config dir (<base>/no-claude-config), outside the copy below:
+        # set it on both paths
+        r.set_conf("runtime", "plain")
+        # test-slim-3: the project below is built once a minute per process; a test gets a copy (the remote
+        # URL is the one absolute path in it: set again)
+        snap = _FILES_SNAP["dir"]
+        if snap and time.time() - _FILES_SNAP["made"] > 60:
+            shutil.rmtree(snap, True)
+            snap = _FILES_SNAP["dir"] = None
+        if snap and not os.environ.get("AGENT_TEST_NO_TEMPLATE"):
+            shutil.rmtree(r.dir)
+            shutil.copytree(os.path.join(snap, "project"), r.dir, symlinks=True)
+            shutil.copytree(os.path.join(snap, "origin.git"), self.origin, symlinks=True)
+            git(r.dir, "remote", "set-url", "origin", self.origin)
+            return
         subprocess.run(["git", "init", "-q", "--bare", self.origin],
                        check=True, capture_output=True)
         git(r.dir, "add", "-A")
@@ -50,7 +93,11 @@ class FilesCase(ScriptCase):
         git(r.dir, "branch", "-M", "main")
         git(r.dir, "remote", "add", "origin", self.origin)
         git(r.dir, "push", "-q", "-u", "origin", "main")
-        self.gitdir = os.path.join(r.dir, ".git")
+        if not os.environ.get("AGENT_TEST_NO_TEMPLATE"):
+            snap = tempfile.mkdtemp(prefix="files_fixture_")
+            shutil.copytree(r.dir, os.path.join(snap, "project"), symlinks=True)
+            shutil.copytree(self.origin, os.path.join(snap, "origin.git"), symlinks=True)
+            _FILES_SNAP["dir"], _FILES_SNAP["made"] = snap, time.time()
 
     # ---- fixture ----
 
@@ -104,7 +151,18 @@ class FilesCase(ScriptCase):
     def files(self, *args, **kw):
         env = dict(kw.pop("env", None) or {})
         env.setdefault("AGENT_FAKE_NOW", NOW)
-        return self.repo.run("agent-cleanup.sh", "--files", *args, env=env, **kw)
+        key = "%s.%s" % (type(self).__name__, self._testMethodName)
+        yes = args[1] if len(args) == 2 and args[0] == "--yes" else None
+        ids = (yes or "").lower().replace(",", " ").split()
+        if (key in REAL_SHELL or kw or set(env) != {"AGENT_FAKE_NOW"} or os.environ.get("AGENT_TEST_NO_TEMPLATE")
+                or (args and (yes is None or not ids or not re.fullmatch(r"[A-Za-z0-9, ]*", yes)
+                              or (len(ids) > 1 and ("all" in ids or "none" in ids))))):
+            return self.repo.run("agent-cleanup.sh", "--files", *args, env=env, **kw)
+        r = self.repo
+        argv = ["--root", r.dir, "--plugin", r.plugin, "--gitdir", self.gitdir, "--kind", "plain"]
+        if yes is not None:
+            argv += ["--yes", yes]
+        return r.run_py("agent_cleanfiles", *argv, env=env)
 
     def dry(self, **kw):
         return self.assertOk(self.files(**kw))

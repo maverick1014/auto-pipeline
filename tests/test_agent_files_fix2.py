@@ -31,8 +31,8 @@ def git_dir(path):
 
 
 class KeptCase(FilesCase):
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         self.commit_all()
         self.todo = os.path.join(self.dir, "agent_todo.txt")
         self.kept_dir = os.path.join(git_dir(self.dir), "agent-files-kept")

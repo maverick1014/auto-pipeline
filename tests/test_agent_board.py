@@ -157,9 +157,25 @@ class BoardCase(ScriptCase):
     script = "agent-file.sh"
     lang = "zh"
 
+    # test-slim-3 (slice 11): the classes of the board and status line files (not the files that import this
+    # case: they keep their own set-up) replay the todo add / stage / wait runs that build a board and set up
+    # a plain `todo add` without starting the script (add() below).
+    quick_modules = ("test_agent_board", "test_agent_statusline")
+
+    def quick(self):
+        return type(self).__module__.split(".")[-1] in self.quick_modules
+
     def setUp(self):
         super().setUp()
         self.repo.set_conf("language", self.lang)
+        if self.quick():
+            # the same todo add / stage / wait run on the same state in another test (or in the English twin of
+            # a Chinese class) is replayed after the first real run (replay_runs, tests/test_agent_file.py);
+            # `todo done` skips the cleanup sweep and the estimate runner (quiet_done: both are tested in
+            # test_agent_cleanup and the estimate files). Imported here: test_agent_file imports this module.
+            import test_agent_file
+            test_agent_file.quiet_done(self.repo)
+            test_agent_file.replay_runs(self.repo)
 
     # ---- running agent-file.sh ----
 
@@ -242,12 +258,57 @@ class BoardCase(ScriptCase):
         self.assertEqual({n: self.repo.read(n) for n in files}, files, args)
         return result
 
+    # ---- a plain todo add without the script start (slice 11) ----
+    # `todo add <name> <size> <what> [<est>]` on a project with no block record appends exactly one line,
+    # "<name> | <size> | <what>[ | est <n>m] | opened <now> | <by and owner fields>", after dropping a line of that
+    # name; the by and owner fields are what the first real run of the process wrote (learned below, and the
+    # whole line checked against this format). The verb itself is tested in test_agent_file and the owner
+    # field in test_agent_owner_name; this set-up is for the board and status line tests that read the line.
+    ADD_TAIL = {}
+
+    @staticmethod
+    def _plain_add(name, size, what, est):
+        return (re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) and size in ("big", "small")
+                and what and what == what.strip() and not re.search(r" \| |[\r\n]", what)
+                and (est is None or re.fullmatch(r"[1-9][0-9]{0,8}", str(est))))
+
+    @staticmethod
+    def _add_prefix(name, size, what, est, opened):
+        return "%s | %s | %s%s | opened %s | " % (name, size, what, "" if est is None else " | est %sm" % est, opened)
+
+    def synthetic_add(self, name, size, what, est, opened):
+        tail = self.ADD_TAIL.get("tail")
+        if not (self.quick() and tail and self._plain_add(name, size, what, est)):
+            return False
+        if os.path.exists(os.path.join(self.repo.dir, ".git", "agent_task_blocks.json")):
+            return False
+        path = self.repo.path("agent_todo.txt")
+        with open(path) as fh:
+            text = fh.read()
+        if text and not text.endswith("\n"):
+            return False
+        lines = [l for l in text.splitlines() if l.split(" | ")[0] != name]
+        lines.append(self._add_prefix(name, size, what, est, opened) + tail)
+        with open(path, "w") as fh:
+            fh.write("".join(l + "\n" for l in lines))
+        return True
+
+    def learn_add_tail(self, name, size, what, est, opened):
+        if not (self.quick() and self._plain_add(name, size, what, est)) or "tail" in self.ADD_TAIL:
+            return
+        prefix = self._add_prefix(name, size, what, est, opened)
+        line = self.todo_line(name) or ""
+        if line.startswith(prefix) and re.fullmatch(r"by [^ |]+ \| owner [^|]*[^| ]", line[len(prefix):]):
+            self.ADD_TAIL["tail"] = line[len(prefix):]
+
     def add(self, name, what, est=None, opened="2026-11-02 14:00", size="big", started=True):
         """A todo line. started (board-waiting rule 6, work counts from the first stage): True -> the line
         gets " | started <opened>" (a task already under way, as these tests mean); a date -> that date;
         False -> none (a task that never started)."""
         args = ["todo", "add", name, size, what] + ([str(est)] if est is not None else [])
-        self.af(*args, now=opened)
+        if not self.synthetic_add(name, size, what, est, opened):
+            self.af(*args, now=opened)
+            self.learn_add_tail(name, size, what, est, opened)
         if started:
             at = opened if started is True else started
             path = self.repo.path("agent_todo.txt")
@@ -1844,8 +1905,31 @@ class TestWatch(StageCase):
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 start_new_session=True)
 
-    def ctrl_c(self, proc, after):
-        time.sleep(after)
+    def ctrl_c(self, proc, after, until=None):
+        # test-slim-3 (slice 11): until=None waits `after` seconds as before (the tests that prove nothing more
+        # is printed keep it). With until(text): poll the output and stop as soon as it holds what the test then
+        # reads, at most `after` seconds (the old wait, now the deadline).
+        got = b""
+        if until is None:
+            time.sleep(after)
+        else:
+            fd = proc.stdout.fileno()
+            os.set_blocking(fd, False)
+            end = time.time() + after
+            while time.time() < end:
+                try:
+                    chunk = os.read(fd, 65536)
+                except BlockingIOError:
+                    chunk = None
+                if chunk:
+                    got += chunk
+                    if until(got.decode("utf-8", "replace")):
+                        break
+                elif chunk == b"":
+                    break
+                else:
+                    time.sleep(0.02)
+            os.set_blocking(fd, True)
         try:
             os.killpg(proc.pid, signal.SIGINT)
         except ProcessLookupError:
@@ -1856,12 +1940,13 @@ class TestWatch(StageCase):
             os.killpg(proc.pid, signal.SIGKILL)
             out, err = proc.communicate()
             self.fail("the watch did not stop on Ctrl-C")
+        out = got + out
         return proc.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
 
     def test_frames_then_ctrl_c_stops_cleanly(self):
         self.add("alpha", "the login form", 60)
         self.stage("alpha", "verify")
-        code, out, err = self.ctrl_c(self.popen("--watch", "1"), 3.2)
+        code, out, err = self.ctrl_c(self.popen("--watch", "1"), 3.2, until=lambda o: o.count(CLEAR) >= 2)
         self.assertEqual(code, 0, err)
         self.assertNotIn("Traceback", err)
         frames = out.split(CLEAR)
@@ -1882,7 +1967,7 @@ class TestWatch(StageCase):
         alpha = self.task_worktree("alpha")
         self.add("alpha", "the login form", 60)
         self.add("beta", "bank recon match", 60)
-        code, out, err = self.ctrl_c(self.popen("--self", "--watch", "1", cwd=alpha), 1.5)
+        code, out, err = self.ctrl_c(self.popen("--self", "--watch", "1", cwd=alpha), 1.5, until=lambda o: "Ctrl-C" in o)
         self.assertEqual(code, 0, err)
         self.assertIn("| alpha [t] |", out)          # the owner bracket (scope add 2026-11-26)
         self.assertNotIn("| beta", out)
@@ -1902,12 +1987,12 @@ class TestWatchEnglish(TestWatch):
 
     def test_frames_then_ctrl_c_stops_cleanly(self):
         self.add("alpha", "the login form", 60)
-        code, out, err = self.ctrl_c(self.popen("--watch", "1"), 1.5)
+        code, out, err = self.ctrl_c(self.popen("--watch", "1"), 1.5, until=lambda o: "refresh every 1s · Ctrl-C stops" in o)
         self.assertEqual(code, 0, err)
         self.assertIn("refresh every 1s · Ctrl-C stops", out)
 
     def test_the_default_is_the_fixed_60(self):
-        code, out, err = self.ctrl_c(self.popen("--watch"), 1.5)
+        code, out, err = self.ctrl_c(self.popen("--watch"), 1.5, until=lambda o: "refresh every 60s · Ctrl-C stops" in o)
         self.assertEqual(code, 0, err)
         self.assertIn("refresh every 60s · Ctrl-C stops", out)
 

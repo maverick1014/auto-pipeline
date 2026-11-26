@@ -18,6 +18,137 @@ import subprocess
 import test_agent_board as tb  # noqa: E402  (the module only: its tests stay in their own module)
 
 
+def quiet_done(repo):
+    """test-slim-3: a `todo done` run does two things that no test here is about, and that cost more than the
+    verb itself (0.9 s of which 0.45 s is the sweep): the cleanup sweep after the last task (agent-cleanup.sh
+    --apply --short, skipped when AGENT_CLEANUP_DONE=1; its wiring is tests/test_agent_cleanup.py) and the detached
+    estimate runner (est_after_done: skipped when a live process holds <git dir>/agent_estimate.lock; the queue
+    and runner are tests/test_agent_estimate_learn.py and tests/test_agent_files_fix1.py). This process holds
+    the lock for the project's git dir, so no runner starts."""
+    real = repo.run
+
+    def run(script, *args, **kwargs):
+        if script == "agent-file.sh" and tuple(args[:2]) == ("todo", "done"):
+            env = dict(kwargs.get("env") or {})
+            env.setdefault("AGENT_CLEANUP_DONE", "1")
+            kwargs["env"] = env
+            lock = os.path.join(repo.dir, ".git", "agent_estimate.lock")
+            if os.path.isdir(os.path.join(repo.dir, ".git")) and not os.path.exists(lock):
+                os.makedirs(lock)
+                with open(os.path.join(lock, "pid"), "w") as fh:
+                    fh.write("%d\n" % os.getpid())
+        return real(script, *args, **kwargs)
+
+    repo.run = run
+    return repo
+
+
+# test-slim-3: a run of one of these verbs on a project that looks exactly like one an earlier test had (same files,
+# same refs, same arguments, same fake clock) gives the same output and writes the same files. The process runs
+# it once and replays the rest: the same stdout, stderr and exit code, the same files written. Only verbs that
+# read the files of the project and the fake clock, and from git only its refs and its agent_* state files
+# (.git/agent_task_blocks.json of todo add --checks, .git/agent_owner_words.json of --owner-quote, ...): those are
+# part of the state compared and of the writes replayed.
+REPLAY_VERBS = (("backfill",), ("todo", "add"), ("todo", "stage"), ("todo", "wait"), ("idea", "keep"))
+_REPLAY = {}
+_TOKEN = b"\0BASE\0"
+
+
+def _project_state(base):
+    """(files, git) of one test folder: every file outside plugin/, stubbin/, .git/ and the *.log files, plus
+    the agent_* files at the top of each .git (state the scripts keep there), by relative path, content with the
+    folder name replaced; git: HEAD, packed-refs and the ref files, with a mark when a worktree, a kept copy or a
+    hook-made folder is there (then nothing is replayed)."""
+    files, git = {}, {}
+    here = base.encode()
+    for folder, dirs, names in os.walk(base):
+        rel = os.path.relpath(folder, base)
+        if ".git" in dirs:
+            top = os.path.join(folder, ".git")
+            for name in ("HEAD", "packed-refs"):
+                full = os.path.join(top, name)
+                if os.path.isfile(full):
+                    with open(full, "rb") as fh:
+                        git[os.path.join(rel, ".git", name)] = fh.read().replace(here, _TOKEN)
+            for sub, _d, refs in os.walk(os.path.join(top, "refs")):
+                for ref in refs:
+                    full = os.path.join(sub, ref)
+                    with open(full, "rb") as fh:
+                        git[os.path.relpath(full, base)] = fh.read()
+            for name in sorted(os.listdir(top)):
+                full = os.path.join(top, name)
+                if name.startswith("agent_") and os.path.isfile(full):
+                    with open(full, "rb") as fh:
+                        files[os.path.join(rel, ".git", name)] = fh.read().replace(here, _TOKEN)
+            for odd in ("worktrees", "agent-files-kept"):
+                if os.path.exists(os.path.join(top, odd)):
+                    git[os.path.join(rel, ".git", odd)] = b"odd"
+        dirs[:] = sorted(d for d in dirs if d not in (".git", "stubbin") and not (rel == "." and d == "plugin"))
+        for name in names:
+            if name.endswith(".log"):
+                continue
+            full = os.path.join(folder, name)
+            try:
+                with open(full, "rb") as fh:
+                    files[os.path.relpath(full, base)] = fh.read().replace(here, _TOKEN)
+            except OSError:
+                pass
+    return files, git
+
+
+def replay_runs(repo):
+    """Wrap repo.run: see REPLAY_VERBS."""
+    import hashlib
+    real = repo.run
+
+    def run(script, *args, **kwargs):
+        env = kwargs.get("env") or {}
+        if (script != "agent-file.sh" or not any(tuple(args[:len(v)]) == v for v in REPLAY_VERBS)
+                or "AGENT_FAKE_NOW" not in env or kwargs.get("cwd") or kwargs.get("stdin")
+                or os.environ.get("AGENT_TEST_NO_TEMPLATE")):
+            return real(script, *args, **kwargs)
+        base = repo.base
+        files, git = _project_state(base)
+        if any(v == b"odd" for v in git.values()):
+            return real(script, *args, **kwargs)
+        mark = lambda text: text.replace(base, "\0BASE\0")
+        key = hashlib.sha1(repr((script, [mark(a) for a in args], sorted((k, mark(str(v))) for k, v in env.items()),
+                                 sorted(files.items()), sorted(git.items()))).encode("utf-8", "surrogateescape")).hexdigest()
+        hit = _REPLAY.get(key)
+        if hit is not None:
+            code, out, err, written = hit
+            for rel, data in written.items():
+                full = os.path.join(base, rel)
+                if data is None:
+                    if os.path.exists(full):
+                        os.remove(full)
+                else:
+                    os.makedirs(os.path.dirname(full), exist_ok=True)
+                    with open(full, "wb") as fh:
+                        fh.write(data.replace(_TOKEN, base.encode()))
+            return subprocess.CompletedProcess([script] + list(args), code, out.replace("\0BASE\0", base),
+                                               err.replace("\0BASE\0", base))
+        result = real(script, *args, **kwargs)
+        after, git_after = _project_state(base)
+        if git_after == git:
+            written = {rel: data for rel, data in after.items() if files.get(rel) != data}
+            written.update({rel: None for rel in files if rel not in after})
+            _REPLAY[key] = (result.returncode, mark(result.stdout), mark(result.stderr), written)
+        return result
+
+    repo.run = run
+    return repo
+
+
+class QuietDone:
+    """Mixin, first in the bases of a case whose repo runs `todo done`."""
+
+    def setUp(self):
+        super().setUp()
+        quiet_done(self.repo)
+        replay_runs(self.repo)
+
+
 def todo_text(repo):
     with open(os.path.join(repo.dir, "agent_todo.txt")) as fh:
         return fh.read()
@@ -28,7 +159,7 @@ def completed_text(repo):
         return fh.read()
 
 
-class TestTodoAddBy(ScriptCase):
+class TestTodoAddBy(QuietDone, ScriptCase):
     script = "agent-file.sh"
 
     def test_fifth_arg_sets_by(self):
@@ -52,7 +183,7 @@ class TestTodoAddBy(ScriptCase):
         self.assertIn("b |", completed_text(self.repo))
 
 
-class TestTodoDrop(ScriptCase):
+class TestTodoDrop(QuietDone, ScriptCase):
     script = "agent-file.sh"
 
     def add(self, name="old-task", est="15"):
@@ -145,7 +276,7 @@ def block(**known):
     return "data " + " ".join("%s=%s" % (k, known.get(k, "-")) for k in KEYS)
 
 
-class DataCase(ScriptCase):
+class DataCase(QuietDone, ScriptCase):
     script = "agent-file.sh"
 
     def path(self, name):
@@ -1224,7 +1355,7 @@ B = "a gap seen (five-fixes S1, pc2) | 2026-11-05 10:03 | by task-manager"
 C = "plain idea with no tail"
 
 
-class IdeaKeepCase(ScriptCase):
+class IdeaKeepCase(QuietDone, ScriptCase):
     script = "agent-file.sh"
 
     def set_ideas(self, lines):
@@ -1346,7 +1477,7 @@ DEFAULTS = {"stage_brief": "1", "stage_register": "1", "stage_mock": "4", "stage
             "progress_eta_min_pct": "20", "statusline_refresh_sec": "60"}
 
 
-class StageCase(tb.BoardCase):
+class StageCase(QuietDone, tb.BoardCase):
     lang = "zh"
 
     def stage(self, name, *args, now=STAGE_NOW, cwd=None):
@@ -1513,7 +1644,7 @@ class TestStageConfKeys(unittest.TestCase):
 NOW_NOV20_1000 = "2026-11-20 10:00"
 
 
-class TodoCase(ScriptCase):
+class TodoCase(QuietDone, ScriptCase):
     script = "agent-file.sh"
 
     def af(self, *args, now=NOW_NOV20_1000):
@@ -1669,7 +1800,7 @@ class TestTodoDoneLevel(TodoCase):
 NOW_NOV20_1231 = "2026-11-20 12:31"
 
 
-class TestTodoWaitCli(tb.WaitCase):
+class TestTodoWaitCli(QuietDone, tb.WaitCase):
     def setUp(self):
         super().setUp()
         self.add("x", "the task", 60, opened="2026-11-20 11:00", started=False)
@@ -1777,7 +1908,7 @@ class TestTodoWaitCli(tb.WaitCase):
                 self.refused("todo", "wait", "x", *args, now=NOW_NOV20_1231)
 
 
-class TestTodoStageCli(tb.WaitCase):
+class TestTodoStageCli(QuietDone, tb.WaitCase):
     def stage(self, name, *args, now=NOW_NOV20_1231):
         self.af("todo", "stage", name, *args, now=now)
 
