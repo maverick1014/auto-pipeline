@@ -33,6 +33,7 @@ Owner, 2026-11-26, his words:
 - Why not the code branch: each person works on his own working branch (`ap-main-<name>`), so a todo committed there is seen by the others only after a publish; and a commit on the production branch starts a deploy. The owner's case 3 needs the status the moment a task is taken.
 - A push that fails (offline, refused) never blocks the work: the commit stays, the next write pushes it; the command says so in one line.
 - Kept copies: in a moved repo every agent file has a kept copy in the git folder, refreshed on every write; a missing working copy is restored from it; before a write goes over a working copy changed outside the scripts, the old kept copy is saved under a stamped name (`files restore <file>` puts it back).
+- The saved copies: `files restore <file>` first saves the current working copy the same way (a restore can be undone by a second one), takes the newest saved copy or the one named, `--list` shows them newest first; saved copies older than 7 days are removed, the newest 5 per file always stay, a restore never removes one.
 - Before a file in git is read for a decision (offer a task, take, assign, start, the board in a shared repo) the data branch is fetched and merged into the local file: finished records and ideas by union (no line is lost), todo lines by task name (the newest change of a task wins; a finished task is dropped).
 - Cloud: a cloud session can push only its own branch, so there the pack keeps the task files tracked in the tree and committed with the work, as today.
 
