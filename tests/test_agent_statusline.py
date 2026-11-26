@@ -717,8 +717,9 @@ class TestColumns(WideCase):
         lines = self.line(200).split("\n")
         self.assertEqual(lines[0], "看板 8 个任务 · 1 个等你")
         body = lines[1:]
-        self.assertEqual(len(body), 3, body)
-        self.assertTrue(all(l.count("│") == 2 for l in body[:2]), body)
+        # rows first (owner 2026-11-26): 8 tasks, 4 rows, the first column fills before the second opens
+        self.assertEqual(len(body), 4, body)
+        self.assertTrue(all(l.count("│") == 1 for l in body), body)
         self.assertEqual(len(self.names_in("\n".join(body), NAMES8)), 8)
         self.assertNotIn("排队/暂缓", "\n".join(lines))
         self.assertTrue(all(dw(l) <= 200 for l in lines))
@@ -726,8 +727,8 @@ class TestColumns(WideCase):
         self.assertTrue(body[0].startswith("city-office-2"), body[0])
         self.assertIn(body[1].split()[0], ["dev-docs", "settings-configure", "plugin-scope-sync"])
         # aligned
-        full = self.bars(body[:2])
-        self.assertEqual(full[0], full[1])
+        full = self.bars(body)
+        self.assertEqual(len({tuple(b) for b in full}), 1)
 
     def test_120_wide_two_columns(self):
         self.put(*eight())
@@ -767,9 +768,9 @@ class TestColumns(WideCase):
             self.assertEqual(lines[-1], "+3 排队/暂缓")  # the run without a stage was never a line
 
     def test_three_columns_start_at_140(self):
-        self.put(*eight())
-        self.assertTrue(all(l.count("│") == 2 for l in self.line(140).split("\n")[1:3]))
-        self.assertTrue(all(l.count("│") == 1 for l in self.line(139).split("\n")[1:]))
+        self.put(*TestFold.many(None, 9))
+        self.assertEqual(self.line(140).split("\n")[1].count("│"), 2)
+        self.assertEqual(self.line(139).split("\n")[1].count("│"), 1)
 
     def test_two_columns_start_at_93(self):
         self.put(*eight())
@@ -822,6 +823,74 @@ class TestFold(WideCase):
         self.assertEqual(len(self.names_in("\n".join(lines[1:4]), ["t%02d" % i for i in range(14)])), 9)
 
 
+class TestTopDown(WideCase):
+    """The owner 2026-11-26: top down first, then left to right. rows = min(n, room)."""
+    def many(self, n):
+        return [q("t%02d" % i, "x", "2026-11-20 11:%02d" % i) for i in range(n)]
+
+    def grid(self, n, width, extra=()):
+        self.put(*self.many(n))
+        lines = self.line(width).split("\n")
+        return lines, [[c.strip() for c in l.split("│")] for l in lines[1:] if not l.startswith("+")]
+
+    def tasks(self, cells):
+        return [c.split()[0] if c else "" for c in cells]
+
+    def test_1_three_tasks_one_column(self):
+        lines, g = self.grid(3, 200)
+        self.assertEqual(len(lines), 4, lines)
+        self.assertNotIn("│", "\n".join(lines))
+        self.assertEqual([r[0].split()[0] for r in g], ["t00", "t01", "t02"])
+
+    def test_2_five_tasks_two_columns(self):
+        lines, g = self.grid(5, 200)
+        self.assertEqual(len(g), 4, lines)
+        self.assertEqual([self.tasks(r) for r in g], [["t00", "t04"], ["t01"], ["t02"], ["t03"]])
+        self.assertEqual([l.count("│") for l in lines[1:]], [1, 0, 0, 0])
+
+    def test_3_nine_tasks_three_columns(self):
+        lines, g = self.grid(9, 200)
+        self.assertEqual([self.tasks(r) for r in g],
+                         [["t00", "t04", "t08"], ["t01", "t05"], ["t02", "t06"], ["t03", "t07"]])
+
+    def test_4_twelve_tasks_no_fold(self):
+        lines, g = self.grid(12, 200)
+        self.assertEqual(len(lines), 5, lines)
+        self.assertEqual([self.tasks(r) for r in g][0], ["t00", "t04", "t08"])
+        self.assertEqual([self.tasks(r) for r in g][3], ["t03", "t07", "t11"])
+
+    def test_5_thirteen_tasks_fold(self):
+        lines, g = self.grid(13, 200)
+        self.assertEqual(len(lines), 5, lines)
+        self.assertEqual(lines[4], "+4 排队/暂缓")
+        self.assertEqual([self.tasks(r) for r in g],
+                         [["t00", "t03", "t06"], ["t01", "t04", "t07"], ["t02", "t05", "t08"]])
+
+    def test_6_five_tasks_two_columns_allowed(self):
+        lines, g = self.grid(5, 120)
+        self.assertEqual([self.tasks(r) for r in g], [["t00", "t04"], ["t01"], ["t02"], ["t03"]])
+
+    def test_7_nine_tasks_over_two_columns_fold(self):
+        lines, g = self.grid(9, 120)
+        self.assertEqual(lines[4], "+3 排队/暂缓")
+        self.assertEqual([self.tasks(r) for r in g], [["t00", "t03"], ["t01", "t04"], ["t02", "t05"]])
+
+    def test_8_a_warning_head_leaves_three_rows(self):
+        self.repo.set_conf("runtime", "orca")
+        a1 = self.repo.make_worktree("a1", as_repo=False)
+        self.put(run("a1", 1), *self.many(3))
+        self.repo.set_worktree_lines([(a1, "a1", "working")])
+        write_watch(self.repo, sweep=NOW_NOV20_1231, tasks={"a1": task_entry(a1, watched=False, why="no pane")})
+        lines = self.line(200).split("\n")
+        g = [[c.strip() for c in l.split("│")] for l in lines[2:]]
+        self.assertEqual(len(g), 3, lines)
+        self.assertEqual([self.tasks(r) for r in g], [["a1", "t02"], ["t00"], ["t01"]])
+
+    def test_9_one_task_one_line(self):
+        lines, g = self.grid(1, 200)
+        self.assertEqual(len(lines), 2, lines)
+
+
 class TestOrder(WideCase):
     def test_owner_then_running_then_queued_then_not_started(self):
         self.put(ns("n1"), h("h1"), q("q1", "r1"), plain("r0"), run("r1", 2), owner("o1"))
@@ -830,9 +899,8 @@ class TestOrder(WideCase):
         self.assertEqual(self.line(70).split("\n")[-1], "+3 排队/暂缓")
         wide = self.line(200).split("\n")[1:]
         order = [l.split("│")[0].split()[0] for l in wide]
-        self.assertEqual(order, ["o1", "r0"])  # two rows of three columns
-        flat = " ".join(" ".join(l.split("│")) for l in wide).split()
-        self.assertLess(flat.index("q1"), flat.index("n1"))
+        self.assertEqual(order, ["o1", "r0", "r1", "q1"])  # 6 tasks: the first column fills down first
+        self.assertEqual([l.split("│")[1].split()[0] for l in wide[:2]], ["h1", "n1"])
 
 
 class TestHelper(WideCase):
@@ -887,7 +955,7 @@ class TestUnconfirmed(WideCase):
         lines = self.line(200).split("\n")
         self.assertEqual(lines[0], "看板 3 个任务")
         self.assertEqual(lines[1], "看板可能不准：未确认 a1, a2")
-        self.assertEqual(len(lines), 3, lines)  # the count, the warning, one row of three cells
+        self.assertEqual(len(lines), 5, lines)  # the count, the warning, three rows down one column
 
     def test_english(self):
         self.repo.set_conf("language", "en")

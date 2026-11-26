@@ -1145,12 +1145,13 @@ def pane_keepers(main, top, wt_folders, now):
 def wide_layout(entries, head, room, width):
     """The lines of the wide status line. entries: [(name, body)] in order; head: lines before the cells;
     room: lines left for cells and the fold; width: terminal columns."""
-    cols, cell_w = column_plan(width)
+    cols = column_plan(width)[0]
     n = len(entries)
-    rows = -(-n // cols) if n else 0
+    # top down first, then left to right: the first column fills to the room before the next opens
+    rows = min(n, room)
     fold = 0
-    if rows > room:
-        rows = room - 1
+    if n > room * cols:
+        rows = max(room - 1, 0)
         fold = n - rows * cols
         entries = entries[:rows * cols]
         n = len(entries)
@@ -1166,8 +1167,6 @@ def wide_layout(entries, head, room, width):
                 name, body = grid[c][r]
                 text = fit(name, name_w) + "  " + body
                 cells.append(fit(text, cell_w))
-            else:
-                cells.append(" " * cell_w)
         out.append(SEP.join(cells).rstrip())
     return out, fold
 
