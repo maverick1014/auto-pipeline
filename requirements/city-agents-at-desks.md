@@ -6,6 +6,9 @@ Owner, 2026-11-26: "then for the agent city i think for the worker and deputy in
 
 - The city server keeps every subagent of a session as a citizen of its own (`bin/agent_city.py`: `_handle_subagent_event`, `_spawn_subagent`, kind "subagent", owner = its session).
 - The page (`bin/agent-city.html`, `bin/agent-city-assets/`) shows a session as a character at a desk. Its workers and deputies show only as a tag, so a floor where one manager runs five agents looks empty.
+- Confirmed at kick-off (2026-11-26, the code): the page keeps every subagent in its sim (talks, relays, asks, its card) but `isSub(c)` (any role outside task-manager, helper, designer) keeps it out of `syncFigs` (never drawn), out of the gap rules, and `seatPlan` parks it at the lift. The tag is `subBadge(row)` ("worker ×2 · deputy ×1"), shown on its session's head tag (`pinOv`) and on its rail row. The toolbar's spawn options say "not drawn".
+- The server sends a subagent with `up` = its session's page id ("s:<sid>", or "gov:<terr>" for the area manager's own agents), "" when the session is unknown; it already sends done + leave for every agent of a session that ends. A SubagentStop sends "done" only; "leave" follows after 10 minutes (done_ttl). Reviewer and check deputy arrive as role "other" with their type as label.
+- The default floor (no saved design) has one manager desk more than its managers (at most 9) and 1-3 helper desks; overflow sits at the 6 meeting places, and past 6 they stack (index modulo 6).
 
 ## The rule
 
