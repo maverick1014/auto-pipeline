@@ -14,8 +14,10 @@ An internal error is a note line, never a traceback.
 
 import argparse
 import fnmatch
+import json
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -122,6 +124,7 @@ class Housekeep(object):
         self.related = []
         self.notes = []
         self.cleanup = []
+        self.nightly = []
         self.wt_lines = []   # (literal path, module, status)
         self.wt_raw = []     # the whole line of each wt_lines entry
         self.rows_wt = []    # structured worktree rows (file_rows)
@@ -245,9 +248,8 @@ class Housekeep(object):
 
     def interval(self):
         try:
-            conf = agent_conf.load(self.path("agent.conf"))
-            val = int(conf.get("housekeep_interval_min", "0"))
-        except (OSError, ValueError):
+            val = int(agent_conf.get("housekeep_interval_min"))
+        except Exception:
             return 120
         return val if val > 0 else 120
 
@@ -320,23 +322,33 @@ class Housekeep(object):
                                       ("refs/remotes/origin/", sw.origin_refs)):
                     tip = refs.get(b)
                     if tip and (refname + b) in sw.merged and tip not in fp:
+                        into = "origin/main"
+                        if not sw.git("merge-base", "--is-ancestor", tip,
+                                      "refs/remotes/origin/main").ok:
+                            wbr = sw.wb_ref()
+                            into = wbr[len("refs/remotes/"):] if wbr else into
                         self.merged_info = (
-                            "merged into origin/main (branch %s)" % b, None)
-                        return ("flag: todo %s: merged into origin/main "
-                                "(branch %s)" % (name, b))
-        res = sw.git("log", "--first-parent", "--format=%h %H %s",
-                     "refs/remotes/origin/main", long=True)
-        if res.ok:
+                            "merged into %s (branch %s)" % (into, b), None)
+                        return ("flag: todo %s: merged into %s "
+                                "(branch %s)" % (name, into, b))
+        wbr = sw.wb_ref()
+        bases = [("origin/main", "refs/remotes/origin/main")]
+        if wbr:
+            bases.append((wbr[len("refs/remotes/"):], wbr))
+        for label, ref in bases:
+            res = sw.git("log", "--first-parent", "--format=%h %H %s", ref, long=True)
+            if not res.ok:
+                continue
             for line in res.out.splitlines():
                 sha, _, rest = line.partition(" ")
                 full, _, subject = rest.partition(" ")
                 if subject == "Merge " + name or subject.startswith(
                         "Merge " + name + " "):
                     self.merged_info = (
-                        "merged into origin/main (commit %s %s)"
-                        % (full[:7], subject), full[:7])
-                    return ("flag: todo %s: merged into origin/main "
-                            "(commit %s %s)" % (name, sha, subject))
+                        "merged into %s (commit %s %s)"
+                        % (label, full[:7], subject), full[:7])
+                    return ("flag: todo %s: merged into %s "
+                            "(commit %s %s)" % (name, label, sha, subject))
         return None
 
     def todos(self, limit=None):
@@ -559,6 +571,47 @@ class Housekeep(object):
             if line.startswith("CLEANUP: "):
                 self.cleanup.append("cleanup: " + line[len("CLEANUP: "):])
 
+    # ---- f. the nightly run (check-blocks section 15): started in the background when it is due
+
+    def run_nightly(self):
+        script = os.path.join(self.plugin, "bin", "agent-nightly.sh")
+        if not self.apply or not os.path.isfile(script):
+            return
+        env = dict(os.environ)
+        if subprocess.call([script, "--due"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60) != 0:
+            return
+        try:
+            import agent_nightly
+            paired, reachable = agent_nightly.machines(self.root)
+        except Exception:
+            paired, reachable = [], []
+        if reachable:
+            self.nightly.append("NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start there")
+            return
+        if paired:
+            self.nightly.append("NIGHTLY: the paired machine %s did not answer; it runs here when there is room"
+                                % ", ".join(paired))
+        room = os.path.join(self.plugin, "bin", "agent-room.sh")
+        if os.path.isfile(room):
+            try:
+                import agent_nightly
+                weight, _ = agent_nightly.weight_of(agent_nightly.common_dir(self.root),
+                                                    os.path.join(self.root, "agent_repo.conf"), "nightly")
+            except Exception:
+                weight = None
+            need = str(weight[1] if weight else 0)
+            if subprocess.call([room, "check", need], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60) != 0:
+                host = os.environ.get("AGENT_FAKE_HOST") or os.uname()[1].split(".")[0]
+                self.nightly.append("NIGHTLY: due, no room on %s: start it where there is room (W7): "
+                                    "agent-nightly.sh --start" % host)
+                return
+        res = subprocess.run([script, "--start"], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, timeout=60)
+        if res.returncode == 0:
+            self.nightly.append("nightly: started in the background (agent-nightly.sh --status)")
+
     # ---- the block (and the read only rows)
 
     def stage(self, fn):
@@ -571,7 +624,7 @@ class Housekeep(object):
         return (self.removed + self.flags_gone + self.flags_pane
                 + self.flags_merged + self.flags_stale + self.suspects
                 + self.related + ["note: " + n for n in self.notes]
-                + self.cleanup)
+                + self.cleanup + self.nightly)
 
     def block(self):
         body = self.body()
@@ -641,6 +694,7 @@ class Housekeep(object):
         self.stage(self.ideas)
         self.stage(self.related_repos)
         self.stage(self.run_cleanup)
+        self.stage(self.run_nightly)
         block = self.block()
         sys.stdout.write("".join(l + "\n" for l in block))
         sys.stdout.flush()

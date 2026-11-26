@@ -150,17 +150,19 @@ def targets(root):
 
 
 def conf_value(root, key):
-    value = ""
-    for line in read_lines(os.path.join(root, "agent.conf")):
-        if "=" in line and not line.lstrip().startswith("#"):
-            k, v = line.split("=", 1)
-            if k.strip() == key:
-                value = v.strip()
-    return value
+    """The setting KEY as text ("" when it cannot be read). ROOT is kept for old callers: settings are user level."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agent_conf
+        return str(agent_conf.get(key))
+    except Exception:
+        return ""
 
 
 def no_watch_runtime(root):
-    """True when the runtime is plain or cloud by AGENT_RUNTIME, agent.conf runtime or CLAUDE_CODE_REMOTE (no watch
+    """True when the runtime is plain or cloud by AGENT_RUNTIME, the runtime setting or CLAUDE_CODE_REMOTE (no watch
     runs there). The orca probe is never made here."""
     env = os.environ.get("AGENT_RUNTIME", "")
     if env in ("orca", "plain", "cloud"):

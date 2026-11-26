@@ -2,7 +2,7 @@
 
 Read only. Rules: requirements/owner-relay.md. Python 3.9 stdlib only.
 Usage (through agent-owner-order.sh):
-  agent_owner_order.py <agent.conf> <cwd> <session pid> verify|line [options]
+  agent_owner_order.py <cwd> <session pid> verify|line [options]
 """
 
 import calendar
@@ -54,28 +54,14 @@ def shown(path):
 
 # ------------------------------------------------------------------ config
 
-def conf_number(conf, key, default):
-    value = conf.get(key)
-    if value is None or not re.fullmatch(r"[0-9]+", value.strip()):
+def conf_number(key, default):
+    """The fixed constant KEY (agent_conf.CONSTANTS) as a whole number >= 1; DEFAULT when it cannot be read."""
+    try:
+        import agent_conf
+        number = int(agent_conf.get(key))
+    except Exception:
         return default
-    number = int(value.strip())
-    try:
-        import agent_conf
-        bounds = agent_conf.NUMBER_BOUNDS.get(key)
-    except Exception:
-        bounds = None
-    if bounds is None:
-        return number if number >= 1 else default
-    low, high = bounds
-    return number if low <= number <= high else default
-
-
-def load_conf(path):
-    try:
-        import agent_conf
-        return agent_conf.load(path)
-    except Exception:
-        return {}
+    return number if number >= 1 else default
 
 
 # ------------------------------------------------------------------ where
@@ -245,8 +231,58 @@ def snippet(text, quote):
     return ("…" if start > 0 else "") + piece + ("…" if start + 80 < len(text) else "")
 
 
-def search(repo, quote, hours):
-    """-> (owner matches in window, owner matches older, other hits, folders)."""
+MARKS = re.compile(r"[*_`]")
+HEADING = re.compile(r"^[ \t]*#+[ \t]*", re.M)
+NUMBER_KEY = re.compile(r"\d+[.)]")
+
+
+def plain(text):
+    return normalise(MARKS.sub("", HEADING.sub("", text)))
+
+
+BULLET = re.compile(r"^[ \t]*[-*][ \t]+")
+SENTENCE_END = re.compile(r"[.?!](?=\s|$)")
+KEY_TOKEN = re.compile(r"(?:\d+|[A-Za-z])[.)]")
+
+
+def message_units(before):
+    """Whole units of an assistant message: each line, and each whole sentence inside a line."""
+    units = set()
+    for raw in before.splitlines():
+        line = plain(BULLET.sub("", raw))
+        if not line:
+            continue
+        units.add(line)
+        start = 0
+        for m in SENTENCE_END.finditer(line):
+            piece = line[start:m.end()].strip()
+            if KEY_TOKEN.fullmatch(piece):
+                continue
+            units.add(piece)
+            start = m.end()
+    return units
+
+
+def question_stands(question, before):
+    """True when the question (or its numbered key line) is a whole line or sentence of the assistant text before the prompt."""
+    q = plain(question)
+    if not q:
+        return False
+    units = message_units(before)
+    if q in units:
+        return True
+    if NUMBER_KEY.match(q):
+        end = q.find("?")
+        key = q[:end + 1] if end >= 0 else q
+        return key in units
+    return False
+
+
+def search(repo, quote, hours, whole=False, question=None):
+    """-> (owner matches in window, owner matches older, other hits, folders).
+
+    whole: only a prompt that equals the quote counts as an owner match; a longer owner prompt
+    holding it goes to others as kind "longer"."""
     now = time.time()
     cutoff = now - hours * 3600
     folders = project_folders(repo)
@@ -260,11 +296,13 @@ def search(repo, quote, hours):
                 pass
     files.sort(reverse=True)
     owner_in, owner_old, others = {}, [], []
+    unasked = []
     for mtime, path in files:
         try:
             fh = open(path, "r", encoding="utf-8", errors="replace")
         except OSError:
             continue
+        pending = []
         with fh:
             for raw in fh:
                 try:
@@ -273,10 +311,16 @@ def search(repo, quote, hours):
                     continue
                 if not isinstance(obj, dict) or obj.get("type") not in ("user", "assistant"):
                     continue
+                text, results, has_result = content_parts(obj.get("message"))
+                before = ""
+                if obj.get("type") == "assistant":
+                    pending.append(text)
+                elif base_kind(obj, has_result) is None:
+                    before = "\n".join(pending)
+                    pending = []
                 epoch = parse_ts(obj.get("timestamp") or "")
                 if epoch is None or epoch > now + 60:
                     continue
-                text, results, has_result = content_parts(obj.get("message"))
                 full = normalise(text + "\n" + results)
                 if find_quote(full, quote) < 0:
                     continue
@@ -291,9 +335,15 @@ def search(repo, quote, hours):
                         if ("<pasted_content" not in cut and "</pasted_content>" not in cut
                                 and find_quote(cut_norm, quote) >= 0):
                             kind, snip_text = "owner", cut_norm
+                            if whole and cut_norm != quote:
+                                kind = "longer"
                         else:
                             kind = "pasted"
                 hit = (epoch, mtime, path, snippet(snip_text, quote))
+                if (kind == "owner" and whole and question is not None
+                        and not question_stands(question, before)):
+                    unasked.append(hit)
+                    continue
                 if kind == "owner":
                     if epoch >= cutoff:
                         key = minute_of(epoch)
@@ -305,20 +355,26 @@ def search(repo, quote, hours):
                 else:
                     others.append((kind,) + hit)
     inside = sorted(owner_in.values(), key=lambda h: (h[0], h[1]), reverse=True)
-    return inside, owner_old, others, folders
+    return inside, owner_old, others, folders, unasked
 
 
 def article(kinds):
     return "an" if kinds[0][0] in "aeiou" else "a"
 
 
-def reason(inside_unused, owner_old, others, folders, repo, hours):
+def reason(unasked, owner_old, others, folders, repo, hours):
+    longer = [o for o in others if o[0] == "longer"]
+    others = [o for o in others if o[0] != "longer"]
     if not folders:
         homes = ", ".join(shown(h) for h in config_homes())
         return "no transcript for %s on this machine (looked in: %s)" % (repo, homes)
+    if unasked:
+        return "the question is not in the assistant message before that prompt"
     if owner_old:
         newest = max(owner_old, key=lambda h: h[0])
         return "older than %dh (newest %s)" % (hours, minute_of(newest[0]))
+    if longer and not others:
+        return "the quote is only part of a longer owner prompt; a short answer must be a whole prompt"
     if others:
         kinds = [k for k in KIND_ORDER if any(o[0] == k for o in others)]
         newest = max(others, key=lambda o: (o[1], o[2]))
@@ -367,32 +423,48 @@ def get_quote(opts):
     return quote
 
 
-def run_common(conf, repo, quote):
-    hours = conf_number(conf, "owner_order_hours", DEFAULT_HOURS)
-    min_chars = conf_number(conf, "owner_order_min_chars", DEFAULT_MIN_CHARS)
+def short_hint():
+    return 'a short answer needs --question "<the question it answered>"'
+
+
+def get_question(opts):
+    if "--question" not in opts:
+        return None
+    question = normalise(opts["--question"])
+    if not question:
+        raise Usage("--question is empty")
+    return question
+
+
+def run_common(repo, quote, question=None):
+    hours = conf_number("owner_order_hours", DEFAULT_HOURS)
+    min_chars = conf_number("owner_order_min_chars", DEFAULT_MIN_CHARS)
     w = width(quote)
-    if w < min_chars:
-        return None, "quote too short (%d < %d)" % (w, min_chars)
-    inside, old, others, folders = search(repo, quote, hours)
+    short = w < min_chars
+    if short and question is None:
+        return None, "quote too short (%d < %d): %s" % (w, min_chars, short_hint())
+    inside, old, others, folders, unasked = search(repo, quote, hours, whole=short,
+                                                   question=question if short else None)
     if inside:
         return inside, None
-    return None, reason(None, old, others, folders, repo, hours)
+    return None, reason(unasked, old, others, folders, repo, hours)
 
 
-def verify(conf, argv):
-    opts = parse_args(argv, ("--repo", "--quote", "--time", "--machine"))
+def verify(argv):
+    opts = parse_args(argv, ("--repo", "--quote", "--time", "--machine", "--question"))
     if "--repo" not in opts:
         raise Usage("missing --repo")
     if not os.path.expanduser(opts["--repo"]).startswith("/"):
         raise Usage("--repo must be an absolute folder")
     quote = get_quote(opts)
+    question = get_question(opts)
     when = parse_time(opts["--time"]) if "--time" in opts else None
     pre = "OWNER ORDER not verified: "
     if "--machine" in opts and opts["--machine"] != machine_name():
         print("%ssender on another machine (%s, this is %s)" % (pre, opts["--machine"], machine_name()))
         return 1
     repo = clean_repo(opts["--repo"])
-    inside, why = run_common(conf, repo, quote)
+    inside, why = run_common(repo, quote, question)
     if inside is None:
         print(pre + why)
         return 1
@@ -411,6 +483,8 @@ def verify(conf, argv):
     h = inside[0]
     print("OWNER ORDER verified %s %s" % (shown(h[2]), minute_of(h[0])))
     print('match: "%s"' % h[3])
+    if question is not None:
+        print('question: "%s"' % question)
     return 0
 
 
@@ -423,10 +497,10 @@ def git_toplevel(folder):
         return folder
 
 
-def model_effort(conf_path, pid):
+def model_effort(pid):
     try:
         import agent_conf
-        line = agent_conf._you_cli("main_manager", conf_path, pid)
+        line = agent_conf._you_cli("main_manager", pid)
         m = re.match(r"YOU: (\S+) (\S+) ", line)
         if m:
             return m.group(1), m.group(2)
@@ -435,23 +509,92 @@ def model_effort(conf_path, pid):
     return "unknown", "unknown"
 
 
-def line_cmd(conf, conf_path, cwd, pid, argv):
-    opts = parse_args(argv, ("--quote", "--repo"))
+def line_cmd(cwd, pid, argv):
+    opts = parse_args(argv, ("--quote", "--repo", "--question"))
     quote = get_quote(opts)
+    question = get_question(opts)
     repo = (clean_repo(os.path.abspath(os.path.expanduser(opts["--repo"])))
             if "--repo" in opts else git_toplevel(cwd))
-    inside, why = run_common(conf, repo, quote)
+    inside, why = run_common(repo, quote, question)
     if inside is None:
         print("OWNER ORDER not found: " + why)
         return 1
     minute = minute_of(inside[0][0])
     machine = machine_name()
-    model, effort = model_effort(conf_path, pid)
+    model, effort = model_effort(pid)
     print("OWNER ORDER [%s %s] repo %s · machine %s · typed %s" % (model, effort, repo, machine, minute))
     print('"%s"' % quote)
-    print("check: agent-owner-order.sh verify --repo %s --machine %s --time %s --quote %s" % (
-        shlex.quote(repo), shlex.quote(machine), shlex.quote(minute), shlex.quote(quote)))
+    if question is not None:
+        print('question: "%s"' % question)
+    extra = " --question " + shlex.quote(question) if question is not None else ""
+    print("check: agent-owner-order.sh verify --repo %s --machine %s --time %s --quote %s%s" % (
+        shlex.quote(repo), shlex.quote(machine), shlex.quote(minute), shlex.quote(quote), extra))
     return 0
+
+
+CLEAR_TEXTS = ("AUTO CLEAR:", "/clear", "/goal ", "CLEARED:")
+
+
+def human_quiet(cwd, argv):
+    """human-quiet --session <id> --minutes <n> [--repo <folder>]: exit 0 'quiet' or 1 'typed <time>'. Read only."""
+    opts = parse_args(argv, ("--session", "--minutes", "--repo"))
+    if "--session" not in opts or "--minutes" not in opts:
+        raise Usage("human-quiet needs --session and --minutes")
+    try:
+        minutes = int(opts["--minutes"])
+    except ValueError:
+        raise Usage("--minutes is a whole number")
+    repo = (clean_repo(os.path.abspath(os.path.expanduser(opts["--repo"])))
+            if "--repo" in opts else git_toplevel(cwd))
+    fake = os.environ.get("AGENT_FAKE_NOW")
+    now = time.time()
+    if fake:
+        try:
+            now = time.mktime(time.strptime(fake, "%Y-%m-%d %H:%M"))
+        except ValueError:
+            pass
+    newest = None
+    wanted = opts["--session"] + ".jsonl"
+    folders = project_folders(repo)
+    if not any(os.path.isfile(os.path.join(d, wanted)) for d in folders):
+        # a session started in a subfolder lives in another project folder: look in every one (F9)
+        for home in config_homes():
+            folders += [os.path.dirname(x) for x in
+                        glob.glob(os.path.join(glob.escape(home), "projects", "*", glob.escape(wanted)))]
+    readable = 0
+    for d in folders:
+        path = os.path.join(d, opts["--session"] + ".jsonl")
+        try:
+            fh = open(path, "r", encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        readable += 1
+        with fh:
+            for raw in fh:
+                try:
+                    obj = json.loads(raw)
+                except Exception:
+                    continue
+                if not isinstance(obj, dict) or obj.get("type") != "user":
+                    continue
+                epoch = parse_ts(obj.get("timestamp") or "")
+                if epoch is None or epoch > now + 60:
+                    continue
+                text, _, has_result = content_parts(obj.get("message"))
+                if base_kind(obj, has_result) is not None or agent_typed(cut_pasted(text)):
+                    continue
+                if normalise(text).startswith(CLEAR_TEXTS):
+                    continue
+                if newest is None or epoch > newest:
+                    newest = epoch
+    if not readable:
+        print("unknown: no transcript for session %s" % opts["--session"])
+        return 2
+    if newest is None or minutes <= 0 or now - newest >= minutes * 60:
+        print("quiet")
+        return 0
+    print("typed " + minute_of(newest))
+    return 1
 
 
 def main(argv):
@@ -460,16 +603,17 @@ def main(argv):
             stream.reconfigure(errors="backslashreplace")
         except Exception:
             pass
-    if len(argv) < 5:
+    if len(argv) < 3:
         sys.stderr.write("usage: agent-owner-order.sh verify|line [options]\n")
         return 2
-    conf_path, cwd, pid, command, rest = argv[0], argv[1], argv[2], argv[3], argv[4:]
-    conf = load_conf(conf_path)
+    cwd, pid, command, rest = argv[0], argv[1], argv[2], argv[3:]
     try:
         if command == "verify":
-            return verify(conf, rest)
+            return verify(rest)
+        if command == "human-quiet":
+            return human_quiet(cwd, rest)
         if command == "line":
-            return line_cmd(conf, conf_path, cwd, pid or str(os.getppid()), rest)
+            return line_cmd(cwd, pid or str(os.getppid()), rest)
         raise Usage("unknown command: %s" % command)
     except Usage as e:
         sys.stderr.write("agent-owner-order.sh: %s\n" % e)

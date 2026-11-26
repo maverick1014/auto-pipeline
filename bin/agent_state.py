@@ -6,7 +6,7 @@ Run by agent-file.sh, never by hand:
     agent_state.py <project root> <state dir> <now> add "<line>"
     agent_state.py <project root> <state dir> <now> trim [--dry-run | --auto]
 
-  project root  the main repo: agent_todo.txt, agent_completed.txt, agent.conf
+  project root  the main repo: agent_todo.txt, agent_completed.txt
   state dir     the git toplevel of the cwd: agent_state.txt and the day archives
   now           "YYYY-MM-DD HH:MM" (AGENT_FAKE_NOW); empty = the machine clock
 
@@ -138,30 +138,20 @@ def parse_time(text):
         return None
 
 
-def conf_of(root):
-    """The agent.conf of the project over the template's defaults. Never raises."""
-    conf = {}
-    for path in (os.path.join(HERE, "agent.conf.default"), os.path.join(root, "agent.conf")):
-        try:
-            conf.update(agent_conf.load(path))
-        except Exception:
-            pass
-    return conf
-
-
-def conf_int(conf, key):
-    low, high = agent_conf.NUMBER_BOUNDS[key]
+def conf_int(key):
+    """The fixed constant KEY as a whole number; the DEFAULTS one when it cannot be read."""
     try:
-        value = int(conf.get(key, ""))
-    except ValueError:
+        value = int(agent_conf.get(key))
+    except Exception:
         return DEFAULTS[key]
-    if value < low or value > high:
-        return DEFAULTS[key]
-    return value
+    return value if value > 0 else DEFAULTS[key]
 
 
 def trim_auto_on(root):
-    return conf_of(root).get("state_trim_auto", "on") != "off"
+    try:
+        return agent_conf.get("state_trim_auto") != "off"
+    except Exception:
+        return True
 
 
 # ---------------------------------------------------------------- the lock
@@ -208,7 +198,19 @@ class Lock(object):
 # ---------------------------------------------------------------- state add
 
 
-def add(state_dir, now, args):
+GUESSED_CLOCK = re.compile(r"~ ?\d{1,2}:\d{2}(?!\d)|(?<![\w:])[0-2x][\dx]:[0-5x][\dx](?!\w)")
+
+
+def guessed_time(text):
+    """The first guessed clock time in text (a digit replaced by x, or a tilde clock), else None."""
+    for m in GUESSED_CLOCK.finditer(text):
+        g = m.group(0)
+        if g.startswith("~") or "x" in g:
+            return g
+    return None
+
+
+def add(state_dir, now, args, allow_check=False):
     if len(args) != 1:
         raise Refuse("state add: needs exactly one text in quotes (got %d arguments)" % len(args))
     text = args[0]
@@ -216,6 +218,8 @@ def add(state_dir, now, args):
         raise Refuse("state add: the text is empty")
     if "\n" in text or "\r" in text:
         raise Refuse("state add: the text must not hold a line break")
+    if text.startswith("CHECK ") and not allow_check:
+        raise Refuse("state add: a CHECK line is written by agent-file.sh check only")
     path = os.path.join(state_dir, STATE_NAME)
     with Lock(state_dir):
         old = read_bytes(path) or b""
@@ -223,6 +227,9 @@ def add(state_dir, now, args):
         with open(path, "ab") as fh:
             fh.write(prefix + to_bytes("%s | %s\n" % (text, now)))
     sys.stdout.write("state add: %s\n" % text[:60])
+    guess = guessed_time(text)
+    if guess:
+        sys.stdout.write('state add: warning: "%s" looks guessed; the stamp is the time\n' % guess)
 
 
 # ---------------------------------------------------------------- reading the project files
@@ -449,11 +456,10 @@ def machine_view(lines):
 
 
 def build(root, lines, now):
-    conf = conf_of(root)
     open_names = set(first_fields(os.path.join(root, "agent_todo.txt"), 0))
     closed_names = set(first_fields(os.path.join(root, "agent_completed.txt"), 1))
     lab = plan(lines, name_regex(open_names), name_regex(closed_names), parse_time(now) or datetime.datetime.now(),
-               conf_int(conf, "state_keep_hours"), conf_int(conf, "state_header_lines"), open_names)
+               conf_int("state_keep_hours"), conf_int("state_header_lines"), open_names)
     return lab
 
 

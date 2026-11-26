@@ -1,35 +1,154 @@
 {
   "name": "auto-pipeline",
+  "author": { "name": "Maverick" },
   "description": "Agent pipeline rules, scripts, agents, skills and a startup quiz gate for any repo",
-  "version": "0.44.0",
+  "version": "0.45.0",
   "userConfig": {
-    "runtime": {
-      "type": "string",
-      "title": "Runtime",
-      "description": "How this machine runs agents. auto works it out, orca uses Orca terminals, plain and cloud use subagents only.",
-      "options": ["auto", "orca", "plain", "cloud"],
-      "default": "auto"
-    },
     "language": {
       "type": "string",
-      "title": "Language",
-      "description": "Language to talk to you in. Code, file names and rule text stay English.",
+      "title": "Basic: Language",
+      "description": "Language to talk to you in, e.g. en, zh, ms. Code, file names and rule text stay English.",
       "default": "en"
     },
-    "manager_model": {
+    "runtime": {
       "type": "string",
-      "title": "Manager model",
-      "description": "Model and effort for the managers. opus-5.5:high is recommended; opus-5.5:xhigh thinks harder and costs more.",
-      "options": ["opus-5.5:high", "opus-5.5:xhigh"],
+      "title": "Basic: Runtime",
+      "description": "How this machine runs agents. auto works it out, orca uses Orca terminals, plain and cloud use subagents only.",
+      "options": [
+        "auto",
+        "orca",
+        "plain",
+        "cloud"
+      ],
+      "default": "auto"
+    },
+    "auto_update": {
+      "type": "boolean",
+      "title": "Basic: Auto update",
+      "description": "Install a newer auto-pipeline by itself at the next start. Off: you run claude plugin update yourself.",
+      "default": true
+    },
+    "main_manager": {
+      "type": "string",
+      "title": "Models: Main manager model",
+      "description": "Model and effort of the main manager. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
+      "options": [
+        "opus-5.5:high",
+        "opus-5.5:xhigh"
+      ],
       "default": "opus-5.5:high"
     },
-    "max_agents": {
+    "task_manager": {
+      "type": "string",
+      "title": "Models: Task manager model",
+      "description": "Model and effort of a task manager. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
+      "options": [
+        "opus-5.5:high",
+        "opus-5.5:xhigh"
+      ],
+      "default": "opus-5.5:high"
+    },
+    "reviewer_model": {
+      "type": "string",
+      "title": "Models: Reviewer model",
+      "description": "Model and effort of the reviewer of every diff. Floor: Opus 5.5 or above, or any Fable, effort medium or above.",
+      "options": [
+        "opus-5.5:high",
+        "opus-5.5:xhigh"
+      ],
+      "default": "opus-5.5:high"
+    },
+    "helper_model": {
+      "type": "string",
+      "title": "Models: Helper model",
+      "description": "Model and effort of the fast-lane deputy, the merge deputy, the check deputy and every worker. Form: model-name:effort.",
+      "options": [
+        "sonnet-5:medium",
+        "sonnet-5:low",
+        "sonnet-5:high",
+        "opus-5.5:medium"
+      ],
+      "default": "sonnet-5:medium"
+    },
+    "max_usage_percent": {
       "type": "number",
-      "title": "Max agents",
-      "description": "How many agents may run at once on this machine.",
+      "title": "Load: Max memory %",
+      "description": "How much RAM or CPU may be used before agents wait. Whole number, 1 to 100.",
       "min": 1,
-      "max": 16,
-      "default": 4
+      "max": 100,
+      "default": 80
+    },
+    "permission_mode": {
+      "type": "string",
+      "title": "Permissions: Permission mode",
+      "description": "How much an agent may do without asking. bypassPermissions asks nothing; auto lets the model judge.",
+      "options": [
+        "acceptEdits",
+        "auto",
+        "bypassPermissions",
+        "manual",
+        "dontAsk",
+        "plan"
+      ],
+      "default": "bypassPermissions"
+    },
+    "auto_resume": {
+      "type": "boolean",
+      "title": "Permissions: Auto resume",
+      "description": "Resume the agents that were running by themselves when a main manager starts.",
+      "default": true
+    },
+    "todo_before_agent": {
+      "type": "boolean",
+      "title": "Rules: Todo before agent",
+      "description": "On: a launch naming no open todo task is refused. Off: launches are only recorded on the board.",
+      "default": true
+    },
+    "working_branch": {
+      "type": "string",
+      "title": "Flow: Working branch",
+      "description": "Branch that tasks merge into; init creates it and switches the main checkout to it. <name> becomes your git user name. The production branch (users) stays apart.",
+      "default": "ap-main-<name>"
+    },
+    "watch_quiet_min": {
+      "type": "number",
+      "title": "Stuck: Consider stuck after (min)",
+      "description": "Minutes a running task's state file may stay unchanged before the board marks it not confirmed. 1 to 240.",
+      "min": 1,
+      "max": 240,
+      "default": 15
+    },
+    "housekeep_interval_min": {
+      "type": "number",
+      "title": "Stuck: Tidy every (min)",
+      "description": "Minutes between housekeep passes that tidy leftovers. 0 = off. Whole number, 0 to 1440.",
+      "min": 0,
+      "max": 1440,
+      "default": 120
+    },
+    "clear_quiet_min": {
+      "type": "number",
+      "title": "Context: Auto clear after quiet (min)",
+      "description": "The auto clear waits until no human has typed in that pane for this many minutes. 0 = no wait. Whole number, 0 to 1440.",
+      "min": 0,
+      "max": 1440,
+      "default": 30
+    },
+    "city_port": {
+      "type": "number",
+      "title": "City: City port",
+      "description": "Port the agent city listens on, on 127.0.0.1 only. Whole number, 1024 to 65535.",
+      "min": 1024,
+      "max": 65535,
+      "default": 4777
+    },
+    "city_idle_min": {
+      "type": "number",
+      "title": "City: City auto close (min)",
+      "description": "Minutes the agent city keeps running with no browser open, then it stops by itself. 1 to 240.",
+      "min": 1,
+      "max": 240,
+      "default": 30
     }
   }
 }

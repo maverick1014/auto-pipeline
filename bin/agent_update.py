@@ -4,6 +4,7 @@
   agent_update.py apply on|off      set autoUpdate on the marketplace entries
   agent_update.py notice <root>     print an UPDATE line when a newer version is known
   agent_update.py refresh           fetch the latest version into the cache
+  agent_update.py sync <folder>...  update the stale plugin scopes this repo uses
 """
 
 import json
@@ -16,6 +17,9 @@ import tempfile
 import time
 
 MARKETPLACE = "auto-pipeline"
+PLUGIN_ID = "auto-pipeline@auto-pipeline"
+LOCK_NAME = ".auto-pipeline-update.lock"
+LOCK_FRESH_SECONDS = 600
 STALE_SECONDS = 86400
 BAK = ".bak-auto-pipeline"
 
@@ -215,6 +219,141 @@ def notice_line(plugin_root, cdir, cache):
         return None
 
 
+def _conf():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import agent_conf
+    return agent_conf
+
+
+def _installed_entries(cdir):
+    d = _load(os.path.join(cdir, "plugins", "installed_plugins.json"))
+    try:
+        entries = d["plugins"][PLUGIN_ID]
+    except Exception:
+        return []
+    return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+
+
+def _cache_versions(cdir):
+    base = os.path.join(cdir, "plugins", "cache", MARKETPLACE, MARKETPLACE)
+    try:
+        names = os.listdir(base)
+    except Exception:
+        return []
+    return [n for n in names if parse_version(n)
+            and os.path.isfile(os.path.join(base, n, ".claude-plugin", "plugin.json"))]
+
+
+def _newest(entries, cdir):
+    found = [e.get("version") for e in entries] + _cache_versions(cdir)
+    found = [v for v in found if parse_version(v)]
+    return max(found, key=parse_version) if found else None
+
+
+def _stale_scopes(entries, folders, newest):
+    """[(scope, path or None, old version)] this repo uses that run older than NEWEST."""
+    real = [os.path.realpath(f) for f in folders]
+    out = []
+    for e in entries:
+        old, scope = e.get("version"), e.get("scope")
+        if not parse_version(old) or parse_version(old) >= parse_version(newest):
+            continue
+        path = e.get("projectPath")
+        if scope == "user":
+            item = ("user", None, old)
+        elif scope in ("project", "local") and isinstance(path, str) and os.path.realpath(path) in real:
+            item = (scope, os.path.realpath(path), old)
+        else:
+            continue
+        if item not in out:
+            out.append(item)
+    return out
+
+
+def _command(scope, path):
+    cmd = "claude plugin update %s --scope %s" % (PLUGIN_ID, scope)
+    return "cd %s && %s" % (path, cmd) if path else cmd
+
+
+def _stale_line(scope, path, old, new, why):
+    where = "%s %s" % (scope, path) if path else scope
+    return "STALE SCOPE: %s runs %s, newest %s; %s: %s" % (where, old, new, why, _command(scope, path))
+
+
+def _run_update(scope, cwd, env):
+    """None on success, else the reason text."""
+    claude = shutil.which("claude", path=env.get("PATH"))
+    if not claude:
+        return "claude was not found on PATH"
+    try:
+        r = subprocess.run([claude, "plugin", "update", PLUGIN_ID, "--scope", scope], cwd=cwd,
+                           capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                           env=dict(env), timeout=120)
+    except Exception as e:
+        return "claude plugin update failed: %s" % e.__class__.__name__
+    if r.returncode == 0:
+        return None
+    detail = (r.stderr or r.stdout or "").strip().splitlines()
+    return detail[0] if detail else "claude plugin update exited %d" % r.returncode
+
+
+def _take_lock(lock):
+    """True when this call now holds the lock dir. A fresh one belongs to someone else."""
+    try:
+        os.mkdir(lock)
+        return True
+    except FileExistsError:
+        pass
+    except Exception:
+        return False
+    try:
+        if time.time() - os.stat(lock).st_mtime < LOCK_FRESH_SECONDS:
+            return False
+        shutil.rmtree(lock, ignore_errors=True)
+        os.mkdir(lock)
+        return True
+    except Exception:
+        return False
+
+
+def _update_all(stale, folders, newest, env, cdir):
+    lock = os.path.join(cdir, "plugins", LOCK_NAME)
+    if not _take_lock(lock):
+        return [_stale_line(s, p, o, newest, "another session is updating") for s, p, o in stale]
+    lines = []
+    try:
+        for scope, path, old in stale:
+            why = _run_update(scope, path or folders[0], env)
+            if why:
+                lines.append(_stale_line(scope, path, old, newest, why))
+            elif path:
+                lines.append("updated %s %s: %s -> %s, restart to apply" % (scope, path, old, newest))
+            else:
+                lines.append("updated user: %s -> %s, restart to apply" % (old, newest))
+    finally:
+        shutil.rmtree(lock, ignore_errors=True)
+    return lines
+
+
+def sync_scopes(folders, env=None):
+    """Update the scopes of this repo that run older than the newest installed version.
+    Returns the lines to print. Never raises, never writes installed_plugins.json."""
+    try:
+        env = dict(os.environ if env is None else env)
+        folders = [f for f in folders if isinstance(f, str)]
+        cdir = claude_dir(env)
+        entries = _installed_entries(cdir)
+        newest = _newest(entries, cdir)
+        stale = _stale_scopes(entries, folders, newest) if newest and folders else []
+        if not stale:
+            return []
+        if _conf().get("auto_update", env) is False:
+            return [_stale_line(s, p, o, newest, "auto update is off") for s, p, o in stale]
+        return _update_all(stale, folders, newest, env, cdir)
+    except Exception:
+        return []
+
+
 def _spawn_refresh():
     try:
         null = subprocess.DEVNULL
@@ -250,7 +389,11 @@ def main(argv):
             if url is not None:
                 refresh(url, cache_path())
             return 0
-        sys.stderr.write("usage: agent_update.py apply on|off | notice <plugin_root> | refresh\n")
+        if cmd == "sync":
+            for line in sync_scopes(argv[1:]):
+                print(line)
+            return 0
+        sys.stderr.write("usage: agent_update.py apply on|off | notice <plugin_root> | refresh | sync <folder>...\n")
         return 2
     except Exception:
         return 0

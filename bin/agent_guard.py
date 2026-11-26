@@ -110,29 +110,28 @@ def session_pid():
 
 
 def read_conf(main):
-    """(board_guard mode, state_keep_hours) of the main repo's agent.conf; a trailing comment is cut.
-    Mode "on" only when the file says board_guard=on; a missing key, empty, bad value or an unreadable
-    file all mean "record" (never block); "off" means off."""
-    mode, hours = "record", 24.0
+    """(mode, state_keep_hours): mode "on" when the todo_before_agent setting is true, else "record" (never
+    block); state_keep_hours is the fixed constant. Any error: ("record", 24.0). MAIN is kept for old callers."""
     try:
-        with open(os.path.join(main, "agent.conf"), encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                k, eq, v = line.partition("=")
-                if not eq:
-                    continue
-                k = k.strip()
-                v = v.split("#", 1)[0].strip().strip("\"'").strip()
-                if k == "board_guard":
-                    mode = v.lower()
-                elif k == "state_keep_hours":
-                    try:
-                        if float(v) > 0:
-                            hours = float(v)
-                    except ValueError:
-                        pass
-    except OSError:
-        return "record", hours
-    return (mode if mode in ("on", "off") else "record"), hours
+        here = os.path.dirname(os.path.abspath(__file__))
+        old = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            if here not in sys.path:
+                sys.path.insert(0, here)
+            import agent_conf
+        finally:
+            sys.dont_write_bytecode = old
+        hours = 24.0
+        try:
+            value = float(agent_conf.get("state_keep_hours"))
+            if value > 0:
+                hours = value
+        except Exception:
+            pass
+        return ("on" if agent_conf.get("todo_before_agent") is True else "record"), hours
+    except Exception:
+        return "record", 24.0
 
 
 def read_todo(main):
@@ -316,6 +315,9 @@ def bash_launches(command):
         while k < len(words) and (RE_ASSIGN.match(words[k]) or words[k] in SKIP_WORDS):
             k += 1
         w = words[k:]
+        if len(w) >= 3 and os.path.basename(w[0]) == "agent-runtime.sh" and w[1] == "close":
+            found.append(("close", {"terminal": w[2]}))   # the runtime script's close is a pane close
+            continue
         if len(w) < 3 or os.path.basename(w[0]) != "orca":
             continue
         pair = (w[1], w[2])
@@ -517,12 +519,13 @@ def edit_records(ctx, mutate):
     """mutate(list of lines) -> new list or None (no change). Edits and removals only."""
     path = os.path.join(ctx["folder"], "agent_state.txt")
     if mutate(read_lines(path)) is None:
-        return
+        return False
     with StateLock(ctx["gitdir"]):
         def compute(lines):
             new = mutate(lines)
             return None if new is None else prune(new, ctx)
         rewrite(ctx, path, compute)
+    return True
 
 
 def mut_set(match, **fields):
@@ -763,11 +766,9 @@ def make_context(payload):
             if line.startswith("worktree "):
                 main = line[9:]
                 break
-    if not main or not os.path.isfile(os.path.join(main, "agent.conf")):
+    if not main or not os.path.isfile(os.path.join(main, "agent_todo.txt")):
         return None
     mode, keep = read_conf(main)
-    if mode == "off":
-        return None
     ctx = {"folder": folder, "gitdir": gitdir, "common": common, "main": main, "mode": mode,
            "keep": keep, "now": now_str(), "pid": session_pid()}
     ctx["role"] = find_role(payload, ctx)
@@ -905,13 +906,20 @@ def handle(payload):
                 out[idx] = build_launch(d)
                 return out
             return None
-        run_edit(ctx, mutate)
+        if not run_edit(ctx, mutate):
+            for c in other_folders(ctx):
+                if run_edit(c, mutate):
+                    break
         return OK
 
     if ev == "SubagentStop":
         aid = str(payload.get("agent_id") or "")
         if aid:
-            run_edit(ctx, mut_remove(lambda d: d.get("agent") == aid))
+            gone = mut_remove(lambda d: d.get("agent") == aid)
+            if not run_edit(ctx, gone):
+                for c in other_folders(ctx):
+                    if run_edit(c, gone):
+                        break
         return OK
     return OK
 
@@ -919,10 +927,45 @@ def handle(payload):
 def run_edit(ctx, mutate):
     """Post-side edits: failures here never block; a busy lock is a WARN (silent for the free role)."""
     try:
-        edit_records(ctx, mutate)
+        return edit_records(ctx, mutate)
     except Busy:
         if ctx["role"] != "free":
             raise Warn("board guard: state file busy; allowed")
+    return False
+
+
+def other_folders(ctx):
+    """Contexts of every other worktree of the repo. A subagent started with isolation worktree runs with its cwd in
+    a fresh worktree, but its LAUNCH record sits in the launching session's folder (rule 1, 3): look there too."""
+    out = []
+    rc, text = git(ctx["folder"], "worktree", "list", "--porcelain")
+    if rc != 0:
+        return out
+    for line in text.split("\n"):
+        if not line.startswith("worktree "):
+            continue
+        folder = line[9:]
+        if folder == ctx["folder"] or not os.path.isfile(os.path.join(folder, "agent_state.txt")):
+            continue
+        rc, gd = git(folder, "rev-parse", "--path-format=absolute", "--git-dir")
+        if rc == 0 and gd:
+            c = dict(ctx)
+            c["folder"], c["gitdir"] = folder, gd.split("\n")[0]
+            out.append(c)
+    return out
+
+
+def write_launch_record(ctx, task, stype):
+    """F2: a durable line per reviewer / check-deputy launch in <git common dir>/agent_launches.jsonl."""
+    base = base_type(stype)
+    if base not in ("reviewer", "check-deputy"):
+        return
+    rec = {"task": task, "type": base, "by": ctx["role"], "at": ctx["now"]}
+    try:
+        with open(os.path.join(ctx["common"], "agent_launches.jsonl"), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+    except OSError:
+        pass
 
 
 def finish(ctx, items, quiet):
@@ -939,6 +982,7 @@ def finish(ctx, items, quiet):
         fields = {"key": key, "kind": d.kind, "task": d.task, "title": clean_title(d.title), "since": ctx["now"],
                   "pid": str(ctx["pid"]), "by": ctx["role"]}
         fields.update(extra)
+        write_launch_record(ctx, d.task, fields.get("type", ""))
         try:
             add_record(ctx, build_launch(fields))
         except Busy:

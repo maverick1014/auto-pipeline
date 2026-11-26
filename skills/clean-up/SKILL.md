@@ -6,7 +6,7 @@ description: Main manager only. List rubbish docs, old state copies, finished mo
 
 Main manager only. A task manager or Helper: refuse in one line, run nothing.
 
-Words to the human: the language of `agent.conf`. Ids and commands stay as printed.
+Words to the human: the Language setting. Ids and commands stay as printed.
 
 ## Step 1: the table (changes nothing)
 
@@ -25,5 +25,5 @@ Words to the human: the language of `agent.conf`. Ids and commands stay as print
 ## After
 
 - Show the output lines (`removed:`, `backup:`, `commit`, the last line).
-- Files went (a `commit` line) → push main (`git push origin main`), or hand the owner one line: `! git push origin main`.
+- Files went (a `commit` line) → push the branch the main checkout is on (`git branch --show-current`), or hand the owner one line: `! git push origin <that branch>`.
 - Restore: tracked files `git revert <sha>`; lines from the backup file named in the `backup:` line.

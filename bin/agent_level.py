@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""agent_level.py - the risk type of each file and task part of a diff (R8). Python 3.9, stdlib only.
+"""agent_level.py - the check blocks a diff triggers (R8, requirements/check-blocks.md C2). Python 3.9, stdlib only.
 
-Started by agent-level.sh:  agent_level.py <agent.conf path> <cwd> check --base <ref> [--declared <A-D>]
+Started by agent-level.sh:  agent_level.py <cwd> check --base <ref> [--scope "<globs>"] [--json] [--declared <x>]
+The names and the order of the blocks come from agent_blocks.py (the one table).
 """
 
 import fnmatch
@@ -14,6 +15,7 @@ import sys
 import tokenize
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import agent_blocks  # noqa: E402
 import agent_conf  # noqa: E402
 
 
@@ -41,7 +43,9 @@ def text_of(raw):
 LOCK_NAMES = ("package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "bun.lockb", "go.sum")
 PUBSPEC_NAMES = ("pubspec.yaml", "pubspec.yml")
 DEP_NAMES = ("go.mod", "Gemfile", "Podfile", "Pipfile", "Cargo.toml", "pyproject.toml",
-             "build.gradle", "build.gradle.kts", "pom.xml")
+             "build.gradle", "build.gradle.kts", "pom.xml", "composer.json", "setup.py", "setup.cfg",
+             "mix.exs", "build.sbt", "packages.config", "Directory.Packages.props")
+DEP_GLOBS = ("*.gemspec", "*.csproj")
 MIGRATION_DIRS = ("migrations", "migration", "migrate", "alembic")
 DEP_KEYS = ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies",
             "bundleDependencies", "bundledDependencies", "overrides", "resolutions")
@@ -58,21 +62,29 @@ def ext_of(path):
     return os.path.splitext(path)[1].lower()
 
 
-def builtin_l4(path):
-    """The kind of the built-in D path, or None (package.json is judged apart)."""
+def builtin_kind(path):
+    """(kind, label) of a built-in path, or None (package.json is judged apart)."""
     name = os.path.basename(path)
     if name in LOCK_NAMES or name.endswith(".lock"):
-        return "lockfile"
+        return "deps", "lockfile"
     if name in PUBSPEC_NAMES:
-        return "pubspec"
-    if (name.startswith("requirements") and name.endswith(".txt")) or name in DEP_NAMES:
-        return "dependency list"
-    if any(part in MIGRATION_DIRS for part in path.split("/")[:-1]):
-        return "migration"
-    if (fnmatch.fnmatchcase(name, "schema.*") or fnmatch.fnmatchcase(name, "*.schema.*")
-            or name.endswith(".prisma") or name.endswith(".sql")):
-        return "schema"
+        return "deps", "pubspec"
+    dirs = path.split("/")[:-1]
+    if ((name.startswith("requirements") and name.endswith(".txt")) or name in DEP_NAMES
+            or any(fnmatch.fnmatchcase(name, g) for g in DEP_GLOBS)
+            or (name.endswith(".txt") and any(d.lower() == "requirements" for d in dirs))
+            or path == "gradle/libs.versions.toml" or path.endswith("/gradle/libs.versions.toml")):
+        return "deps", "dependency list"
+    if any(part.lower() in MIGRATION_DIRS for part in dirs):
+        return "migration", "migration"
+    if is_schema_name(name):
+        return "schema", "schema"
     return None
+
+
+def is_schema_name(name):
+    return (fnmatch.fnmatchcase(name, "schema.*") or fnmatch.fnmatchcase(name, "*.schema.*")
+            or name.endswith(".prisma") or name.endswith(".sql"))
 
 
 def glob_match(glob, path):
@@ -142,6 +154,40 @@ ATTR = re.compile(r"(?<![\w:.\-@$])([A-Za-z_@:][\w:.\-@]*)=(?=[\"'{])")
 F_PREFIX = re.compile(r"(?<![\w])[rRbBuU]?[fF][rRbBuU]?$")
 
 TOK = "\x00"
+
+
+CONFIG_EXT = (".yml", ".yaml", ".json", ".toml")
+
+
+TEXT_ATTR_VALUE = re.compile(r"(?<![\w:.\-@$])(" + "|".join(TEXT_ATTRS) + r")=(?:\"[^\"]*\"|'[^']*')")
+LOCALE_PARTS = ("locales", "locale", "i18n", "translations", "lang")
+LANGS = ("en", "de", "fr", "es", "it", "pt", "nl", "sv", "da", "no", "fi", "pl", "cs", "ru", "uk", "tr", "ar",
+         "he", "hi", "th", "vi", "id", "ms", "ja", "ko", "zh")
+LOCALE_NAME = re.compile(r"^(?:%s)(?:[-_][A-Za-z]{2,4})?$" % "|".join(LANGS))
+
+
+def is_locale_file(path):
+    parts = path.replace("\\", "/").lower().split("/")
+    if any(p in LOCALE_PARTS for p in parts[:-1]):
+        return True
+    return bool(LOCALE_NAME.match(os.path.splitext(os.path.basename(path))[0]))
+
+
+def strict_of(path, ext, markup):
+    """G7: do changed literals count as code in this file?"""
+    if ext in CONFIG_EXT:
+        return not is_locale_file(path)
+    return True
+
+
+def bound_attr(attr):
+    """G7: an attribute that holds an expression: @click, :prop, v-x, or name={...}."""
+    m = re.match(r"^([^=]+)=(.)", attr, re.S)
+    if not m:
+        return False
+    if m.group(1)[0] in "@:" or m.group(1).startswith("v-"):
+        return True
+    return m.group(2) == "{" and bool(re.search(r"[\"'`]", attr))  # name={...} holding a string literal
 
 
 def is_import(line):
@@ -237,6 +283,11 @@ def analyse(line, markup):
         if res is None:
             return None
         work, attrs = res
+    if markup:  # text attributes (alt, title ...) are shown text: keep them out of the string literals
+        def shown(m):
+            texts.append(m.group(0))
+            return m.group(1) + "=" + TOK + "W" + TOK
+        work = TEXT_ATTR_VALUE.sub(shown, work)
     res = mask_strings(work)
     if res is None:
         return None
@@ -263,46 +314,60 @@ class Checker(object):
                 return True
         return False
 
-    def pair(self, old, new, markup, found):
+    def pair(self, old, new, markup, found, strict=False):
         """Compare one removed/added pair; add reasons to found. False when it is code."""
         a, b = analyse(old, markup), analyse(new, markup)
         if a is None or b is None or a[0] != b[0]:
             return False
         if a[1] != b[1]:
             found.add("colour change")
-        if a[2] != b[2] or a[4] != b[4]:
+        if a[2] != b[2]:
+            found.add("text change")
+        if a[4] != b[4]:
+            # F10: in a code file a changed quoted string is code; text only on a comment line or in a docstring
+            comment = old.lstrip().startswith(("#", "//"))and new.lstrip().startswith(("#", "//"))
+            doc = any(t in l for l in (old, new) for t in ('"""', "\'\'\'"))
+            if strict and not comment and not doc:
+                return False
             found.add("text change")
         for x, y in zip(a[3], b[3]):
             if x != y:
                 if TOK in x or TOK in y or COLOUR.search(y):
                     return False
+                if strict and (bound_attr(x) or bound_attr(y)):
+                    return False
                 found.add("existing prop value" if self.used_at_base(y) else "new prop value")
         return True
 
     def code(self, path, hunks):
-        """(level, reason) of a modified code file from its -U0 hunks."""
+        """(kinds, reason) of a modified code file from its -U0 hunks."""
         ext = ext_of(path)
         markup = ext in MARKUP_EXT
         if not hunks:
-            return 2, "code change"
+            return "code", "code change"
         if os.path.basename(path) == "package.json":
-            return 2, "code change"
+            return "code", "code change"
         removed = [r for h in hunks for r in h[0]]
         added = [a for h in hunks for a in h[1]]
         if (ext in MOVE_EXT and removed and sorted(removed) == sorted(added) and any(h[0] != h[1] for h in hunks)):
-            return 0, "line move (manager: check responsive)"
+            return "style", "line move (manager: check responsive)"
         found = set()
         for rem, add in hunks:
             if not rem or not add or len(rem) != len(add):
-                return 2, "code change"
+                return "code", "code change"
             for old, new in zip(rem, add):
-                if not self.pair(old, new, markup, found):
-                    return 2, "code change"
+                if not self.pair(old, new, markup, found, strict_of(path, ext, markup)):
+                    return "code", "code change"
         order = ["text change", "colour change", "existing prop value", "new prop value"]
         reasons = [r for r in order if r in found]
         if not reasons:
-            return 0, "whitespace only"
-        return (1 if "new prop value" in found else 0), ", ".join(reasons)
+            return "text", "whitespace only"
+        kinds = []
+        if "text change" in found:
+            kinds.append("text")
+        if found - {"text change"}:
+            kinds.append("style")
+        return "+".join(kinds), ", ".join(reasons)
 
     def comment_shape(self, path):
         """"comment only", "whitespace only" or None: do old and new differ in comments or blanks only?"""
@@ -1102,80 +1167,561 @@ def code_view(segments, own, keep_blank=False, edge=None):
     return lines, [(before[min(ln, len(before) - 1)], t) for ln, t in plain]
 
 
-def component_level(path, status, chk):
-    if status == "A":
-        return 1, "new component file"
-    if status == "D":
-        return 1, "deleted component file"
-    hunks, binary = chk.hunks(path)
-    if not binary:
-        shape = chk.comment_shape(path)
-        if shape:
-            return 0, shape
-        lvl, why = chk.code(path, hunks)
-        if lvl < 2:
-            return lvl, why
-    return 1, "component file"
 
 
-TYPES = "ABCCD"   # old level 0 1 2 3 4 -> type; level 3 (level3_paths) is C too
+# ------------------------------------------------------------------ the kind of a file
+
+CODE_EXT = SLASH_EXT + (".py", ".rb", ".php", ".sh", ".bash", ".zsh", ".cs", ".rs", ".scala", ".ex", ".exs",
+                        ".lua", ".pl", ".vue", ".svelte", ".m", ".mm")
+CI_NAMES = (".gitlab-ci.yml", ".travis.yml", "Jenkinsfile", "azure-pipelines.yml", "bitbucket-pipelines.yml",
+            "pytest.ini", "tox.ini", "conftest.py", "dart_test.yaml")
+CI_GLOBS = ("jest.config.*", "vitest.config.*", "karma.conf.*", "playwright.config.*", "cypress.config.*",
+            ".mocharc*", "phpunit.xml*")
+SCRIPT_DIRS = ("scripts", "script", "oneoff", "datafix", "data-fix", "backfill", "tools")
+SCRIPT_PATHS = ("management/commands/", "lib/tasks/", "db/scripts/")
+DATA_WRITE = re.compile(r"\bUPDATE\b[^;]{0,200}?\bSET\b|\bDELETE\s+FROM\b|\bINSERT\s+INTO\b|\bTRUNCATE\b", re.I)
+ORM_WRITE = re.compile(r"\b(?:update_all|delete_all|destroy_all|bulk_update|bulk_delete|deleteMany|updateMany"
+                       r"|insertMany)\b|\.objects\b[\s\S]{0,300}?\)\s*\.(?:delete|update)\(")
 
 
-def type_of(level):
-    return TYPES[level]
+def in_task_folder(path):
+    if any(part in SCRIPT_DIRS for part in path.split("/")[:-1]):
+        return True
+    padded = "/" + path
+    return any(("/" + frag) in padded for frag in SCRIPT_PATHS)
+RULE_NAMES = ("PRINCIPLES.md", "CLAUDE.md", "AGENTS.md")
+HEADING = re.compile(r"^([A-Z]\d+)\. ")
 
 
-def level_of(path, status, chk, l3, l4):
+def is_ci(path):
     name = os.path.basename(path)
-    if name == "package.json":
-        if package_deps_changed(chk.top, chk.mb, path, status):
-            return 4, "built-in D: package.json deps"
-    else:
-        kind = builtin_l4(path)
-        if kind:
-            return 4, "built-in D: %s" % kind
-    glob = first_glob(l4, path)
-    if glob is not None:
-        return 4, "level4_paths %s" % glob
-    glob = first_glob(l3, path)
-    if glob is not None:
-        return 3, "level3_paths %s" % glob
-    ext = ext_of(path)
-    if ext in STYLE_EXT:
-        return 1, "style file"
-    if ext in ASSET_EXT:
-        return 1, "asset file"
-    if ext in TEXT_EXT:
-        return 0, "text file"
-    if ext in MARKUP_EXT:
-        # a UI component file never raises by itself: B at most (R8); only a path rule above makes it C or D
-        return component_level(path, status, chk)
-    if status == "A":
-        return 2, "new file"
-    if status == "D":
-        return 2, "deleted file"
-    hunks, binary = chk.hunks(path)
-    if binary:
-        return 2, "binary file"
-    shape = chk.comment_shape(path)
-    if shape:
-        return 0, shape
-    return chk.code(path, hunks)
+    if name in CI_NAMES or any(fnmatch.fnmatchcase(name, g) for g in CI_GLOBS):
+        return True
+    parts = path.split("/")
+    return (parts[0] == ".github" and len(parts) > 2 and parts[1] == "workflows") or \
+        (parts[0] == ".circleci" and len(parts) > 1)
+
+
+def is_rule(path):
+    if os.path.basename(path) in RULE_NAMES:
+        return True
+    parts = path.split("/")
+    if parts[0] == "skills" and len(parts) > 1:
+        return True
+    if parts[0] == "agents" and len(parts) == 2 and parts[1].endswith(".md"):
+        return True
+    return parts[0] == ".claude" and len(parts) > 2 and parts[1] in ("skills", "agents")
+
+
+class Repo(object):
+    """Facts of one run: the repo file, the working-tree files, the changed lines of each file."""
+
+    def __init__(self, top, mb, conf):
+        self.top, self.mb, self.conf = top, mb, conf
+        self.chk = Checker(top, mb)
+        self._changes, self._content, self._files = {}, {}, None
+
+    def globs(self, key):
+        return split_globs(self.conf.get(key, ""))
+
+    def content(self, path):
+        if path not in self._content:
+            try:
+                with open(os.path.join(self.top, path), "rb") as fh:
+                    raw = fh.read()
+                self._content[path] = None if b"\0" in raw[:4096] else text_of(raw)
+            except OSError:
+                self._content[path] = None
+        return self._content[path]
+
+    def old_content(self, path):
+        proc = git(self.top, "show", "%s:%s" % (self.mb, path), check=False)
+        return text_of(proc.stdout) if proc.returncode == 0 and b"\0" not in proc.stdout[:4096] else None
+
+    def files(self):
+        """Every file of the working tree (tracked and untracked, not ignored) that still exists."""
+        if self._files is None:
+            names = set()
+            for args in (("ls-files", "-z"), ("ls-files", "--others", "--exclude-standard", "-z")):
+                for item in git(self.top, *args).stdout.split(b"\0"):
+                    item = text_of(item)
+                    if item and os.path.isfile(os.path.join(self.top, item)):
+                        names.add(item)
+            self._files = sorted(names)
+        return self._files
+
+    def changes(self, path, status):
+        """([(old line no, text)], [(new line no, text)]) of the file against the merge base."""
+        key = (path, status)
+        if key in self._changes:
+            return self._changes[key]
+        removed, added = [], []
+        if status == "A":
+            body = self.content(path)
+            added = [(n + 1, t) for n, t in enumerate((body or "").split("\n")[:-1] if body and body.endswith("\n")
+                                                      else (body or "").split("\n"))] if body else []
+        else:
+            proc = git(self.top, "diff", "--no-renames", "--no-color", "--no-ext-diff", "-U0", self.mb, "--", path)
+            old_no = new_no = 0
+            for line in text_of(proc.stdout).split("\n"):
+                m = re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
+                if m:
+                    old_no, new_no = int(m.group(1)), int(m.group(3))
+                    continue
+                if old_no == 0 and new_no == 0:
+                    continue
+                if line.startswith("-"):
+                    removed.append((old_no, line[1:]))
+                    old_no += 1
+                elif line.startswith("+"):
+                    added.append((new_no, line[1:]))
+                    new_no += 1
+        self._changes[key] = (removed, added)
+        return removed, added
+
+    def kinds(self, path, status):
+        """(kinds joined by +, reason) of one changed file."""
+        kinds, why = self._kinds(path, status)
+        if first_glob(self.globs("core_paths"), path) is not None:
+            kinds += "+core"
+        return kinds, why
+
+    def _kinds(self, path, status):
+        name, ext = os.path.basename(path), ext_of(path)
+        if name == "package.json":
+            if package_deps_changed(self.top, self.mb, path, status):
+                return "deps", "built-in: package.json deps"
+        else:
+            built = builtin_kind(path)
+            if built and built[0] == "deps":
+                return "deps", "built-in: %s" % built[1]
+        glob = first_glob(self.globs("test_config"), path)
+        if glob is not None:
+            return "ci", "test_config %s" % glob
+        if is_ci(path):
+            return "ci", "built-in: ci"
+        built = builtin_kind(path)
+        if built and built[0] == "migration":
+            kinds = ["migration"]
+            if is_schema_name(name):
+                kinds.append("schema")
+            if ext in CODE_EXT:
+                kinds.append("code")
+            return "+".join(kinds), "built-in: migration"
+        if built:
+            return built[0], "built-in: %s" % built[1]
+        glob = first_glob(self.globs("data_scripts"), path)
+        if glob is not None:
+            return "data-script", "data_scripts %s" % glob
+        if (ext not in TEXT_EXT and ext not in ASSET_EXT and status != "D"
+                and in_task_folder(path)):
+            added_text = "\n".join(t for _, t in self.changes(path, status)[1])
+            if DATA_WRITE.search(added_text) or ORM_WRITE.search(added_text):
+                return "data-script", "built-in: data-script"
+        if is_rule(path):
+            return "rule", "rule file"
+        if ext in TEXT_EXT:
+            return "text", "text file"
+        if ext in STYLE_EXT:
+            return "style", "style file"
+        if ext in ASSET_EXT:
+            return "asset", "asset file"
+        if ext in MARKUP_EXT:
+            return self.component(path, status)
+        if status == "A":
+            return "code", "new file"
+        if status == "D":
+            return "code", "deleted file"
+        hunks, binary = self.chk.hunks(path)
+        if binary:
+            return "code", "binary file"
+        shape = self.chk.comment_shape(path)
+        if shape:
+            return "text", shape
+        return self.chk.code(path, hunks)
+
+    def component(self, path, status):
+        if status == "A":
+            return "code", "new component file"
+        if status == "D":
+            return "code", "deleted component file"
+        hunks, binary = self.chk.hunks(path)
+        if not binary:
+            shape = self.chk.comment_shape(path)
+            if shape:
+                return "text", shape
+            kinds, why = self.chk.code(path, hunks)
+            if kinds != "code":
+                return kinds, why
+        return "code", "component file"
+
+
+# ------------------------------------------------------------------ DIFF SCAN
+
+TEST_DIRS = ("tests", "test", "__tests__", "spec", "e2e")
+TEST_NAME = re.compile(r"^(test_.*|.*_test\..*|.*\.test\..*|.*\.spec\..*|.*Tests?\.[A-Za-z]+|.*_spec\..*)$")
+SKIP_MARKS = ("unittest.skip", "skipTest(", "pytest.mark.skip", "xit(", "it.skip(", "describe.skip(",
+              "test.skip(", "xdescribe(", "@Disabled")
+SKIP_TRUE = re.compile(r"\bskip:\s*true\b")
+DEBUG_MARKS = (("console.log(", re.compile(r"console\.log\(")), ("debugger", re.compile(r"\bdebugger\b")),
+               ("breakpoint()", re.compile(r"\bbreakpoint\(\)")), ("pdb.set_trace", re.compile(r"pdb\.set_trace")),
+               ("binding.pry", re.compile(r"binding\.pry")), ("var_dump(", re.compile(r"\bvar_dump\(")))
+SECRETS = (("aws access key", re.compile(r"\bA(?:KIA|SIA)[0-9A-Z]{16}\b")),
+           ("private key", re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----")),
+           ("github token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b")),
+           ("slack token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}")),
+           ("google api key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
+           ("api key", re.compile(r"\bsk-[A-Za-z0-9_\-]{20,}")),
+           ("hardcoded credential", re.compile(
+               r"""(?i)\b(?:password|passwd|secret|token|api[_-]?key|private[_-]?key)\w*["']?\s*[:=]\s*["'][^"'\s]{8,}["']""")))
+TEST_DEF = (re.compile(r"^\s*(?:async\s+)?def\s+(test\w*)\s*\("),
+            re.compile(r"""\b(?:it|test|describe)(?:\.\w+)?\s*\(\s*(['"`])(.+?)\1"""))
+
+
+def is_test_file(path):
+    return bool(TEST_NAME.match(os.path.basename(path))) and ext_of(path) in CODE_EXT
+
+
+def in_test_place(path):
+    return is_test_file(path) or any(part in TEST_DIRS for part in path.split("/")[:-1])
+
+
+def secret_file(path):
+    name = os.path.basename(path)
+    return (name.startswith(".env") or path.startswith(".secrets/") or "/.secrets/" in path
+            or name.endswith(".pem") or name.startswith("id_rsa"))
+
+
+def test_names(lines):
+    names = set()
+    for _, text in lines:
+        m = TEST_DEF[0].match(text)
+        if m:
+            names.add(m.group(1))
+            continue
+        m = TEST_DEF[1].search(text)
+        if m:
+            names.add(m.group(2))
+    return names
+
+
+def code_lines(repo, path):
+    """{line no: the line with strings and comments blanked} of the file, or None without a lexer."""
+    family = COMMENT_FAMILIES.get(ext_of(path))
+    if family is None:
+        return None
+    body = repo.content(path)
+    if not body:
+        return None
+    try:
+        segs = family[0](body)
+    except Exception:
+        return None
+    if segs is None:
+        return None
+    text = "".join(t if k == "code" else re.sub(r"[^\n]", " ", t) for k, t in segs)
+    if len(text) != len(body):
+        return None
+    return dict((n + 1, t) for n, t in enumerate(text.split("\n")))
+
+
+def diff_scan(repo, changed, kinds, scope):
+    out = []
+    for path in sorted(changed):
+        status = changed[path]
+        if scope and first_glob(scope, path) is None:
+            out.append("outside scope: %s" % path)
+        removed, added = repo.changes(path, status)
+        if is_test_file(path):
+            if status == "D":
+                out.append("deleted test: %s" % path)
+            else:
+                gone = test_names(removed) - test_names(added)
+                for name in sorted(gone):
+                    out.append("removed test: %s: %s" % (path, name))
+            masked = code_lines(repo, path) if status != "D" else None
+            for no, text in added:
+                text = (masked or {}).get(no, text)
+                if any(m in text for m in SKIP_MARKS) or SKIP_TRUE.search(text):
+                    out.append("skipped test: %s:%d" % (path, no))
+        if status != "D" and secret_file(path):
+            out.append("secret file: %s" % path)
+        if status != "D":
+            for no, text in added:
+                for kind, rx in SECRETS:
+                    if rx.search(text):
+                        out.append("secret: %s:%d %s" % (path, no, kind))
+                        break
+        if status != "D" and not in_test_place(path) and "code" in kinds[path][0].split("+"):
+            masked = code_lines(repo, path)
+            for no, text in added:
+                text = (masked or {}).get(no, text)
+                for mark, rx in DEBUG_MARKS:
+                    if rx.search(text):
+                        out.append("debug leftover: %s:%d %s" % (path, no, mark))
+    return out
+
+
+# ------------------------------------------------------------------ RELATED TESTS and groups
+
+def needle(text):
+    return re.compile(r"(?<![A-Za-z0-9_])" + re.escape(text) + r"(?![A-Za-z0-9_])")
+
+
+def name_needles(path):
+    name = os.path.basename(path)
+    stem = os.path.splitext(name)[0]
+    out = [needle(path), needle(name)]
+    if len(stem) >= 4:
+        out.append(needle(stem))
+    return out
+
+
+def section_codes(repo, path, status):
+    """The section codes (R8, W4 ...) of the headings above each changed line of a rule file."""
+    codes = set()
+
+    def nearest(lines, no):
+        for i in range(min(no, len(lines)) - 1, -1, -1):
+            m = HEADING.match(lines[i])
+            if m:
+                return m.group(1)
+        return None
+
+    new = repo.content(path) if status != "D" else None
+    old = repo.old_content(path) if status != "A" else None
+    if status in ("A", "D"):
+        for body in (new, old):
+            for line in (body or "").split("\n"):
+                m = HEADING.match(line)
+                if m:
+                    codes.add(m.group(1))
+        return codes
+    removed, added = repo.changes(path, status)
+    for lines, items, body in ((new, added, new), (old, removed, old)):
+        if body is None:
+            continue
+        rows = body.split("\n")
+        for no, _ in items:
+            code = nearest(rows, no)
+            if code:
+                codes.add(code)
+    return codes
+
+
+def changed_strings(repo, path, status):
+    """Quoted or markup texts of 4 chars or more that differ between old and new lines of a file."""
+    removed, added = repo.changes(path, status)
+
+    def strings(items):
+        got = set()
+        for _, text in items:
+            for m in re.finditer(r"\"((?:[^\"\\]|\\.)*)\"|'((?:[^'\\]|\\.)*)'|`([^`]*)`", text):
+                got.add(m.group(1) or m.group(2) or m.group(3) or "")
+            for m in MARKUP_TEXT.finditer(text):
+                got.add(m.group(1).strip())
+        return set(s for s in got if len(s) >= 4)
+    a, b = strings(removed), strings(added)
+    return sorted(a ^ b)
+
+
+def fill(cmd, tests):
+    """The related_cmd with {tests} and {modules} filled; the paths are added when it has no slot."""
+    paths = " ".join(tests)
+    modules = " ".join(os.path.splitext(t)[0].replace("/", ".") for t in tests)
+    if "{tests}" not in cmd and "{modules}" not in cmd:
+        return (cmd + " " + paths).strip()
+    return cmd.replace("{tests}", paths).replace("{modules}", modules)
+
+
+def related_tests(repo, changed, kinds):
+    tests = [p for p in repo.files() if is_test_file(p)]
+    found = set()
+    for path in changed:
+        ks = set(kinds[path][0].split("+"))
+        if changed[path] != "D" and is_test_file(path) and ks & {"code", "style", "text"}:
+            found.add(path)
+    for path in sorted(changed):
+        status = changed[path]
+        ks = set(kinds[path][0].split("+")) - {"core"}
+        if not ks & {"code", "style", "text", "rule"} or is_test_file(path):
+            continue
+        if "rule" in ks:
+            codes = sorted(section_codes(repo, path, status))
+            needles = [needle(path)] + [needle(c) for c in codes]
+            for t in tests:
+                body = repo.content(t) or ""
+                if any(n.search(body) for n in needles):
+                    found.add(t)
+            continue
+        if ks == {"style"}:
+            stem = os.path.splitext(os.path.basename(path))[0]
+            for t in tests:
+                if stem and stem in os.path.basename(t):
+                    found.add(t)
+            continue
+        needles = name_needles(path)
+        strings = []
+        if "text" in ks and ext_of(path) not in TEXT_EXT:
+            strings = changed_strings(repo, path, status)
+        for t in tests:
+            body = repo.content(t) or ""
+            if any(n.search(body) for n in needles) or any(s in body for s in strings):
+                found.add(t)
+    return sorted(found)
+
+
+def groups_for(repo, changed, kinds):
+    """[(module, cmd)] of the group.<module> keys whose folder holds a file that names a changed code file."""
+    out = []
+    code_files = [p for p in sorted(changed) if "code" in kinds[p][0].split("+")]
+    if not code_files:
+        return out
+    for module, cmd in repo.conf.get("groups", []):
+        prefix = module.rstrip("/") + "/"
+        members = [p for p in repo.files() if p.startswith(prefix) and ext_of(p) in CODE_EXT + MARKUP_EXT]
+        hit = False
+        for path in code_files:
+            needles = name_needles(path)
+            for m in members:
+                if m == path:
+                    continue
+                body = repo.content(m) or ""
+                if any(n.search(body) for n in needles):
+                    hit = True
+                    break
+            if hit:
+                break
+        if hit:
+            out.append((module, cmd))
+    return out
+
+
+# ------------------------------------------------------------------ DB CHECK sign
+
+DB_DANGER = re.compile(
+    r"\b(?:UPDATE|DELETE|DROP|TRUNCATE|RENAME|MODIFY)\b|\bALTER\s+COLUMN\b|\b(?:remove|drop|rename|delete)_\w+"
+    r"|(?-i:\b(?:remove|drop|rename|delete|bulk|change|alter|update)[A-Z]\w*|\b(?:Remove|Drop|Rename|Delete|Alter)[A-Z]\w*)"
+    r"|\bchange_column|\bRunSQL|\bRunPython|\bop\.(?:drop|alter)_|\bupdate_all|\bremove\b", re.I)
+DB_ADD = re.compile(
+    r"\bCREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\b|\bADD\s+COLUMN\b|\b(?:add_column|add_index|create_table|"
+    r"op\.add_column|op\.create_table|addColumn|createTable|AddField|CreateModel|AddIndex|AddColumn|CreateTable)\b")
+DB_CREATE = re.compile(r"\bCREATE\s+TABLE\b|\b(?:create_table|createTable|CreateTable|CreateModel)\b", re.I)
+DB_BOILER = re.compile(
+    r"^(?:--.*|#.*|//.*|/\*.*|\*.*|\*/|<\?php|['\"]use strict['\"];?|[\]\[(){},;]+|\}\)?;?|end|"
+    r"(?:export\s+|abstract\s+|public\s+|partial\s+)*class\b.*|(?:public\s+|protected\s+|override\s+)*"
+    r"(?:async\s+)?(?:def|function|void)\s+\w*\(?.*|(?:import|from|require|use|using|package|namespace)\b.*|"
+    r"(?:const\s+|let\s+|var\s+)?\w*(?:dependencies|operations|initial)\s*=\s*[\[(]?.*|"
+    r"(?:module\.)?exports\.\w+\s*=.*|module\.exports\s*=.*|(?:async\s+)?(?:up|down)\s*\(.*|"
+    r"(?:public\s+)?(?:override\s+)?void\s+Up\(.*|(?:public\s+|protected\s+|async\s+)*(?:up|down)\s*\(.*|"
+    r"migrationBuilder\.\w*(?:Create|Add)\w*\(.*|\(?['\"][\w.-]+['\"],?\s*['\"]?[\w.-]*['\"]?\)?,?)$", re.I)
+
+
+DB_DOWN = re.compile(r"\b(?:down|Down)\s*\(|\bdef\s+(?:downgrade|down)\b|\bexports\.down\b")
+DB_ALTER_ADD = re.compile(r"\bALTER\s+TABLE\b.*\bADD\b(?!\s+(?:CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|CHECK)\b)", re.I)
+DB_KNEX_ADD = re.compile(r"\b(?:alterTable|createTable)\s*\(|^table\.\w+\(")
+DB_PRISMA_LINE = re.compile(r"^(?:(?:model|enum|type|view)\s+\w+\s*\{|\w+\s+[\w.]+(?:\[\]|\?)?(?:\s+@.*)?|@@?\w+.*|\w+|\w+\s*=.*)$")
+
+
+def db_code_lines(added):
+    """The added lines (raw) without comment lines, block comments and down/downgrade bodies."""
+    out = []
+    in_block = False
+    skip = None   # ("indent", n) or ("brace", depth, opened)
+    for _, raw in added:
+        line = raw.rstrip()
+        if in_block:
+            if "*/" not in line:
+                continue
+            line = line.split("*/", 1)[1]
+            in_block = False
+        stripped = line.strip()
+        if stripped.startswith("/*"):
+            if "*/" not in stripped:
+                in_block = True
+                continue
+            stripped = stripped.split("*/", 1)[1].strip()
+            line = stripped
+        if not stripped or stripped.startswith(("--", "#", "//")):
+            continue
+        if skip is not None:
+            if skip[0] == "indent":
+                if len(line) - len(line.lstrip()) > skip[1]:
+                    continue
+                skip = None
+            else:
+                depth, opened = skip[1] + line.count("{") - line.count("}"), skip[2] or "{" in line
+                skip = ("brace", depth, opened) if not (opened and depth <= 0) else None
+                continue
+        if DB_DOWN.search(stripped):
+            if re.match(r"def\s", stripped):
+                skip = ("indent", len(line) - len(line.lstrip()))
+            else:
+                depth = stripped.count("{") - stripped.count("}")
+                opened = "{" in stripped
+                if not (opened and depth <= 0):
+                    skip = ("brace", depth, opened)
+            continue
+        out.append(stripped)
+    return out
+
+
+def db_sign(repo, path, status):
+    """Why this migration or schema file needs the owner's sign, or None (adds only). Unsure = sign."""
+    removed, added = repo.changes(path, status)
+    if any(t.strip() for _, t in removed):
+        return "removed line in %s" % path
+    prisma = path.lower().endswith(".prisma")
+    in_create = False
+    pdepth = 0
+    for line in db_code_lines(added):
+        m = DB_DANGER.search(re.sub(r"\balterTable\b", "alter_table_ok", line)) or re.search(r"\.alter\(", line)
+        if m:
+            w = m.group(0)
+            return "%s in %s" % (w.upper() if w.isalpha() else w, path)
+        if pdepth > 0:
+            pdepth += line.count("(") - line.count(")")
+            continue
+        if in_create:
+            if re.match(r"^(?:\)|end\b|\}|\]).*", line) and not line.startswith("),"):
+                in_create = False
+            continue
+        if DB_ADD.search(line) or DB_ALTER_ADD.search(line) or DB_KNEX_ADD.search(line):
+            depth = line.count("(") - line.count(")")
+            if depth > 0 and not re.search(r"\bdo\s*\|\w+\|\s*$", line):
+                pdepth = depth
+            elif DB_CREATE.search(line) and not re.search(r"\)\s*;?\s*$", line) or re.search(r"\bdo\s*\|\w+\|\s*$", line):
+                in_create = True
+            continue
+        if DB_BOILER.match(line):
+            continue
+        if prisma and DB_PRISMA_LINE.match(line):
+            continue
+        return "unrecognised line in %s (not an add: the owner decides)" % path
+    return None
 
 
 # ------------------------------------------------------------------ main
 
-DECLARED = {"A": 0, "B": 1, "C": 2, "D": 4, "0": 0, "1": 1, "2": 2, "3": 2, "4": 4}   # old 0-4 read as types
-RANK = {"A": 0, "B": 1, "C": 2, "D": 3}
+USAGE = 'usage: agent-level.sh check --base <ref> [--scope "<globs>"] [--json] [--declared <x>]'
+BRIEF_LINE = "BRIEF PICKS: %s (dispatch picks them from the brief)" % ", ".join(agent_blocks.BRIEF_NAMES)
+PR_REVIEW_LINE = "an agent that did not build it reads the diff against the approved requirement"
+WEIGHT_RE = re.compile(r"^\s*(\d+)\s*s\s+(\d+)\s*MB\s*$")
+NET_TESTS = "the release run or the nightly"
+NO_BUILD = "syntax or type check of the touched app (no build_cmd in agent_repo.conf)"
 
 
 def parse(argv):
     if not argv or argv[0] != "check":
-        raise Stop("usage: agent-level.sh check --base <ref> [--declared <A-D>]")
-    base, declared, i = None, None, 1
+        raise Stop(USAGE)
+    base, scope, as_json, declared, i = None, [], False, False, 1
     while i < len(argv):
         opt = argv[i]
-        if opt not in ("--base", "--declared"):
+        if opt == "--json":
+            as_json = True
+            i += 1
+            continue
+        if opt not in ("--base", "--declared", "--scope"):
             raise Stop("unknown argument: %s" % opt)
         if i + 1 >= len(argv):
             raise Stop("%s needs a value" % opt)
@@ -1184,39 +1730,77 @@ def parse(argv):
             if not value:
                 raise Stop("--base needs a ref")
             base = value
+        elif opt == "--scope":
+            scope = split_globs(value)
+            if any(not g for g in scope):
+                raise Stop("--scope: empty item in the globs")
         else:
-            if value not in DECLARED:
-                raise Stop("--declared must be one of A B C D (old 0-4 still read), got: %s" % value)
-            declared = type_of(DECLARED[value])
+            declared = True
         i += 2
     if base is None:
         raise Stop("--base <ref> is required")
-    return base, declared
+    return base, scope, as_json, declared
+
+
+def main_root(top):
+    """The main repo root: the parent of the common git dir (a worktree gives its main repo)."""
+    proc = git(top, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False)
+    common = text_of(proc.stdout).strip()
+    if proc.returncode == 0 and common.endswith("/.git"):
+        return common[:-len("/.git")]
+    return top
+
+
+def measured_weights(top):
+    """{key: "<s> s <mb> MB"} from agent_test_weights.json in the git common dir. Never raises."""
+    proc = git(top, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False)
+    common = text_of(proc.stdout).strip()
+    if proc.returncode != 0 or not common:
+        return {}
+    try:
+        with open(os.path.join(common, "agent_test_weights.json"), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def weight_of(key, measured, conf):
+    """(seconds, mb) of a test key: the measured json first, then the repo file's weight.<key> seed.
+    None when unmeasured."""
+    for raw in (measured.get(key), (conf.get("weights") or {}).get(key)):
+        m = WEIGHT_RE.match(raw) if isinstance(raw, str) else None
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    return None
+
+
+def is_heavy(weight):
+    return weight is not None and (weight[0] >= agent_conf.CONSTANTS["light_test_s"]
+                                   or weight[1] >= agent_conf.CONSTANTS["light_test_mb"])
+
+
+def seconds(conf, key):
+    try:
+        return int(conf.get(key, "").strip())
+    except ValueError:
+        return None
 
 
 def run(argv):
-    if len(argv) < 2:
-        raise Stop("usage: agent_level.py <agent.conf> <cwd> check --base <ref> [--declared <A-D>]")
-    conf_path, cwd = argv[0], argv[1]
-    base, declared = parse(argv[2:])
-
-    l3, l4, notes = [], [], []
-    if os.path.isfile(conf_path):
-        conf = agent_conf.load(conf_path)
-        for key in ("level3_paths", "level4_paths"):
-            msg = agent_conf.validate_value(key, conf.get(key, ""))
-            if msg:
-                raise Stop("agent.conf %s is invalid: %s" % (key, msg))
-        l3 = split_globs(conf.get("level3_paths", ""))
-        l4 = split_globs(conf.get("level4_paths", ""))
-    else:
-        notes.append("no agent.conf: built-in D paths only")
+    if len(argv) < 1:
+        raise Stop("usage: agent_level.py <cwd> check --base <ref> [--scope \"<globs>\"] [--json] [--declared <x>]")
+    cwd = argv[0]
+    base, scope, as_json, declared = parse(argv[1:])
 
     proc = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if proc.returncode != 0:
         raise Stop("not in a git repo: %s" % cwd)
     top = text_of(proc.stdout).strip()
+    conf, warns = agent_conf.repo_conf(main_root(top))
+    for line in warns:
+        sys.stderr.write(line + "\n")
     ok = git(top, "rev-parse", "--verify", "--quiet", base + "^{commit}", check=False)
     if ok.returncode != 0:
         raise Stop("git does not know the ref: %s" % base)
@@ -1234,30 +1818,142 @@ def run(argv):
         if path and not path.endswith("/") and path not in changed:
             changed[path] = "A"
 
-    chk = Checker(top, mb)
-    lines, parts = [], {}
+    repo = Repo(top, mb, conf)
+    kinds = {}
     for path in sorted(changed):
-        lvl, why = level_of(path, changed[path], chk, l3, l4)
-        typ = type_of(lvl)
-        parts.setdefault(typ, []).append(path)
-        lines.append("%s: %s %s" % (path, typ, why))
-    if not changed:
-        notes.insert(0, "no changes")
+        kinds[path] = repo.kinds(path, changed[path])
+    has = {}
+    for path, (ks, _) in kinds.items():
+        for k in ks.split("+"):
+            has.setdefault(k, []).append(path)
 
-    out = ["REQUIRED TYPE %s" % "+".join(sorted(parts) or ["A"])] + lines
-    for typ in sorted(parts):
-        out.append("PART %s: %s" % (typ, ", ".join(parts[typ])))
+    def of(*names):
+        return sorted(set(p for n in names for p in has.get(n, [])))
+
+    budget = agent_conf.CONSTANTS["check_budget_s"]
+    guard_listed = [g.strip() for g in conf.get("guard_tests", "").split(",") if g.strip()]
+    related_cmd = conf.get("related_cmd", "")
+    triggered = {}      # block -> detail text (after "<BLOCK>: ")
+    extra = {}          # block -> lines after its detail
+    notes, heavy = [], []
+    if declared:
+        notes.append("note: --declared is ignored: levels are gone, blocks only")
+    if not changed:
+        notes.append("no changes")
+
+    measured = measured_weights(top)
+    net = []            # (block, weight, what) light-only: a heavy one goes to the release run or the nightly
+
+    triggered["PR REVIEW"] = PR_REVIEW_LINE
+    findings = diff_scan(repo, changed, kinds, scope)
+    triggered["DIFF SCAN"] = "%d findings" % len(findings)
+
+    built = of("code", "style")
+    if built:
+        n = seconds(conf, "build_seconds")
+        if n is not None and n > budget:
+            heavy.append(("BUILD", n, "nightly or pre-release, queued like a heavy test"))
+        else:
+            triggered["BUILD"] = "%s | run: %s" % (", ".join(built), conf.get("build_cmd") or NO_BUILD)
+
+    related, groups = [], []
+    if of("code", "style", "text", "rule"):
+        related = related_tests(repo, changed, kinds)
+        w = weight_of("related", measured, conf)
+        if is_heavy(w):
+            net.append(("RELATED TESTS", w, ""))
+        elif related:
+            run_cmd = fill(related_cmd, related) if related_cmd else "-"
+            triggered["RELATED TESTS"] = "%s | run: %s" % (", ".join(related), run_cmd)
+        else:
+            triggered["RELATED TESTS"] = "none found | run: -"
+        groups = groups_for(repo, changed, kinds)
+
+    guard = []
+    if of("code", "style", "text", "rule"):
+        if not guard_listed:
+            notes.append("GUARD TESTS: none listed in agent_repo.conf (init writes them)")
+        else:
+            n = seconds(conf, "guard_seconds")
+            if n is not None and n > budget:
+                heavy.append(("GUARD TESTS", n, "nightly or pre-release"))
+            else:
+                guard = guard_listed
+                run_cmd = fill(related_cmd, guard) if related_cmd else "-"
+                triggered["GUARD TESTS"] = "%s | run: %s" % (", ".join(guard), run_cmd)
+
+    signs = []
+    db = of("migration", "schema")
+    if db:
+        whys = [(p, db_sign(repo, p, changed[p])) for p in db]
+        yes = [(p, w) for p, w in whys if w]
+        if yes:
+            triggered["DB CHECK"] = "%s | owner signs: yes (%s)" % (", ".join(db), "; ".join(w for _, w in yes))
+            signs.append(("DB CHECK", [p for p, _ in yes]))
+        else:
+            triggered["DB CHECK"] = "%s | owner signs: no (adds only)" % ", ".join(db)
+    if of("data-script"):
+        triggered["DATA CHECK"] = ", ".join(of("data-script"))
+        signs.append(("DATA CHECK", of("data-script")))
+    if of("deps", "ci"):
+        files = of("deps", "ci")
+        every = [cmd for _, cmd in conf.get("groups", [])] or [conf.get("full_cmd") or "-"]
+        w = weight_of("full", measured, conf)
+        if is_heavy(w):
+            net.append(("MODULE TESTS", w, ""))
+        else:
+            triggered["MODULE TESTS"] = "every module (%s) | run: %s" % (", ".join(files), " ; ".join(every))
+        signs.append(("MODULE TESTS", files))
+    elif groups:
+        light = []
+        for m, c in groups:
+            w = weight_of("group." + m, measured, conf)
+            if is_heavy(w):
+                net.append(("MODULE TESTS", w, m))
+            else:
+                light.append((m, c))
+        if light:
+            triggered["MODULE TESTS"] = "%s | run: %s" % (", ".join(m for m, _ in light),
+                                                         " ; ".join(c for _, c in light))
+    if of("core"):
+        triggered["CORE REVIEW"] = ", ".join(of("core"))
+    if signs:
+        order = agent_blocks.NAMES
+        signs.sort(key=lambda s: order.index(s[0]))
+        triggered["OWNER SIGN"] = "; ".join("%s (%s)" % (b, ", ".join(f)) for b, f in signs)
+
+    blocks = [n for n in agent_blocks.TOOL_NAMES if n in triggered]
+    heavy_names = [h[0] for h in heavy] + [n[0] for n in net]
+    rest = [n for n in agent_blocks.TOOL_NAMES if n not in triggered and n not in heavy_names]
+
+    if as_json:
+        data = {"blocks": blocks, "sign": ["%s (%s)" % (b, ", ".join(f)) for b, f in signs],
+                "files": dict((p, {"kinds": kinds[p][0].split("+"), "reason": kinds[p][1]}) for p in sorted(kinds)),
+                "findings": findings, "related": related, "guard": guard, "net": heavy_names}
+        sys.stdout.write(json.dumps(data, indent=2) + "\n")
+        return 0
+
+    out = ["BLOCKS: %s" % ", ".join(blocks + (["OWNER SIGN"] if signs else []))]
+    for path in sorted(kinds):
+        out.append("FILE %s: %s (%s)" % (path, kinds[path][0], kinds[path][1]))
+    for name in agent_blocks.TOOL_NAMES:
+        if name in triggered:
+            out.append("%s: %s" % (name, triggered[name]))
+            if name == "DIFF SCAN":
+                out += ["  " + f for f in findings]
+            out += extra.get(name, [])
+    if "OWNER SIGN" in triggered:
+        out.append("OWNER SIGN: %s" % triggered["OWNER SIGN"])
     out += notes
-    code = 0
-    if declared is not None:
-        # RAISE only for a C or D file above the declared type; A and B files never raise (R8)
-        high = [t for t in ("C", "D") if RANK[t] > RANK[declared] and t in parts]
-        if high:
-            files = [p for t in high for p in parts[t]]
-            out.append("RAISE: declared %s, needs %s (%s)" % (declared, high[-1], ", ".join(files)))
-            code = 1
+    if rest:
+        out.append("NOT TRIGGERED: %s" % ", ".join(rest))
+    for name, n, how in heavy:
+        out.append("NET: %s (heavy, %d s over the %d s budget): %s" % (name, n, budget, how))
+    for name, (sec, mb), what in net:
+        out.append("NET: %s (heavy, %d s, %d MB): %s%s" % (name, sec, mb, NET_TESTS, ": " + what if what else ""))
+    out.append(BRIEF_LINE)
     sys.stdout.write("\n".join(out) + "\n")
-    return code
+    return 0
 
 
 def main():

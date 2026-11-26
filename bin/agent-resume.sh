@@ -20,7 +20,6 @@
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
-conf_read
 
 usage() {
   cat <<'EOF'
@@ -40,13 +39,13 @@ case "${1:-}" in
   *) usage; exit 2;;
 esac
 
-# agent.conf lives in PROJECT_ROOT; the sibling scripts live in PLUGIN_ROOT/bin.
+# The settings come from Configure (setting <key>); the sibling scripts live in PLUGIN_ROOT/bin.
 # The four agent_*.txt data files live in the main repo (ROOT), which can be a
 # different place when this script runs from inside a worktree.
-: "${max_usage_percent:=80}"
-: "${task_manager:=opus-5.5:high}"
-: "${permission_mode:=auto}"
-: "${max_agents:=4}"
+max_usage_percent=$(setting max_usage_percent) || max_usage_percent=80
+task_manager=$(setting task_manager) || task_manager=opus-5.5:high
+permission_mode=$(setting permission_mode) || permission_mode=bypassPermissions
+case "$max_usage_percent" in ''|*[!0-9]*) max_usage_percent=80;; esac
 
 . "$PLUGIN_ROOT/bin/agent-resources.sh"
 . "$PLUGIN_ROOT/bin/agent-runtime.sh"
@@ -104,7 +103,6 @@ model_name() {
 # ---- orca-only setup: live pane lookup, one runtime call. orca may be down. ----
 orca_down=0
 ps_tsv=""
-total_live_panes=0
 if [ "$KIND" = "orca" ]; then
   MODEL=$(model_name "$task_manager")
   EFFORT=${task_manager#*:}
@@ -127,14 +125,20 @@ for w in data.get("result", {}).get("worktrees", []):
 ')
   fi
 
-  # The cap counts spawned agents in state working or permission, not main
-  # managers and not done or idle panes (rule S6). Column 2 (any agent at the
-  # path) is a live pane for live_pane(): a done pane or a main manager pane
-  # still blocks a relaunch. Column 4 (busy agents) is what fills a cap slot.
-  if [ "$orca_down" -eq 0 ] && [ -n "$ps_tsv" ]; then
-    total_live_panes=$(printf '%s\n' "$ps_tsv" | awk -F'\t' '$3!=1{sum+=$4} END{print sum+0}')
+  # No count cap (check-blocks section 25): column 2 (any agent at the path) is a live pane for
+  # live_pane(); a done pane or a main manager pane still blocks a relaunch. Whether one more pane
+  # fits is the memory rule below.
+fi
+# The memory rule: memory in use + live reservations + the panes planned in this run + one pane's need
+# <= the Max memory % limit. "numbers" = "<used MB> <reserved MB> <limit MB> <pane MB>".
+room_used=0; room_reserved=0; room_limit=0; room_pane=550; room_known=0
+if room_nums=$(cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" numbers 2>/dev/null </dev/null); then
+  set -- $room_nums
+  if [ "$#" -eq 4 ]; then
+    room_used=$1; room_reserved=$2; room_limit=$3; room_pane=$4; room_known=1
   fi
 fi
+room_planned=0
 relaunch_count=0
 cap_lines=""
 need_by_hand=""
@@ -175,21 +179,65 @@ else
         relaunched="no, pane is live"
       elif [ "$over_cap" -eq 1 ]; then
         relaunched="no, over cap"
-      elif [ "$((total_live_panes + relaunch_count))" -ge "$max_agents" ]; then
-        relaunched="no, cap reached"
-        cap_lines="${cap_lines}cap reached ($((total_live_panes + relaunch_count))/$max_agents), not relaunching $path
+      elif [ "$room_known" -ne 1 ] || [ "$((room_used + room_reserved + room_planned + room_pane))" -gt "$room_limit" ]; then
+        relaunched="no, no room"
+        if [ "$room_known" -ne 1 ]; then
+          cap_lines="${cap_lines}no room (memory unknown), not relaunching $path
 "
+        else
+          cap_lines="${cap_lines}no room ($((room_used + room_reserved + room_planned)) MB + $room_pane MB > $room_limit MB), not relaunching $path
+"
+        fi
       else
-        mode_eff=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" effective permission_mode "$PROJECT_ROOT/agent.conf" 2>/dev/null | cut -f1) || mode_eff=""
-        [ -n "$mode_eff" ] || mode_eff=auto
+        mode_eff="$permission_mode"
         cmd="AGENT_ROLE=task-manager claude --model $MODEL --effort $EFFORT --permission-mode $mode_eff"
         if [ "$DRY_RUN" -eq 1 ]; then
           relaunched="would"
         else
-          runtime_launch "$path" "TM $module" "$cmd" >/dev/null </dev/null
-          relaunched="yes"
+          # C24, C25: the room check and the reservation happen before the create, in one step; resume launches
+          # on this machine only (no --environment), so the pane is reserved in this machine's list.
+          pane_key="resume-$$-$relaunch_count"
+          if ! (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane --pending "$pane_key" "$room_pane") >/dev/null 2>&1 </dev/null; then
+            relaunched="no, no room"
+            cap_lines="${cap_lines}no room (another agent took it first), not relaunching $path
+"
+          # (runtime_launch is the orca terminal create)
+          elif launch_out=$(runtime_launch "$path" "TM $module" "$cmd" </dev/null); then
+            pane_handle=$(printf '%s' "$launch_out" | python3 -c '
+import json, sys
+def find(o):
+    if isinstance(o, dict):
+        if isinstance(o.get("handle"), str):
+            return o["handle"]
+        for v in o.values():
+            h = find(v)
+            if h:
+                return h
+    elif isinstance(o, list):
+        for v in o:
+            h = find(v)
+            if h:
+                return h
+    return ""
+try:
+    print(find(json.load(sys.stdin)))
+except Exception:
+    print("")' 2>/dev/null) || pane_handle=""
+            # the reservation takes the new handle (no check); no handle in the answer: it stays under its key
+            if [ -n "$pane_handle" ]; then
+              (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" reserve-pane --name "$pane_key" "$pane_handle") >/dev/null 2>&1 </dev/null || true
+            fi
+            relaunched="yes"
+          else
+            # a failed create gives the reservation back
+            (cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" release-pane "$pane_key") >/dev/null 2>&1 </dev/null || true
+            relaunched="yes"
+          fi
         fi
-        relaunch_count=$((relaunch_count + 1))
+        if [ "$relaunched" = yes ] || [ "$relaunched" = would ]; then
+          relaunch_count=$((relaunch_count + 1))
+          room_planned=$((room_planned + room_pane))
+        fi
       fi
     else
       # plain, cloud: no terminals. Same "is this worth relaunching" checks,

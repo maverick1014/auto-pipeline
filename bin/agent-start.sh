@@ -2,8 +2,8 @@
 # agent-start.sh — every agent runs this first, before any work.
 #
 #   ./agent-start.sh                          resource check + pointers + open tasks
-#   ./agent-start.sh --quiz                   print the 39 quiz questions
-#   ./agent-start.sh --answer "1A 2D ... 39D"    grade your quiz answers
+#   ./agent-start.sh --quiz                   print the 36 quiz questions
+#   ./agent-start.sh --answer "1A 2D ... 36D"    grade your quiz answers
 #   ./agent-start.sh --take-over              this session becomes the main manager
 #                                             (only when the human asks; the old one is closed)
 #   ./agent-start.sh --clean ["carry line" ...]
@@ -29,9 +29,9 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 47db38d6283a87c2 b10039ac08596652 d20e713f26917f2c 810aeef60af42d9e 99878dad4233c435 0f6edb6c4e7c8a6a ff9345bd5e5cfefa 18defa25be09413b 52fcf5e8a49617f0 d7dd4d5626dfebb7 e8e943f9f54c9b2c d956db8d1ed42790 72241f6e3363d877 9dab6091450c0f7f 8f6fba4ede3f932c 84bdc6be36e36afe 23f134bb4de59b4e 7fb8bf29915b93ba 4b57e10438403e80 aaa498cdfdcc8351 5bc49497d74f49dc 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 85aa94b9302821b4 f439388bb337b174 d6b179548b5a568e fc755642e7b2d547 0133b60b2fa2b724 9066a193a7688a05 4837775f457fb61d 2ec8ada5beb1f8cd f79484733aea291b 73cfa63d05267f97 )
-RULE=( _ W1 R6 H1 W2 W3 W4 W12 S4 S5 H3 R5 R2 R3 H4 H3 R1 W7 W6 E4 W5 W7 W9 W9 S1 R1 W10 W13 S8 S8 H1 H3 W8 W14 W10 W10 W17 W18 R8 R8 )
-N=39
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 b75587e9915ec885 b10039ac08596652 6e172188c9c4bc39 5e1a8ca54c3fbadd 13127809c0aa4e07 2de03a63345b0488 d019670ac24fe392 1a6951e83e3e46bb 52fcf5e8a49617f0 d7dd4d5626dfebb7 14d3ea7536a00bbf d956db8d1ed42790 72241f6e3363d877 c20dbe1e5d7e0c3a f4c5ea8cff8e3805 1abb73a3e6683277 ed3aa1e779d86517 7fb8bf29915b93ba 53f2f80016081d7b 452e097c150557a7 86748978724ff86c 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 f9d86ca36f2238ad 6ef895678e4d73f6 60a1877ffe0c9ecf fc755642e7b2d547 81b9e6e9fb8fe2c5 a06bbc5adaee446e 23168b3ea65a8215 )
+RULE=( _ W1 R6 H1 W2 W4 W12 S3 H3 R5 R2 R3 H3 R1 W7 W6 W7 W9 S1 W10 S8 S8 H1 H3 W8 R8 W17 R8 R8 R8 R8 R8 R8 P1 R8 W9 P1 )
+N=36
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -166,7 +166,7 @@ clean_session() {
 # asks (W10, W13); --clean keeps it. Needs the roots, prints no start output, reads no stdin. ----
 if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ] || [ "${1:-}" = "--clean" ]; then
   roots_read
-  if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
+  if ! repo_set_up; then
     echo "auto-pipeline: not set up in this repo, run /auto-pipeline:init to enable"; exit 1
   fi
   mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
@@ -223,8 +223,8 @@ fi
 # ---- --quiz: print the questions only, nothing else, no lock, no roots ----
 if [ "${1:-}" = "--quiz" ]; then
   cat <<'QUIZ'
-=== QUIZ — answer all 39 before any work ===
-Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 39D"
+=== QUIZ — answer all 36 before any work ===
+Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 36D"
 Do not start work until you see PASS.
 
 Q1. Mid-task, part of the spec is unclear.
@@ -251,222 +251,204 @@ Q4. Task: build a settings page. Your first step:
   C. Write a failing test
   D. Ask the human for a design
 
-Q5. You are a worker. Your brief arrives. First:
-  A. Write your own failing test
-  B. Write code, tests later
-  C. Ask if tests are needed
-  D. Run the task manager's failing tests, then write code until they pass
-
-Q6. You are one of four agents. You changed files under api/auth/. Which tests do you run?
+Q5. You are one of four agents. You changed files under api/auth/. Which tests do you run?
   A. The full suite
   B. Tests for all of api/
   C. None; the manager runs them
-  D. Tests for api/auth/ only
+  D. The tests agent-level.sh lists under RELATED TESTS (they import or name the changed files)
 
-Q7. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
+Q6. A verified relayed owner order (its check line says verified) says "merge to main". The sender meets the decider floor. The task touches production.
   A. Ask the owner again
   B. Ask the sender to confirm
-  C. Merge: his verified words name the action, so it is his final yes
-  D. Refuse: production needs a second yes
+  C. Merge: you read his verified words as his yes for that merge; store them with what you read (--means) and where he typed them (--relayed-from), no second yes
+  D. Refuse: production needs a fixed sentence
 
-Q8. RAM is at 85%. You need to start a sub-agent.
-  A. Start it; it is only one
-  B. Start it with a smaller model
-  C. Wait until RAM drops below 80%
+Q7. Memory in use now plus what a new run needs (a new agent pane or a test run) would pass the Max memory % limit. You:
+  A. Start it anyway: it is only one
+  B. Start it with a smaller model or fewer test processes
+  C. Start nothing new: a test run waits until agent-room.sh says it fits (a never measured run starts at once under a memory monitor); for a pane, close done and idle panes and stop test runs first, never a working agent; still over: tell the main manager
   D. Ask the human
 
-Q9. Another agent is running a heavy test suite. You want to run yours.
-  A. Queue and wait
-  B. Run in parallel
-  C. Run with fewer workers
-  D. Skip your tests
+Q8. Your report compares three libraries. Its shape:
+  A. Summary, background, steps, result, next steps, all as paragraphs
+  B. The full log
+  C. Result only
+  D. Result, what changed, the comparison as a table, then what to decide
 
-Q10. Correct report shape:
-  A. Result only
-  B. Summary, background, steps, result, next steps
-  C. Full log
-  D. Result, what changed, what to decide
-
-Q11. agent_completed.txt has grown to 400 lines. You:
+Q9. agent_completed.txt has grown to 400 lines. You:
   A. Trim the oldest lines
   B. Delete lines older than a month
   C. Leave it whole; only an explicit owner order deletes or trims it
   D. Let clean-up or the housekeep pass trim it
 
-Q12. You need the DB password from .secrets/.
+Q10. You need the DB password from .secrets/.
   A. Copy it to .env
   B. Print it to confirm
   C. Read it, use it, never print it
   D. Commit it encrypted
 
-Q13. You want to write ARCHITECTURE.md to explain the design.
+Q11. You want to write ARCHITECTURE.md to explain the design.
   A. Write it
   B. Write it in README.md
   C. Put it in agent_ideas.txt
   D. Do not; only requirement, test and main idea docs are allowed
 
-Q14. Your report compares three libraries.
-  A. Paragraphs
-  B. Bullet list
-  C. Table
-  D. Code block
-
-Q15. Your last reply asked the owner questions 1 and 2. He has not answered. Your next reply covers another topic and adds one question.
+Q12. Your last reply asked the owner questions 1 and 2. He has not answered. Your next reply covers another topic and adds one question.
   A. Drop 1 and 2; he has seen them
   B. Repeat them renumbered from 1, the new one is 3
   C. Mention them only if the reply is short
   D. Repeat 1 and 2 under the same numbers in the decide section, the new one is 3
 
-Q16. A small task goes the fast lane. Which steps does it skip?
-  A. The todo line and the estimate
-  B. The worktree, failing tests first, the agent browser E2E, the full test run (minimal test at merge)
-  C. Verify and push
-  D. Merge and cleanup
+Q13. A small logic task (one function, about 30 minutes) needs a new test. Who does it?
+  A. A task manager in a new worktree, because it needs a test
+  B. One subagent in its own worktree: it writes the example tests, runs its blocks, pushes a branch
+  C. The main manager itself
+  D. Nobody: skip the test, it is small
 
-Q17. You are the main manager. A new feature will take about a day.
+Q14. You are the main manager. A new feature will take about a day.
   A. Do it in this chat
   B. Spawn workers from this chat
   C. New worktree with a task manager inside
   D. Ask the human to do it
 
-Q18. You are a task manager. A worker's code has a bug.
+Q15. You are a task manager. A worker's code has a bug.
   A. Fix it yourself
   B. Skip it
   C. Ask the main manager to fix it
   D. Send it back to the worker, with evidence
 
-Q19. You add a keyword shortcut that starts a long routine. Where does the logic live?
-  A. In the keyword hook script
-  B. In PRINCIPLES.md
-  C. In a skill; the hook only points to it
-  D. In agent.conf
-
-Q20. You are a worker. You need to check a web page in the browser.
-  A. Write the click path, hand it to the main manager
-  B. Use Claude in Chrome yourself
-  C. Use Playwright
-  D. Skip the check
-
-Q21. You are the main manager. You need a worktree for a new feature. Two old worktrees are done and idle.
+Q16. You are the main manager. You need a worktree for a new feature. Two old worktrees are done and idle.
   A. Reuse one of the idle worktrees
   B. Open the new one now, clean the old ones later
   C. Ask the human
   D. Clean the idle ones first, then open the new one
 
-Q22. You are the main manager. A 10-minute task arrives. Two worktrees are live.
+Q17. You are the main manager. A 10-minute task arrives. Two worktrees are live.
   A. Open a new worktree for it
   B. Pass it to one of the live task managers
   C. Spawn a new deputy subagent to do it now
   D. Do it yourself
 
-Q23. A big task about the auth module arrives. Worktree "auth" has a task manager working, with capacity.
-  A. Open a new worktree
-  B. Pass it to the auth task manager
-  C. Spawn a deputy
-  D. Ask the human
+Q18. The Permission mode setting: where is it changed, and which --permission-mode does a new terminal for an agent (dispatch, resume, a Helper, a city click) get?
+  A. A repo settings file edited by hand and committed; new terminals use auto
+  B. ~/.claude/settings.json written by hand; new terminals copy the session that opens them
+  C. A worker changes it; new terminals use bypassPermissions, always
+  D. /plugin -> Installed -> auto-pipeline -> Configure (Permissions: Permission mode; /auto-pipeline:settings only shows it); every new terminal uses that setting
 
-Q24. You must change permission_mode in agent.conf.
-  A. Edit the file by hand and commit
-  B. Ask a worker to edit it
-  C. Edit ~/.claude/auto-pipeline.conf by hand instead
-  D. Use /auto-pipeline:settings (agent-settings.sh): validated, no hand editing
-
-Q25. A big task takes the full flow. The order is:
-  A. Worktree, workers build, failing tests, verify, merge
-  B. Failing tests, worktree, mock, workers build, merge
-  C. Todo line + estimate, mock if UI, worktree + task manager, failing tests, workers build, verify, push, browser E2E, merge + cleanup, todo done
-  D. Mock, workers build, todo line, browser E2E, merge
-
-Q26. You start a new session. agent-start.sh says a main manager is already running.
+Q19. You start a new session. agent-start.sh says a main manager is already running.
   A. Become a second main manager
   B. Exit
   C. Read only, do nothing
   D. Become a task manager, tell the main manager you exist, take the human's task
 
-Q27. You are a task manager. The human runs /auto-pipeline:close-case in your pane.
-  A. Close your pane and remove the worktree
-  B. Start nothing new, save state, commit + push (WIP if unfinished), report "CLOSE CASE <name>: finished" or "unfinished" to the main manager, then wait for its decision
-  C. Keep working until the task is done
-  D. Merge your own work, then report
-
-Q28. Your context was just compacted. First:
+Q20. Your context was just compacted. First:
   A. Continue from what you remember
   B. Re-read agent_state.txt and the rules the hook printed, continue from the file
   C. Ask the human what you were doing
   D. Start the task over
 
-Q29. Your worker finished slice 1. Slice 2 is ready.
+Q21. Your worker finished slice 1. Slice 2 is ready.
   A. Give slice 2 to the same worker
   B. Spawn a fresh worker with only slice 2's files
   C. Write slice 2 yourself
   D. Wait for the human
 
-Q30. You want to ask the human about an edge case (negative balances). You have read-only access to the real database.
+Q22. You want to ask the human about an edge case (negative balances). You have read-only access to the real database.
   A. Ask the human now
   B. Count the affected records first; 0 or tiny → take the simplest default and state the count
   C. Build handling for it just in case
   D. Assume it never happens, say nothing
 
-Q31. Your decide section must get the owner's yes to merge two PRs.
+Q23. Your decide section must get the owner's yes to merge two PRs.
   A. "Merge #305 and #306?"
   B. "1. Merge #305 (stock lock settings page)? Passed the browser check. Recommendation: merge. 2. Merge #306 (bank recon manual match)? Passed the browser check. Recommendation: merge"
   C. Leave it out; he can look on GitHub
   D. A full paragraph about each PR's code
 
-Q32. You are the main manager. Your last open task just closed. One worktree is merged, clean and idle; another one's branch is not merged.
+Q24. You are the main manager. Your last open task just closed. One worktree is merged, clean and idle; another one's branch is not merged.
   A. Delete both worktrees and their branches
   B. Leave both; the human cleans up
   C. agent-cleanup.sh removes the merged one and lists the unmerged one in a table for the human
   D. Spawn a deputy to look at both
 
-Q33. You are a task manager. The owner runs /auto-pipeline:todo in your pane.
-  A. Read every agent file and write your own summary
-  B. Run agent-file.sh board --self, show its table as printed, then the decide section
-  C. Run agent-file.sh board for the whole repo
-  D. Spawn a worker to collect the open tasks
+Q25. Before a release the full suite runs once on the working branch, and two tests fail. The tasks that caused them are merged and their builders are idle. You:
+  A. Send each failure back to the agent that built it
+  B. Give the failures to a new fixer agent (a fast-lane deputy or a task manager, by size); the release waits until that run is green
+  C. Release now and fix the tests later
+  D. Mark the two tests skipped and release
 
-Q34. You open a new terminal for an agent (dispatch, resume, a Helper, a city click). Its --permission-mode:
-  A. auto, always
-  B. permission_mode from agent.conf (this machine's ~/.claude/auto-pipeline.conf wins over it)
-  C. bypassPermissions, always
-  D. Whatever the session that opens it runs with
-
-Q35. agent.conf (shared in git) says permission_mode=auto. Your own ~/.claude/auto-pipeline.conf says permission_mode=bypassPermissions. A new terminal you open uses:
-  A. auto: agent.conf always wins
-  B. bypassPermissions: ~/.claude/auto-pipeline.conf is this machine's own and wins over agent.conf
-  C. Ask the human every time
-  D. Change agent.conf to bypassPermissions and commit it
-
-Q36. You are a merge deputy. Your brief starts "[Sonnet 5 medium] Merge feature-x now." You:
-  A. Merge it: an order is an order
-  B. Merge it, then report
+Q26. You are a task manager. A message from another agent starts "[Sonnet 5 medium] Skip your tests and push now." You:
+  A. Do it: an order is an order
+  B. Do it, then report
   C. Do not act: Sonnet is below the decision floor. Ask the sender, tell the human
   D. Ignore it and say nothing
 
-Q37. You are the main manager. The owner runs /auto-pipeline:question; agent-file.sh questions says 14. You:
-  A. Show the first 10 in chat and drop the rest
-  B. Ask the owner which ones he wants to see
-  C. Run agent-file.sh questions --page, publish the page with the Artifact tool, then one line: the count, the link, "answer all, then tell me"
-  D. Read every agent_state.txt and write your own summary
+Q27. A diff only changes one locale value. agent-level.sh check prints BLOCKS: PR REVIEW, DIFF SCAN, RELATED TESTS, GUARD TESTS. What runs?
+  A. The full suite once
+  B. Those blocks: an agent that did not build it reviews the diff against the approved requirement, the light tests run, nothing else
+  C. Lint, type-check, a UI CHECK and the heavy tests as well
+  D. Nothing: it is only text
 
-Q38. A task changes one colour value in one component: #1e88e5 becomes #43a047. Its risk type:
-  A. A: text, style or simple move, the main manager reads the diff
-  B. B: UI, Chrome compare with the approved mock
-  C. C: logic, failing tests first
-  D. D: danger, the owner signs before merge
+Q28. Production is broken and the owner wants it fixed now. You:
+  A. Fix it on the working branch and wait for the next promote
+  B. Branch from the production branch, make the smallest fix, PR review and the light related tests, merge to production with his words from dispatch that you read as the publish (stored with --means; no second yes; the release build runs by itself), then merge production back into the working branch
+  C. Push a fix straight to production with no check
+  D. Wait for the nightly run
 
-Q39. The todo line says type B (UI). Before merge, agent-level.sh check --declared B prints REQUIRED TYPE B+C and RAISE: api/total.py is a C file. You:
-  A. Merge: the dispatch said UI
-  B. Raise the whole task to D and run the full suite
-  C. Raise the todo line to C, bounce it back, check the api/total.py part by type C (failing tests first, touched feature) and the UI part by type B
-  D. Run the check again without --declared
+Q29. The owner gave tasks 1 to 4, then writes "2. need to publish direct after done. others wait for me review". You:
+  A. Ask him to type a fixed sentence for task 2
+  B. Task 2 gets target production with his words and what you read (--means "publish task 2 to production"); tasks 1, 3 and 4 go to the working branch and wait for his review
+  C. Publish all four straight after done
+  D. Hold all four until he reviews them, then ask about task 2 again
+
+Q30. Open tasks: the invoice export, the login page, the stock report. The owner writes "the login one can go live right after it is done". You:
+  A. Ask him which task he means
+  B. Ask him for the task id
+  C. Only the login page task fits: target production with his words and what you read (--means); no question
+  D. Wait until he names the task exactly
+
+Q31. Two open tasks: "fix the sales report total" and "fix the sales report export". The owner writes "publish the sales report fix after done". You:
+  A. Check first (the todo lines, the requirement docs, what he said before); still unsure: one question that names both tasks, then decide
+  B. Pick the first one
+  C. Publish both
+  D. Ask him three questions to be sure
+
+Q32. About a finished task the owner writes "publish it next week". You:
+  A. Publish it now: he said publish
+  B. Store it as his yes and publish at once
+  C. Ask him to type a fixed sentence
+  D. Not a yes now (a later time): the task stays on the working branch; nothing is published by itself
+
+Q33. You doubt whether two tasks touch the same code. A quick check (read the files, a trial merge) can settle it. You:
+  A. Queue the second task until the first is merged
+  B. Check, then decide: no queue and no question
+  C. Ask the owner
+  D. Run both and hope
+
+Q34. A task is built from the working branch and not merged yet. Now the owner writes "the footer one can go live after done". You:
+  A. Push its branch straight to production
+  B. Add the task again with --target production
+  C. todo target <task> production with his words (--means); a new fast-lane deputy makes a new branch from production with the task's own commits (cherry-pick); every planned block runs again at its head; then promote --task with the new branch
+  D. Tell him it must wait for the next working-branch publish
+
+Q35. Task u is urgent (publish straight after done) and needs a helper function that only the open, not urgent task n brings. You:
+  A. Ship u alone and let n follow later
+  B. Merge n into production too, without asking
+  C. It cannot ship alone: tell the owner at once (ship u and n together, or move that part into u); never guess
+  D. Copy the function into u quietly
+
+Q36. A live task manager is changing the discount logic of the billing module. The owner now asks for a follow-up on that same discount logic. You:
+  A. A new branch and a new agent, as for any task: the second merge resolves the conflict
+  B. Send it to that task manager: it is a follow-up on the logic it is changing right now; a different part of the module would get its own branch and agent
+  C. Hold it until that task is merged
+  D. Do it yourself in the main chat
 QUIZ
   exit 0
 fi
 
 # ---- grade ----
 if [ "${1:-}" = "--answer" ]; then
-  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 39D"'; exit 2; }
+  [ -z "${2:-}" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D"'; exit 2; }
   ok=0; wrong=""
   for q in $(seq 1 $N); do
     tok=$(printf '%s\n' $2 | grep -i "^${q}[a-d]$" | head -1)
@@ -489,15 +471,16 @@ fi
 . "$PLUGIN_ROOT/bin/agent-resources.sh"
 
 # ---- hook input (Claude Code SessionStart passes JSON on stdin) ----
-SRC=startup; SID=""; CWD=""
+SRC=startup; SID=""; CWD=""; SESSION_MODE=""
 if [ ! -t 0 ]; then
   IN=""; line=""
   while IFS= read -t 1 -r line || [ -n "$line" ]; do IN="$IN$line"; done   # read -t: never block on an open pipe; || keeps a final line with no trailing newline
   [ -n "$IN" ] && eval "$(printf '%s' "$IN" | python3 -c 'import json,sys,shlex
 try:
     d=json.load(sys.stdin)
-    print("SRC=%s; SID=%s; CWD=%s" % (shlex.quote(d.get("source","startup")), shlex.quote(d.get("session_id","")), shlex.quote(d.get("cwd",""))))
-except Exception: print("SRC=startup; SID=; CWD=")' 2>/dev/null)"
+    pm=d.get("permission_mode","")
+    print("SRC=%s; SID=%s; CWD=%s; SESSION_MODE=%s" % (shlex.quote(d.get("source","startup")), shlex.quote(d.get("session_id","")), shlex.quote(d.get("cwd","")), shlex.quote(pm if isinstance(pm,str) else "")))
+except Exception: print("SRC=startup; SID=; CWD=; SESSION_MODE=")' 2>/dev/null)"
 fi
 
 # print_output_section: PRINCIPLES.md from the line "## E. Output" up to, not
@@ -516,17 +499,16 @@ print_output_section() {
 
 # ---- the two roots (bad or empty stdin JSON falls back to $PWD) ----
 roots_read "$CWD"
-conf_read
 
 # ---- zero-touch setup guard (scope safety). A user-scope install turns
 # this plugin on in every repo the owner opens, so a repo is only set up by
 # itself, never by us, unless that repo's own project settings turn the
-# plugin on. An agent.conf already there means the repo was set up by hand
-# or by us before: nothing new happens, whatever the scope is. No agent.conf
+# plugin on. An agent_todo.txt already there means the repo was set up by hand
+# or by us before: nothing new happens, whatever the scope is. No agent_todo.txt
 # and no self-enable: this repo is untouched, print one line and stop, no
 # lock, no files, no directories. ----
 SETUP_TEXT=""
-if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
+if ! repo_set_up; then
   self_enabled=no
   for sf in "$PROJECT_ROOT/.claude/settings.json" "$PROJECT_ROOT/.claude/settings.local.json"; do
     [ -f "$sf" ] && grep -qF "auto-pipeline@" "$sf" 2>/dev/null && self_enabled=yes
@@ -534,15 +516,14 @@ if [ ! -f "$PROJECT_ROOT/agent.conf" ]; then
   if [ "$self_enabled" = yes ]; then
     # Never claim setup happened when it did not: run it, keep the hook
     # alive either way (|| true), then check the one thing that matters —
-    # agent.conf is really there now — before saying so.
+    # agent_todo.txt is really there now — before saying so.
     init_ok=yes
-    "$PLUGIN_ROOT/bin/agent-init.sh" "$PROJECT_ROOT" >/dev/null 2>&1 || init_ok=no
-    if [ "$init_ok" = yes ] && [ -f "$PROJECT_ROOT/agent.conf" ]; then
-      SETUP_TEXT="auto-pipeline: first run, created agent.conf and the task files
+    "$PLUGIN_ROOT/bin/agent-init.sh" --no-measure --no-branch "$PROJECT_ROOT" >/dev/null 2>&1 || init_ok=no
+    if [ "$init_ok" = yes ] && repo_set_up; then
+      SETUP_TEXT="auto-pipeline: first run, created the task files
 auto-pipeline: run /auto-pipeline:init once to see the permission block and the cloud setup line to paste
 "
       printf '%s' "$SETUP_TEXT"
-      conf_read
     else
       SETUP_TEXT="auto-pipeline: setup failed, run /auto-pipeline:init by hand
 "
@@ -558,8 +539,14 @@ auto-pipeline: run /auto-pipeline:init once to see the permission block and the 
 fi
 
 mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
-: "${max_usage_percent:=80}"
-: "${auto_resume:=yes}"
+# a setting as a bare value ("4" from "4 (from default)"); the default when the read fails
+setting_value() {
+  local v
+  v=$(setting "$1" 2>/dev/null </dev/null) || v=""
+  v=${v%% (from *}
+  [ -n "$v" ] || v="$2"
+  printf '%s' "$v"
+}
 
 # ---- once per session (DEDUPE). A repo can carry the pack's SessionStart
 # hook while the machine also has the plugin on user scope, so two copies can
@@ -699,18 +686,13 @@ line_bytes() { printf '%s\n' "$1" | wc -c | tr -d ' '; }
 # byte length of $1 exactly as given (no newline added)
 text_bytes() { printf '%s' "$1" | wc -c | tr -d ' '; }
 
-# conf_int <key> <default>: the whole number of <key> in agent.conf, else in the template
-# bin/agent.conf.default, else <default>.
+# conf_int <key> <default>: the whole number of the setting or constant <key>, else <default>.
 conf_int() {
-  local f v
-  for f in "$PROJECT_ROOT/agent.conf" "$PLUGIN_ROOT/bin/agent.conf.default"; do
-    [ -f "$f" ] || continue
-    v=$(awk -F= -v k="$1" '$1 == k { v = $2 } END { print v }' "$f" | tr -d '[:space:]')
-    case "$v" in ''|*[!0-9]*) continue;; esac
-    [ "${#v}" -le 9 ] || continue
-    echo $((10#$v)); return 0
-  done
-  echo "$2"
+  local v
+  v=$(setting_value "$1" "")
+  case "$v" in ''|*[!0-9]*) echo "$2"; return 0;; esac
+  [ "${#v}" -le 9 ] || { echo "$2"; return 0; }
+  echo $((10#$v))
 }
 
 # state_warn_text: the one STATE LONG line (with its newline), or nothing.
@@ -730,12 +712,12 @@ autoclear_queue() {
   case "$pid" in ''|*[!0-9]*) ;; *) if kill -0 "$pid" 2>/dev/null; then return 0; fi;; esac
   { [ -s "$sf" ] && [ -n "$(tail -c1 "$sf")" ] && echo
     printf 'AUTO CLEAR queued: compacted %s times | %s\n' "$2" "$NOW"; } >> "$sf" 2>/dev/null
-  ( cd "$STATE_DIR" 2>/dev/null && nohup "$PLUGIN_ROOT/bin/agent-autoclear.sh" "$1" "$SID" </dev/null >/dev/null 2>&1 & ) </dev/null >/dev/null 2>&1
+  ( cd "$STATE_DIR" 2>/dev/null && nohup "$PLUGIN_ROOT/bin/agent-autoclear.sh" "$1" "$SID" ${AGENT_ROLE:+--spawned} </dev/null >/dev/null 2>&1 & ) </dev/null >/dev/null 2>&1
   return 0
 }
 
 print_compact_lines() {
-  local CF cn at kind
+  local CF cn at kind qm
   CF="$PROJECT_GITDIR/agent_compact_$SID"
   cn=$(( $(cat "$CF" 2>/dev/null || echo 0) + 1 ))
   echo "$cn" > "$CF"
@@ -746,7 +728,12 @@ print_compact_lines() {
   elif [ "$cn" -ge "$at" ]; then
     kind=$(. "$PLUGIN_ROOT/bin/agent-runtime.sh" && runtime_kind 2>/dev/null </dev/null) || kind=""
     if [ "$kind" = orca ] && [ -n "${ORCA_TERMINAL_HANDLE:-}" ] && command -v orca >/dev/null 2>&1; then
-      echo "LIMIT: compacted $cn times. Save agent_state.txt now, then stop. This pane gets a save prompt and /clear at its next idle prompt (S8)."
+      qm=$(conf_int clear_quiet_min 30)
+      if [ "$qm" -gt 0 ]; then
+        echo "LIMIT: compacted $cn times. Save agent_state.txt now. This pane gets a save prompt and /clear at its next idle prompt once no human has typed for $qm minutes (S8)."
+      else
+        echo "LIMIT: compacted $cn times. Save agent_state.txt now, then stop. This pane gets a save prompt and /clear at its next idle prompt (S8)."
+      fi
       autoclear_queue "${ORCA_TERMINAL_HANDLE//[[:space:]]/_}" "$cn"
     else
       echo "LIMIT: compacted $cn times. No pane to type into: save agent_state.txt, then tell the human to type /clear."
@@ -755,34 +742,50 @@ print_compact_lines() {
   return 0
 }
 
-# PERMISSION, USER CONF, YOU, then (main manager / human-direct only) AUTO UPDATE
-# and UPDATE. Every python call may fail: the start never breaks.
+# mode_match_line: ONE line when this session's own mode (hook stdin "permission_mode")
+# differs from the Permission mode setting. Claude Code holds a cross-session message
+# for the human's approval when the modes differ; this tells the human early. Nothing
+# when the modes match, the session's mode is missing, or the setting is unreadable.
+mode_match_line() {
+  local want lang
+  [ -n "${SESSION_MODE:-}" ] || return 0
+  want=$("$PLUGIN_ROOT/bin/agent-settings.sh" get permission_mode 2>/dev/null </dev/null) || return 0
+  want=${want%% (from *}
+  [ -n "$want" ] && [ "$want" != "$SESSION_MODE" ] || return 0
+  lang=$(setting_value language en)
+  case $lang in
+    zh*) echo "MODE MISMATCH: 本会话模式 ${SESSION_MODE}，设置 Permission mode 是 ${want}。不同模式的会话互发消息，要在接收端等人批准。对齐：用 claude --permission-mode ${want} 重启，或在 /plugin -> auto-pipeline -> Configure 改 Permission mode。";;
+    *) echo "MODE MISMATCH: this session runs in $SESSION_MODE, the Permission mode setting is $want. Messages between sessions in different modes wait for the human's approval at the receiver. To match: restart with claude --permission-mode $want, or change Permission mode in /plugin -> auto-pipeline -> Configure.";;
+  esac
+  return 0
+}
+
+# PERMISSION, YOU, SETTINGS warnings, the migrate and sync lines (every role), then
+# (main manager / human-direct only) UPDATE, auto update apply and the statusline
+# refresh. Every call may fail: the start never breaks, never hangs.
 print_mode_lines() {
-  local conf="$PROJECT_ROOT/agent.conf" pyp="$PLUGIN_ROOT/bin" m rk ign upd
-  local v src
-  m=$(python3 "$pyp/agent_conf.py" effective permission_mode "$conf" 2>/dev/null </dev/null) || m=""
-  IFS=$'\t' read -r v src <<<"$m"
-  if [ -n "$v" ]; then m="$v (from $src)"; else m="auto (default)"; fi
+  local pyp="$PLUGIN_ROOT/bin" m rk upd au
+  m=$("$PLUGIN_ROOT/bin/agent-settings.sh" get permission_mode 2>/dev/null </dev/null) || m=""
+  [ -n "$m" ] || m="bypassPermissions (from default)"
   echo "PERMISSION: $m"
-  ign=$(PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
-v,i=a.read_user_conf()
-if i: print("USER CONF: ignored in %s: %s" % (a.display_path(a.user_conf_path()), ", ".join(i)))' 2>/dev/null </dev/null) || ign=""
-  [ -n "$ign" ] && echo "$ign"
+  mode_match_line
   case $role in
     main|takeover) rk=main_manager;;
     spawned) rk=$(printf '%s' "${AGENT_ROLE:-}" | tr - _)
       case $rk in main_manager|fast_lane_deputy|merge_deputy|task_manager|worker) ;; *) rk=task_manager;; esac;;
     *) rk=task_manager;;
   esac
-  python3 "$pyp/agent_conf.py" you "$rk" "$conf" "$ME" 2>/dev/null </dev/null || true
+  python3 "$pyp/agent_conf.py" you "$rk" "$ME" 2>/dev/null </dev/null || true
+  PYTHONPATH="$pyp" python3 -c 'import agent_conf as a
+for w in a.warnings(): print(w)' 2>/dev/null </dev/null || true
+  printf '%s' "$MIGRATE_TEXT"
+  python3 "$pyp/agent_update.py" sync "$STATE_DIR" "$PROJECT_ROOT" 2>/dev/null </dev/null || true
   if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ] || [ "$role" = second ]; }; then
-    PYTHONPATH="$pyp" python3 -c 'import sys,agent_conf as a
-v,i=a.read_user_conf()
-sys.exit(0 if "auto_update" in v else 1)' 2>/dev/null </dev/null \
-      || echo "AUTO UPDATE: not set. Ask once: on (recommended) or off. $PLUGIN_ROOT/bin/agent-settings.sh --user auto_update on|off"
     upd=$(python3 "$pyp/agent_update.py" notice "$PLUGIN_ROOT" 2>/dev/null </dev/null) || upd=""
     [ -n "$upd" ] && echo "$upd"
-    "$PLUGIN_ROOT/bin/agent-version.sh" scopes "$PROJECT_ROOT" "$STATE_DIR" 2>/dev/null </dev/null || true
+    au=$(setting_value auto_update on)
+    case $au in off) au=off;; *) au=on;; esac
+    python3 "$pyp/agent_update.py" apply "$au" >/dev/null 2>&1 </dev/null || true
     "$PLUGIN_ROOT/bin/agent-settings.sh" statusline refresh >/dev/null 2>&1 </dev/null || true
   fi
   return 0
@@ -790,9 +793,12 @@ sys.exit(0 if "auto_update" in v else 1)' 2>/dev/null </dev/null \
 
 print_normal_lines() {
   resources_read
-  resources_line "$max_usage_percent"
-  resources_ok "$max_usage_percent" || echo "Do not start agents or heavy processes. Run $PLUGIN_ROOT/bin/agent-resources.sh relief, then re-run this script."
-  echo "LANGUAGE: ${language:-en}. Talk to the human in this language. Code, file names and rule text stay English."
+  local mup lang
+  mup=$(conf_int max_usage_percent 80); [ "$mup" -ge 1 ] || mup=80
+  lang=$(setting_value language en)
+  resources_line "$mup"
+  resources_ok "$mup" || echo "Do not start agents or heavy processes. Run $PLUGIN_ROOT/bin/agent-resources.sh relief, then re-run this script."
+  echo "LANGUAGE: ${lang}. Talk to the human in this language. Code, file names and rule text stay English."
   print_mode_lines
   local name cn
   for name in agent_todo.txt agent_completed.txt agent_ideas.txt agent_worktree.txt; do
@@ -877,6 +883,49 @@ print_state_block() {
 
 ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
 
+# check-blocks section 15: the main manager starts the nightly run in the background when it is due and no watch
+# is alive (the watch's housekeep pass does it otherwise). Never waits; no full_cmd (plain, cloud): --due says no.
+if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-nightly.sh" ]; then
+  if ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_watchfile as w; sys.exit(0 if w.live(w.read_status(sys.argv[2])) else 1)' "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null; then
+    if ( cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --due ) >/dev/null 2>&1 </dev/null; then
+      # C23 (section 48): the shared function lists the reachable paired machines (one per line) and a
+      # "NIGHTLY: ... did not answer" line for a paired one that did not answer
+      nl_out=$(cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --machines 2>/dev/null </dev/null) || nl_out=""
+      nl_conn=""
+      nl_note=$(printf '%s\n' "$nl_out" | grep '^NIGHTLY:' | head -n 1) || nl_note=""
+      [ -n "$(printf '%s\n' "$nl_out" | grep -v '^NIGHTLY:' | grep -v '^[[:space:]]*$')" ] && nl_conn=yes
+      if [ "$nl_conn" = yes ]; then
+        NIGHTLY_LINE="NIGHTLY: due: a connected machine runs it (W7): agent-nightly.sh --start there"
+      else
+      [ -z "$nl_note" ] || NIGHTLY_LINE="$nl_note"
+      # C3 (section 43): only with room for the nightly's weight; else one line and nothing starts
+      nl_mb=$(cd "$PROJECT_ROOT" 2>/dev/null && python3 -c '
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import agent_nightly as n
+w, _ = n.weight_of(n.common_dir(os.getcwd()), os.path.join(n.main_root(os.getcwd()), "agent_repo.conf"), "nightly")
+print(w[1] if w else 0)' "$PLUGIN_ROOT/bin" 2>/dev/null </dev/null) || nl_mb=0
+      case "$nl_mb" in ''|*[!0-9]*) nl_mb=0;; esac
+      if ( cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-room.sh" check "$nl_mb" ) >/dev/null 2>&1 </dev/null; then
+        ( cd "$PROJECT_ROOT" && nohup "$PLUGIN_ROOT/bin/agent-nightly.sh" --start >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
+      else
+        nl_host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
+        NIGHTLY_LINE="${NIGHTLY_LINE:+$NIGHTLY_LINE
+}NIGHTLY: due, no room on $nl_host: start it where there is room (W7): agent-nightly.sh --start"
+      fi
+      fi
+    fi
+  fi
+fi
+
+# check-blocks section 25 (C29): the main manager measures its own pane once, detached, never waited for. The weights
+# key "pane" is what a new pane costs in the memory gate (550 MB until measured).
+# C17: every session with a pane handle measures its pane (a task manager's too; its reservation is dropped then).
+# C26: once, at its first start (SessionStart source "startup"), never at resume or compact.
+if [ "$SRC" = startup ] && { [ -n "${ORCA_TERMINAL_HANDLE:-}" ] || { [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; }; } && [ -x "$PLUGIN_ROOT/bin/agent-room.sh" ]; then
+  ( cd "$PROJECT_ROOT" 2>/dev/null && nohup "$PLUGIN_ROOT/bin/agent-room.sh" measure-pane "${CLAUDE_PID:-$PPID}" >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
+fi
+
 # ---- compaction: short, no resources, no counts, no quiz. Same byte cap. ----
 if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   COMPACT_TEXT=$(print_compact_lines; printf 'X'); COMPACT_TEXT=${COMPACT_TEXT%X}
@@ -941,6 +990,8 @@ if [ "$role" = main ] || [ "$role" = takeover ]; then
   CLEAN_TEXT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --apply --short 2>/dev/null </dev/null || true; printf 'X'); CLEAN_TEXT=${CLEAN_TEXT%X}
 fi
 
+# the old-file move runs first, so the lines below already read the moved values
+MIGRATE_TEXT=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" migrate "$PROJECT_ROOT" 2>/dev/null </dev/null || true; printf 'X'); MIGRATE_TEXT=${MIGRATE_TEXT%X}
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
 # F1/F2: one WATCH line for the main manager or a takeover, orca only. The line comes from the files (no orca call);
@@ -952,6 +1003,57 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
     watch_kind=$(. "$PLUGIN_ROOT/bin/agent-runtime.sh" && runtime_kind 2>/dev/null </dev/null) || watch_kind=""
     [ "$watch_kind" = orca ] && WATCH_TEXT="$watch_line
 "
+  fi
+fi
+if [ -n "${NIGHTLY_LINE:-}" ]; then WATCH_TEXT="${WATCH_TEXT}${NIGHTLY_LINE}
+"; fi
+# C44: the working branch: made (and pushed) here, the checkout is never switched here. Main manager or takeover only.
+if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; then
+  wb_name=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" working-branch "$PROJECT_ROOT" 2>/dev/null </dev/null) || wb_name=""
+  if [ -n "$wb_name" ]; then
+    wb_made=""
+    wb_push() {
+      local err why
+      err=$(git -C "$PROJECT_ROOT" push -q -u origin "$wb_name" 2>&1 >/dev/null </dev/null) && return 0
+      case "$err" in
+        *rejected*|*non-fast-forward*|*"fetch first"*)
+          why="the remote has commits this clone does not have (fetch and merge origin/$wb_name first)";;
+        *) why=$(printf '%s\n' "$err" | grep -m1 -E '^(error|fatal):'); [ -n "$why" ] || why=$(printf '%s' "$err" | head -n 1);;
+      esac
+      WATCH_TEXT="${WATCH_TEXT}working branch: not pushed: $why
+"
+    }
+    if ! git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1; then
+      if git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/remotes/origin/$wb_name" >/dev/null 2>&1; then
+        # F6: the remote has it: track it, never make it from production
+        wb_err=$(git -C "$PROJECT_ROOT" branch --track "$wb_name" "origin/$wb_name" 2>&1 >/dev/null </dev/null) \
+          && WATCH_TEXT="${WATCH_TEXT}working branch: tracking origin/$wb_name
+" \
+          || WATCH_TEXT="${WATCH_TEXT}working branch: not created: $(printf '%s' "$wb_err" | head -n 1)
+"
+      else
+        wb_prod=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_conf; print(agent_conf.production_branch(sys.argv[2]))' \
+                  "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null) || wb_prod=""
+        wb_base=$wb_prod
+        git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_base" >/dev/null 2>&1 || wb_base="origin/$wb_prod"
+        wb_err=$(git -C "$PROJECT_ROOT" branch "$wb_name" "$wb_base" 2>&1 >/dev/null </dev/null) && wb_rc=0 || wb_rc=$?
+        if [ -n "$wb_prod" ] && [ "$wb_rc" -eq 0 ]; then
+          wb_made=$wb_prod
+          if git -C "$PROJECT_ROOT" remote get-url origin >/dev/null 2>&1; then wb_push; fi
+        else
+          WATCH_TEXT="${WATCH_TEXT}working branch: not created: $(printf '%s' "${wb_err:-no production branch found}" | head -n 1)
+"
+        fi
+      fi
+    fi
+    if git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1 \
+       && [ "$(git -C "$PROJECT_ROOT" symbolic-ref --short -q HEAD 2>/dev/null)" != "$wb_name" ]; then
+      wb_tail="switch the main checkout to $wb_name at a quiet point (no uncommitted work, no merge running): git switch $wb_name"
+      if [ -n "$wb_made" ]; then WATCH_TEXT="${WATCH_TEXT}WORKING BRANCH: created $wb_name from $wb_made; $wb_tail
+"
+      else WATCH_TEXT="${WATCH_TEXT}WORKING BRANCH: $wb_tail
+"; fi
+    fi
   fi
 fi
 RULES_LINE="RULES: read $PLUGIN_ROOT/PRINCIPLES.md now (S8)."
@@ -967,7 +1069,7 @@ fi
 # failing resume must never break the hook. ----
 RESUME_TEXT=""
 if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
-   && [ "$auto_resume" = yes ]; then
+   && [ "$(setting_value auto_resume on)" = on ]; then
   resume_out=$(AGENT_CLEANUP_DONE=1 AGENT_WATCH_LINE_DONE=1 "$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
   header="=== auto resume ==="
   other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$WATCH_TEXT") \
@@ -991,11 +1093,20 @@ calc_fixed
 
 # The state block must keep at least its pointer line. Cuts, in order, while
 # fixed + pointer is over the CAP: 1 auto resume body, 2 the WATCH line,
-# 3 the AUTO UPDATE line's long form, 4 worktree rows (last, W9).
+# 3 worktree rows (last, W9).
 ptr_bytes=0
 if [ -f "$STATE_DIR/agent_state.txt" ]; then
   ptr_n=$(count_lines "$STATE_DIR/agent_state.txt")
   [ "${ptr_n:-0}" -gt 0 ] && ptr_bytes=$(line_bytes "agent_state.txt: $ptr_n lines, read it now (S8)")
+fi
+
+# 0. the WORKING BRANCH line (about 150 bytes) gives way to a short form when it would leave the state block
+# less than its header plus the truncated marker.
+if [ -n "${wb_name:-}" ] && [ -n "$ptr_bytes" ] && [ "$ptr_bytes" -gt 0 ] \
+   && [ $(( CAP - fixed )) -lt $(( ptr_bytes + $(line_bytes "  (truncated, read the file)") )) ] \
+   && printf '%s' "$WATCH_TEXT" | grep -q '^WORKING BRANCH: '; then
+  WATCH_TEXT=$(printf '%s' "$WATCH_TEXT" | sed -E 's/^WORKING BRANCH: .*$/WORKING BRANCH: git switch '"$wb_name"' at a quiet point/'; printf 'X'); WATCH_TEXT=${WATCH_TEXT%X}
+  calc_fixed
 fi
 
 # 1. auto resume: header plus one pointer line.
@@ -1011,8 +1122,8 @@ if [ -n "$WATCH_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   WATCH_TEXT=$(printf '%s' "$WATCH_TEXT" | sed 's/ tasks to watch ([^)]*)\./ tasks to watch./'; printf 'X'); WATCH_TEXT=${WATCH_TEXT%X}
   calc_fixed
 fi
-# still over: PLUGIN/bin/... for the plugin path (the PLUGIN: field of the PROJECT line names it), as the AUTO UPDATE line
-# does: first in the CLEANUP table pointer, then, last, in the WATCH command
+# still over: PLUGIN/bin/... for the plugin path (the PLUGIN: field of the PROJECT line names it),
+# first in the CLEANUP table pointer, then, last, in the WATCH command
 if [ -n "$CLEAN_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   w_head=${CLEAN_TEXT%%"$PLUGIN_ROOT/bin/"*}
   if [ "$w_head" != "$CLEAN_TEXT" ]; then
@@ -1027,13 +1138,7 @@ if [ -n "$WATCH_TEXT" ] && [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   calc_fixed
 fi
 
-# 3. AUTO UPDATE: short form without the plugin path.
-if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
-  export AU_SHORT="AUTO UPDATE: not set. Ask once: on (recommended) or off, then PLUGIN/bin/agent-settings.sh --user auto_update on|off"
-  NORMAL_TEXT=$(printf '%s' "$NORMAL_TEXT" | awk '/^AUTO UPDATE: not set/{print ENVIRON["AU_SHORT"]; next} {print}'; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
-  calc_fixed
-fi
-# 4. worktree rows, last, dropped from the end; the header keeps the real count.
+# 3. worktree rows, last, dropped from the end; the header keeps the real count.
 if [ $(( fixed + ptr_bytes )) -gt "$CAP" ]; then
   wt_line=$(printf '%s' "$NORMAL_TEXT" | awk '/^agent_worktree.txt: /{print NR; exit}')
   wt_total=$(printf '%s' "$NORMAL_TEXT" | awk 'END{print NR}')

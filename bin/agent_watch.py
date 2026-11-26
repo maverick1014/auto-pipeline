@@ -8,7 +8,7 @@ agent_todo.txt) every sweep, reads each TM pane and its agent_state.txt (local: 
 machine: one short command through the task's shell pane), prints one sweep line, then one WATCH line
 per event and exits 0. The TM pane is only read, never sent to.
 After each sweep, for the main manager only (no AGENT_ROLE, a live main-manager lock), it runs
-bin/agent-housekeep.sh --apply when housekeep_interval_min minutes (agent.conf, 0 = off, default 120)
+bin/agent-housekeep.sh --apply when housekeep_interval_min minutes (the setting, 0 = off, default 120)
 have passed since <git dir>/agent_housekeep.last.
 
 The functions that find a task's targets and panes (read_targets, locate, resolve_tm, resolve_shell,
@@ -38,6 +38,7 @@ GONE_CODES = ("terminal_handle_stale", "terminal_not_found")
 BOX_CHARS = " \t\u2502\u2503\u256d\u256e\u2570\u256f\u2500\u250c\u2510\u2514\u2518\u251c\u2524\u2551\u2550\u2554\u2557\u255a\u255d"
 DEFAULT_MAX = 20
 LAST_CUT = 100
+REMOTE_CMD_MAX = 500        # the one remote read command: shorter than this or the task is not watched (R1)
 
 
 # ---------------------------------------------------------------- small helpers
@@ -366,7 +367,34 @@ def resolve_tm(ctx, target, env, skip=()):
         if "Task Manager" in str(t.get("title") or ""):
             return t["handle"]
     claude = [t for t in terms if t.get("agentIdentity") == "claude"]
-    return claude[0]["handle"] if len(claude) == 1 else None
+    if len(claude) == 1:
+        return claude[0]["handle"]
+    return helper_pane(ctx, target, env, skip)
+
+
+def task_slug(text):
+    """A Helper's task name as a todo name: lower case, runs of other characters -> "-"."""
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def helper_pane(ctx, target, env, skip=()):
+    """A task with no task manager pane, named by a human-direct Helper's "task: <Task Name>" line: the live pane
+    of that Helper (its title holds "Helper - <Task Name>") among the terminals of the Helper's own folder."""
+    if env:
+        return None
+    for line in read_lines(ctx.file("agent_worktree.txt")):
+        parts = [p.strip() for p in line.split(" | ")]
+        if len(parts) < 3 or not parts[0] or not parts[1].startswith("task manager, human-direct"):
+            continue
+        if not parts[2].startswith("task:"):
+            continue
+        task = parts[2][5:].strip()
+        if not task or task_slug(task) != target.name:
+            continue
+        for t in list_terminals("", parts[0]):
+            if t["handle"] not in skip and "Helper - %s" % task in str(t.get("title") or ""):
+                return t["handle"]
+    return None
 
 
 def resolve_shell(ctx, target, env, tm_handle="", skip=()):
@@ -415,26 +443,54 @@ def scan_state(text):
     return n, count, last, w, wakes
 
 
-def stage_of(text, name):
+STEP_STAGES = ["brief", "register", "mock", "tests", "workers", "verify", "push", "report"]
+HEARTBEAT_LINE = re.compile(r"^HEARTBEAT (\S+): step ([0-7]) of 7, work (\d+)m, (.*?)(?: \| .*)?$")
+STEP_LINE = re.compile(r"^STEP ([0-7])\b")
+
+
+def progress_of_line(line, name):
+    """(stage, beat) of one state line, or None when it says nothing about this task's stage.
+    STAGE <name>: <stage>[ <i>/<m>] | since ...; HEARTBEAT <name>: step <n> of 7, work <m>m, <text> [| date]
+    (beat "<m>m <text>"); STEP <n> <word>: ... (n = 0..7: brief register mock tests workers verify push report)."""
+    line = line.rstrip("\r")
     prefix = "STAGE %s: " % name
-    value = ""
+    if line.startswith(prefix):
+        return re.sub(r" \| since.*", "", line[len(prefix):]), ""
+    m = HEARTBEAT_LINE.match(line)
+    if m and m.group(1) == name:
+        return STEP_STAGES[int(m.group(2))], ("%sm %s" % (m.group(3), m.group(4))).strip()
+    m = STEP_LINE.match(line)
+    if m:
+        return STEP_STAGES[int(m.group(1))], ""
+    return None
+
+
+def stage_of(text, name):
+    """(stage, beat) of the newest (last) STAGE, HEARTBEAT or STEP line of this task; ("", "") when none."""
+    value, full = ("", ""), ""
     for line in text.split("\n"):
-        if line.startswith(prefix):
-            value = line[len(prefix):]
-    return re.sub(r" \| since.*", "", value.rstrip("\r"))
+        got = progress_of_line(line, name)
+        if got:
+            if line.startswith("STAGE "):
+                full = got[0]
+            elif full.split()[:1] == [got[0]]:
+                got = (full, got[1])        # a heartbeat of the stage the STAGE line named keeps its "<i>/<m>"
+            value = got
+    return value
 
 
 def remote_command(path):
-    """The one short command: FSIG <n> <lines> <waiting> <last STAGE line>|<last wake line> FEND (R1: no
-    task name in it; Python picks the task's own stage). Under 400 chars or the task is not watched."""
-    return ("awk '/^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
-            "{n++;l=$0;w=/^([[][^]]*[]] )?[QM]/?1:2}/^TELL /{w=0}/^ *([[][^]]*[]] +)?ANSWER:/{if(w==1)w=0}"
-            "/^STAGE /{v=substr($0,7)}END{sub(/ [|] since.*/,\"\",v);"
-            "print \"FSIG\",n+0,NR,w+0,v \"|\" substr(l,1,%d),\"FEND\"}' %s"
+    """The one short command: FSIG <n> <lines> <waiting> <1 when the newest such line says "started"> <newest
+    VALID STAGE|HEARTBEAT|STEP line (a malformed one is skipped, C50)>|<last wake line> FEND (R1: no task name in it; Python picks the task's own stage). Under 500 chars or the task is not watched
+    (R1: a send is cut only near 4 KB (W16), the tell chunks are 300; a path of 140 chars must fit)."""
+    return ("awk -F' [|] ' '/^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
+            "{n++;l=$0;w=/^([[][^]]*[]] )?[QM]/?1:2}/^TELL |^ *([[][^]]*[]] +)?ANSWER:/{if(w==1||/^T/)w=0}"
+            "/^(STAGE [^ ]+: |HEARTBEAT [^ ]+: step [0-7] of 7, work [0-9]+m, |STEP [0-7] )/{v=substr($1,1,99);t=/tarted/}"
+            "END{print \"FSIG\",n,NR,w,t+0,v \"|\" substr(l,1,%d),\"FEND\"}' %s"
             % (LAST_CUT, shlex.quote(path + "/agent_state.txt")))
 
 
-FSIG = re.compile(r"^FSIG (\d+) (\d+) (\d+) (.*) FEND$")
+FSIG = re.compile(r"^FSIG (\d*) (\d+) (\d*) ([01]) (.*) FEND$")
 
 
 class Obs:
@@ -443,7 +499,8 @@ class Obs:
     def __init__(self, kind, err="", lines=None):
         self.kind, self.err, self.lines = kind, err, lines or []
         self.fn = self.fl = self.w = 0
-        self.last = self.stage = ""
+        self.last = self.stage = self.beat = ""
+        self.started = False
         self.wakes = []
         self.exited = False
 
@@ -465,7 +522,7 @@ class Task:
         self.lost = set()           # pane handles already reported LOST (R3)
         self.prev_ok, self.prev_screen, self.prev_fp = False, "", None
         self.same = self.idle = self.fails = 0
-        self.laststage = ""
+        self.laststage = self.lastbeat = ""
         self.confirmed = self.changed = ""
         self.stall_reason, self.stall_screen, self.stall_fp = "", "", None
         self.urgent = False
@@ -482,6 +539,7 @@ class Engine:
         self.orphans = []
         self.orphans_printed = set()
         self.repo_id = ""
+        self.slots = []
 
     # ---- status file
 
@@ -513,7 +571,8 @@ class Engine:
                 "lost": sorted(t.lost),
             }
         data = {"pid": os.getpid(), "started": self.started, "sweep": self.sweep_time,
-                "interval_min": self.interval_min, "tasks": tasks, "orphans": self.orphans}
+                "interval_min": self.interval_min, "tasks": tasks, "orphans": self.orphans,
+                "slots": list(self.slots)}
         self.dump_status(data)
 
     def dump_status(self, data):
@@ -567,7 +626,7 @@ class Engine:
         t.env = env
         if env:
             n = len(remote_command(t.path))
-            if n >= 400:
+            if n >= REMOTE_CMD_MAX:
                 self.mark(t, env, "", "", False, "read command too long (%d chars)" % n)
                 return
         pane = resolve_tm_cached(ctx, t, env)
@@ -702,33 +761,51 @@ class Engine:
             if text is None:
                 return Obs("exited", lines=lines) if exited else Obs("fail", "cannot read %s" % f, lines)
             o.fn, o.fl, o.last, o.w, o.wakes = scan_state(text)
-            o.stage = stage_of(text, t.name)
+            o.stage, o.beat = stage_of(text, t.name)
+            body = [l for l in text.split("\n") if l.strip()]
+            o.started = bool(body) and "tarted" in body[-1]
             return o
         hit, err = self.shell_exchange(t, remote_command(t.path))
         if hit is None:
             return Obs("exited", lines=lines) if exited else Obs("fail", err, lines)
-        o.fn, o.fl, o.w = int(hit.group(1)), int(hit.group(2)), int(hit.group(3))
-        v, _, o.last = hit.group(4).partition("|")
-        prefix = "%s: " % t.name
-        o.stage = v[len(prefix):] if v.startswith(prefix) else ""
+        o.fn, o.fl, o.w = int(hit.group(1) or 0), int(hit.group(2)), int(hit.group(3) or 0)
+        o.started = hit.group(4) == "1"
+        v, _, o.last = hit.group(5).partition("|")
+        o.stage, o.beat = progress_of_line(v, t.name) or ("", "")
         return o
 
-    def carry_stage(self, t, stage):
-        if not stage or stage == t.laststage:
-            return
-        t.laststage = stage
-        parts = stage.split()
-        cmd = [os.path.join(HERE, "agent-file.sh"), "todo", "stage", t.name] + parts[:2]
+    def run_todo(self, args):
+        """agent-file.sh todo <args> in the main repo -> (ok, first line of the message)."""
+        cmd = [os.path.join(HERE, "agent-file.sh"), "todo"] + args
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, cwd=self.ctx.main, timeout=60,
                                stdin=subprocess.DEVNULL)
             ok, msg = r.returncode == 0, (r.stderr or r.stdout)
         except (OSError, subprocess.SubprocessError) as e:
             ok, msg = False, str(e)
-        if ok:
-            out("%s stage %s: %s" % (hhmm(), t.name, stage))
-        else:
-            out("%s stage %s: not carried (%s)" % (hhmm(), t.name, (msg.strip().splitlines() or [""])[0][:150]))
+        return ok, (msg.strip().splitlines() or [""])[0][:150]
+
+    def carry_stage(self, t, stage, beat=""):
+        """The newest STAGE, HEARTBEAT or STEP line of the task goes into the main repo's todo line (the main repo
+        is the brain): its stage by todo stage, a heartbeat's "<m>m <text>" by todo beat."""
+        if stage and stage != t.laststage:
+            old = t.laststage.split()
+            # a heartbeat knows only the stage word: it keeps the carried "workers <i>/<m>"
+            keep = len(old) == 2 and stage == old[0]
+            if not keep:
+                t.laststage, t.lastbeat = stage, ""
+                ok, msg = self.run_todo(["stage", t.name] + stage.split()[:2])
+                if ok:
+                    out("%s stage %s: %s" % (hhmm(), t.name, stage))
+                else:
+                    out("%s stage %s: not carried (%s)" % (hhmm(), t.name, msg))
+        if beat and beat != t.lastbeat:
+            t.lastbeat = beat
+            ok, msg = self.run_todo(["beat", t.name, beat])
+            if ok:
+                out("%s beat %s: %s" % (hhmm(), t.name, beat))
+            else:
+                out("%s beat %s: not carried (%s)" % (hhmm(), t.name, msg))
 
     def baseline(self, t):
         """The first read of a task: file signals already there are the baseline (B5, R2, R13)."""
@@ -746,7 +823,7 @@ class Engine:
                     t.last = saved["last"]
             self.load_stall(t, saved)
             return
-        self.carry_stage(t, o.stage)
+        self.carry_stage(t, o.stage, o.beat)
         if isinstance(sig, int):
             if o.fn < sig:
                 t.base, t.last = o.fn, o.last
@@ -801,7 +878,7 @@ class Engine:
                 events.append(("WATCH LOST %s: %s" % (t.name, o.err), None))
             return "fail %d/3" % t.fails
         t.fails = 0
-        self.carry_stage(t, o.stage)
+        self.carry_stage(t, o.stage, o.beat)
         now = now_text()
         t.confirmed = now
         screen = "\n".join(o.lines)
@@ -811,7 +888,7 @@ class Engine:
         elif not t.changed:
             t.changed = now
         file_same = t.prev_ok and fp == t.prev_fp
-        shells = shells_running(screen)
+        shells = shells_running(screen) or self.run_started(t, o, now)
         if file_same and screen == t.prev_screen and not shells:
             t.same += 1
         else:
@@ -871,6 +948,15 @@ class Engine:
             return "same %d" % t.same
         return "ok"
 
+    def run_started(self, t, o, now):
+        """The newest state line says a background run started, and the file has not been quiet for watch_quiet_min
+        yet: the manager waits for its own run, not stalled."""
+        if not o.started:
+            return False
+        since = parse_time(t.changed)
+        here = parse_time(now)
+        return since is not None and here is not None and (here - since).total_seconds() / 60 < quiet_limit()
+
     def one_sweep(self):
         fresh = self.prepare(False)
         events, states = [], []
@@ -882,6 +968,7 @@ class Engine:
             else:
                 states.append((t.name, self.evaluate(t, self.observe(t), events)))
         self.scan_orphans()
+        self.check_slots(events)
         self.sweep_time = now_text()
         out("%s sweep: %s" % (hhmm(), ", ".join("%s %s" % s for s in states) or "no targets"))
         self.write_status()
@@ -890,6 +977,38 @@ class Engine:
             for l in evidence or []:
                 out(l)
         return events
+
+    # ---- the room wake: a queued task that `agent-file.sh next` would start, said once
+
+    def queued_names(self):
+        """The names of the open todo lines with an open queue wait."""
+        names = []
+        for line in read_lines(self.ctx.file("agent_todo.txt")):
+            parts = line.split(" | ")
+            if parts[0].strip() and any(f.startswith("waiting queue ") or f == "waiting queue" for f in parts[3:]):
+                names.append(parts[0].strip())
+        return names
+
+    def check_slots(self, events):
+        try:
+            queued = self.queued_names()
+            self.slots = [n for n in self.slots if n in queued]
+            if not queued:
+                return
+            script = os.path.join(HERE, "agent-file.sh")
+            r = subprocess.run([script, "next"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, universal_newlines=True, cwd=self.ctx.main, timeout=60)
+            if r.returncode != 0:
+                return
+            for line in r.stdout.splitlines():
+                if not line.startswith("START "):
+                    continue
+                name = line[6:].split(" | ")[0].strip()
+                if name in queued and name not in self.slots:
+                    self.slots.append(name)
+                    events.append(("WATCH ROOM %s: can start (run agent-file.sh next)" % name, None))
+        except Exception:
+            return
 
     # ---- B16
 
@@ -948,7 +1067,10 @@ class Engine:
 
     def run(self):
         self.replace_older()
-        self.saved = {k: v for k, v in (self.load_status().get("tasks") or {}).items() if isinstance(v, dict)}
+        status = self.load_status()
+        self.saved = {k: v for k, v in (status.get("tasks") or {}).items() if isinstance(v, dict)}
+        if isinstance(status.get("slots"), list):
+            self.slots = [n for n in status["slots"] if isinstance(n, str)]
         signal.signal(signal.SIGTERM, self.on_term)
         out("%s watch --all: start (pid %d), every %s min" % (hhmm(), os.getpid(), fmt_num(self.interval_min)))
         self.prepare(True)
@@ -973,12 +1095,14 @@ class Engine:
     # ---- housekeep timer (W8): the main manager's pass every housekeep_interval_min minutes
 
     def hk_interval(self):
-        v = ""
-        for line in read_lines(self.ctx.file("agent.conf")):
-            if line.startswith("housekeep_interval_min="):
-                v = line.split("=", 1)[1]
-        v = re.sub(r"[\s\"']", "", v)
-        return int(v) if v.isdigit() else 120
+        try:
+            here = os.path.dirname(os.path.abspath(__file__))
+            if here not in sys.path:
+                sys.path.insert(0, here)
+            import agent_conf
+            return int(agent_conf.get("housekeep_interval_min"))
+        except Exception:
+            return 120
 
     def housekeep_round(self):
         """Runs agent-housekeep.sh --apply when it is due. Never raises, never ends the watch. Main manager only:
@@ -1045,12 +1169,26 @@ def fmt_num(x):
     return str(int(x)) if float(x) == int(x) else str(x)
 
 
+def quiet_limit():
+    """watch_quiet_min (a setting, default 15; the board's "not confirmed" uses it too)."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agent_conf
+        v = agent_conf.get("watch_quiet_min")
+        return v if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 240 else 15
+    except Exception:
+        return 15
+
+
 def shells_running(screen):
     """B6, B7: something still runs in the background: `shell still running`, `<n> shells still running`,
     `Waiting for <n> background agent(s) to finish`, or an agents-panel row of a running subagent
     (`  ◯ <type>  <task>  2m 45s · ...`). The bare `⏺ main` row shows on idle panes too: not busy."""
     return ("shell still running" in screen
             or re.search(r"\b\d+ shells? still running", screen) is not None
+            or re.search(r"(?m)\b[1-9]\d* (?:shells?|monitors?)\b", "\n".join(screen.split("\n")[-6:])) is not None
             or re.search(r"Waiting for \d+ background agents? to finish", screen) is not None
             or re.search(r"(?m)^ +[\u25ef\u25d0\u25d1\u25d2\u25d3\u2800-\u28ff] +\S.*\b\d+s\b", screen) is not None)
 

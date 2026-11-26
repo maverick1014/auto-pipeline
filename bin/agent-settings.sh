@@ -1,111 +1,34 @@
 #!/usr/bin/env bash
-# agent-settings.sh — read or change agent.conf. No agent, no tokens.
-#   ./agent-settings.sh                 show all keys
-#   ./agent-settings.sh <key> <value>   set one key, validated. e.g. ./agent-settings.sh worker sonnet-5:high
-#   ./agent-settings.sh menu            pick the key and type the value
-#   ./agent-settings.sh sync            add any key missing from agent.conf, template value
-#   ./agent-settings.sh get <key>       one line: the value and where it comes from (user file, else agent.conf)
-#   ./agent-settings.sh --user <key> <value>   set a key in ~/.claude/auto-pipeline.conf (this machine only)
-#   ./agent-settings.sh statusline on|off|refresh   progress status line in Claude Code settings.json (needs no agent.conf), sets refreshInterval; refresh: only to a plugin cache root
-# Takes effect at the next agent start.
-# Run from a worktree: still reads/writes the MAIN repo's agent.conf; show, set and sync say so.
+# agent-settings.sh — show the settings. No agent, no tokens. They change only in Claude Code:
+# /plugin -> Installed -> auto-pipeline -> Configure
+#   ./agent-settings.sh [show]      the settings table, with a * on a value that is not the default
+#   ./agent-settings.sh get <key>   one line: the value and where it comes from
+#   ./agent-settings.sh statusline on|off|refresh   progress status line in Claude Code settings.json, sets refreshInterval; refresh: only to a plugin cache root
 set -eu
-. "$(dirname "$0")/agent-roots.sh"
-roots_read
-CONF="$PROJECT_ROOT/agent.conf"
-TEMPLATE="$PLUGIN_ROOT/bin/agent.conf.default"
-
-ROOT_REAL=$(cd "$PROJECT_ROOT" && pwd -P)
-STATE_REAL=$(cd "$STATE_DIR" && pwd -P)
-WORKTREE_NOTE=""
-if [ "$STATE_REAL" != "$ROOT_REAL" ]; then
-  WORKTREE_NOTE="agent.conf: $ROOT_REAL/agent.conf (main repo copy; this worktree's own agent.conf is not used)"
-fi
-note() { [ -z "$WORKTREE_NOTE" ] || echo "$WORKTREE_NOTE"; }
-
-case "${1:-}" in
-  -h|--help) sed -n '2,11p' "$0"; exit 0;;
-esac
-
+PLUGIN_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 PYBIN="$PLUGIN_ROOT/bin"
+CHANGE="settings change only in /plugin -> Installed -> auto-pipeline -> Configure"
+
+usage() { sed -n '2,7p' "$0"; }
 py() { PYTHONPATH="$PYBIN${PYTHONPATH:+:$PYTHONPATH}" python3 "$@"; }
 
-userset() {
-  py - "$1" "$2" <<'PY'
-import os, sys, agent_conf as a
-k, v = sys.argv[1], sys.argv[2]
-if k not in a.USER_KEYS:
-    sys.exit(f"not saved. {k} is not a user-file key. Keys: {', '.join(a.USER_KEYS)}")
-msg = a.validate_value(k, v)
-if msg: sys.exit(f"not saved. {k}={v} is invalid: {msg}")
-path = a.user_conf_path()
-try:
-    with open(path, "r", encoding="utf-8") as fh: lines = fh.read().splitlines()
-except FileNotFoundError:
-    lines = []
-except Exception as e:
-    sys.exit(f"not saved. cannot read {a.display_path(path)}: {e}")
-out, done = [], False
-for line in lines:
-    if "=" in line and not line.strip().startswith("#") and line.split("=", 1)[0].strip() == k:
-        if not done: out.append(f"{k}={v}")
-        done = True
-    else:
-        out.append(line)
-if not done: out.append(f"{k}={v}")
-try:
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh: fh.write("\n".join(out) + "\n")
-except Exception as e:
-    sys.exit(f"not saved. cannot write {a.display_path(path)}: {e}")
-print(f"saved: {k}={v} in {a.display_path(path)}")
-PY
-}
-
 getv() {
-  py - "$1" "$CONF" <<'PY'
+  py - "$1" <<'PY'
 import sys, agent_conf as a
 k = sys.argv[1]
-try: conf = a.load(sys.argv[2])
-except Exception: conf = {}
-v, src = a.effective(k, conf)
-if v is not None:
-    print(f"{v} (from {src})")
-elif k == "permission_mode":
-    print("auto (default)")
-elif k == "auto_update":
-    print("on (default)")
-else:
-    sys.exit(f"{k} is not set in agent.conf")
+try:
+    print(f"{a.text(a.get(k))} (from {a.source(k)})")
+except KeyError:
+    sys.exit(f"unknown setting: {k}")
 PY
 }
 
-case "${1:-}" in
-  get) [ $# -eq 2 ] || { sed -n '2,11p' "$0"; exit 2; }; getv "$2"; exit $?;;
-  --user)
-    [ $# -eq 3 ] || { sed -n '2,11p' "$0"; exit 2; }
-    userset "$2" "$3" || exit 1
-    if [ "$2" = auto_update ] && [ -f "$PLUGIN_ROOT/bin/agent_update.py" ]; then
-      python3 "$PLUGIN_ROOT/bin/agent_update.py" apply "$3" || true
-    fi
-    exit 0;;
-esac
-
 statusline() {
-  PYTHONPATH="$PYBIN${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" "$PLUGIN_ROOT" "$CONF" "$TEMPLATE" <<'PY'
+  PYTHONPATH="$PYBIN${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" "$PLUGIN_ROOT" <<'PY'
 import json, os, sys, tempfile
 import agent_conf as ac
-mode, root, conf_path, tmpl_path = sys.argv[1:5]
-def interval():
-    for p in (conf_path, tmpl_path):
-        try:
-            v = ac.load(p).get("statusline_refresh_sec")
-        except Exception:
-            continue
-        if v is not None and ac.validate_value("statusline_refresh_sec", v) is None:
-            return int(v)
-    return None
-n = interval()
+mode, root = sys.argv[1:3]
+n = ac.get("statusline_refresh_sec")
 d = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
 path = os.path.join(d, "settings.json")
 refresh = mode == "refresh"
@@ -174,80 +97,14 @@ PY
 case "${1:-}" in
   statusline)
     case "${2:-}" in
-      on|off|refresh) [ $# -eq 2 ] || { sed -n '2,11p' "$0" >&2; exit 2; }; statusline "$2" || exit 1; exit 0;;
+      on|off|refresh) [ $# -eq 2 ] || { usage >&2; exit 2; }; statusline "$2" || exit 1; exit 0;;
       *) echo "usage: agent-settings.sh statusline on|off|refresh" >&2; exit 2;;
     esac;;
 esac
 
-if [ ! -f "$CONF" ]; then
-  echo "no agent.conf in $PROJECT_ROOT. Run $PLUGIN_ROOT/bin/agent-init.sh first." >&2
-  exit 2
-fi
-
-show() {
-  note; awk -F= 'NF==2{printf "  %-20s %s\n",$1,$2}' "$CONF"
-  py - <<'PY'
-import agent_conf as a
-values, ignored = a.read_user_conf()
-if values or ignored:
-    print(f"user file: {a.display_path(a.user_conf_path())}")
-    for k, v in values.items(): print(f"  {k:<20} {v}")
-    for e in ignored: print(f"  ignored: {e}")
-PY
-}
-setv() {
-  note
-  PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$1" "$2" "$CONF" "$TEMPLATE" <<'PY'
-import sys, agent_conf as a
-k, v, conf_path, template_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-c = a.load(conf_path)
-template = a.load(template_path)
-if k not in c and k not in template:
-    sys.exit(f"unknown key: {k}. Keys: {', '.join(c)}")
-msg = a.validate_value(k, v)
-if msg: sys.exit(f"not saved. {k}={v} is invalid: {msg}")
-if k in c:
-    c[k] = v
-    a.save(c, conf_path)
-else:
-    with open(conf_path, "rb") as fh: data = fh.read()
-    with open(conf_path, "a") as fh:
-        if data and not data.endswith(b"\n"): fh.write("\n")
-        fh.write(f"{k}={v}\n")
-print(f"saved: {k}={v}"); print("takes effect at the next agent start; running agents keep the old value")
-PY
-}
-sync() {
-  note
-  PYTHONPATH="$PLUGIN_ROOT/bin${PYTHONPATH:+:$PYTHONPATH}" python3 - "$CONF" "$TEMPLATE" <<'PY'
-import sys, agent_conf as a
-conf_path, template_path = sys.argv[1], sys.argv[2]
-existing = a.load(conf_path)
-template = a.load(template_path)
-missing = [k for k in template if k not in existing]
-if not missing:
-    print("agent.conf is up to date")
-    sys.exit(0)
-with open(conf_path, "rb") as fh: data = fh.read()
-with open(conf_path, "a") as fh:
-    if data and not data.endswith(b"\n"): fh.write("\n")
-    for k in missing:
-        v = template[k]
-        fh.write(f"{k}={v}\n")
-        print(f"added {k}={v}")
-PY
-}
-
 case "${1:-}" in
-  ""|show) show;;
-  sync) sync;;
-  menu)
-    keys=$(awk -F= 'NF==2{print $1}' "$CONF"); i=0
-    for k in $keys; do i=$((i+1)); printf '  %2d) %-20s %s\n' "$i" "$k" "$(awk -F= -v k="$k" '$1==k{print $2}' "$CONF")"; done
-    printf 'key number: '; read -r n
-    k=$(printf '%s\n' $keys | sed -n "${n}p"); [ -n "$k" ] || { echo "no such number"; exit 1; }
-    printf 'new value for %s: ' "$k"; read -r v
-    setv "$k" "$v";;
-  -h|--help) sed -n '2,11p' "$0";;
-  *) [ $# -eq 2 ] || { sed -n '2,11p' "$0"; exit 2; }; setv "$1" "$2";;
+  ""|show) [ $# -le 1 ] || { echo "$CHANGE"; exit 1; }; py "$PYBIN/agent_conf.py" show;;
+  get) [ $# -eq 2 ] || { usage >&2; exit 2; }; getv "$2";;
+  -h|--help) usage;;
+  *) echo "$CHANGE"; exit 1;;
 esac

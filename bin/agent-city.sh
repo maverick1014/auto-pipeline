@@ -15,12 +15,13 @@
 #                            $HOME/.local/bin/agent-city, so `agent-city` works
 #                            from any folder (requirements/city.md, "Anywhere")
 #   ./agent-city.sh remove-shim    remove that copy, if it is ours
+#   ./agent-city.sh floor rules|show|set|bye   the floor designs (the interior designer uses these)
 #   ./agent-city.sh -h       this help
 #
 # City dir: $AGENT_CITY_DIR, default $HOME/.cache/agent-city (the same dir the
 # hook writes events.jsonl into). Port and idle timeout come from the
-# project's agent.conf (city_port, city_idle_min), falling back to the
-# plugin template when a key is missing there. AGENT_CITY_PORT, a whole
+# settings (city_port, city_idle_min), read with `setting` (Configure, user
+# level), with a built-in fallback when one cannot be read. AGENT_CITY_PORT, a whole
 # number 1024-65535, wins over city_port for start/demo, inside or outside a
 # repo (requirements/city.md, "Port anywhere"); any other non-empty value
 # refuses to start. Before starting, RAM and CPU are checked against
@@ -34,24 +35,26 @@
 # decisions.jsonl lives under $AGENT_CITY_HOME, default $HOME/.claude/agent-city.
 #
 # Anywhere (requirements/city.md, "Anywhere"): outside a repo (cwd not
-# inside a git work tree), start/status still work -- plugin defaults only,
-# no agent.conf from that folder, language from AGENT_CITY_LANG (en or zh,
-# else zh).
+# inside a git work tree), start/status still work. The settings are user
+# level, so they apply there too; AGENT_CITY_LANG (en or zh) overrides the
+# language setting.
 
 set -eu
 . "$(dirname "$0")/agent-roots.sh"
 roots_read
 
-# Outside a repo: plugin defaults only, this folder's own agent.conf (if
-# any) is never read.
+# Outside a repo the settings still apply (they are user level).
 if [ "$(git -C "$PROJECT_CWD" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ]; then
   OUTSIDE_REPO=no
 else
   OUTSIDE_REPO=yes
 fi
 
-. "$PLUGIN_ROOT/bin/agent.conf.default"
-[ "$OUTSIDE_REPO" = yes ] || conf_read
+max_usage_percent=$(setting max_usage_percent 2>/dev/null) || max_usage_percent=""
+city_port=$(setting city_port 2>/dev/null) || city_port=""
+city_idle_min=$(setting city_idle_min 2>/dev/null) || city_idle_min=""
+city_governor_wait_sec=$(setting city_governor_wait_sec 2>/dev/null) || city_governor_wait_sec=""
+language=$(setting language 2>/dev/null) || language=""
 . "$PLUGIN_ROOT/bin/agent-resources.sh"
 
 usage() {
@@ -135,15 +138,16 @@ do_start() {
       city_port="$env_port" ;;
   esac
 
-  # Outside a repo: AGENT_CITY_LANG picks the language (en/zh, else zh --
-  # the city's own default); inside one, $language comes from
-  # agent.conf/agent.conf.default.
-  if [ "$OUTSIDE_REPO" = yes ]; then
-    case "${AGENT_CITY_LANG:-}" in
-      en|zh) language="$AGENT_CITY_LANG" ;;
-      *) language="zh" ;;
-    esac
-  fi
+  # AGENT_CITY_LANG (en/zh) overrides the language setting; outside a repo
+  # with no usable setting the city's own default, zh.
+  case "${AGENT_CITY_LANG:-}" in
+    en|zh) language="$AGENT_CITY_LANG" ;;
+    *)
+      case "$language" in
+        en|zh) : ;;
+        *) if [ "$OUTSIDE_REPO" = yes ]; then language="zh"; else language="en"; fi ;;
+      esac ;;
+  esac
   if ! resources_ok "$max_usage_percent"; then
     resources_line "$max_usage_percent"
     echo "warning: over the resource cap; the city is small, starting anyway"
@@ -309,5 +313,6 @@ case "$1" in
   pending) do_pending;;
   install-shim) do_install_shim;;
   remove-shim) do_remove_shim;;
+  floor) shift; exec python3 "$PLUGIN_ROOT/bin/agent_city.py" floor "$@";;
   *) usage; exit 2;;
 esac
