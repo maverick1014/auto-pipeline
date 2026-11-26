@@ -46,10 +46,11 @@ Touches another repo? → W12: keep your part, send the peer main manager the cr
    **orca** — open a worktree. Read the "Models: Task manager model" setting with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get task_manager` (form model:effort): `<model>` is what `python3 ${CLAUDE_PLUGIN_ROOT}/bin/agent_conf.py cli-model '<task_manager value>'` prints (the CLI refuses opus-5.5, takes opus), `<effort>` is the part after the colon. Read `<mode>` from the "Permissions: Permission mode" setting, read with `${CLAUDE_PLUGIN_ROOT}/bin/agent-settings.sh get permission_mode` (its first word):
    First the pane's room, in one step: `${CLAUDE_PLUGIN_ROOT}/bin/agent-room.sh reserve-pane --pending <task name> <pane MB>` checks room and reserves. No room: wait, create nothing. Then create the pane:
    ```
-   orca worktree create --name <name> --repo path:<main repo> --base-branch <base branch> --no-parent --json
+   orca worktree create --name <name> --branch <name> --repo path:<main repo> --base-branch <base branch> --no-parent --json
    orca terminal create --worktree path:<worktree path> --title "<name> Task Manager" --command "AGENT_ROLE=task-manager claude --name '<name> Task Manager' --model '<model>' --effort <effort> --permission-mode <mode>" --json
    orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 90000 --json
    ```
+   The branch is named by the task (`--branch <name>`); never a prefix from the machine or the account.
    Then `${CLAUDE_PLUGIN_ROOT}/bin/agent-room.sh reserve-pane --name <task name> <the new handle>` gives the reservation its handle (it is dropped when the pane measures itself). A failed create: `${CLAUDE_PLUGIN_ROOT}/bin/agent-room.sh release-pane <task name>`. Note: a pane on another machine is not reserved in the local list (its room is that machine's; it reserves itself there at its start).
    `worktree create` opens default tabs (a shell "Terminal 1" and a Claude "<name> Task Manager" session). Use that default agent pane for the brief (`orca terminal list --worktree path:<worktree path> --json` gives its handle, skip the `terminal create` line), or close it first; never open a second one beside it.
    A new pane stops at a menu (trust prompt)? `orca terminal send` has no key flag: send the raw key as text, then Enter, e.g. Down: `orca terminal send --terminal <handle> --text $'\x1b[B' --enter`.

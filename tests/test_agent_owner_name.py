@@ -65,8 +65,8 @@ class TestTheName(OwnerCase):
     def test_n1_the_name_as_written(self):
         self.git_name("King Lun")
         self.assertEqual(self.conf().user_name(self.repo.dir), "King Lun")
-        self.git_name("  Niagawan  Mave ")
-        self.assertEqual(self.conf().user_name(self.repo.dir), "Niagawan  Mave")
+        self.git_name("  Mei  Ling ")
+        self.assertEqual(self.conf().user_name(self.repo.dir), "Mei  Ling")
         self.git_name("a|b")
         self.assertEqual(self.conf().user_name(self.repo.dir), "a b")
 
@@ -91,9 +91,9 @@ class TestTheName(OwnerCase):
 class TestTodoAddOwner(OwnerCase):
 
     def test_n2_the_field_after_by(self):
-        self.git_name("Niagawan Mave")
+        self.git_name("Mei Ling")
         self.af("todo", "add", "x", "big", "the thing", "60", now=NOW)
-        self.assertTrue(self.todo_line("x").endswith(" | opened 2026-11-02 15:00 | by main | owner Niagawan Mave"),
+        self.assertTrue(self.todo_line("x").endswith(" | opened 2026-11-02 15:00 | by main | owner Mei Ling"),
                         self.todo_line("x"))
 
     def test_n2_a_peer_by_stays(self):
@@ -104,11 +104,11 @@ class TestTodoAddOwner(OwnerCase):
 class TestTodoDoneBy(OwnerCase):
 
     def test_n3_the_last_key(self):
-        self.git_name("Niagawan Mave")
+        self.git_name("Mei Ling")
         self.put("x | big | w | est 60m | opened 2026-11-02 14:00 | by main | owner someone-else")
         self.af("todo", "done", "x", now=NOW)
         line = self.completed_lines()[-1]
-        self.assertTrue(line.endswith(" slices=- by=Niagawan Mave"), line)
+        self.assertTrue(line.endswith(" slices=- by=Mei Ling"), line)
 
     def test_n3_an_old_line_without_owner(self):
         self.put("x | big | w | est 60m | opened 2026-11-02 14:00 | by main")
@@ -125,28 +125,28 @@ class TestTodoDoneBy(OwnerCase):
 class TestBoardAndShow(OwnerCase):
 
     def test_n4_the_board_task_cell(self):
-        self.put("x | big | the login form | est 60m | opened 2026-11-02 14:00 | by main | owner niagawan-mave"
+        self.put("x | big | the login form | est 60m | opened 2026-11-02 14:00 | by main | owner mei-ling"
                  " | started 2026-11-02 14:10 | stage tests since 2026-11-02 14:30",
                  "y | big | an old line | est 60m | opened 2026-11-02 14:00 | by main"
                  " | started 2026-11-02 14:10 | stage tests since 2026-11-02 14:30")
         rows = self.table(self.board(now=NOW))
         tasks = sorted(r["Task"] for r in rows)
-        self.assertEqual(tasks, ["x [niagawan-mave]", "y"])
+        self.assertEqual(tasks, ["x [mei-ling]", "y"])
 
     def test_n4_show(self):
-        self.put("x | big | w | est 60m | opened 2026-11-02 14:00 | by main | owner niagawan-mave",
+        self.put("x | big | w | est 60m | opened 2026-11-02 14:00 | by main | owner mei-ling",
                  "y | big | old | est 60m | opened 2026-11-02 14:00 | by main")
         with open(self.repo.path("agent_completed.txt"), "w") as fh:
             fh.write("2026-11-01 | a | w | data repo=project type=- lane=- mock=- est=5 work=5 wait=0 clock=5"
                      " bounces=- workers=- files=- lines=- tests=- adds=- guess=- level=- typed=- est0=5 added=-"
-                     " built=- stages=- slices=- by=niagawan-mave\n"
+                     " built=- stages=- slices=- by=mei-ling\n"
                      "2026-11-01 | b | w | data repo=project est=5 work=5 by=-\n"
                      "2026-11-01 | c | w | est 5m actual 5m\n")
         before = (self.repo.read("agent_todo.txt"), self.repo.read("agent_completed.txt"))
         out = self.af("show", now=NOW).stdout.splitlines()
-        self.assertIn("x | big | w | est 60m | opened 2026-11-02 14:00 | by main | owner niagawan-mave [niagawan-mave]", out)
+        self.assertIn("x | big | w | est 60m | opened 2026-11-02 14:00 | by main | owner mei-ling [mei-ling]", out)
         self.assertIn("y | big | old | est 60m | opened 2026-11-02 14:00 | by main", out)
-        self.assertTrue([l for l in out if l.startswith("2026-11-01 | a | ") and l.endswith(" by=niagawan-mave [niagawan-mave]")], out)
+        self.assertTrue([l for l in out if l.startswith("2026-11-01 | a | ") and l.endswith(" by=mei-ling [mei-ling]")], out)
         self.assertIn("2026-11-01 | b | w | data repo=project est=5 work=5 by=-", out)
         self.assertIn("2026-11-01 | c | w | est 5m actual 5m", out)
         self.assertEqual((self.repo.read("agent_todo.txt"), self.repo.read("agent_completed.txt")), before)
