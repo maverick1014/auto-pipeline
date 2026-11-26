@@ -10,7 +10,7 @@
 #   agent-file.sh todo add ... [--checks "<BLOCK>,<BLOCK>"] [--scope "<glob>,<glob>"] [--builder "<name>"]
 #                                                             -> fields " | checks A, B" (table order) right after guess (else est, else what), " | scope <globs>", " | builder <name>"; an unknown block is refused
 #   agent-file.sh todo checks "<name>" <BLOCK>[,<BLOCK>]      -> union into the checks field, table order; prints "todo checks: <name> <old or -> -> <new>"
-#   agent-file.sh todo checks "<name>" --remove <BLOCK> --owner-quote "<words>" [--time <t>]
+#   agent-file.sh todo checks "<name>" --remove <BLOCK> --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>]
 #                                                             -> only on a verified owner order (agent-owner-order.sh verify): the block leaves the field, the line gets " | removed <BLOCK> <date time>"
 #   agent-file.sh todo builder "<name>" <who>                 -> field " | builder <who>" (replaced in place; a comma list is fine)
 #   agent-file.sh todo est "<name>" <minutes> [--guess <m>]   -> est (and guess) replaced in place; prints "todo est: <name> <old>m -> <new>m"
@@ -61,7 +61,7 @@
 #   agent-file.sh tell "<task>" "[<model> <effort>] <msg>"    -> the block "TELL <sha8> ..." at the end of that task's agent_state.txt, then one pointer line into its TM pane (rules D1-D8, requirements/one-watcher.md); prints "TELL OK <task> <sha8>"
 #   agent-file.sh heartbeat "<task>" <step 0-7> <work min> "<what runs now>"  -> agent_state.txt: "HEARTBEAT <task>: step <n> of 7, work <m>m, <text> | <date time>" (bad step, minutes or empty text: refused)
 #   agent-file.sh helper-join "<task>"                        -> a human-direct Helper becomes a normal agent: its worktree line becomes "<path> | <task> | working | since .. | pane .. | session .."
-#   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working (production needs --owner-quote "<words>" [--time <t>], verified at once) and --batch <name>
+#   agent-file.sh todo est "<name>" +<minutes>                -> adds minutes to the estimate (guess stays); todo add also takes --target production|working (production needs --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>], verified at once) and --batch <name>
 #   agent-file.sh state trim [--dry-run]                      -> old lines of agent_state.txt move to agent_state.trim-<date>.txt (rules: requirements/state-trim.md); --dry-run only counts
 #
 # todo done also closes the queue wait of every open line whose " | after <name>" field is that task, drops the after field, and prints "released: <line name>" per line.
@@ -1146,7 +1146,7 @@ case "${1:-}:${2:-}" in
     [ $# -ge 2 ] || usage
     helper_join "$2";;
   todo:add)
-    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""
+    shift 2; guess=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""; omeans=""; oquestion=""
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
       if [ "$1" = "--guess" ]; then
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
@@ -1166,9 +1166,9 @@ case "${1:-}:${2:-}" in
       elif [ "$1" = "--target" ]; then
         case "${2:-}" in production|working) target=$2;; *) refuse "todo add: --target wants production or working (got: ${2:-nothing})";; esac
         shift 2
-      elif [ "$1" = "--owner-quote" ] || [ "$1" = "--time" ]; then
+      elif [ "$1" = "--owner-quote" ] || [ "$1" = "--time" ] || [ "$1" = "--means" ] || [ "$1" = "--question" ]; then
         [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: $1 needs a value"
-        if [ "$1" = "--owner-quote" ]; then oquote=$2; else otime=$2; fi
+        case "$1" in --owner-quote) oquote=$2;; --time) otime=$2;; --means) omeans=$2;; *) oquestion=$2;; esac
         shift 2
       elif [ "$1" = "--batch" ]; then
         [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: --batch needs a name"
@@ -1179,8 +1179,8 @@ case "${1:-}:${2:-}" in
     set -- todo add ${rest[@]+"${rest[@]}"}
     need 5 "$@"
     if [ "$target" = production ]; then   # the direct path is bound to the owner's words, verified at once (F1)
-      checks_py owner-words "$3" "$oquote" "$otime" || exit 1
-    elif [ -n "$oquote$otime" ]; then refuse "todo add: --owner-quote and --time belong to --target production"
+      checks_py owner-words "$3" "$oquote" "$otime" "$omeans" "$oquestion" || exit 1
+    elif [ -n "$oquote$otime$omeans$oquestion" ]; then refuse "todo add: --owner-quote, --means, --question and --time belong to --target production"
     fi
     checks=$(checks_py plan-add "$3" "$checks") || exit 1   # the blocks this name ever had are planned again (F11)
     drop "$TODO" "$3"

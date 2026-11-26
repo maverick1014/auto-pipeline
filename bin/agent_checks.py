@@ -208,12 +208,15 @@ def cmd_norm(a):
     print(", ".join(parse_list(a[0], True)))
 
 
-def verify_owner(ctx, quote, when, prefix):
-    """Run agent-owner-order.sh verify with the main repo's absolute path; refuse unless it exits 0."""
+def verify_owner(ctx, quote, when, prefix, question=None):
+    """Run agent-owner-order.sh verify with the main repo's absolute path; refuse unless it exits 0.
+    Returns the typed minute of the prompt (first stdout line `OWNER ORDER verified <file> <date time>`), else ""."""
     cmd = [os.path.join(HERE, "agent-owner-order.sh"), "verify", "--repo",
            os.path.abspath(ctx["root"]), "--quote", quote]
     if when:
         cmd += ["--time", when]
+    if question:
+        cmd += ["--question", question]
     try:
         p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                            universal_newlines=True, stdin=subprocess.DEVNULL)
@@ -223,25 +226,61 @@ def verify_owner(ctx, quote, when, prefix):
     if code != 0:
         why = " ".join(out.split()) or "exit %d" % code
         raise Refuse("%s%s" % (prefix, why[:300]))
+    first = out.split("\n", 1)[0]
+    m = re.match(r"OWNER ORDER verified \S+ (\d{4}-\d\d-\d\d \d\d:\d\d)\s*$", first)
+    return m.group(1) if m else ""
+
+
+def approval_values(cmd, quote, means, question):
+    """The common approval options (section 53 A3): --owner-quote Q --means M [--question X]. -> (Q, M, X)."""
+    quote, means = (quote or "").strip(), (means or "").strip()
+    question = (question or "").strip() if question is not None else None
+    if not quote:
+        raise Refuse("%s: --owner-quote needs the owner's words" % cmd)
+    if not means:
+        raise Refuse("%s: --means \"<the action his words approve>\" is needed with --owner-quote" % cmd)
+    for name, v in (("--owner-quote", quote), ("--means", means), ("--question", question)):
+        if v is None:
+            continue
+        if "\n" in v or "\r" in v or " | " in v:
+            raise Refuse("%s: %s must not hold a line break or \" | \"" % (cmd, name))
+    if question is not None and not question:
+        raise Refuse("%s: --question must not be empty" % cmd)
+    return quote, means, question
+
+
+def store_words(ctx, task, kind, block, quote, means, question, typed, when):
+    gd = common_dir(ctx["root"])
+    if not gd:
+        return
+    path = os.path.join(gd, "agent_owner_words.json")
+    data = load_json(path)
+    ent = data.get(task)
+    if not isinstance(ent, dict) or "quote" in ent:     # an old flat record is not kept
+        ent = {}
+    rec = {"quote": quote, "means": means, "typed": typed, "time": when or ctx["now"], "verified": True}
+    if question:
+        rec["question"] = question
+    if kind == "publish":
+        ent["publish"] = rec
+    else:
+        skip = ent.get("skip") if isinstance(ent.get("skip"), dict) else {}
+        skip[block] = rec
+        ent["skip"] = skip
+    data[task] = ent
+    save_json(path, data)
 
 
 def cmd_owner_words(ctx, a):
-    """owner-words <task> <quote> [<time>]: verify the owner's words at once; stored only when verified (F1)."""
+    """owner-words <task> <quote> [<time> [<means> [<question>]]]: verify the owner's words at once; stored only
+    when verified, with what the main manager read from them (F1, section 53)."""
     if len(a) < 2 or not a[0].strip() or not a[1].strip():
-        raise Refuse("todo add: --target production needs --owner-quote \"<the owner's words>\" [--time <t>]")
-    task, quote, when = a[0], a[1].strip(), (a[2] if len(a) > 2 else "")
-    if "\n" in quote or "\r" in quote:
-        raise Refuse("todo add: --owner-quote must not hold a line break")
-    import agent_conf
-    if not agent_conf.says(quote, agent_conf.publish_sentence(task)):
-        raise Refuse("todo add: ask the owner to type exactly: %s" % agent_conf.publish_sentence(task))
-    verify_owner(ctx, quote, when or None, "todo add: owner words not verified, nothing written: ")
-    gd = common_dir(ctx["root"])
-    if gd:
-        path = os.path.join(gd, "agent_owner_words.json")
-        data = load_json(path)
-        data[task] = {"quote": quote, "time": when or ctx["now"], "verified": True}
-        save_json(path, data)
+        raise Refuse("todo add: --target production needs --owner-quote \"<the owner's words>\" --means \"<the action>\" [--question \"<q>\"] [--time <t>]")
+    task, when = a[0], (a[2] if len(a) > 2 else "")
+    quote, means, question = approval_values("todo add", a[1], a[3] if len(a) > 3 else "",
+                                             a[4] if len(a) > 4 and a[4] != "" else None)
+    typed = verify_owner(ctx, quote, when or None, "todo add: owner words not verified, nothing written: ", question)
+    store_words(ctx, task, "publish", None, quote, means, question, typed, when)
 
 
 def cmd_task_end(ctx, a):
@@ -286,7 +325,7 @@ def cmd_todo_checks(ctx, a):
     if rest and rest[0] == "--remove":
         opts, i = {}, 0
         while i < len(rest):
-            if rest[i] in ("--remove", "--owner-quote", "--time") and i + 1 < len(rest):
+            if rest[i] in ("--remove", "--owner-quote", "--means", "--question", "--time") and i + 1 < len(rest):
                 if rest[i] in opts:
                     raise Refuse("todo checks: %s given twice" % rest[i])
                 opts[rest[i]] = rest[i + 1]
@@ -297,15 +336,14 @@ def cmd_todo_checks(ctx, a):
         if len(block) != 1:
             raise Refuse("todo checks: --remove takes one block")
         block = block[0]
-        quote = opts.get("--owner-quote", "")
-        if not quote.strip():
-            raise Refuse("todo checks: --remove needs --owner-quote with the owner's words")
-        verify_owner(ctx, quote, opts.get("--time"), "todo checks: owner order not verified, nothing changed: ")
+        if not opts.get("--owner-quote", "").strip():
+            raise Refuse("todo checks: --remove needs --owner-quote with the owner's words and --means")
+        quote, means, question = approval_values("todo checks", opts.get("--owner-quote"), opts.get("--means"),
+                                                 opts.get("--question"))
         if block in (SIGN, "PR REVIEW"):
             raise Refuse("todo checks: %s is never removed" % block)
-        import agent_conf
-        if not agent_conf.says(quote, agent_conf.skip_sentence(block, name)):
-            raise Refuse("todo checks: ask the owner to type exactly: %s" % agent_conf.skip_sentence(block, name))
+        typed = verify_owner(ctx, quote, opts.get("--time"), "todo checks: owner order not verified, nothing changed: ",
+                             question)
         new = [b for b in old if b != block]
         at = field_index(f, "checks")
         removed = "removed %s %s" % (block, ctx["now"])
@@ -314,11 +352,12 @@ def cmd_todo_checks(ctx, a):
         else:       # a tool block (the diff plans it): only the removal is recorded
             f.insert(anchor(f) + 1, removed)
         record_blocks(ctx["root"], name, removed=[block])
+        store_words(ctx, name, "skip", block, quote, means, question, typed, opts.get("--time"))
         print("todo checks: %s %s -> %s (removed %s)" % (name, ", ".join(old) or "-", ", ".join(new) or "-", block))
         todo.set(name, f)
         return
     if len(rest) != 1:
-        raise Refuse("todo checks: usage: todo checks \"<name>\" <BLOCK>[,<BLOCK>] | --remove <BLOCK> --owner-quote \"<words>\"")
+        raise Refuse("todo checks: usage: todo checks \"<name>\" <BLOCK>[,<BLOCK>] | --remove <BLOCK> --owner-quote \"<words>\" --means \"<action>\"")
     add = parse_list(rest[0], True)
     record_blocks(ctx["root"], name, added=add)
     new = sorted(set(old) | set(add), key=order_key)
@@ -419,23 +458,24 @@ def cmd_check(ctx, a):
         raise Refuse("check: the result is pass or fail (got: %s)" % verdict)
     opts, i = {}, 0
     while i < len(rest):
-        if rest[i] in ("--by", "--evidence", "--owner-quote", "--time", "--commit") and i + 1 < len(rest):
+        if rest[i] in ("--by", "--evidence", "--owner-quote", "--means", "--question", "--time", "--commit") and i + 1 < len(rest):
             opts[rest[i]] = rest[i + 1]
             i += 2
         else:
             raise Refuse("check: unknown or incomplete option: %s" % rest[i])
     sign_pass = block == SIGN and verdict == "pass"
     if sign_pass:
-        q = opts.get("--owner-quote", "")
-        if not q.strip():
-            raise Refuse("check: an OWNER SIGN pass needs --owner-quote \"<the owner's words>\"")
-        if "\n" in q or "\r" in q:
-            raise Refuse("check: --owner-quote must not hold a line break")
-        opts["--evidence"] = "owner order verified: " + q.strip()
+        if not opts.get("--owner-quote", "").strip():
+            raise Refuse("check: an OWNER SIGN pass needs --owner-quote \"<the owner's words>\" and --means")
+        q, m, x = approval_values("check", opts.get("--owner-quote"), opts.get("--means"), opts.get("--question"))
+        opts["--evidence"] = "owner order verified: %s | means: %s%s | typed: %s" % (
+            q, m, " | question: " + x if x else "", "@TYPED@")
     elif "--time" in opts:
         raise Refuse("check: --time belongs to an OWNER SIGN pass only")
     elif "--owner-quote" in opts:
         raise Refuse("check: --owner-quote belongs to an OWNER SIGN pass only")
+    elif "--means" in opts or "--question" in opts:
+        raise Refuse("check: --means and --question belong to an OWNER SIGN pass only")
     for k in ("--by", "--evidence"):
         v = opts.get(k, "")
         if not v.strip():
@@ -445,7 +485,9 @@ def cmd_check(ctx, a):
     if " | " in opts["--by"]:
         raise Refuse("check: --by must not hold \" | \"")
     if sign_pass:
-        verify_owner(ctx, opts["--owner-quote"].strip(), opts.get("--time"), "check: owner order not verified, nothing written: ")
+        typed = verify_owner(ctx, opts["--owner-quote"].strip(), opts.get("--time"),
+                             "check: owner order not verified, nothing written: ", (opts.get("--question") or "").strip() or None)
+        opts["--evidence"] = opts["--evidence"].replace("@TYPED@", typed or "-")
     import agent_state
     sha = commit_of(ctx["state"], opts.get("--commit"))
     at = " | at %s" % sha if sha else ""
@@ -641,16 +683,65 @@ def upstream_of(d):
     return name.strip(), up.strip(), head.strip()
 
 
-def sign_believed(ctx, evidence):
-    """An OWNER SIGN pass counts only with "owner order verified: <words>" that verify accepts again now."""
+def parse_sign(evidence):
+    """owner order verified: <Q> | means: <M>[ | question: <X>] | typed: <minute or -> -> (Q, M, X, typed) or None."""
     pre = "owner order verified: "
-    if not evidence.startswith(pre) or not evidence[len(pre):].strip():
+    if not evidence.startswith(pre):
+        return None
+    parts = evidence[len(pre):].split(" | ")
+    quote, means, question, typed = parts[0].strip(), None, None, ""
+    for p in parts[1:]:
+        if p.startswith("means: "):
+            means = p[7:].strip()
+        elif p.startswith("question: "):
+            question = p[10:].strip()
+        elif p.startswith("typed: "):
+            typed = p[7:].strip()
+    if not quote or not means:
+        return None
+    return quote, means, question or None, "" if typed == "-" else typed
+
+
+def sign_believed(ctx, evidence):
+    """An OWNER SIGN pass counts only with the means in its evidence and the quote that verify accepts again now,
+    at the typed minute and with the question (section 53 A7)."""
+    got = parse_sign(evidence)
+    if not got:
         return False
+    quote, _, question, typed = got
     try:
-        verify_owner(ctx, evidence[len(pre):].strip(), None, "")
+        verify_owner(ctx, quote, typed if re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d$", typed) else None, "", question)
     except Refuse:
         return False
     return True
+
+
+def print_owner_words(ctx, task, d, opts, f):
+    """A8: one OWNER WORDS line per stored approval of the task, before any GATE line."""
+    def line(label, quote, typed, means, question):
+        text = 'OWNER WORDS %s: "%s" (typed %s) read as: %s' % (label, quote, typed or "-", means)
+        if question:
+            text += ' | question: "%s"' % question
+        print(text)
+    gd = common_dir(ctx["root"])
+    ent = load_json(os.path.join(gd, "agent_owner_words.json")).get(task) if gd else None
+    if isinstance(ent, dict):
+        rec = ent.get("publish")
+        if isinstance(rec, dict) and rec.get("quote") and rec.get("means"):
+            line("publish", rec["quote"], rec.get("typed"), rec["means"], rec.get("question"))
+        skip = ent.get("skip") if isinstance(ent.get("skip"), dict) else {}
+        for block in sorted(skip, key=order_key):
+            rec = skip[block]
+            if isinstance(rec, dict) and rec.get("quote") and rec.get("means"):
+                line("skip " + block, rec["quote"], rec.get("typed"), rec["means"], rec.get("question"))
+    paths = [os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")]
+    if opts.get("--results"):
+        paths.append(opts["--results"])
+    opened = (field_of(f, "opened") or "") if f is not None else ""
+    r = read_results(paths, task, opened, soon(ctx["now"])).get(SIGN)
+    got = parse_sign(r[2]) if r and r[0] == "pass" else None
+    if got:
+        line(SIGN, got[0], got[3], got[1], got[2])
 
 
 def git_line(d, *args):
@@ -797,6 +888,7 @@ def cmd_gate(ctx, a):
             i += 2
         else:
             raise Refuse("checks gate: unknown or incomplete option: %s" % rest[i], 2)
+    print_owner_words(ctx, task, opts.get("--dir", ""), opts, Todo(ctx["root"]).fields(task))
     if "--dir" not in opts:
         raise Refuse("checks gate: --dir <path> is needed", 2)
     d = opts["--dir"]

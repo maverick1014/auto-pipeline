@@ -502,8 +502,8 @@ class TestGate(Case):
         self.ok("todo", "checks", "t", "OWNER SIGN")
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS", "PR REVIEW")
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
-            fh.write("CHECK t OWNER SIGN: pass | by owner | at %s | owner order verified: yes merge it | %s\n"
-                     % self.at_now())                                                          # G9
+            fh.write("CHECK t OWNER SIGN: pass | by owner | at %s | owner order verified: yes merge it | "
+                     "means: merge t | typed: - | %s\n" % self.at_now())                     # G9; section 53 A7
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho verified\nexit 0\n")
         self.assertEqual(self.gate().returncode, 0, self.gate().stdout)
         self.repo.write_bin_script("agent-owner-order.sh", "#!/usr/bin/env bash\necho 'not found'\nexit 1\n")
