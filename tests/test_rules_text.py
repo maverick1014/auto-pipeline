@@ -3002,7 +3002,7 @@ class TestRuleText(unittest.TestCase):
     def test_k_w14_status_line_rows(self):
         w14 = section(read("PRINCIPLES.md"), "W14. Todo board", "W15.").splitlines()
         line = self.line_with(w14, "statusline", "5 lines")
-        for word in ("own row", "+N queued/held", "warning"):
+        for word in ("own row", "+N tasks", "warning"):
             self.assertIn(word, line)
 
     def test_g_dispatch_starts_or_restarts_one_all_watch(self):
