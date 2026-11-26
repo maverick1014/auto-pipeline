@@ -1,4 +1,4 @@
-"""The one reader of the 17 auto-pipeline settings.
+"""The one reader of the 20 auto-pipeline settings.
 
 The settings live only in Claude Code: /plugin -> Installed -> auto-pipeline -> Configure.
 They are stored in <claude config dir>/settings.json under
@@ -87,6 +87,14 @@ SETTINGS = [
     _s("city_idle_min", "City: City auto close (min)", "number", 30,
        "Minutes the agent city keeps running with no browser open, then it stops by itself. 1 to 240.",
        min=1, max=240),
+    _s("task_files", "Team: Task files in git", "string", "local",
+       "Which task files are shared through git besides the finished records: local (none), ideas, or ideas,todo. A value in the repo's agent_repo.conf wins.",
+       options=["local", "ideas", "ideas,todo"]),
+    _s("task_take", "Team: Who may take a task", "string", "owner",
+       "In a shared todo, who may work a task: owner (only the owner or the one assigned) or anyone (take it first). The repo value in agent_repo.conf wins.",
+       options=["owner", "anyone"]),
+    _s("data_branch", "Team: Data branch", "string", "ap-data",
+       "Branch for the shared agent files; the repo value wins. Any branch works, production too: then they live under .ap-data/ there, it needs an origin, and a commit can start a deploy."),
 ]
 
 CONSTANTS = {
@@ -100,6 +108,7 @@ CONSTANTS = {
     "docs_keep": "", "owner_order_hours": 24, "owner_order_min_chars": 20,
     "check_budget_s": 60, "unused_pane_min": 30,
     "nightly_hour": 22, "light_test_s": 120, "light_test_mb": 1024, "verify_box_min": 15,
+    "share_net_timeout_s": 15, "share_offline_min": 5,
 }
 
 BY_KEY = {s["key"]: s for s in SETTINGS}
@@ -899,6 +908,36 @@ def production_branch(repo):
     return git("symbolic-ref", "--short", "-q", "HEAD") or "main"
 
 
+def _clean_name(text):
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def user_name(repo):
+    """The name of this clone's user as written: git user.name trimmed (case and spaces kept, a "|" or a line break
+    becomes a space); empty: the login name; still empty: "user"."""
+    def raw(text):
+        return re.sub(r"[|\r\n]", " ", text).strip()
+    try:
+        r = subprocess.run(["git", "-C", repo, "config", "user.name"], stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, timeout=30)
+        who = raw(r.stdout.decode(errors="replace"))
+    except (OSError, subprocess.SubprocessError):
+        who = ""
+    if not who:
+        try:
+            import getpass
+            who = raw(getpass.getuser())
+        except Exception:
+            who = ""
+    return who or "user"
+
+
+def same_person(a, b):
+    """True when the cleaned forms (lower case, runs of other characters one "-") are equal and not empty."""
+    ca, cb = _clean_name(a or ""), _clean_name(b or "")
+    return bool(ca) and ca == cb
+
+
 def working_branch(repo, derive=False):
     """The working branch of this clone. Without derive: the stored git config auto-pipeline.workingbranch, or
     None when nothing is stored (nothing is stored by a read). With derive=True (init and the start only): the
@@ -912,17 +951,7 @@ def working_branch(repo, derive=False):
         except (OSError, subprocess.SubprocessError):
             return ""
     def named(form):
-        if "<name>" not in form:
-            return form
-        who = re.sub(r"[^a-z0-9]+", "-", cfg("config", "user.name").lower()).strip("-")
-        if not who:
-            try:
-                import getpass
-                login = getpass.getuser()
-            except Exception:
-                login = ""
-            who = re.sub(r"[^a-z0-9-]+", "-", login.lower()).strip("-") or "user"
-        return form.replace("<name>", who)
+        return form.replace("<name>", _clean_name(user_name(repo)) or "user") if "<name>" in form else form
     stored = cfg("config", "--local", "--get", "auto-pipeline.workingbranch")
     if stored:
         if stored != production_branch(repo):
@@ -945,6 +974,52 @@ def working_branch(repo, derive=False):
         value = default
     cfg("config", "--local", "auto-pipeline.workingbranch", value)
     return value
+
+
+# ------------------------------------------------------------------ repo value against the person's Configure
+
+def _row(key):
+    return [r for r in SETTINGS if r["key"] == key][0]
+
+
+TEAM_KEYS = ("task_files", "task_take", "data_branch")
+
+
+def shared_lines(project_root, env=None):
+    """One line per team fact (task_files, task_take, data_branch) that agent_repo.conf of the project has and
+    the person's Configure value (the default when unset) differs from: the repo value counts. Never raises."""
+    out = []
+    try:
+        with open(os.path.join(project_root, REPO_FILE), "r", encoding="utf-8", errors="replace") as fh:
+            values = _parse_old(fh.read())
+    except Exception:
+        return out
+    for key in TEAM_KEYS:
+        if key not in values:
+            continue
+        try:
+            repo = values[key].replace(" ", "")
+            mine = text(get(key, env)).replace(" ", "")
+        except Exception:
+            continue
+        bad = repo not in _row(key).get('options', [repo])
+        if key == "data_branch" and not bad and repo:
+            raw = values[key].strip()
+            try:
+                bad = raw.startswith("-") or subprocess.run(
+                    ["git", "check-ref-format", "--branch", raw], stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, timeout=10).returncode != 0
+            except Exception:
+                bad = False
+            if bad:
+                repo = raw
+        if bad:
+            out.append("SHARED FILES: this repo says %s=%s in %s: not valid, the default %s is used"
+                       % (key, repo, REPO_FILE, _row(key)['default']))
+        elif repo != mine:
+            out.append("SHARED FILES: this repo says %s=%s in %s; your Configure says %s; the repo value counts"
+                       % (key, repo, REPO_FILE, mine))
+    return out
 
 
 # ------------------------------------------------------------------ CLI

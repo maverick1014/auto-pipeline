@@ -2,7 +2,7 @@
 """agent_blocks.py - the ONE table of check blocks and their triggers (R8). Python 3.9, stdlib only.
 
 requirements/check-blocks.md section 1 and C1. agent_level.py imports the names and the order from here;
-PRINCIPLES.md R8, the skills and the quiz are tested against it.
+rules/checks.md R8, the skills and the quiz are tested against it.
 
     agent_blocks.py names     the 13 block names, one per line, table order
     agent_blocks.py table     the markdown table | Block | Picked | Trigger | What runs | Owner signs |

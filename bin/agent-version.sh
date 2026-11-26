@@ -85,7 +85,7 @@ cmd_hook() {
   else
     tail="(claude --resume)."
   fi
-  printf 'STALE PLUGIN: this session runs %s, %s is installed. Call %s/%s/bin/... for every script and in every subagent brief. Restart this session at the next quiet point %s\n' \
+  printf 'STALE PLUGIN: this session runs %s, %s is installed. Call %s/%s/bin/... for every script and in every subagent brief. Restart this session at the next quiet point %s Rule: rules/traps.md (W16).\n' \
     "$RUNNING" "$NEWEST" "$CACHE" "$NEWEST" "$tail"
   if [ -n "$sid" ]; then
     mkdir -p "$PROJECT_GITDIR" 2>/dev/null

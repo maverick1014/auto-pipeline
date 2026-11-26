@@ -2,7 +2,7 @@
 name: todo
 description: Show the todo board: one table of every open task, wait on the owner, owner to-do and parked question, then the decide section. Use when the human asks for the todo.
 ---
-# /todo — show the board (PRINCIPLES.md W14)
+# /todo — show the board (rules/board.md W14)
 
 Words to the human: the Language setting. A spawned worker, deputy or reviewer never runs this: do nothing.
 

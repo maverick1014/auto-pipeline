@@ -329,6 +329,79 @@ def bash_launches(command):
     return found
 
 
+POINTS = {
+    "dispatch": ("Dispatch: route it by rules/routing.md (W9); its blocks (--checks) by rules/checks.md (R8). "
+                 "The hook only points."),
+    "merge": ("Merge: the gate by rules/checks.md (R8); the merge and the cleanup by rules/worktrees.md (W8). "
+              "The hook only points."),
+    "push": "Push: a push that is denied: rules/traps.md (W16). The hook only points.",
+}
+POINT_AGENTS = {"fast-lane-deputy": "dispatch", "merge-deputy": "merge", "reviewer": "merge",
+                "check-deputy": "merge"}
+_POINT = {"moment": None, "ctx": None, "sid": ""}
+
+
+def git_subcommand(args):
+    """The git subcommand of the words after `git` (global options skipped)."""
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-C", "-c", "--git-dir", "--work-tree", "--namespace"):
+            i += 2
+            continue
+        if a.startswith("-"):
+            i += 1
+            continue
+        return a
+    return ""
+
+
+def bash_moment(command, ops):
+    """dispatch | merge | push | None for a Bash text (the first one found, in command order)."""
+    if any(op == "create" for op, _ in ops):
+        return "dispatch"
+    for words in split_commands(command):
+        k = 0
+        while k < len(words) and (RE_ASSIGN.match(words[k]) or words[k] in SKIP_WORDS):
+            k += 1
+        w = words[k:]
+        if not w:
+            continue
+        if os.path.basename(w[0]) in ("bash", "sh") and len(w) > 1:
+            w = w[1:]
+        name = os.path.basename(w[0])
+        rest = w[1:]
+        if name == "agent-file.sh":
+            for a, b in zip(rest, rest[1:]):
+                if (a, b) == ("todo", "add"):
+                    return "dispatch"
+                if (a, b) == ("checks", "gate"):
+                    return "merge"
+        elif name == "agent-promote.sh" and "--task" in rest:
+            return "merge"
+        elif name == "git" and git_subcommand(rest) == "push":
+            return "push"
+    return None
+
+
+def point_line(ctx):
+    """The pointer line of this call, or None (already given in this session, or no session id and no marker)."""
+    moment = _POINT["moment"]
+    if not moment or ctx is None:
+        return None
+    sid = re.sub(r"[^A-Za-z0-9_.-]", "_", _POINT["sid"])
+    if sid:
+        path = os.path.join(ctx["common"], "agent_point_%s_%s" % (sid, moment))
+        if os.path.exists(path):
+            return None
+        try:
+            with open(path, "w") as fh:
+                fh.write(ctx["now"] + "\n")
+        except OSError:
+            return None
+    return POINTS[moment]
+
+
 def pane_title(opts):
     t = opts.get("title")
     if t is None or not t.strip():
@@ -629,6 +702,37 @@ def quiet_todo(ctx):
     return opens or set()
 
 
+def share_module():
+    here = os.path.dirname(os.path.abspath(__file__))
+    old = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agent_share
+        return agent_share
+    finally:
+        sys.dont_write_bytecode = old
+
+
+def share_pull(main):
+    """A shared todo: the newest data first (quiet, short timeout, a failure = the local file)."""
+    try:
+        share_module().pull(main)
+    except Exception:
+        pass
+
+
+def work_block(ctx, task):
+    """"board guard: <text>" when this person may not work the task of a shared todo, else None."""
+    try:
+        agent_share = share_module()
+        text = agent_share.may_work(ctx["main"], agent_share.todo_line(ctx["main"], task))
+    except Exception:
+        return None
+    return "board guard: %s" % text if text else None
+
+
 def decide_agent(ctx, desc, stype):
     base = base_type(stype)
     kind_t = TYPE_KINDS.get(base, "agent")
@@ -643,6 +747,8 @@ def decide_agent(ctx, desc, stype):
         if pd:
             return Decision(pd[1], pd[0] if (pd[0] == own or pd[0] in opens) else own, pd[2])
         return Decision(kind_t, first if (first == own or first in opens) else own, desc)
+    if role == "main":
+        share_pull(ctx["main"])
     opens, why = read_todo(ctx["main"])
     if role == "free":
         if pd:
@@ -660,11 +766,11 @@ def decide_agent(ctx, desc, stype):
     ro = base in READ_ONLY
     if pd:
         if pd[0] in opens:
-            return Decision(pd[1], pd[0], pd[2])
+            return Decision(pd[1], pd[0], pd[2], block=work_block(ctx, pd[0]))
         if not ro:
             return Decision(pd[1], pd[0], pd[2], block=not_open_msg(desc, pd[0]))
     elif first in opens:
-        return Decision(kind_t, first, desc)
+        return Decision(kind_t, first, desc, block=work_block(ctx, first))
     if ro:
         return Decision(kind_t, "%s Manager" % folder_name, desc)
     return Decision(kind_t, "%s Manager" % folder_name, desc,
@@ -705,6 +811,8 @@ def decide_pane(ctx, title):
         if src in ("T1", "T2") and (task == own or task in quiet_todo(ctx)):
             return Decision(kind, task, title)
         return Decision(kind, own, title)
+    if role == "main":
+        share_pull(ctx["main"])
     opens, why = read_todo(ctx["main"])
     if role == "free":
         if src in ("T1", "T2"):
@@ -720,13 +828,13 @@ def decide_pane(ctx, title):
         return Decision("pane", folder_name, title, warn=warn)
     if src in ("T1", "T2"):
         if task in opens:
-            return Decision(kind, task, title)
+            return Decision(kind, task, title, block=work_block(ctx, task))
         if unknown:
             return Decision(kind, task, title)
         return Decision(kind, task, title, block='board guard: pane "%s" names %s, which is not an open todo task. '
                         'Run agent-file.sh todo add "%s" ... first.' % (q(title), task, task))
     if src == "T4" and task in opens:
-        return Decision("pane", task, title)
+        return Decision("pane", task, title, block=work_block(ctx, task))
     if unknown:
         return Decision("pane", "%s Manager" % main_name, title)
     return Decision("pane", folder_name, title,
@@ -791,9 +899,14 @@ def handle(payload):
     if ev in ("PreToolUse", "PostToolUse"):
         if tool in ("Agent", "Task"):
             kind = "agent"
+            if ev == "PreToolUse":
+                _POINT["moment"] = POINT_AGENTS.get(base_type(str(tin.get("subagent_type") or "")))
         elif tool == "Bash":
-            ops = bash_launches(str(tin.get("command") or ""))
-            if not ops:
+            command = str(tin.get("command") or "")
+            ops = bash_launches(command)
+            if ev == "PreToolUse":
+                _POINT["moment"] = bash_moment(command, ops)
+            if not ops and not _POINT["moment"]:
                 return OK
             kind = "bash"
         else:
@@ -804,6 +917,8 @@ def handle(payload):
     ctx = make_context(payload)
     if ctx is None:
         return OK
+    _POINT["ctx"] = ctx
+    _POINT["sid"] = str(payload.get("session_id") or "")
     quiet = ctx["role"] == "free"
 
     if ev == "PreToolUse":
@@ -1001,21 +1116,30 @@ def run(raw):
         return ("WARN", "board guard: bad hook JSON; allowed")
     if not isinstance(payload, dict):
         return ("WARN", "board guard: bad hook JSON; allowed")
-    return handle(payload)
+    _POINT.update(moment=None, ctx=None, sid="")
+    res = handle(payload)
+    if res[0] == "BLOCK":
+        return res
+    line = point_line(_POINT["ctx"])
+    return res + (line,) if line else res
 
 
 def main():
     try:
         raw = sys.stdin.read()
-        status, text = run(raw)
+        got = run(raw)
+        status, text = got[0], got[1]
+        point = got[2] if len(got) > 2 else ""
     except Warn as e:
+        point = ""
         status, text = "WARN", str(e) if str(e).startswith("board guard:") else "board guard: %s; allowed" % e
     except Exception as e:  # never raise
+        point = ""
         what = one_line("%s %s" % (type(e).__name__, e))[:60]
         status, text = "WARN", "board guard: %s; allowed" % what
     line = status if not text else "%s %s" % (status, one_line(text))
     try:
-        sys.stdout.write(line + "\n")
+        sys.stdout.write(("POINT %s\n" % one_line(point) if point else "") + line + "\n")
         sys.stdout.flush()
     except Exception:
         pass

@@ -38,6 +38,8 @@
 # Writes agent_repo.conf (this repo's facts, committed) when missing, or adds only the
 # keys it lacks, never changing a value that is set (bin/agent_repo_init.py). It times
 # the build and the guard tests once, only under the RAM/CPU cap, unless --no-measure.
+# Writes no sharing fact into agent_repo.conf. The five agent_*.txt lines of .gitignore come from
+# agent_share.py ignore (the place decides: data = present, tree = absent).
 # Adds .secrets/, agent_state.txt, agent_monitor.txt, agent_monitor.txt.tmp.*
 # and .auto-pipeline/ to .gitignore, creating it when missing. Never
 # overwrites a file already there.
@@ -63,7 +65,7 @@ set -eu
 . "$(dirname "$0")/agent-roots.sh"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,60p' "$0"; exit 0;;
+  -h|--help) awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 0;;
 esac
 
 # Plugin on/off per repo or per user. Python does the JSON. Args: all|selected,
@@ -324,6 +326,8 @@ repo_conf() {
     || echo "agent_repo.conf: scan failed, nothing written"
 }
 repo_conf
+# the agent files are git-ignored by the place of agent_repo.conf (data: all five lines; tree, the cloud: none)
+python3 "$(dirname "$0")/agent_share.py" "$ROOT" ignore </dev/null 2>/dev/null || true
 
 skip_warning_line
 

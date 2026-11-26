@@ -16,6 +16,8 @@
 #   .claude/auto-pipeline/bin/        every file of the source bin/, same
 #                                     bytes and mode, no __pycache__
 #   .claude/auto-pipeline/PRINCIPLES.md   same bytes as the source
+#   .claude/auto-pipeline/rules/      the source rules/ folder, same bytes
+#   .claude/auto-pipeline/GLOSSARY.md, NOTICE.md   same bytes as the source
 #   .claude/auto-pipeline/VERSION         source plugin.json version + "\n"
 #   .claude/skills/<name>/SKILL.md   every source skill except init (the
 #                                     built-in /init already does its job)
@@ -23,7 +25,7 @@
 #                                     packed copy)
 #   .claude/agents/<name>.md         every source agent
 #   .claude/settings.json            merged: every existing key and hook is
-#                                     kept, the SessionStart (start, name),
+#                                     kept, the SessionStart (start, rules, name),
 #                                     UserPromptSubmit (close case, show todo,
 #                                     Helper title) and city hooks and the
 #                                     permission rules are added
@@ -31,15 +33,22 @@
 #                                     overwritten
 #   agent_*.txt, .secrets/,
 #   AGENTS.md                        from running the packed agent-init.sh
-#   .gitignore                       the task-file lines, plus the pack's
-#                                     own __pycache__ line, each once
+#   agent_repo.conf                  from the same run, then task_files=ideas,todo
+#                                     and task_place=tree (bin/agent_share.py set):
+#                                     a cloud session pushes only its own branch, so
+#                                     the task files stay tracked in the tree and are
+#                                     committed with the work, no data branch
+#   .gitignore                       the pack's own __pycache__ line; the five
+#                                     agent_*.txt lines init wrote are taken out
+#                                     again (agent_share.py ignore), each once
 #
 # A cloud session runs the defaults: no settings file is written or committed
 # (settings live in /plugin -> Installed -> auto-pipeline -> Configure on a
 # machine with the plugin). --language is gone: given, it exits 2.
-# --update        refreshes bin/, PRINCIPLES.md, VERSION and the packed
-#                 skills/agents to match this source, and drops any bin/
-#                 script the source no longer has. Never touches agent_*.txt,
+# --update        refreshes bin/, PRINCIPLES.md, rules/, GLOSSARY.md,
+#                 NOTICE.md, VERSION and the packed skills/agents to match
+#                 this source, and drops any bin/ script or rules/ file the
+#                 source no longer has. Never touches agent_*.txt,
 #                 CLAUDE.md, AGENTS.md, .gitignore, the user's own settings
 #                 keys, or the user's own skills and agents.
 #
@@ -70,7 +79,7 @@ esac
 . "$(dirname "$0")/agent-roots.sh"
 
 # ---- the source must look like the plugin ----
-for need in bin skills agents PRINCIPLES.md .claude-plugin/plugin.json; do
+for need in bin skills agents PRINCIPLES.md rules GLOSSARY.md NOTICE.md .claude-plugin/plugin.json; do
   if [ ! -e "$PLUGIN_ROOT/$need" ]; then
     echo "agent-cloud-pack.sh: source is missing $need (looked in $PLUGIN_ROOT)" >&2
     exit 2
@@ -230,6 +239,25 @@ if UPDATE:
 sync_file(os.path.join(SRC, "PRINCIPLES.md"), os.path.join(PACK, "PRINCIPLES.md"),
           ".claude/auto-pipeline/PRINCIPLES.md", UPDATE)
 
+# ---- rules/, GLOSSARY.md, NOTICE.md ----
+src_rules = os.path.join(SRC, "rules")
+pack_rules = os.path.join(PACK, "rules")
+os.makedirs(pack_rules, exist_ok=True)
+rule_names = sorted(n for n in os.listdir(src_rules)
+                    if n.endswith(".md") and os.path.isfile(os.path.join(src_rules, n)))
+for name in rule_names:
+    sync_file(os.path.join(src_rules, name), os.path.join(pack_rules, name),
+              ".claude/auto-pipeline/rules/%s" % name, UPDATE)
+if UPDATE:
+    for name in sorted(os.listdir(pack_rules)):
+        path = os.path.join(pack_rules, name)
+        if name.endswith(".md") and os.path.isfile(path) and name not in rule_names:
+            os.remove(path)
+            status("removed", ".claude/auto-pipeline/rules/%s" % name)
+for name in ("GLOSSARY.md", "NOTICE.md"):
+    sync_file(os.path.join(SRC, name), os.path.join(PACK, name),
+              ".claude/auto-pipeline/%s" % name, UPDATE)
+
 # ---- VERSION ----
 version_path = os.path.join(PACK, "VERSION")
 version_text = SRC_VER + "\n"
@@ -279,6 +307,12 @@ PY
 # ---- run the packed agent-init.sh, not the source one, so AGENTS.md gets
 # the relative path. ----
 INIT_OUT=$("$PACK/bin/agent-init.sh" --no-branch "$TARGET") || die "agent-init.sh"
+
+# ---- a cloud session can push only its own branch: the task files are shared (ideas and todo) and stay tracked
+# in the tree, committed with the work. The facts go in agent_repo.conf, then the five ignore lines init added go. ----
+python3 "$PACK/bin/agent_share.py" "$TARGET" set task_files ideas,todo --no-commit --no-move >/dev/null || die "task_files"
+python3 "$PACK/bin/agent_share.py" "$TARGET" set task_place tree --no-commit >/dev/null || die "task_place"
+python3 "$PACK/bin/agent_share.py" "$TARGET" ignore || die "ignore lines"
 
 # ---- show agent-init.sh's file lines and its cloud Setup-script hint, but
 # not the permission JSON block or the two lines asking the human to paste
@@ -359,10 +393,26 @@ changed = not existed
 
 hooks = data.setdefault("hooks", {})
 session_start = hooks.setdefault("SessionStart", [])
-has_hook = any(HOOK_MARKER in hook.get("command", "")
-               for entry in session_start for hook in entry.get("hooks", []))
-if not has_hook:
+RULES_CMD = HOOK_CMD + " --rules"
+
+
+def entry_kind(entry):
+    """"rules" for the --rules entry, "start" for the start entry, else None."""
+    for hook in entry.get("hooks", []):
+        cmd = hook.get("command", "")
+        if HOOK_MARKER in cmd:
+            return "rules" if cmd.strip().endswith(" --rules") else "start"
+    return None
+
+
+kinds = [entry_kind(e) for e in session_start]
+if "start" not in kinds:
     session_start.append({"hooks": [{"type": "command", "command": HOOK_CMD}]})
+    kinds.append("start")
+    changed = True
+if "rules" not in kinds:
+    session_start.insert(kinds.index("start") + 1,
+                         {"hooks": [{"type": "command", "command": RULES_CMD}]})
     changed = True
 
 # The plugin's other hooks: the session name line, the Helper task title (the
@@ -421,7 +471,7 @@ fi
 
 echo
 echo "Commit and push so a cloud session can read this:"
-echo "  git add .claude CLAUDE.md AGENTS.md agent_*.txt .gitignore"
+echo "  git add .claude CLAUDE.md AGENTS.md agent_*.txt agent_repo.conf .gitignore"
 echo "  git commit -m 'auto-pipeline: lay the cloud pack'"
 echo "  git push"
 echo

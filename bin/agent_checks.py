@@ -14,7 +14,6 @@ A refusal is one line on stderr and exit 1 (nothing written); a usage error is e
 Rules: requirements/check-blocks.md, section 9 C3 and section 11.
 """
 
-import fnmatch
 import json
 import os
 import re
@@ -113,14 +112,14 @@ class Todo(object):
 
 def field_of(fields, prefix):
     for f in fields[3:]:
-        if f.startswith(prefix + " "):
+        if f.startswith(prefix + " ") and not (prefix == "stage" and f.startswith("stage log ")):
             return f[len(prefix) + 1:]
     return None
 
 
 def field_index(fields, prefix):
     for i in range(3, len(fields)):
-        if fields[i].startswith(prefix + " "):
+        if fields[i].startswith(prefix + " ") and not (prefix == "stage" and fields[i].startswith("stage log ")):
             return i
     return -1
 
@@ -129,7 +128,7 @@ def anchor(fields):
     """The index after which a new checks/scope/builder field goes: the last of est, guess, level (else the what)."""
     at = 2
     for i in range(3, len(fields)):
-        if re.match(r"(est|guess) \d+m$|level ([0-9]+|[A-D])$", fields[i]):
+        if re.match(r"(est|est0|added|guess) \d+m$|why .+|level ([0-9]+|[A-D])$", fields[i]):
             at = i
     return at
 
@@ -317,6 +316,15 @@ def cmd_owner_words(ctx, a):
     store_words(ctx, task, "publish", None, quote, means, question, typed, when, relayed)
 
 
+def work_refusal(ctx, line):
+    """The refusal text when this person may not work the task of this todo line (a shared todo), else None."""
+    try:
+        import agent_share
+        return agent_share.may_work(ctx["root"], line if isinstance(line, str) else " | ".join(line))
+    except ImportError:
+        return None
+
+
 def cmd_todo_target(ctx, a):
     """todo target <task> production --owner-quote Q --means M [--question X] [--time T] [--relayed-from <folder>]:
     the owner's yes after the task was added (FIX ORDER 1 R2). Same checks and record as todo add --target production."""
@@ -326,6 +334,9 @@ def cmd_todo_target(ctx, a):
     name, target, rest = a[0], a[1], a[2:]
     todo = Todo(ctx["root"])
     f = need_line(todo, name)
+    why = work_refusal(ctx, f)
+    if why:
+        raise Refuse(why)
     if target != "production":
         raise Refuse("todo target: only production is set this way (got: %s)" % target)
     opts, i = {}, 0
@@ -406,6 +417,9 @@ def cmd_todo_checks(ctx, a):
     cur = field_of(f, "checks")
     old = [x.strip() for x in cur.split(",")] if cur else []
     if rest and rest[0] == "--remove":
+        why = work_refusal(ctx, f)
+        if why:
+            raise Refuse(why)
         opts, i = {}, 0
         while i < len(rest):
             if rest[i] in ("--remove", "--owner-quote", "--means", "--question", "--time", "--relayed-from") and i + 1 < len(rest):
@@ -510,12 +524,25 @@ def cmd_todo_est(ctx, a):
     else:
         f.insert(3, "est %sm" % mins)
         at = 3
+    # est0 keeps the first estimate, added the sum of every +<m> (right after est)
+    e0 = field_index(f, "est0")
+    if e0 < 0 and old:
+        f.insert(at + 1, "est0 %s" % old)
+        e0 = at + 1
+    if add:
+        ad = field_index(f, "added")
+        if ad >= 0:
+            m = re.match(r"added (\d+)m$", f[ad])
+            f[ad] = "added %dm" % ((int(m.group(1)) if m else 0) + int(body))
+        else:
+            f.insert((e0 if e0 >= 0 else at) + 1, "added %dm" % int(body))
     if guess is not None:
         g = field_index(f, "guess")
         if g >= 0:
             f[g] = "guess %sm" % int(guess)
         else:
-            f.insert(at + 1, "guess %sm" % int(guess))
+            top = max(at, field_index(f, "est0"), field_index(f, "added"))
+            f.insert(top + 1, "guess %sm" % int(guess))
     todo.set(name, f)
     print("todo est: %s %s -> %sm" % (name, old or "-", mins))
 
@@ -998,6 +1025,10 @@ def cmd_gate(ctx, a):
             i += 2
         else:
             raise Refuse("checks gate: unknown or incomplete option: %s" % rest[i], 2)
+    why = work_refusal(ctx, Todo(ctx["root"]).fields(task) or "")
+    if why:
+        print("GATE REFUSED %s: %s" % (task, why))
+        sys.exit(1)
     print_owner_words(ctx, task, opts.get("--dir", ""), opts, Todo(ctx["root"]).fields(task))
     if "--dir" not in opts:
         raise Refuse("checks gate: --dir <path> is needed", 2)
@@ -1120,36 +1151,9 @@ def cmd_gate(ctx, a):
 
 # -- next
 
-def glob_dir(g):
-    m = re.search(r"[*?\[]", g)
-    if not m:
-        return None
-    pre = g[:m.start()]
-    return pre[:pre.rfind("/") + 1]
-
-
-def clash(a, b):
-    da, db = glob_dir(a), glob_dir(b)
-    if da is None and db is None:
-        return a == b
-    if da is None:
-        return fnmatch.fnmatchcase(a, b)
-    if db is None:
-        return fnmatch.fnmatchcase(b, a)
-    return da.startswith(db) or db.startswith(da)
-
-
 def scope_of(f):
     s = field_of(f, "scope")
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
-
-
-def clash_with(scope, other):
-    for x in scope:
-        for y in other:
-            if clash(x, y):
-                return y
-    return None
 
 
 def next_warns(ctx):
@@ -1179,13 +1183,11 @@ def next_lines(ctx, a):
     rows = [f for f in todo.open_lines() if len(f) >= 3]
     names_open = set(f[0] for f in rows)
     running = []     # open lines with a stage and no open wait
-    staged = []      # open lines with a stage (wait or not): their files are taken
     cands = []
     for f in rows:
         stage = field_of(f, "stage") is not None
         waiting = field_of(f, "waiting")
         if stage:
-            staged.append(f)
             if waiting is None:
                 running.append(f)
             continue
@@ -1201,7 +1203,6 @@ def next_lines(ctx, a):
               % (used, reserved, pane, limit))
         return
     starts, waits = [], []
-    taken = [(f[0], scope_of(f)) for f in staged]
     for f in cands:
         name = f[0]
         w = field_of(f, "waiting")
@@ -1210,15 +1211,6 @@ def next_lines(ctx, a):
             waits.append("WAIT %s: after %s still open" % (name, after))
             continue
         sc = scope_of(f)
-        hit = None
-        for tname, tscope in taken:
-            g = clash_with(sc, tscope) if sc and tscope else None
-            if g:
-                hit = (tname, g)
-                break
-        if hit:
-            waits.append("WAIT %s: clashes with %s on %s" % (name, hit[0], hit[1]))
-            continue
         if len(starts) >= free:
             waits.append("WAIT %s: no room for another pane" % name)
             continue
@@ -1227,7 +1219,6 @@ def next_lines(ctx, a):
         if not sc:
             line += " | scope unknown: judge"
         starts.append(line)
-        taken.append((name, sc))
     print("NEXT: %d can start (room %d MB under the %d%% limit)" % (len(starts), room, pct))
     for l in starts + waits:
         print(l)

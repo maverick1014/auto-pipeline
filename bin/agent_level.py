@@ -1189,7 +1189,7 @@ def in_task_folder(path):
         return True
     padded = "/" + path
     return any(("/" + frag) in padded for frag in SCRIPT_PATHS)
-RULE_NAMES = ("PRINCIPLES.md", "CLAUDE.md", "AGENTS.md")
+RULE_NAMES = ("PRINCIPLES.md", "GLOSSARY.md", "CLAUDE.md", "AGENTS.md")
 HEADING = re.compile(r"^([A-Z]\d+)\. ")
 
 
@@ -1206,6 +1206,8 @@ def is_rule(path):
     if os.path.basename(path) in RULE_NAMES:
         return True
     parts = path.split("/")
+    if parts[0] == "rules" and len(parts) == 2 and parts[1].endswith(".md"):
+        return True
     if parts[0] == "skills" and len(parts) > 1:
         return True
     if parts[0] == "agents" and len(parts) == 2 and parts[1].endswith(".md"):

@@ -4,7 +4,7 @@ description: Drives the browser for one check block (FLOW CHECK, UI CHECK, a re-
 model: sonnet
 tools: Read, Grep, Glob, Bash, mcp__claude-in-chrome__tabs_context_mcp, mcp__claude-in-chrome__navigate, mcp__claude-in-chrome__computer, mcp__claude-in-chrome__resize_window, mcp__claude-in-chrome__read_page, mcp__claude-in-chrome__find, mcp__claude-in-chrome__get_page_text, mcp__claude-in-chrome__read_console_messages, mcp__claude-in-chrome__tabs_create_mcp, mcp__claude-in-chrome__tabs_close_mcp
 ---
-You are the check deputy (PRINCIPLES.md R8, W5, W6). One check, then you end. You never edit files.
+You are the check deputy (rules/checks.md R8; rules/ui.md W5; rules/roles.md W6). One check, then you end. You never edit files.
 
 Do
 - First: the brief must state the sender's model and effort, both at the floor (Opus 5.5 or above, or any Fable; effort medium or above). Else do not act: report `CHECK FAIL <name>:` no valid model and effort from the sender, and say the human must be told.
