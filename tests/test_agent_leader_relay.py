@@ -342,8 +342,8 @@ class TestExamples(LeaderCase):
         dt = ago(30)
         self.write([assistant(QUESTION, ago(31)), leader("ok but first fix the footer of the export page", dt)])
         r = self.verify("ok", minute(dt), None, "--question", QUESTION)
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertTrue(r.stdout.startswith(PRE), r.stdout)
+        self.assertEqual(self.assertRefused(r, "the quote is only part of a longer owner prompt"),
+                         PRE + "the quote is only part of a longer owner prompt; a short answer must be a whole prompt")
 
     def test_e9_a_missing_empty_broken_or_too_large_file_is_refused_with_a_line(self):
         dt = ago(30)
@@ -562,7 +562,14 @@ class TestLeaderRecords(LeaderCase):
         ("typed prompt with no origin", lambda dt: with_origin(owner(QUOTE, dt), None), False),
         ("typed prompt from a channel", lambda dt: with_origin(owner(QUOTE, dt), "channel"), False),
         ("sdk prompt from a coordinator", lambda dt: with_origin(leader(QUOTE, dt), "coordinator"), False),
-        ("his words after a cut system reminder", lambda dt: leader(reminder("hook text") + "\n" + QUOTE, dt), True),
+        # PR REVIEW 5 (requirement 2e): a text that starts with a system reminder, a task notification, a local command
+        # or a command name is never his; a reminder after his words is cut
+        ("a system reminder first, then his words", lambda dt: leader(reminder("hook text") + "\n" + QUOTE, dt), False),
+        ("a command name first", lambda dt: leader("<command-name>/x</command-name>\n" + QUOTE, dt), False),
+        ("a local command first", lambda dt: leader("<local-command-stdout>out</local-command-stdout>\n" + QUOTE, dt),
+         False),
+        ("a task notification first", lambda dt: leader("<task-notification>x</task-notification>\n" + QUOTE, dt), False),
+        ("his words, then a system reminder", lambda dt: leader(QUOTE + "\n" + reminder("hook text"), dt), True),
         ("tool result", lambda dt: tool_result(QUOTE, dt), False),
         ("peer", lambda dt: peer(QUOTE, dt), False),
         ("meta", lambda dt: meta(QUOTE, dt), False),
@@ -684,6 +691,10 @@ class TestOrcaNotes(LeaderCase):
 
     def test_d_a_fence_closed_that_was_never_opened(self):
         self.check(HEADER_CHATS + "\nchat 2: hello\n>>>\n\n" + QUOTE, False, self.NOT_HIS)
+
+    def test_d_an_image_mark_after_a_note_is_refused(self):
+        # PR REVIEW 8 (main manager's decision): the image mark counts only in a prompt with no note (case a)
+        self.check(HEADER_WORK + "\n" + fence("item 10: x") + "\n\n[Image #1] " + QUOTE, False, self.NOT_HIS)
 
     def test_d_a_last_paragraph_that_starts_with_a_bracket(self):
         self.check(HEADER_WORK + "\n\n[x] " + QUOTE, False, self.NOT_HIS)
@@ -858,19 +869,25 @@ class TestApprovalCommands(ApprovalCase):
     def test_bad_uses_are_refused(self):
         sender = self.repo.make_project("sender-repo")
         cases = [
-            ("--owner-quote", QUOTE, "--relayed-by-leader", self.file, "--means", "publish p"),        # no --time
-            self.relay() + ("--means", "publish p", "--relayed-from", sender),                        # two sources
-            ("--owner-quote", QUOTE, "--relayed-by-leader", "rel/s1.jsonl", "--time", self.when, "--means", "x"),
+            (("--owner-quote", QUOTE, "--relayed-by-leader", self.file, "--means", "publish p"),
+             'todo add: --relayed-by-leader needs --time "YYYY-MM-DD HH:MM" (the minute he typed, this machine\'s '
+             'local time)'),
+            (self.relay() + ("--means", "publish p", "--relayed-from", sender),
+             "todo add: --relayed-from and --relayed-by-leader are two sources; give one"),
+            (("--owner-quote", QUOTE, "--relayed-by-leader", "rel/s1.jsonl", "--time", self.when, "--means", "x"),
+             "todo add: --relayed-by-leader wants an absolute file path (got: rel/s1.jsonl)"),
         ]
-        for args in cases:
+        for args, why in cases:
             with self.subTest(args=args):
                 r = self.add_p(*args)
                 self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertEqual((r.stdout + r.stderr).strip(), why)
                 self.assertNotIn("p | ", self.todo())
                 self.assertNotIn("p", self.words())
         r = self.af("todo", "add", "w", "small", "x", "10", "--relayed-by-leader", self.file)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("--target production", r.stdout + r.stderr)
+        self.assertIn("todo add: --owner-quote, --means, --question, --time, --relayed-from and --relayed-by-leader "
+                      "belong to --target production", r.stdout + r.stderr)
 
     def test_todo_target_takes_it(self):
         self.ok("todo", "target", "t", "production", *self.relay(), "--means", "publish t to production")
@@ -985,12 +1002,21 @@ class TestPromote(LeaderCase):
 
     def test_refused_relays_publish_nothing(self):
         before = self.main_tip()
-        for extra in (("--relayed-by-leader", self.file, "--time", minute(self.dt + datetime.timedelta(minutes=7))),
-                      ("--relayed-by-leader", self.file),
-                      ("--relayed-by-leader", "rel/s1.jsonl", "--time", minute(self.dt))):
+        cases = (
+            (("--relayed-by-leader", self.file, "--time", minute(self.dt + datetime.timedelta(minutes=7))),
+             "refused: the owner's words were not verified: OWNER ORDER not verified: the time does not match "
+             "(the prompt is at %s)" % minute(self.dt)),
+            (("--relayed-by-leader", self.file),
+             'refused: --relayed-by-leader needs --time "YYYY-MM-DD HH:MM" (the minute he typed, this machine\'s '
+             'local time)'),
+            (("--relayed-by-leader", "rel/s1.jsonl", "--time", minute(self.dt)),
+             "refused: --relayed-by-leader wants an absolute file path (got: rel/s1.jsonl)"),
+        )
+        for extra, why in cases:
             with self.subTest(extra=extra):
                 r = self.promote(*extra)
                 self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn(why, (r.stdout + r.stderr).splitlines())
                 self.assertEqual(self.main_tip(), before)
 
     def test_follow_up_a_typed_goal_order_publishes(self):
@@ -1066,13 +1092,15 @@ class TestTypedSlashCommand(SameSessionCase):
         for name, line in cases.items():
             with self.subTest(name):
                 self.write([line])
-                self.assertSameRefused(self.same(GOAL_QUOTE), "")
+                self.assertSameRefused(self.same(GOAL_QUOTE), "only in an other line (%s %s)"
+                                       % (self.shown(self.file), minute(dt)))
 
     def test_f1_a_command_with_no_args_gives_nothing(self):
         dt = ago(30)
         self.write([assistant(QUESTION, ago(31)), command("", dt, name="/clear", message="clear")])
-        self.assertSameRefused(self.same("clear", "--question", QUESTION), "")
-        self.assertSameRefused(self.same("/clear", "--question", QUESTION), "")
+        why = "only in an other line (%s %s)" % (self.shown(self.file), minute(dt))
+        self.assertSameRefused(self.same("clear", "--question", QUESTION), why)
+        self.assertSameRefused(self.same("/clear", "--question", QUESTION), why)
 
     def test_f1_a_model_invoked_skill_and_its_expansion_never_count(self):
         dt = ago(30)
@@ -1084,26 +1112,29 @@ class TestTypedSlashCommand(SameSessionCase):
     def test_f1_only_the_exact_record_shape(self):
         dt = ago(30)
         cases = {
-            "isMeta": command(GOAL_ARGS, dt, isMeta=True),
-            "sidechain": command(GOAL_ARGS, dt, isSidechain=True),
-            "toolUseResult": command(GOAL_ARGS, dt, toolUseResult={"stdout": "x"}),
-            "not external": command(GOAL_ARGS, dt, userType="internal"),
-            "peer origin": command(GOAL_ARGS, dt, origin="peer"),
-            "task notification origin": command(GOAL_ARGS, dt, origin="task-notification"),
-            "channel origin": command(GOAL_ARGS, dt, origin="channel"),
-            "system source": command(GOAL_ARGS, dt, source="system"),
-            "sdk source": command(GOAL_ARGS, dt, source="sdk"),
-            "skill body after the tags": command("", dt, content=command_text(GOAL_ARGS)
-                                                 + "\nBase directory for this skill: /x\n# City"),
-            "words before the tags": command("", dt, content="note: " + command_text(GOAL_ARGS)),
-            "a tag twice": command("", dt, content=command_text(GOAL_ARGS) + "<command-args>x</command-args>"),
-            "assistant": _base("assistant", dt, message={"role": "assistant", "content": command_text(GOAL_ARGS)}),
+            # name: (record, the kind the refusal names)
+            "isMeta": (command(GOAL_ARGS, dt, isMeta=True), "a meta"),
+            "sidechain": (command(GOAL_ARGS, dt, isSidechain=True), "an other"),
+            "toolUseResult": (command(GOAL_ARGS, dt, toolUseResult={"stdout": "x"}), "a tool_result"),
+            "not external": (command(GOAL_ARGS, dt, userType="internal"), "an other"),
+            "peer origin": (command(GOAL_ARGS, dt, origin="peer"), "a peer"),
+            "task notification origin": (command(GOAL_ARGS, dt, origin="task-notification"), "a task notification"),
+            "channel origin": (command(GOAL_ARGS, dt, origin="channel"), "an other"),
+            "system source": (command(GOAL_ARGS, dt, source="system"), "a system"),
+            "sdk source": (command(GOAL_ARGS, dt, source="sdk"), "a system"),
+            "skill body after the tags": (command("", dt, content=command_text(GOAL_ARGS)
+                                                  + "\nBase directory for this skill: /x\n# City"), "an other"),
+            "words before the tags": (command("", dt, content="note: " + command_text(GOAL_ARGS)), "an other"),
+            "a tag twice": (command("", dt, content=command_text(GOAL_ARGS) + "<command-args>x</command-args>"),
+                            "an other"),
+            "assistant": (_base("assistant", dt, message={"role": "assistant", "content": command_text(GOAL_ARGS)}),
+                          "an assistant"),
         }
-        for name, line in cases.items():
+        for name, (line, kind) in cases.items():
             with self.subTest(name):
                 self.write([line])
-                r = self.same(GOAL_QUOTE)
-                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertSameRefused(self.same(GOAL_QUOTE), "only in %s line (%s %s)"
+                                       % (kind, self.shown(self.file), minute(dt)))
 
     def test_f1_the_24h_window_holds(self):
         dt = ago(hours=25)
@@ -1280,7 +1311,13 @@ class TestSettingAndTexts(unittest.TestCase):
             line = [l for l in usage.splitlines() if l.startswith("#   agent-file.sh " + cmd) and "--owner-quote" in l][0]
             self.assertIn("--relayed-by-leader <transcript file> --time", line)
         self.assertIn("--relayed-by-leader", [l for l in usage.splitlines() if "todo add also takes --target" in l][0])
-        self.assertIn("--relayed-by-leader <transcript file>", self.read("bin", "agent-promote.sh"))
+        both = '--relayed-by-leader <transcript file> --time "YYYY-MM-DD HH:MM"'
+        self.assertIn(both, self.read("bin", "agent-promote.sh"))                 # PR REVIEW 7: the time is required
+        promote = self.read("bin", "agent_promote.py")
+        self.assertIn(both.replace('"', '\\"'), promote[promote.index("USAGE = "):promote.index("USAGE = ") + 400])
+        checks = self.read("bin", "agent_checks.py")
+        target = [l for l in checks.splitlines() if "todo target: usage:" in l or "[--question \\\"<q>\\\"] [--time <t>] [--relayed-from" in l]
+        self.assertTrue(any(both.replace('"', '\\"') in l for l in target), target)
 
     def test_the_rules_say_it_in_two_or_three_lines(self):
         for name in ("approval.md", "cross-repo.md"):
