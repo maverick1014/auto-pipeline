@@ -134,6 +134,16 @@ def sidechain(text, dt):
     return line
 
 
+def with_origin(line, kind):
+    """LINE with origin.kind KIND (None: no origin field at all)."""
+    line = dict(line)
+    if kind is None:
+        line.pop("origin", None)
+    else:
+        line["origin"] = {"kind": kind}
+    return line
+
+
 # Text put into a typed prompt by someone else (requirements/leader-relay.md point 2)
 def reminder(inner):
     return "<system-reminder>\n" + inner + "\n</system-reminder>"
@@ -517,6 +527,11 @@ class TestLeaderRecords(LeaderCase):
         ("sdk prompt as a plain string", lambda dt: leader(QUOTE, dt, string=True), True),
         ("typed prompt", lambda dt: owner(QUOTE, dt), True),
         ("queued prompt", lambda dt: owner(QUOTE, dt, source="queued"), True),
+        ("sdk prompt with a human origin", lambda dt: with_origin(leader(QUOTE, dt), "human"), True),
+        # review fix: a prompt someone else sent never counts, whatever its prompt source
+        ("typed prompt with no origin", lambda dt: with_origin(owner(QUOTE, dt), None), False),
+        ("typed prompt from a channel", lambda dt: with_origin(owner(QUOTE, dt), "channel"), False),
+        ("sdk prompt from a coordinator", lambda dt: with_origin(leader(QUOTE, dt), "coordinator"), False),
         ("his words after a cut system reminder", lambda dt: leader(reminder("hook text") + "\n" + QUOTE, dt), True),
         ("tool result", lambda dt: tool_result(QUOTE, dt), False),
         ("peer", lambda dt: peer(QUOTE, dt), False),
