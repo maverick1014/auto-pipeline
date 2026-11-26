@@ -34,8 +34,8 @@ The question: $ARGUMENTS
 1. The short answer: one sentence.
 2. The picture: 3 to 5 short sentences from daily life.
 3. Here in this repo: 2 to 4 lines, each with the real file or command, so the learner can open it.
-4. Next you can ask me: 2 short questions that go one step deeper.
+4. You might also want to know: short questions that go one step deeper, 4 rows at most. The heading is in the answer's language (zh: 你可能还想知道).
 
-No question given → a tour: what this repo is for in 5 short sentences in one picture, then 3 things worth asking.
+No question given → a tour: what this repo is for in 5 short sentences in one picture, then "You might also want to know", 4 rows at most.
 
-You cannot ask the learner anything back. So when the question can mean two things, answer the more likely one, and put the other one under "Next you can ask me".
+You cannot ask the learner anything back. So when the question can mean two things, answer the more likely one, and put the other one under "You might also want to know".
