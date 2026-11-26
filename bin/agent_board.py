@@ -17,7 +17,7 @@ heartbeat) follows the bar. The parse, progress and done-by functions are plain 
 line can call them). --watch <sec>: redraw every <sec> seconds until Ctrl-C.
     agent_board.py --statusline    (stdin: Claude Code's session JSON) one line per todo task that runs with a stage
                                    (name, bar, stage, done by) or waits on the owner or on others; queue, hold and
-                                   not started rows fold into "+N queued/held"; at most 5 lines in all, or nothing;
+                                   not started rows fold into "+N tasks"; at most 5 lines in all, or nothing;
                                    always exit 0 (bin/agent-statusline.sh runs it). Width known (terminal_width): a count
                                    line, then every open task in up to 3 columns (statusline-wide)
 Rows (--self): the session's own task (its todo line, else its "TODO LINE:" in its own agent_state.txt, else the
@@ -94,10 +94,10 @@ HEAD = {
 STATUS = {
     "zh": {"running": "进行中", "owner": "你的待办", "parked": "搁置的问题", "waiting": "等待", "hold": "暂缓",
            "queue": "排队", "notstarted": "未开始", "after": "在 %s 之后", "waited": "已等 %s", "you": "你",
-           "fold": "+%d 排队/暂缓"},
+           "fold": "+%d 个任务", "fold_one": "+%d 个任务"},
     "en": {"running": "running", "owner": "your to-do", "parked": "parked question", "waiting": "waiting",
            "hold": "hold", "queue": "queue", "notstarted": "not started", "after": "after %s",
-           "waited": "waited %s", "you": "you", "fold": "+%d queued/held"},
+           "waited": "waited %s", "you": "you", "fold": "+%d tasks", "fold_one": "+%d task"},
 }
 DEFAULT_WHAT = {
     "zh": {"mock": "确认样稿或规则表", "question": "回答问题", "review": "合并前签字"},
@@ -1141,9 +1141,14 @@ def pane_keepers(main, top, wt_folders, now):
     return names
 
 
-def wide_layout(entries, head, room, width, fold_word):
+def fold_text(lang, n):
+    """The "+X tasks" cell or line: the tasks not shown, whatever their state."""
+    return STATUS[lang]["fold_one" if n == 1 else "fold"] % n
+
+
+def wide_layout(entries, head, room, width, lang):
     """The lines of the wide status line. entries: [(name, body)] in order; head: lines before the cells;
-    room: lines left for cells; width: terminal columns; fold_word: "+%d ..." for the tasks not shown.
+    room: lines left for cells; width: terminal columns; lang: the words of the "+X tasks" cell.
     Top down first, then left to right: a column holds up to room rows, the next column opens when it is full.
     More tasks than room x columns: the last cell (bottom of the last column) says how many are not shown."""
     cols = column_plan(width)[0]
@@ -1169,7 +1174,7 @@ def wide_layout(entries, head, room, width, fold_word):
                 text = fit(name, name_w) + "  " + body
                 cells.append(fit(text, cell_w))
             elif more and r == rows - 1 and c == used - 1:
-                cells.append(fit(fold_word % more, cell_w))
+                cells.append(fit(fold_text(lang, more), cell_w))
         out.append(SEP.join(cells).rstrip())
     return out
 
@@ -1214,7 +1219,7 @@ def wide_status(board, args, main, top, own, width):
                 head.append(warn)
     if not entries and not own:
         return ""
-    cells = wide_layout(entries, head, STATUS_LINES - len(head), width, words["fold"])
+    cells = wide_layout(entries, head, STATUS_LINES - len(head), width, lang)
     return "\n".join(head + cells)
 
 
@@ -1225,7 +1230,7 @@ def fit_cut(text, cols):
 
 def statusline_text(stdin_text, width=None):
     """The status line: todo rows only, the board's order: a run with a stage (name, bar, stage, done by), a wait on
-    the owner or on others; queue, hold and not started rows fold into "+N queued/held"; at most 5 lines in all;
+    the owner or on others; queue, hold and not started rows fold into "+N tasks"; at most 5 lines in all;
     "" for none. width (columns, None or 0 = unknown): the wide layout of statusline-wide, up to 3 columns, every
     open task, top down, no count line."""
     folder = None
@@ -1295,7 +1300,7 @@ def statusline_text(stdin_text, width=None):
         out.append(row.rstrip() + tail(l[1]))
     rest = len(cands) - len(shown)
     if rest:
-        out.append(STATUS[lang]["fold"] % rest)
+        out.append(fold_text(lang, rest))
     if warn:
         out.insert(0, warn)
     return "\n".join(out)

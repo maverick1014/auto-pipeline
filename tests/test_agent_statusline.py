@@ -424,13 +424,13 @@ class TestStatusLineWait(WaitCase):
         lines = self.line().split("\n")
         self.assertEqual(len(lines), 5, lines)
         self.assertEqual([l.split()[0] for l in lines[:4]], ["t1", "t2", "t3", "t4"])
-        self.assertEqual(lines[4], "+4 排队/暂缓")
+        self.assertEqual(lines[4], "+4 个任务")
 
     def test_9_5_six_running_no_fold_rows(self):
         self.put(*self.running(6))
         lines = self.line().split("\n")
         self.assertEqual(len(lines), 5, lines)
-        self.assertEqual(lines[4], "+2 排队/暂缓")
+        self.assertEqual(lines[4], "+2 个任务")
 
     def test_9_6_five_lines_no_fold_line(self):
         self.put(*self.running(5))
@@ -621,7 +621,7 @@ class TestStatusLineRows(WaitCase):
         lines = self.line().split("\n")
         self.assertEqual(len(lines), 5, lines)
         self.assertEqual([l.split()[0] for l in lines[:4]], ["r1", "r2", "q1", "q2"])
-        self.assertEqual(lines[4], "+3 排队/暂缓")
+        self.assertEqual(lines[4], "+3 个任务")
 
     def test_k4_five_rows_fit_no_fold_line(self):
         self.put(run("r1", 1), q("q1", "r1"), q("q2", "r1", since="2026-11-20 11:01"), ns("n1"), h("h1"))
@@ -635,7 +635,7 @@ class TestStatusLineRows(WaitCase):
         lines = self.line().split("\n")
         self.assertEqual(lines[0], "看板可能不准：看守未运行")
         self.assertEqual([l.split()[0] for l in lines[1:4]], ["r1", "q1", "q2"])
-        self.assertEqual(lines[4], "+2 排队/暂缓")
+        self.assertEqual(lines[4], "+2 个任务")
         self.put(run("r1", 1), q("q1", "r1"), ns("n1"), h("h1"))
         lines = self.line().split("\n")
         self.assertEqual(len(lines), 5, lines)
@@ -718,7 +718,7 @@ class TestColumns(WideCase):
         self.assertEqual(len(lines), 5, lines)  # no count line: a column of 5, then the next
         self.assertEqual([l.count("│") for l in lines], [1, 1, 1, 0, 0])
         self.assertEqual(len(self.names_in("\n".join(lines), NAMES8)), 8)
-        self.assertNotIn("排队/暂缓", "\n".join(lines))
+        self.assertNotIn("个任务", "\n".join(lines))
         self.assertTrue(all(dw(l) <= 200 for l in lines))
         # the owner wait first, down the first column
         self.assertTrue(lines[0].startswith("city-office-2"), lines[0])
@@ -739,14 +739,14 @@ class TestColumns(WideCase):
         self.assertEqual(len(lines), 5, lines)
         self.assertNotIn("│", "\n".join(lines))
         self.assertTrue(lines[0].startswith("city-office-2"), lines[0])
-        self.assertEqual(lines[4], "+4 排队/暂缓")
+        self.assertEqual(lines[4], "+4 个任务")
         self.assertTrue(all(dw(l) <= 70 for l in lines))
 
     def test_70_wide_a_few_tasks_all_shown(self):
         self.put(*eight()[:4])
         lines = self.line(70).split("\n")
         self.assertEqual(len(lines), 4, lines)
-        self.assertNotIn("排队/暂缓", "\n".join(lines))
+        self.assertNotIn("个任务", "\n".join(lines))
         self.assertEqual(len(self.names_in("\n".join(lines), NAMES8[:4])), 4)
 
     def test_unknown_width_is_todays_one_column(self):
@@ -755,7 +755,7 @@ class TestColumns(WideCase):
             lines = self.line(width).split("\n")
             self.assertEqual(len(lines), 5, lines)
             self.assertNotIn("│", "\n".join(lines))
-            self.assertEqual(lines[-1], "+3 排队/暂缓")  # the run without a stage was never a line
+            self.assertEqual(lines[-1], "+3 个任务")  # the run without a stage was never a line
 
     def test_three_columns_start_at_140(self):
         self.put(*TestFold.many(None, 11))
@@ -804,14 +804,14 @@ class TestFold(WideCase):
         self.put(*self.many(12))
         lines = self.line(200).split("\n")
         self.assertEqual(len(lines), 5, lines)
-        self.assertNotIn("排队/暂缓", "\n".join(lines))
+        self.assertNotIn("个任务", "\n".join(lines))
         self.assertEqual(len(self.names_in("\n".join(lines), ["t%02d" % i for i in range(12)])), 12)
 
     def test_more_than_the_cells_fold_the_rest(self):
         self.put(*self.many(17))
         lines = self.line(200).split("\n")
         self.assertEqual(len(lines), 5, lines)
-        self.assertTrue(lines[4].endswith("│ +3 排队/暂缓"), lines[4])
+        self.assertTrue(lines[4].endswith("│ +3 个任务"), lines[4])
         self.assertEqual(len(self.names_in("\n".join(lines), ["t%02d" % i for i in range(17)])), 14)
 
 
@@ -853,20 +853,20 @@ class TestTopDown(WideCase):
         lines, g = self.grid(16, 200)
         self.assertEqual(len(lines), 5, lines)
         self.assertEqual(g[4][:2], ["t04", "t09"])
-        self.assertEqual(lines[4].split("│")[2].strip(), "+2 排队/暂缓")
+        self.assertEqual(lines[4].split("│")[2].strip(), "+2 个任务")
         self.assertEqual(len(self.names_in("\n".join(lines), ["t%02d" % i for i in range(16)])), 14)
 
     def test_eleven_tasks_two_columns_the_last_cell_counts(self):
         lines, g = self.grid(11, 120)
         self.assertEqual(len(lines), 5, lines)
-        self.assertEqual(lines[4].split("│")[1].strip(), "+2 排队/暂缓")
+        self.assertEqual(lines[4].split("│")[1].strip(), "+2 个任务")
         self.assertEqual(len(self.names_in("\n".join(lines), ["t%02d" % i for i in range(11)])), 9)
 
     def test_six_tasks_one_column_line_five_counts(self):
         lines, g = self.grid(6, 70)
         self.assertEqual(len(lines), 5, lines)
         self.assertNotIn("│", "\n".join(lines))
-        self.assertEqual(lines[4], "+2 排队/暂缓")
+        self.assertEqual(lines[4], "+2 个任务")
         self.assertEqual(len(self.names_in("\n".join(lines), ["t%02d" % i for i in range(6)])), 4)
 
     def test_a_warning_line_leaves_four_rows(self):
@@ -884,7 +884,7 @@ class TestTopDown(WideCase):
         self.put(*self.many(7))
         lines = self.line(None).split("\n")
         self.assertEqual(len(lines), 5, lines)
-        self.assertEqual(lines[4], "+3 排队/暂缓")
+        self.assertEqual(lines[4], "+3 个任务")
 
     def test_one_task_one_line(self):
         lines, g = self.grid(1, 200)
@@ -896,7 +896,7 @@ class TestOrder(WideCase):
         self.put(ns("n1"), h("h1"), q("q1", "r1"), plain("r0"), run("r1", 2), owner("o1"))
         body = self.line(70).split("\n")
         self.assertEqual([l.split()[0] for l in body[:3]], ["o1", "r0", "r1"])
-        self.assertEqual(self.line(70).split("\n")[-1], "+2 排队/暂缓")
+        self.assertEqual(self.line(70).split("\n")[-1], "+2 个任务")
         wide = self.line(200).split("\n")
         order = [l.split("│")[0].split()[0] for l in wide]
         self.assertEqual(order, ["o1", "r0", "r1", "q1", "h1"])  # 6 tasks: the first column fills down first
@@ -974,7 +974,7 @@ class TestUnconfirmed(WideCase):
         lines = self.line(200).split("\n")
         self.assertEqual(len(lines), 5, lines)
         self.assertEqual(lines[0], "看板可能不准：未确认 a1")
-        self.assertTrue(lines[4].endswith("│ +2 排队/暂缓"), lines[4])  # 13 tasks, 4 rows x 3 = 12 cells, 11 shown
+        self.assertTrue(lines[4].endswith("│ +2 个任务"), lines[4])  # 13 tasks, 4 rows x 3 = 12 cells, 11 shown
         self.assertEqual(lines[1].count("│"), 2)
 
 
@@ -1465,7 +1465,7 @@ class TestVertical(VerticalCase):
         # board-waiting: 5 lines in all, the "+N" line counted
         self.assertEqual(len(lines), 5, lines)
         self.assertEqual([l.split()[0] for l in lines[:4]], ["t1", "t2", "t3", "t4"])
-        self.assertEqual(lines[4], "+3 排队/暂缓")
+        self.assertEqual(lines[4], "+3 个任务")
 
     def test_five_tasks_no_extra_line(self):
         for i in range(1, 6):
@@ -1525,7 +1525,7 @@ class TestVerticalEnglish(VerticalCase):
         self.assertEqual(len(lines), 5, lines)
         self.assertEqual(lines[0], "t1                        ███░░░░░░░  39%  workers 1/3  16:01")
         self.assertEqual(lines[1], "t2                        ████████░░  85%  e2e          16:02")
-        self.assertEqual(lines[4], "+2 queued/held")
+        self.assertEqual(lines[4], "+2 tasks")
 
     def test_every_stage_word(self):
         for stage in ZH:
