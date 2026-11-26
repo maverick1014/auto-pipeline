@@ -13,7 +13,6 @@
 import glob
 import os
 import sys
-import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,11 +27,14 @@ def git_dir(path):
 
 
 class RestoreCase(FilesCase):
-    def setUp(self):
-        super().setUp()
+    def build(self):
+        super().build()
         self.commit_all()
         self.todo = os.path.join(self.dir, "agent_todo.txt")
         self.kept_dir = os.path.join(git_dir(self.dir), "agent-files-kept")
+        # every test starts with the reviewers' run: it is made once, in the template every test copies
+        self.run_done = False
+        self.reviewers_run()
 
     def add(self, task):
         self.af("todo", "add", task, "small", "the %s task" % task, "30")
@@ -45,13 +47,24 @@ class RestoreCase(FilesCase):
     def tasks(self):
         return [l.split(" | ", 1)[0] for l in read(self.todo).splitlines()]
 
+    def later(self):
+        """What is saved from now on gets a later mtime than what exists now: the files that exist are made 2 s
+        older, in place of waiting 1.1 s for the clock (test-slim-3)."""
+        paths = [os.path.join(self.kept_dir, n) for n in os.listdir(self.kept_dir)] + [self.todo]
+        for path in paths:
+            st = os.stat(path)
+            os.utime(path, (st.st_atime - 2, st.st_mtime - 2))
+
     def reviewers_run(self):
-        """e1, e2, an outside overwrite, then e3 and e4 added."""
+        """e1, e2, an outside overwrite, then e3 and e4 added (once: the template holds it, a second call is a no-op)."""
+        if self.run_done:
+            return
+        self.run_done = True
         self.add("e1")
         self.add("e2")
         write(self.todo, "stale | from old branch\n")
         self.add("e3")
-        time.sleep(1.1)   # a later mtime than the first saved copy
+        self.later()   # a later mtime than the first saved copy
         self.add("e4")
 
 
@@ -60,7 +73,7 @@ class TestARestoreCanBeUndone(RestoreCase):
         self.reviewers_run()
         before = set(self.saved())
         self.assertEqual(len(before), 1)
-        time.sleep(1.1)
+        self.later()
         r = self.af("files", "restore", "agent_todo.txt")
         self.assertEqual(self.tasks(), ["e1", "e2"])
         new = [p for p in self.saved() if p not in before]
@@ -70,7 +83,7 @@ class TestARestoreCanBeUndone(RestoreCase):
         self.assertIn("e3 | ", text)
         self.assertIn("e4 | ", text)
         self.assertTrue(before <= set(self.saved()), "a restore never deletes a saved copy")
-        time.sleep(1.1)
+        self.later()
         self.af("files", "restore", "agent_todo.txt")
         self.assertIn("e3", self.tasks())
         self.assertIn("e4", self.tasks())
@@ -79,12 +92,12 @@ class TestARestoreCanBeUndone(RestoreCase):
     def test_an_older_copy_is_picked_by_name(self):
         self.reviewers_run()
         first = self.saved()[-1]
-        time.sleep(1.1)
+        self.later()
         self.af("files", "restore", "agent_todo.txt")
-        time.sleep(1.1)
+        self.later()
         self.af("files", "restore", "agent_todo.txt")
         self.assertIn("e3", self.tasks())
-        time.sleep(1.1)
+        self.later()
         r = self.af("files", "restore", "agent_todo.txt", os.path.basename(first))
         self.assertEqual(self.tasks(), ["e1", "e2"])
         self.assertIn("restored agent_todo.txt from", r.stdout + r.stderr)
@@ -98,7 +111,7 @@ class TestARestoreCanBeUndone(RestoreCase):
 
     def test_the_list(self):
         self.reviewers_run()
-        time.sleep(1.1)
+        self.later()
         self.af("files", "restore", "agent_todo.txt")
         before = read(self.todo)
         out = self.af("files", "restore", "agent_todo.txt", "--list").stdout
