@@ -3,6 +3,7 @@
 #
 #   agent-room.sh check <mb>|unknown      exit 0 when memory in use + live reservations + <mb> <= the Max memory % limit
 #                                         (unknown = need 0), else exit 1 with "ROOM: no: <used> MB in use + <reserved> MB reserved + <need> MB > <limit> MB"
+#                                         also refused at CPU idle under 20% or swap over 90%: "ROOM: no: CPU idle 2% (< 20%)"
 #   agent-room.sh reserve <pid> <mb> "<what>" [--kind test|build|pane] [--unmeasured]
 #   agent-room.sh reserve-pane <handle> <mb>   a pane reserved from its launch until measure-pane of that ORCA_TERMINAL_HANDLE (or 15 min)
 #   agent-room.sh reserve-pane --pending <key> <mb>   before the create: check room and reserve in one step (exit 1: no room, or the key exists)
@@ -11,6 +12,8 @@
 #   agent-room.sh release <pid>
 #   agent-room.sh list                    one line per live job
 #   agent-room.sh relief                  over the limit: stop test and build runs (newest unmeasured first), never a pane
+#   agent-room.sh health                  read only: memory, swap, CPU idle, the 5 biggest processes, TMPDIR files by kind and owner
+#   agent-room.sh sweep [--apply] [--hours N]   this repo's own temp kinds older than 3 h (N) and not in use: list, or remove
 #   agent-room.sh measure-pane <pid>      summed RSS of that process tree into the weights key "pane" (the highest of the last 5, never below 550 MB)
 #
 # One reservation file per machine: $AGENT_RESERVE_FILE, default ~/.claude/auto-pipeline-reservations.json. Logic: agent_nightly.py.

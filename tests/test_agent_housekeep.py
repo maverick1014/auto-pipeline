@@ -330,6 +330,51 @@ class TestClean(HousekeepCase):
         self.assertEqual(self.repo.calls(), [])
 
 
+class TestTmpSweep(HousekeepCase):
+    """machine-health rule 3: housekeep sweeps this repo's own old temp folders, here and on a connected machine."""
+
+    def fixture(self):
+        import tempfile
+        tmp = os.path.realpath(tempfile.mkdtemp(prefix="hk_tmp_fixture_"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        old = os.path.join(tmp, "check-blocks-demo.x")
+        young = os.path.join(tmp, "check-blocks-demo.y")
+        other = os.path.join(tmp, "jest_dy")
+        for p in (old, young, other):
+            os.makedirs(p)
+            write(os.path.join(p, "f"), "x")
+        for p in (old, other):
+            t = time.time() - 4 * 3600
+            os.utime(os.path.join(p, "f"), (t, t))
+            os.utime(p, (t, t))
+        return tmp, old, young, other
+
+    def test_apply_removes_the_old_folder_and_says_so(self):
+        tmp, old, young, other = self.fixture()
+        out = self.assertOk(self.hk("--apply", env={"TMPDIR": tmp, "AGENT_NO_TMP_SWEEP": ""}))
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.isdir(young))
+        self.assertTrue(os.path.isdir(other))
+        self.assertIn("tmp sweep on this machine: removed 1 old temp folder(s) of this repo", out)
+
+    def test_list_mode_removes_nothing(self):
+        tmp, old, young, other = self.fixture()
+        out = self.assertOk(self.hk(env={"TMPDIR": tmp, "AGENT_NO_TMP_SWEEP": ""}))
+        self.assertTrue(os.path.isdir(old))
+        self.assertIn("would remove 1 old temp folder(s)", out)
+
+    def test_a_clean_temp_folder_adds_no_line(self):
+        out = self.apply()
+        self.assertNotIn("tmp sweep", out)
+
+    def test_a_connected_machine_without_a_checkout_is_named_not_failed(self):
+        tmp, old, young, other = self.fixture()
+        self.paired("pc2")
+        out = self.assertOk(self.hk("--apply", env={"TMPDIR": tmp, "AGENT_NO_TMP_SWEEP": ""}))
+        self.assertIn("tmp sweep: pc2: no checkout of this repo to open a shell in", out)
+        self.assertFalse(os.path.exists(old))
+
+
 class TestBlockInStateFile(HousekeepCase):
     # test-slim-3: the pass runs in this process; the three tests that look at the wrapper's own
     # output (block printed, list mode, from a worktree) keep the real start (@tc.real_shell)
