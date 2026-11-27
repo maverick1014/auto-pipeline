@@ -2107,7 +2107,7 @@ class TestWorkingBranchRules(unittest.TestCase):
                       ("skills", "flow-diagram", "reference.html")):
             t = read(*parts)
             for old in ("resumed with `MERGE`", "Resumed with `MERGE`", "the deputy merges",
-                        "same deputy to merge", "快车道副手自己合", "`MERGE` to the deputy", "send `MERGE`"):
+                        "same deputy to merge", "a fast-lane deputy merges its own branch", "快车道副手自己合", "`MERGE` to the deputy", "send `MERGE`"):
                 with self.subTest(file=parts[-1], old=old):
                     self.assertNotIn(old, t)
         self.assertIn("a merge deputy merges", read("agents", "fast-lane-deputy.md"))
