@@ -1273,7 +1273,33 @@ class TestFastLaneGate(TestGate):
         main_launched(self.repo.dir, "t")
         self.ok("check", "t", "DIFF SCAN", "pass", "--by", "auto-pipeline Manager", "--evidence", "ok")
         r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("DIFF SCAN: pass by the builder (auto-pipeline Manager), not accepted", r.stdout.splitlines())
+
+    def test_a_model_floor_change_is_a_gate_change(self):
+        self.commit_push({"bin/agent_model.py": "# change\n"})
+        self.fast_lane()
+        self.review("auto-pipeline Manager")
+        r = self.gate()
+        self.assertIn("PR REVIEW: a gate change needs a launched reviewer", r.stdout.splitlines())
+
+    def test_main_built_blocks_keeps_the_fallback_blocks_when_the_block_table_does_not_import(self):
+        import importlib
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        import agent_checks
+        importlib.reload(agent_checks)
+        saved = sys.modules.get("agent_blocks")
+        sys.modules["agent_blocks"] = None  # import raises ImportError
+        try:
+            blocks = agent_checks.main_built_blocks()
+        finally:
+            if saved is None:
+                sys.modules.pop("agent_blocks", None)
+            else:
+                sys.modules["agent_blocks"] = saved
+        for b in ("DB CHECK", "DATA CHECK", "REAL DATA COUNT"):
+            self.assertIn(b, blocks)
+        self.assertNotIn("OWNER SIGN", blocks)
 
     def test_an_owner_order_change_is_a_gate_change(self):
         self.commit_push({"bin/agent-owner-order.sh": "# change\n"})
