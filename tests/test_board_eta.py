@@ -284,6 +284,64 @@ class TestRemotePathLimit(unittest.TestCase):
         self.assertEqual(agent_watch.REMOTE_CMD_MAX, 500)
 
 
+# ---------------------------------------------------------------- item 6 (FIX ORDER 1 add): orphaned but connected
+
+def tm_row(t, handle, **flags):
+    return dict({"handle": handle, "title": "◑ alpha Task Manager", "worktreePath": t["path"],
+                 "agentIdentity": "claude"}, **flags)
+
+
+class TestOrphanedButConnected(tw.AllCase):
+    """Item 6 (main manager 2026-11-27, after the pc2 Orca reconnect): Orca lists every pane of a reconnected machine
+    as "connected": true and "orphaned": true. bin/agent_watch.py list_terminals keeps such a pane (connected wins);
+    a pane with "connected": false is still dropped, and so is an orphaned pane that does not say connected true."""
+
+    def test_a_local_tm_pane_connected_but_orphaned_is_watched(self):
+        t = self.task("alpha", launch=False)
+        self.terminals([tm_row(t, t["pane"], connected=True, orphaned=True)])
+        self.on_task_read("alpha", {2: "DONE PASS alpha"})
+        self.assertEqual(self.one_watch(self.text(self.run_all())), "WATCH SIGNAL alpha: DONE PASS alpha")
+        self.assertEqual(self.status()["tasks"]["alpha"]["pane"], t["pane"])
+
+    def test_a_remote_tm_and_shell_pane_connected_but_orphaned_are_watched(self):
+        t = self.task("alpha", env=ENV, launch=False)
+        self.terminals([tm_row(t, t["pane"], connected=True, orphaned=True),
+                        {"handle": t["shell"], "title": "alpha shell", "worktreePath": t["path"],
+                         "connected": True, "orphaned": True}], env=ENV)
+        self.on_task_read("alpha", {2: "QUESTION: still there?"})
+        self.assertEqual(self.one_watch(self.text(self.run_all())), "WATCH SIGNAL alpha: QUESTION: still there?")
+        st = self.status()["tasks"]["alpha"]
+        self.assertTrue(st["watched"], st)
+
+    def test_a_pane_that_is_not_connected_is_still_dropped(self):
+        t = self.task("alpha", launch=False)
+        self.terminals([tm_row(t, t["pane"], connected=False, orphaned=True)])
+        self.on_task_read("alpha", {2: "DONE PASS alpha"})
+        text = self.text(self.run_all(max_sweeps="2"))
+        self.assertNotIn("WATCH SIGNAL", text)
+        self.assertFalse(self.status()["tasks"]["alpha"]["watched"], text)
+
+
+class TestTellOrphanedButConnected(tw.TellCase):
+
+    def setUp(self):
+        tw.AllCase.setUp(self)
+        self.t = self.task("alpha", echo=True, git=True, launch=False)
+
+    def test_tell_resolves_a_connected_orphaned_pane(self):
+        self.terminals([tm_row(self.t, "term_alpha", connected=True, orphaned=True)])
+        r = self.tell("alpha", tw.SIG + " hello")
+        self.assertOk(r)
+        self.assertIn("TELL OK alpha ", r.stdout)
+        self.assertEqual(len(self.sends_to("term_alpha")), 1)
+
+    def test_tell_still_refuses_a_disconnected_pane(self):
+        self.terminals([tm_row(self.t, "term_alpha", connected=False, orphaned=True)])
+        r = self.tell("alpha", tw.SIG + " hello")
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("no pane for alpha", r.stderr)
+
+
 # ---------------------------------------------------------------- rule 3: the forecast of a fix round
 
 def fix_rows(rounds):
