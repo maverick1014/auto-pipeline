@@ -6,8 +6,15 @@ pluginConfigs["auto-pipeline@auto-pipeline"].options.<key>. Order of a read: tha
 then the hook env CLAUDE_PLUGIN_OPTION_<KEY>, then the default in SETTINGS. A stored
 value that fails its check gives the default and one warning line (warnings()).
 
-CLI: agent_conf.py get <key> | show | migrate <project root> | cli-model <spec>
+CLI: agent_conf.py get <key> [<key> ...] | show | migrate <project root> | cli-model <spec>
      | you <role_key> <pid>
+
+get <key> prints the value alone (status 2 and "unknown setting: <key>" on stderr for an
+unknown key). get with 2 or more keys prints one line per key, in the given order,
+"<key>=<value>", so bash can read it with `while IFS== read -r k v`. An unknown key prints
+"<key>=" (empty value), writes the same stderr line, and the status is 2 after all keys
+are printed. A value that holds a line break cannot be one line: that key prints as the bare
+"<key>" (no "="), and the caller asks `get <key>` for it alone.
 
 The old key=value files (a repo agent.conf, the user file) are read only by migrate(),
 to move their values into Configure once.
@@ -1043,7 +1050,7 @@ def shared_lines(project_root, env=None):
 
 # ------------------------------------------------------------------ CLI
 
-USAGE = ("usage: agent_conf.py get <key> | show | migrate <project root> "
+USAGE = ("usage: agent_conf.py get <key> [<key> ...] | show | migrate <project root> "
          "| cli-model <model[:effort]> | you <role_key> <pid> | working-branch <repo> | stored-working-branch <repo>\n")
 
 
@@ -1055,6 +1062,22 @@ def _cmd_get(key):
     except KeyError:
         sys.stderr.write("unknown setting: %s\n" % key)
         return 2
+
+
+def _cmd_get_many(keys):
+    import sys
+    code = 0
+    for key in keys:
+        try:
+            value = text(get(key))
+        except KeyError:
+            sys.stderr.write("unknown setting: %s\n" % key)
+            value, code = "", 2
+        if "\n" in value or "\r" in value:
+            sys.stdout.write(key + "\n")
+        else:
+            sys.stdout.write("%s=%s\n" % (key, value))
+    return code
 
 
 def _cmd_you(args):
@@ -1085,6 +1108,8 @@ def main(argv):
         return 0
     if len(argv) == 2 and argv[0] == "get":
         return _cmd_get(argv[1])
+    if len(argv) > 2 and argv[0] == "get":
+        return _cmd_get_many(argv[1:])
     if len(argv) == 2 and argv[0] == "stored-working-branch":
         sys.stdout.write((working_branch(argv[1]) or "") + "\n")
         return 0

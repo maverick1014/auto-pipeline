@@ -234,12 +234,33 @@ def exit_cause_text(env, handle):
 # ---------------------------------------------------------------- the project
 
 
+def roots_hint(cwd):
+    """(main worktree, git common dir) as agent-roots.sh exported them (AP_ROOTS_*, only when git answered all three) when
+    it asked about this same folder; None otherwise. A main worktree path with a blank is not trusted (the shell reads
+    its first word, this file the whole path)."""
+    try:
+        if os.environ.get("AP_ROOTS_CWD") != cwd:
+            return None
+        main, gd = os.environ.get("AP_ROOTS_ROOT", ""), os.environ.get("AP_ROOTS_GITDIR", "")
+        if not main or not gd or not os.path.isabs(gd) or main != main.strip() or any(c.isspace() for c in main):
+            return None
+        return main, gd
+    except Exception:
+        return None
+
+
 class Ctx:
     def __init__(self, cwd=None):
         start = os.environ.get("CLAUDE_PROJECT_DIR") or cwd or os.getcwd()
         if not os.path.isdir(start):
             start = os.getcwd()
         self.cwd = norm(start)
+        hint = roots_hint(self.cwd)
+        if hint:   # the calling script (agent-roots.sh) asked git for these two already
+            self.main, gd = hint
+            self.gitdir = gd
+            self.status_path = os.path.join(self.gitdir, "agent_watch.json")
+            return
         main = ""
         for line in run_git(["worktree", "list", "--porcelain"], self.cwd).splitlines():
             if line.startswith("worktree "):
@@ -1353,7 +1374,23 @@ def tell_write_remote(env, shell, path, block, sha, gitdir=None):
         return tell_write_remote_locked(env, shell, path, block, sha)
 
 
+def tell_readback_reads():
+    """Rule 3: how many reads (0.5 s apart) wait for the block's hash line: AGENT_TELL_READBACK_S seconds / 0.5, at least 1.
+    Default 10 s = 20 reads; a bad value (not a finite number) = the default. Real use never sets it; tests shorten it."""
+    # AGENT_TELL_READBACK_S: seconds of this wait (default 10); real use never sets it
+    secs = 10.0
+    try:
+        v = float(os.environ.get("AGENT_TELL_READBACK_S") or 10)
+        if v == v and v not in (float("inf"), float("-inf")):
+            secs = v
+    except ValueError:
+        pass
+    return max(1, int(secs / 0.5))
+
+
 def tell_write_remote_locked(env, shell, path, block, sha):
+    """The write itself (see tell_write_remote). The wait for the hash line is AGENT_TELL_READBACK_S seconds
+    (default 10 = 20 reads 0.5 s apart; tell_readback_reads); the other waits stay."""
     import base64
     import hashlib
     data = block.encode("utf-8")
@@ -1379,7 +1416,7 @@ def tell_write_remote_locked(env, shell, path, block, sha):
         return False, "shell pane: " + r.err
     want = hashlib.sha256(data).hexdigest()
     seen_other = False
-    for _ in range(20):
+    for _ in range(tell_readback_reads()):
         a = term_read(env, shell, cursor)
         if not a.ok:
             return False, a.err
@@ -1418,6 +1455,9 @@ def tell_pointer(env, pane, sha, sig, cursor, echo_s):
 
 
 def tell_main(argv):
+    """tell <main repo> <now> <task> <msg>. Env (tests): AGENT_TELL_ECHO_S = the wait for the pointer line in the pane,
+    default 10 s; AGENT_TELL_READBACK_S = the wait for the block's hash line of a remote write, default 10 s (20 reads
+    0.5 s apart; a value of N seconds = N / 0.5 reads, at least 1; a bad value = the default)."""
     if len(argv) != 4:
         sys.stderr.write("usage: agent_watch.py tell <main repo> <now> <task> <msg>\n")
         return 2
@@ -1446,6 +1486,7 @@ def tell_main(argv):
         out("TELL FAIL %s %s: file check" % (task, sha))
         return 1
     try:
+        # AGENT_TELL_ECHO_S: seconds tell waits for the pointer line in the pane (default 10); real use never sets it
         echo_s = float(os.environ.get("AGENT_TELL_ECHO_S") or 10)
     except ValueError:
         echo_s = 10.0

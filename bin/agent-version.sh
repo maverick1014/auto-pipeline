@@ -13,7 +13,8 @@
 # Spec: tests/test_stale_plugin_guard.py (CONTRACT, sections 1-3).
 set -u
 
-SELF_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd -P)
+case "$0" in */*) _d=${0%/*}; [ -n "$_d" ] || _d=/;; *) _d=.;; esac   # dirname "$0" without a start
+SELF_DIR=$(cd "$_d" 2>/dev/null && pwd -P)
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
 CACHE="$CLAUDE_DIR/plugins/cache/auto-pipeline/auto-pipeline"
 
@@ -41,7 +42,9 @@ RUNNING=""
 NEWEST=""
 find_running() {
   local up name
-  up=$(dirname "$SELF_DIR"); name=$(basename "$up")
+  # dirname, then basename, of SELF_DIR (a real absolute path), without a start
+  up=${SELF_DIR%/*}; [ -n "$up" ] || up=/
+  name=${up##*/}; [ "$up" != / ] || name=/
   RUNNING=""
   is_version "$name" && RUNNING="$name"
   return 0

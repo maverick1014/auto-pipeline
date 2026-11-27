@@ -178,7 +178,11 @@ relief_path_under() {
 # relief_kill_test_watches: find the repo it watches, and stop it only when
 # that repo's own main-manager lock is missing or its owner is dead.
 relief_kill_orphan_watches() {
-  pids=$(pgrep -f 'agent[-_]watch\.(sh|py) --all' 2>/dev/null || true)
+  if [ -n "${_RELIEF_ALL_WATCHES+x}" ]; then
+    pids=$_RELIEF_ALL_WATCHES   # already asked by do_stop_leftovers
+  else
+    pids=$(pgrep -f 'agent[-_]watch\.(sh|py) --all' 2>/dev/null || true)
+  fi
   only_repo="${AGENT_RELIEF_REPO:-}"
   only_repo_real=""
   if [ -n "$only_repo" ]; then
@@ -304,6 +308,13 @@ do_relief() {
 # The pipeline's own leftovers only: no human table, no RESOURCES line, no
 # RAM/CPU reading.
 do_stop_leftovers() {
+  # One pgrep for both passes: the test watches are a part of every watch, so no watch at all means
+  # no test watch either (the usual case: the second pgrep is not started).
+  _RELIEF_ALL_WATCHES=$(pgrep -f 'agent[-_]watch\.(sh|py) --all' 2>/dev/null || true)
+  if [ -z "$_RELIEF_ALL_WATCHES" ]; then
+    echo "stopped 0 finished test watches"
+    return 0
+  fi
   relief_kill_finished_test_watches
   relief_kill_orphan_watches
 }

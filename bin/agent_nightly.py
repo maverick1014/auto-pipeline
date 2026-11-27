@@ -274,6 +274,13 @@ def total_mb():
             return 0
     try:
         if sys.platform == "darwin":
+            try:
+                # hw.memsize without a process start: the page count times the page size
+                size = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+                if size > 0:
+                    return size // 1048576
+            except (ValueError, OSError, AttributeError):
+                pass
             out = subprocess.run(["sysctl", "-n", "hw.memsize"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                  universal_newlines=True, timeout=10).stdout
             return int(out.strip()) // 1048576
@@ -1806,8 +1813,79 @@ def misses(cwd):
     return 0
 
 
+def resume_prep(argv):
+    """agent-resume.sh's four small python3 jobs in ONE start (script-speed). Flags: --gitdir <dir> (the
+    git common dir the caller already knows, so numbers does not ask git again), --model <spec> (the
+    claude CLI model word), --ps (the `orca worktree ps --json` answer on stdin, to rows), --watch <root>
+    <plugin> (the watch start line). Always the room numbers. Output, one line per answer, tab separated:
+      M <model word>        P <path> <agents> <is main> <busy>      N <exit code> <numbers text>
+      W <watch line>
+    A bad ps answer prints the traceback on stderr and exits 1 (the caller stops, as its own python3 did)."""
+    import contextlib
+    gitdir = spec = None
+    ps = False
+    watch = None
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--gitdir" and i + 1 < len(argv):
+            gitdir = argv[i + 1]
+            i += 1
+        elif argv[i] == "--model" and i + 1 < len(argv):
+            spec = argv[i + 1]
+            i += 1
+        elif argv[i] == "--ps":
+            ps = True
+        elif argv[i] == "--watch" and i + 2 < len(argv):
+            watch = (argv[i + 1], argv[i + 2])
+            i += 2
+        i += 1
+    out = []
+    if ps:
+        data = json.load(sys.stdin)
+        for w in data.get("result", {}).get("worktrees", []):
+            path = w.get("path", "")
+            agents = w.get("agents") or []
+            is_main = 1 if w.get("isMainWorktree") else 0
+            busy = 0
+            for a in agents:
+                state = a.get("state") if isinstance(a, dict) else a
+                if state in ("working", "permission"):
+                    busy += 1
+            out.append("P\t%s\t%d\t%d\t%d" % (path, len(agents), is_main, busy))
+    if spec is not None:
+        try:
+            out.append("M\t" + agent_conf.cli_model(spec))
+        except Exception:
+            pass
+    rc, text = 1, ""
+    try:
+        with open(os.devnull, "w") as dn, contextlib.redirect_stderr(dn):
+            total, used, limit = machine()
+            if used >= 0:
+                jobs = live_jobs()
+                reserved = sum(int(j.get("mb", 0) or 0) for j in jobs)
+                text = "%d %d %d %d" % (max(0, used - trees_mb(jobs)), reserved, limit,
+                                        pane_need(gitdir or common_dir(os.getcwd())))
+                rc = 0
+    except Exception:
+        rc, text = 1, ""
+    out.append("N\t%d\t%s" % (rc, text))
+    if watch:
+        try:
+            import agent_watchfile
+            line = agent_watchfile.start_line(watch[0], watch[1])
+        except Exception:
+            line = ""
+        if line:
+            out.append("W\t" + line)
+    sys.stdout.write("\n".join(out) + "\n")
+    return 0
+
+
 def main(argv):
     cwd = os.getcwd()
+    if argv and argv[0] == "resume-prep":
+        return resume_prep(argv[1:])
     if os.environ.get("AGENT_ROOM_CLI") and argv and argv[0] not in ("testrun",):
         return room_main(argv, cwd)
     if argv and argv[0] == "testrun":

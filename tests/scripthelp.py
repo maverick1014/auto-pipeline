@@ -56,6 +56,7 @@ TESTS = os.path.dirname(os.path.abspath(__file__))
 if TESTS not in sys.path:
     sys.path.insert(0, TESTS)
 from fasttools import direct_tools  # noqa: E402
+import scriptequiv  # noqa: E402  (script-speed: old and new script on the same state, off unless AGENT_EQUIV_OLD)
 
 direct_tools()   # test-slim-3: git and python3 without the macOS xcrun shim (tests/fasttools.py)
 
@@ -261,6 +262,20 @@ def _drop_template():
 
 
 atexit.register(_drop_template)
+
+
+# script-speed: AGENT_CALL_TIMES=<file> appends one line per ScriptRepo.run call, "<script>\t<verb>\t<seconds>"
+# (verb: the first argument, with the second for agent-file.sh todo), the seconds a call of the
+# requirement's table. Off (unset) costs nothing.
+CALL_TIMES = os.environ.get("AGENT_CALL_TIMES", "")
+
+
+def _log_call_time(script, args, seconds):
+    verb = args[0] if args else "-"
+    if script == "agent-file.sh" and verb == "todo" and len(args) > 1:
+        verb = "todo " + args[1]
+    with open(CALL_TIMES, "a") as fh:
+        fh.write("%s\t%s\t%.4f\n" % (os.path.basename(script), verb, seconds))
 
 
 class ScriptRepo:
@@ -725,13 +740,23 @@ class ScriptRepo:
     def run(self, script, *args, **kwargs):
         env = self._env(kwargs.pop("env", None))
         stdin = kwargs.pop("stdin", None)
-        return subprocess.run(
-            [self.script_path(script)] + list(args),
-            cwd=kwargs.pop("cwd", None) or self.cwd,
+        argv = [self.script_path(script)] + list(args)
+        cwd = kwargs.pop("cwd", None) or self.cwd
+        timeout = kwargs.pop("timeout", 90)
+        # script-speed rule 2: AGENT_EQUIV_OLD=<ref> runs the old ref's script on a snapshot first (tests/scriptequiv.py)
+        old = scriptequiv.run_old(self, argv, cwd, env, stdin, timeout, BIN, ROOT) if scriptequiv.on() else None
+        began = time.time() if CALL_TIMES else 0
+        result = subprocess.run(
+            argv, cwd=cwd,
             env=env, capture_output=True, text=True,
             input=stdin if stdin is not None else "",
-            timeout=kwargs.pop("timeout", 90),
+            timeout=timeout,
         )
+        if CALL_TIMES:
+            _log_call_time(script, args, time.time() - began)
+        if old is not None:
+            scriptequiv.compare(self, argv, old, result)
+        return result
 
     def run_py(self, module, *args, **kwargs):
         """test-slim: run bin/<module>.py's main(argv) in this process (no bash,
