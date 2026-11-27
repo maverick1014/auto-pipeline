@@ -166,9 +166,9 @@ class TestTheCore(unittest.TestCase):
 
 # answer bd1ecc18 (1), fix order 7841e72f C: the rules block the start prints (the core,
 # the output rules from "E1. Shape", the PATHS line, the longest READ NOW line) stays
-# under 9,700 characters with a 200-character plugin path; tests/test_agent_start.py
+# under 9,900 characters with a 200-character plugin path; tests/test_agent_start.py
 # TestTheRealSizes measures the real output.
-BLOCK_CAP = 9700                   # fix order 7841e72f C
+BLOCK_CAP = 9900                   # fix order 7841e72f C 9700; ask-test (TELL aa2c0529): +200 for the launch and owner-rule core lines
 LONGEST_PATH = "/" + "p" * 199     # a 200-character plugin path
 READ_LINES = [  # the READ NOW lines of tests/test_agent_start.py
     "READ NOW (main manager): rules/human.md, rules/routing.md, rules/approval.md, rules/checks.md, "

@@ -244,6 +244,8 @@ QUESTION_FILES = {
     29: ["rules/approval.md"], 30: ["rules/approval.md"], 31: ["rules/approval.md"],
     32: ["rules/approval.md"], 33: ["PRINCIPLES.md"], 34: ["rules/approval.md"],
     35: ["rules/routing.md"], 36: ["PRINCIPLES.md"],
+    37: ["rules/human.md", "rules/checks.md"],   # ask-test: the ask test; FIX ORDER 1 (c): checks.md too
+    38: ["rules/routing.md"],   # ask-test item 4: verify the launch, the main manager's set
 }
 MAIN_READS = ["rules/human.md", "rules/routing.md", "rules/approval.md", "rules/checks.md",
               "rules/branches.md", "rules/worktrees.md", "rules/watch.md",
@@ -258,9 +260,9 @@ def role_questions(reads):
             if any(f == "PRINCIPLES.md" or f in reads for f in files)]
 
 
-MAIN_QUESTIONS = role_questions(MAIN_READS)      # 30
-TASK_QUESTIONS = role_questions(TASK_READS)      # 15
-SECOND_QUESTIONS = role_questions(SECOND_READS)  # 17
+MAIN_QUESTIONS = role_questions(MAIN_READS)      # 32
+TASK_QUESTIONS = role_questions(TASK_READS)      # 16
+SECOND_QUESTIONS = role_questions(SECOND_READS)  # 18
 
 
 def asked(quiz_out):
@@ -711,11 +713,11 @@ class TestResourcesHelper(StartCase):
 class TestQuizStillWorks(SharedRepoMixin, StartCase):
     SHARED = "quiz"
     ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
-               "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B")   # check-blocks: Q38 is a blocks question now
+               "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B 37C 38C")   # check-blocks: Q38 is a blocks question now
 
     def test_all_right_is_a_pass(self):
         out = self.assertOk(self.start("--answer", self.ANSWERS))
-        self.assertIn("30/30 PASS", out)
+        self.assertIn("32/32 PASS", out)
 
     def test_one_wrong_is_a_fail(self):
         result = self.start("--answer", self.ANSWERS.replace("1A", "1B"))
@@ -724,7 +726,7 @@ class TestQuizStillWorks(SharedRepoMixin, StartCase):
 
 
 class TestQuizPerRole(SharedRepoMixin, StartCase):
-    """md-slim-principles B 8 and section 4. The 36 questions and their answers do
+    """md-slim-principles B 8 and section 4. The 38 questions and their answers do
     not change; which role gets which does. A wrong answer names the file to
     re-read, never a rule code."""
     ANSWERS = TestQuizStillWorks.ANSWERS
@@ -737,7 +739,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
         return self.assertOk(self.start("--quiz", *args, **kwargs))
 
     def test_the_counts(self):
-        self.assertEqual((len(MAIN_QUESTIONS), len(TASK_QUESTIONS), len(SECOND_QUESTIONS)), (30, 15, 17))
+        self.assertEqual((len(MAIN_QUESTIONS), len(TASK_QUESTIONS), len(SECOND_QUESTIONS)), (32, 16, 18))
         self.assertIn(9, MAIN_QUESTIONS)
         self.assertIn(11, MAIN_QUESTIONS)
         self.assertNotIn(4, MAIN_QUESTIONS + TASK_QUESTIONS + SECOND_QUESTIONS)   # the mock rule: not at start
@@ -770,7 +772,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
 
     def test_the_header_names_the_role_and_the_count(self):
         out = self.quiz("--role", "task")
-        self.assertIn("=== QUIZ (task manager) — answer all 15 before any work ===", out)
+        self.assertIn("=== QUIZ (task manager) — answer all 16 before any work ===", out)
         self.assertIn("--answer", out)
 
     def test_the_question_text_is_unchanged(self):
@@ -785,7 +787,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
 
     def test_each_role_passes_with_its_own_set(self):
         # fix order 7841e72f A: --answer grades the session's OWN role (the start's role), never the caller's pick
-        for role, env, n in (("main", {}, 30), ("task", {"AGENT_ROLE": "task-manager"}, 15), ("second", None, 17)):
+        for role, env, n in (("main", {}, 32), ("task", {"AGENT_ROLE": "task-manager"}, 16), ("second", None, 18)):
             with self.subTest(role=role):
                 if env is None:
                     self.live_lock()
@@ -806,13 +808,13 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
         self.assertEqual(r.returncode, 2, r.stdout)
         self.assertEqual(len(self.lines(r.stdout)), 1, r.stdout)
         self.assertIn("main manager", r.stdout)
-        self.assertIn("30", r.stdout)
+        self.assertIn("32", r.stdout)
         self.assertNotIn("PASS", r.stdout)
         self.assertFalse(os.path.exists(self.repo.path(".git", "agent_quiz_sess-bypass")))
-        # without --role the same answers are graded on the main manager's 30
+        # without --role the same answers are graded on the main manager's 32
         r = self.start("--answer", self.only(TASK_QUESTIONS), env=env)
         self.assertEqual(r.returncode, 1)
-        self.assertIn("QUIZ RESULT: 12/30 FAIL", r.stdout)
+        self.assertIn("QUIZ RESULT: 13/32 FAIL", r.stdout)
         self.assertFalse(os.path.exists(self.repo.path(".git", "agent_quiz_sess-bypass")))
 
     def test_answer_role_all_is_refused_too(self):
@@ -822,13 +824,13 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
 
     def test_the_own_role_named_is_accepted(self):
         out = self.assertOk(self.start("--answer", self.ANSWERS, "--role", "task", env={"AGENT_ROLE": "task-manager"}))
-        self.assertIn("15/15 PASS", out)
+        self.assertIn("16/16 PASS", out)
 
     def test_a_task_manager_cannot_pass_with_a_smaller_or_other_set(self):
         r = self.start("--answer", self.ANSWERS, "--role", "second", env={"AGENT_ROLE": "task-manager"})
         self.assertEqual(r.returncode, 2, r.stdout)
         self.assertIn("task manager", r.stdout)
-        self.assertIn("15", r.stdout)
+        self.assertIn("16", r.stdout)
 
     def test_the_printed_set_does_not_tell_to_answer_with_role(self):
         # --role is for printing a set only
@@ -838,7 +840,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
 
     def test_only_the_roles_answers_are_needed(self):
         out = self.assertOk(self.start("--answer", self.only(TASK_QUESTIONS), env={"AGENT_ROLE": "task-manager"}))
-        self.assertIn("15/15 PASS", out)
+        self.assertIn("16/16 PASS", out)
 
     def test_a_missing_answer_is_wrong(self):
         r = self.start("--answer", self.only(TASK_QUESTIONS, drop=("27B",)), env={"AGENT_ROLE": "task-manager"})
@@ -849,7 +851,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
         # section 4: prints "re-read rules/worktrees.md"
         r = self.start("--answer", self.ANSWERS.replace("14C", "14A"))
         self.assertEqual(r.returncode, 1)
-        self.assertIn("QUIZ RESULT: 29/30 FAIL", r.stdout)
+        self.assertIn("QUIZ RESULT: 31/32 FAIL", r.stdout)
         self.assertIn("Q14: re-read rules/worktrees.md", r.stdout)
 
     def test_a_wrong_answer_on_the_files_rule_names_its_file(self):
@@ -883,7 +885,7 @@ class TestNoQuizForSubagents(StartCase):
     def pass_quiz(self, sid="sess-1"):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid(sid)))
-        self.assertIn("15/15 PASS", out)
+        self.assertIn("16/16 PASS", out)
 
     def test_a_pass_writes_the_session_marker(self):
         self.pass_quiz()
@@ -932,7 +934,7 @@ class TestNoQuizForSubagents(StartCase):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid()))
         self.assertEqual(self.lines(out),
-                         ["QUIZ RESULT: 15/15 PASS", "You may start work."])
+                         ["QUIZ RESULT: 16/16 PASS", "You may start work."])
 
     def test_it_still_fits_the_cap(self):
         self.pass_quiz()
@@ -1455,7 +1457,7 @@ NAMES = ["DIFF SCAN", "BUILD", "RELATED TESTS", "MODULE TESTS", "GUARD TESTS", "
 
 
 ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
-           "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B")
+           "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B 37C 38C")
 
 
 # approval-design S5 (TELL 37160e3c, owner 2026-11-26 "for those outdated can remove"): 34 questions.
@@ -1574,6 +1576,22 @@ QUIZ_Q36 = """Q36. A live task manager is changing the discount logic of the bil
   D. Do it yourself in the main chat"""
 
 
+# ask-test (owner 2026-11-27: "why you keep stop and ask for me ?"): the ask test, the main manager's set
+QUIZ_Q37 = """Q37. You are the main manager. The owner asked for a CSV export in his own words. Open points: your requirement doc that only writes down his request, an old temp test folder to delete, a helper name no rule or word of his fixes, and a push to another team's repo his words do not cover. Your decide section asks:
+  A. All four: he should see everything
+  B. Nothing: decide all four yourself, the push too
+  C. Only the push: it leaves the repo and his words do not cover it; the doc needs no second yes, the temp folder is not his data or work, the helper name is a default you log
+  D. The doc and the helper name"""
+
+
+# ask-test item 4 (TELL 2e63d2df, owner 2026-11-27): an agent counts as started only when it is seen working
+QUIZ_Q38 = """Q38. You are the main manager. You sent a new task manager its brief with agent-file.sh tell. The tell printed TELL FAIL (pointer not seen, block is in the file), and the next watch sweep says the task is ok. You:
+  A. Report the task as started: the watch says ok
+  B. Open a second task manager in a new worktree and send the brief there
+  C. Act at once: read its pane, then type the pointer line into it by hand, and report "brief sent, not yet confirmed" until its STAGE brief line, a busy pane or its first reply shows it working
+  D. Wait for its first heartbeat in 15 minutes"""
+
+
 LEVEL_WORDS = re.compile(r"(?i)(\brisk types?\b|(?-i:\btype [A-D]\b)|\b[A-D] = (?:text|ui|logic|danger)\b|--level\b|"
                          r"\btodo level\b|--declared\b|\bRAISE\b|REQUIRED TYPE|\blevel [0-4]\b|\(R8 check)")
 
@@ -1606,7 +1624,8 @@ class TestQuiz(SharedRepoMixin, ScriptCase):
         out = self.quiz()
         for n, text in ((5, QUIZ_Q5), (6, QUIZ_Q6), (7, QUIZ_Q7), (8, QUIZ_Q8), (13, QUIZ_Q13), (18, QUIZ_Q18),
                         (25, QUIZ_Q25), (26, QUIZ_Q26), (27, QUIZ_Q27), (28, QUIZ_Q28), (29, QUIZ_Q29), (30, QUIZ_Q30),
-                        (31, QUIZ_Q31), (32, QUIZ_Q32), (33, QUIZ_Q33), (34, QUIZ_Q34), (35, QUIZ_Q35), (36, QUIZ_Q36)):
+                        (31, QUIZ_Q31), (32, QUIZ_Q32), (33, QUIZ_Q33), (34, QUIZ_Q34), (35, QUIZ_Q35), (36, QUIZ_Q36),
+                        (37, QUIZ_Q37), (38, QUIZ_Q38)):
             with self.subTest(q=n):
                 self.assertEqual(self.question(out, n), text)
 
@@ -1615,14 +1634,15 @@ class TestQuiz(SharedRepoMixin, ScriptCase):
 
     def test_36_and_the_new_key_passes(self):
         out = self.quiz()
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 36)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 38)
         r = self.repo.run("agent-start.sh", "--answer", ANSWERS)
-        self.assertIn("QUIZ RESULT: 30/30 PASS", r.stdout)
+        self.assertIn("QUIZ RESULT: 32/32 PASS", r.stdout)
 
     def test_the_approval_questions_name_their_rule(self):
         # approval-design (section 53 D): the cases live in R8, the quick check in P1
         cases = (("29B", "R8"), ("30C", "R8"), ("31A", "R8"), ("32D", "R8"), ("33B", "P1"), ("34C", "R8"),
-                 ("7C", "S3"), ("8D", "H3"), ("18D", "S1"), ("26C", "W17"), ("35C", "W9"), ("36B", "P1"))
+                 ("7C", "S3"), ("8D", "H3"), ("18D", "S1"), ("26C", "W17"), ("35C", "W9"), ("36B", "P1"),
+                 ("37C", "H3"), ("38C", "W9"))
         for good, code in cases:
             for letter in "ABCD":
                 wrong = good[:-1] + letter
@@ -1651,7 +1671,7 @@ class TestQuiz(SharedRepoMixin, ScriptCase):
 
     def test_every_block_named_in_the_quiz_is_in_the_table(self):
         found = set(re.findall(r"\b([A-Z]{2,}(?: [A-Z]{2,})+)\b", self.quiz()))
-        extra = {"GATE REFUSED", "CLOSE CASE", "DONE PASS", "DONE FAIL"}
+        extra = {"GATE REFUSED", "CLOSE CASE", "DONE PASS", "DONE FAIL", "TELL FAIL"}   # status lines, not blocks
         self.assertEqual(sorted(n for n in found if n not in NAMES and n not in extra), [])
 
 
@@ -1673,7 +1693,7 @@ class TestQuiz(SharedRepoMixin, ScriptCase):
 # A repo not set up: the output part only (=== rules/output.md === and E1-E4).
 # Once per session and source, like the start part (its own marker).
 
-RULES_BLOCK_CAP = 9700   # fix order 7841e72f C: a margin under Claude Code's hard 10,000
+RULES_BLOCK_CAP = 9900   # fix order 7841e72f C: a margin under Claude Code's hard 10,000; ask-test (TELL aa2c0529): 9700 -> 9900
 PATH_ROOM = 200          # tested as if the plugin path were 200 characters
 START_PART_CAP = 2000    # bytes: the start part holds no rule text
 # The human-direct start part on a busy project is over START_PART_CAP since before this task (2,216 bytes at
@@ -3077,7 +3097,7 @@ class TestTheQuiz(SharedRepoMixin, ScriptCase):
     script = "agent-start.sh"
     SHARED = "quiz"
     ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
-               "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B")   # check-blocks: Q38 is a blocks question now
+               "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B 37C 38C")   # check-blocks: Q38 is a blocks question now
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz", "--role", "all"))
@@ -3093,13 +3113,13 @@ class TestTheQuiz(SharedRepoMixin, ScriptCase):
 
     def test_the_quiz_says_34(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 36 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 36D"', out)
+        self.assertIn("=== QUIZ — answer all 38 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 38D"', out)
 
     def test_c_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer",
                                           self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 30/30 PASS", out)
+        self.assertIn("QUIZ RESULT: 32/32 PASS", out)
 
     def test_another_letter_fails_and_names_w8(self):
         for wrong in ("24A", "24B", "24D"):
@@ -3536,9 +3556,9 @@ class TestQuiz36(SharedRepoMixin, ScriptCase):
 
     def test_36_questions(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 36 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 36D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 36)
+        self.assertIn("=== QUIZ — answer all 38 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 38D"', out)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 38)
 
     def test_q35_is_the_release_run(self):
         # check-blocks 2026-11-25 (owner 1A): Q35 asks who fixes a failing release run (Max agents is gone)
@@ -3554,7 +3574,7 @@ class TestQuiz36(SharedRepoMixin, ScriptCase):
 
     def test_all_pass(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", ANSWERS))
-        self.assertIn("QUIZ RESULT: 30/30 PASS", out)
+        self.assertIn("QUIZ RESULT: 32/32 PASS", out)
 
     def test_wrong_letters_name_the_rule(self):
         for good, rule_code, wrongs in (("25B", "R8", ("25A", "25C", "25D")),   # the release run (R8), check-blocks section 27
@@ -3571,15 +3591,15 @@ class TestQuiz36(SharedRepoMixin, ScriptCase):
 
     def test_usage_and_readme_say_36(self):
         src = read("bin", "agent-start.sh")
-        self.assertIn("print the 36 quiz questions", src)
-        self.assertIn('--answer "1A 2D ... 36D"', src)
-        self.assertIn("36-question quiz", read("rules", "map.md"))
+        self.assertIn("print the 38 quiz questions", src)
+        self.assertIn('--answer "1A 2D ... 38D"', src)
+        self.assertIn("38-question quiz", read("rules", "map.md"))
 
 
 class TestQuiz34(SharedRepoMixin, ScriptCase):
     SHARED = "quiz"
     ANSWERS = ("1A 2D 3C 4B 5D 6C 7C 8D 9C 10C 11D 12D 13B 14C 15D 16D 17C "
-               "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B")   # check-blocks: Q38 is a blocks question now
+               "18D 19D 20B 21B 22B 23B 24C 25B 26C 27B 28B 29B 30C 31A 32D 33B 34C 35C 36B 37C 38C")   # check-blocks: Q38 is a blocks question now
 
     def quiz(self):
         return self.assertOk(self.repo.run("agent-start.sh", "--quiz", "--role", "all"))
@@ -3598,13 +3618,13 @@ class TestQuiz34(SharedRepoMixin, ScriptCase):
 
     def test_34_questions(self):
         out = self.quiz()
-        self.assertIn("=== QUIZ — answer all 36 before any work ===", out)
-        self.assertIn('--answer "1A 2B 3C ... 36D"', out)
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 36)
+        self.assertIn("=== QUIZ — answer all 38 before any work ===", out)
+        self.assertIn('--answer "1A 2B 3C ... 38D"', out)
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 38)
 
     def test_b_passes(self):
         out = self.assertOk(self.repo.run("agent-start.sh", "--answer", self.ANSWERS))
-        self.assertIn("QUIZ RESULT: 30/30 PASS", out)
+        self.assertIn("QUIZ RESULT: 32/32 PASS", out)
 
     def test_another_letter_fails_and_names_w10(self):
         for wrong in ("18A", "18B", "18C"):
@@ -3628,13 +3648,13 @@ class TestQuiz34(SharedRepoMixin, ScriptCase):
 
     def test_the_principles_say_34(self):
         text = read("rules", "map.md")
-        self.assertIn("36-question quiz", text)
+        self.assertIn("38-question quiz", text)
         self.assertNotIn("33-question quiz", text)
 
     def test_the_usage_lines_say_34(self):
         src = read("bin", "agent-start.sh")
-        self.assertIn("print the 36 quiz questions", src)
-        self.assertIn('--answer "1A 2D ... 36D"', src)
+        self.assertIn("print the 38 quiz questions", src)
+        self.assertIn('--answer "1A 2D ... 38D"', src)
         self.assertNotIn("45C\"", src)
 
 
