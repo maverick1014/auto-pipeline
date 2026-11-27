@@ -29,6 +29,14 @@ def whole(text):
     return int(text) if text is not None and re.fullmatch(r"[0-9]+", text) else None
 
 
+def fix_round(built, stages):
+    """requirements/board-eta.md: the past fix round of a row = its BUILD-stage minutes minus built, when more than 0."""
+    if built is None or not stages:
+        return None
+    f = sum(stages.get(s, 0) for s in BUILD) - built
+    return f if f > 0 else None
+
+
 def history(root):
     """The clean rows (clock a number, work <= clock <= 1440; the wait may be missing) of agent_completed.txt, in file order."""
     path = os.path.join(root, "agent_completed.txt")
@@ -68,6 +76,7 @@ def history(root):
                      else max(0, clock - wait - work) if wait is not None else None),
             "lane": "fast" if d.get("lane") == "fast" else "full",
             "built": built, "stages": stages, "slices": slices,
+            "fix": fix_round(built, stages),
         })
     return rows
 
@@ -120,6 +129,24 @@ def forecast(task, rows, draws=DRAWS, seed=SEED):
     if est is None or work is None:
         return None
     lane = task.get("lane") or "full"
+    # requirements/board-eta.md: a task past report or e2e (built_work) and again in a BUILD stage is in a fix round
+    stage = task.get("stage")
+    name, i, m = stage if stage else (None, None, None)
+    built_work, round_at = task.get("built_work"), task.get("round_at")
+    fix = built_work is not None and name in BUILD and round_at is not None
+    if fix:
+        age = max(0, work - round_at)
+        past = sorted(r["fix"] for r in rows if r.get("fix"))
+        added = task.get("added")
+        if len(past) >= 5 or added:
+            if len(past) >= 5:
+                k = first_over(past, age)
+                rnd = random.Random(seed).random
+                left = sorted(past[k + int(rnd() * (len(past) - k))] - age if k < len(past) else 1
+                              for _ in range(draws))
+            else:
+                left = [max(1, added - age)]
+            return up(percentile(left, 0.5)), up(percentile(left, 0.85))
     ok = [r for r in rows if r.get("est") and r["est"] > 0 and r.get("label") is not None]
     pool = [r for r in ok if r.get("lane") == lane]
     if len(pool) < FORECAST_MIN_ROWS:
@@ -129,14 +156,11 @@ def forecast(task, rows, draws=DRAWS, seed=SEED):
     qs = sorted(r["label"] / float(r["est"]) for r in pool)
     ts = sorted(r["tail"] for r in pool if r.get("tail") is not None) or [0]
     nq, nt = len(qs), len(ts)
-    stage = task.get("stage")
-    name, i, m = stage if stage else (None, None, None)
     p = task.get("p")
     pace = p is not None and p >= ES_MIN
     rnd = random.Random(seed).random
     left = []
-    if name in TAIL:
-        built_work = task.get("built_work")
+    if name in TAIL or fix:     # a fix round with too little history: the tail path, no step share
         age = max(0, work - built_work) if built_work is not None else 0
         k = first_over(ts, age)
         for _ in range(draws):

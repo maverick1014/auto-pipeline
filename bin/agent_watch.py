@@ -361,7 +361,7 @@ def list_terminals(env, path):
     if not isinstance(terms, list):
         return []
     return [t for t in terms if isinstance(t, dict) and t.get("handle")
-            and t.get("connected") is not False and t.get("orphaned") is not True]
+            and t.get("connected") is not False and (t.get("orphaned") is not True or t.get("connected") is True)]
 
 
 def locate(ctx, target):
@@ -486,32 +486,70 @@ def progress_of_line(line, name):
     return None
 
 
+DATE16 = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d")
+
+
+def line_time(line):
+    """board-eta (requirements/board-eta.md): the time of a STAGE|HEARTBEAT|STEP line: the text after its last " | "
+    (a STAGE line's "since <date>"), "YYYY-MM-DD HH:MM"; "" when it has none."""
+    if " | " not in line:
+        return ""
+    t = line.rstrip("\r").rsplit(" | ", 1)[1]
+    if t.startswith("since "):
+        t = t[6:]
+    m = DATE16.match(t)
+    return m.group(0) if m else ""
+
+
 def stage_of(text, name):
-    """(stage, beat) of the newest (last) STAGE, HEARTBEAT or STEP line of this task; ("", "") when none."""
-    value, full = ("", ""), ""
+    """(stage, beat, since) of the newest STAGE, HEARTBEAT or STEP line of this task by its own time (board-eta: not
+    by file position; a tie goes to the later line, a line with no date counts as the newest time seen so far);
+    since = the newest date of any STAGE line of this task (it releases the e2e/merge hold, wherever it is);
+    ("", "", "") when none."""
+    value, full, newest, since = ("", ""), "", "", ""
     for line in text.split("\n"):
         got = progress_of_line(line, name)
         if got:
-            if line.startswith("STAGE "):
+            stage_line = line.startswith("STAGE ")
+            if stage_line:
                 full = got[0]
             elif full.split()[:1] == [got[0]]:
                 got = (full, got[1])        # a heartbeat of the stage the STAGE line named keeps its "<i>/<m>"
-            value = got
-    return value
+            d = line_time(line)
+            if stage_line and d > since:
+                since = d
+            if d == "" or d >= newest:
+                value = got
+                newest = max(newest, d)
+    return value + (since,)
 
 
 def remote_command(path):
     """The one short command: FSIG <n> <lines> <waiting> <1 when the newest such line says "started"> <newest
-    VALID STAGE|HEARTBEAT|STEP line (a malformed one is skipped, C50)>|<last wake line> FEND (R1: no task name in it; Python picks the task's own stage). Under 500 chars or the task is not watched
-    (R1: a send is cut only near 4 KB (W16), the tell chunks are 300; a path of 140 chars must fit)."""
-    return ("awk -F' [|] ' '/^([[][^]]*[]] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
-            "{n++;l=$0;w=/^([[][^]]*[]] )?[QM]/?1:2}/^TELL |^ *([[][^]]*[]] +)?ANSWER:/{if(w==1||/^T/)w=0}"
-            "/^(STAGE [^ ]+: |HEARTBEAT [^ ]+: step [0-7] of 7, work [0-9]+m, |STEP [0-7] )/{v=substr($1,1,99);t=/tarted/}"
-            "END{print \"FSIG\",n,NR,w,t+0,v \"|\" substr(l,1,%d),\"FEND\"}' %s"
+    VALID STAGE|HEARTBEAT|STEP line (a malformed one is skipped, C50), its first 99 chars>|<last wake line> FEND <newest STAGE line date, "YYYY-MM-DDHH:MM", or empty> (R1: no task name in it; Python picks the task's own stage).
+    board-eta: newest by the line's own time = its last two words "<date> <hh:mm>" (a STAGE line's "since" date, a
+    heartbeat's "| date"); a tie goes to the later line; a line with no date wins and keeps the time seen so far.
+    Under 500 chars or the task is not watched
+    (R1: a send is cut only near 4 KB (W16), the tell chunks are 300; a state path of 127 chars must fit)."""
+    return ("awk '/^(\\[[^]]*\\] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
+            "{n++;l=$0;w=/^(\\[[^]]*\\] )?[QM]/?1:2}/^TELL |^ *(\\[[^]]*\\] +)?ANSWER:/{if(w==1||/^T/)w=0}"
+            "/^(STAGE [^ ]+:|HEARTBEAT [^ ]+: step [0-7]|STEP [0-7])/"
+            "{d=$(NF-1)$NF;if(d~/^20[0-9]*-/){if(/^STA/&&d>s)s=d;if(d<m)next;m=d}v=substr($0,1,99);t=/tarted/}"
+            "END{print \"FSIG\",n,NR,w,t,v\"|\"substr(l,1,%d),\"FEND\",s}' %s"
             % (LAST_CUT, shlex.quote(path + "/agent_state.txt")))
 
 
-FSIG = re.compile(r"^FSIG (\d*) (\d+) (\d*) ([01]) (.*) FEND$")
+def split_fsig(rest):
+    """(v, last) of the remote answer "<v>|<last wake line>". v (at most 99 chars) keeps the line's own " | " (STAGE:
+    " | since <date>", heartbeat: " | <date>"): the separator is the first "|" not followed by a space; a v cut at 99
+    chars may end in that line's own "|" (index 98), then the separator is index 99."""
+    i = next((k for k, c in enumerate(rest) if c == "|" and rest[k + 1:k + 2] != " "), len(rest))
+    if i == 98 and rest[99:100] == "|":
+        i = 99
+    return rest[:i], rest[i + 1:]
+
+
+FSIG = re.compile(r"^FSIG (\d*) (\d+) (\d*) ([01]?) (.*) FEND ?(\d{4}-\d\d-\d\d\d\d:\d\d)?$")
 
 
 class Obs:
@@ -520,7 +558,7 @@ class Obs:
     def __init__(self, kind, err="", lines=None):
         self.kind, self.err, self.lines = kind, err, lines or []
         self.fn = self.fl = self.w = 0
-        self.last = self.stage = self.beat = ""
+        self.last = self.stage = self.beat = self.since = ""
         self.started = False
         self.wakes = []
         self.exited = False
@@ -782,7 +820,7 @@ class Engine:
             if text is None:
                 return Obs("exited", lines=lines) if exited else Obs("fail", "cannot read %s" % f, lines)
             o.fn, o.fl, o.last, o.w, o.wakes = scan_state(text)
-            o.stage, o.beat = stage_of(text, t.name)
+            o.stage, o.beat, o.since = stage_of(text, t.name)
             body = [l for l in text.split("\n") if l.strip()]
             o.started = bool(body) and "tarted" in body[-1]
             return o
@@ -791,8 +829,9 @@ class Engine:
             return Obs("exited", lines=lines) if exited else Obs("fail", err, lines)
         o.fn, o.fl, o.w = int(hit.group(1) or 0), int(hit.group(2)), int(hit.group(3) or 0)
         o.started = hit.group(4) == "1"
-        v, _, o.last = hit.group(5).partition("|")
+        v, o.last = split_fsig(hit.group(5))
         o.stage, o.beat = progress_of_line(v, t.name) or ("", "")
+        o.since = (hit.group(6) or "")[:10] + " " + (hit.group(6) or "")[10:] if hit.group(6) else ""
         return o
 
     def run_todo(self, args):
@@ -806,13 +845,29 @@ class Engine:
             ok, msg = False, str(e)
         return ok, (msg.strip().splitlines() or [""])[0][:150]
 
-    def carry_stage(self, t, stage, beat=""):
+    def main_stage_since(self, name):
+        """board-eta: the "since" of the todo line's stage when it is e2e or merge (the main manager's own), else None."""
+        for line in read_lines(self.ctx.file("agent_todo.txt")):
+            parts = line.split(" | ")
+            if parts[0].strip() == name:
+                for f in parts[1:]:
+                    m = re.match(r"stage (e2e|merge) since (\d{4}-\d\d-\d\d \d\d:\d\d)", f.strip())
+                    if m:
+                        return m.group(2)
+        return None
+
+    def carry_stage(self, t, stage, beat="", since=""):
         """The newest STAGE, HEARTBEAT or STEP line of the task goes into the main repo's todo line (the main repo
-        is the brain): its stage by todo stage, a heartbeat's "<m>m <text>" by todo beat."""
-        if stage and stage != t.laststage:
+        is the brain): its stage by todo stage, a heartbeat's "<m>m <text>" by todo beat.
+        board-eta: while the todo stage is e2e or merge, only a STAGE line newer than it is carried (a new round)."""
+        held = self.main_stage_since(t.name)
+        forced = held is not None and bool(since) and since > held
+        if held is not None and not forced:
+            return
+        if stage and (stage != t.laststage or forced):
             old = t.laststage.split()
             # a heartbeat knows only the stage word: it keeps the carried "workers <i>/<m>"
-            keep = len(old) == 2 and stage == old[0]
+            keep = len(old) == 2 and stage == old[0] and not forced
             if not keep:
                 t.laststage, t.lastbeat = stage, ""
                 ok, msg = self.run_todo(["stage", t.name] + stage.split()[:2])
@@ -844,7 +899,7 @@ class Engine:
                     t.last = saved["last"]
             self.load_stall(t, saved)
             return
-        self.carry_stage(t, o.stage, o.beat)
+        self.carry_stage(t, o.stage, o.beat, o.since)
         if isinstance(sig, int):
             if o.fn < sig:
                 t.base, t.last = o.fn, o.last
@@ -899,7 +954,7 @@ class Engine:
                 events.append(("WATCH LOST %s: %s" % (t.name, o.err), None))
             return "fail %d/3" % t.fails
         t.fails = 0
-        self.carry_stage(t, o.stage, o.beat)
+        self.carry_stage(t, o.stage, o.beat, o.since)
         now = now_text()
         t.confirmed = now
         screen = "\n".join(o.lines)

@@ -612,8 +612,13 @@ class Board:
             if at:
                 built_work = at[0]
                 break
+        # requirements/board-eta.md: where the current fix round began (the first stage log entry after the last
+        # report, e2e or merge entry) and the todo line's added minutes
+        tails = [i for i, (w, _m) in enumerate(t["slog"]) if w in ("report", "e2e", "merge")]
+        round_at = t["slog"][tails[-1] + 1][1] if tails and tails[-1] + 1 < len(t["slog"]) else None
         task = {"est": t["est"], "work": work, "stage": t["stage"], "p": None if p is None else float(p),
-                "lane": "fast" if t["size"] == "small" else "full", "built_work": built_work}
+                "lane": "fast" if t["size"] == "small" else "full", "built_work": built_work,
+                "round_at": round_at, "added": t["added"]}
         try:
             return mod.forecast(task, self.history_rows())
         except Exception:
@@ -665,7 +670,7 @@ class Board:
         t = {"name": f[0].strip(), "size": f[1].strip() if len(f) > 1 else "", "what": f[2] if len(f) > 2 else "", "est": None,
              "opened": None, "wkind": None, "wsince": None, "wnote": "", "waited": 0,
              "machine": None, "path": None, "stage": None, "since": None, "wis": 0, "level": None, "checks": None,
-             "who": None, "owner": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": "", "slog": [], "p50": None}
+             "who": None, "owner": None, "after": None, "wrun": None, "started": None, "swaited": 0, "beat": "", "slog": [], "p50": None, "added": None}
         for x in f[3:]:
             m = re.match(r"est (\d+)m$", x)
             if m and t["est"] is None:
@@ -730,6 +735,10 @@ class Board:
             m = re.match(r"beat (.+)$", x)
             if m and not t["beat"]:
                 t["beat"] = m.group(1).strip()
+                continue
+            m = re.match(r"added (\d+)m$", x)
+            if m and t["added"] is None:
+                t["added"] = int(m.group(1))
                 continue
             m = re.match(r"waited in stage (\d+)m$", x)
             if m:
@@ -806,10 +815,14 @@ class Board:
     def queue_text(self, t):
         w = self.words
         task = t["after"]
+        note = collapse(t["wnote"])
         if not task:
-            m = re.match(r"after\s+(\S+)", collapse(t["wnote"]), re.IGNORECASE)
+            m = re.match(r"after\s+(\S+)", note, re.IGNORECASE)
             task = m.group(1).rstrip(",;:.") if m else ""
-        return w["queue"] + (" · " + w["after"] % task if task else "")
+            if m:
+                note = ""      # read as the after task: not shown again
+        return (w["queue"] + (" · " + w["after"] % task if task else "")
+                + (" · " + cut_cols(note, WAIT_WHAT_COLS) if note else ""))
 
     def todo_row(self, t, wt_lines, own_dir=None):
         opened = parse_time(t["opened"]) if t["opened"] else None
@@ -880,7 +893,7 @@ class Board:
         if t["machine"]:
             where = t["machine"] + (", " + short_path(t["path"], self.home) if t["path"] else "")
         else:
-            where = self.worktree_where(t["name"], wt_lines)
+            where = "-" if kind == "queue" else self.worktree_where(t["name"], wt_lines)
             if where is None:
                 where = self.where_here(own_dir) if own_dir else "-"
         self.add(group, when, t["name"] + (" [%s]" % t["owner"] if t["owner"] else ""), t["what"] or "-", status, where,
