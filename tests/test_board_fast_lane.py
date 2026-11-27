@@ -93,8 +93,8 @@ class TestDeadHelperWithoutSession(ts.EndCase):
         live = ts.helper_line("/z/wt", "s1", pid=self.live_pid())
         self.set_lines([old, fresh, live])
         out = self.assertOk(self.end("--dead", env={"AGENT_FAKE_NOW": NOW}))
-        self.assertEqual(self.lines(), [fresh, live])
-        self.assertIn("human-direct line /x/wt (no pid, no session id, 27h old)", out)
+        self.assertEqual(self.lines(), [old, fresh, live])   # flagged, never removed
+        self.assertIn("flag: human-direct line /x/wt: no pid, no session id, 27h old: close it with agent-file.sh worktree rm", out)
 
 
 if __name__ == "__main__":

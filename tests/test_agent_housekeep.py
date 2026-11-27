@@ -489,6 +489,15 @@ class TestWorktreeLines(HousekeepCase):
         self.apply()
         self.assertEqual(self.file_lines("agent_worktree.txt"), [])
 
+    def test_an_old_pidless_human_direct_line_is_flagged_not_reported_removed(self):
+        path, _ = self.worktree("hd")
+        self.repo.set_worktree_lines([(path, "task manager, human-direct", "task: (ask the human)")])
+        self.apply()
+        self.assertEqual(len(self.file_lines("agent_worktree.txt")), 1)
+        body = self.body()
+        self.assertTrue([l for l in body if l.startswith("flag: human-direct line %s: no pid, no session id" % path)], body)
+        self.assertFalse([l for l in body if l.startswith(("removed:", "would remove:")) and path in l], body)
+
     def test_a_gone_working_line_is_flagged_never_removed(self):
         for status in ("working", "final"):
             with self.subTest(status=status):
