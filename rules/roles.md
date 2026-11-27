@@ -35,3 +35,11 @@ W10. Second session in the same repo
 - Open a second session with the same permission mode and effort as the main manager (`<mode>` from `agent-settings.sh get permission_mode`, effort from the "Models: Main manager model" setting, form model:effort): `orca terminal create --worktree path:<repo> --command "claude --name '<repo> Helper' --permission-mode <mode> --effort <effort>" --json`, then `orca terminal wait --for tui-idle`
 - New terminals (dispatch, resume, a Helper, a city click) use the "Permissions: Permission mode" setting, read with `agent-settings.sh get permission_mode`
 - Task name: every new or switched task, a plain question too, gets its name first, even before the quiz PASS -> run the full-path `<plugin>/bin/agent-file.sh helper-task "<Task Name>"` from the start text, alone, from the project folder (never cd, never chain it); 2-4 English words, Title Case, the work, not the role; `<repo> Helper - <Task Name>` shows from the human's next prompt
+
+Model change of the main manager (W17; `requirements/model-floor.md`)
+- The header of every order is your model now: the "model" of the latest assistant message of this session's transcript (a `/model` shows from your next reply), never copied from the start text. The effort is not checked (no source is session-true). The guard refuses a wrong model: `header [<x>] is not your model [<y>]: write [<y> <your effort>]`; unreadable: a note, never a refusal
+- A hook on every owner prompt prints `MODEL CHANGED: <old model> -> <new model>`, plus `BELOW FLOOR: ask the owner first` when the new one is under the floor
+- Below the floor: your next reply starts with one question (intended, for billing or usage, or a mistake?). No order, review, sign or merge before he answers; the guard refuses your orders until MODEL OK
+- Intended: `agent-file.sh model ok --owner-quote "<his words>" --means "confirm <model> <effort>"` (words verified, stored as `MODEL OK <model>`). Work as usual with the honest header. It ends at the next model change
+- A mistake: wait for him to switch back; nothing else
+- A receiver of a below-floor header from the main manager runs `agent-file.sh model check <model> <effort>`: exit 0 (MODEL OK; the model is compared) = act; else do not act, report

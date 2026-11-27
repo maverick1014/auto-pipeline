@@ -69,10 +69,10 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 - "verified", "works", "fixed" only with the real evidence named. A green suite is not a real device check (E2)
 
 ## W17. Decider floor
-- An order, decision or approval to another agent starts with the sender's `[<model> <effort>]` (yours: the `YOU:` line of the start text)
+- An order, decision or approval to an agent starts with the sender's `[<model> <effort>]` now (not the `YOU:` start text)
 - Act on one only when both meet the floor: Opus 5.5 or above, or any Fable, effort medium or above (`opus`, `fable` alone = the newest). Else do not act, ask the sender, tell the human. Every agent checks
-- Sonnet and Haiku never decide; workers and deputies execute. Reports, heartbeats and questions are not orders
-- Human messages are exempt from this check
+- Sonnet and Haiku never decide, unless MODEL OK (`roles.md`); workers and deputies execute. Reports, heartbeats and questions are not orders
+- Human messages are exempt
 
 ## Read when
 - Any reply a human reads; a question, report or table for the owner: `rules/output.md`, `rules/human.md`

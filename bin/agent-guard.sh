@@ -17,7 +17,7 @@
 IFS= read -r -d '' p
 
 re_bash='"tool_name"[[:space:]]*:[[:space:]]*"Bash"'
-re_orca='orca([[:space:]]|\\\\|\\n|\\t)+(terminal|worktree)|agent-runtime\.sh[^[:alnum:]]{1,6}close'
+re_orca='orca([[:space:]]|\\\\|\\n|\\t)+(terminal|worktree|orchestration)|agent-runtime\.sh[^[:alnum:]]{1,6}close'
 re_point='agent-file\.sh.*(todo.{1,8}add|checks.{1,8}gate)|agent-promote\.sh|git.*push'
 if [[ $p =~ $re_bash ]] && ! [[ $p =~ $re_orca ]] && ! [[ $p =~ $re_point ]]; then
   exit 0

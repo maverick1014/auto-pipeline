@@ -114,6 +114,7 @@ COPY_BIN = [
     "agent_guard.py",        # board-trust: its logic
     "agent-owner-order.sh",  # owner-relay: verify / line of a relayed owner order
     "agent_owner_order.py",  # owner-relay: its logic (requirements/owner-relay.md)
+    "agent_model.py",        # model-floor: the header check, the hook, the MODEL OK record
     "agent_share.py",        # agent-files: where the task files live, the commits, the merge drivers, who may work a task
 ]
 
