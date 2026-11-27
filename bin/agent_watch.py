@@ -483,34 +483,38 @@ def line_time(line):
 def stage_of(text, name):
     """(stage, beat, since) of the newest STAGE, HEARTBEAT or STEP line of this task by its own time (board-eta: not
     by file position; a tie goes to the later line, a line with no date counts as the newest time seen so far);
-    since = the winner's date when it is a STAGE line; ("", "", "") when none."""
-    value, full, newest = ("", "", ""), "", ""
+    since = the newest date of any STAGE line of this task (it releases the e2e/merge hold, wherever it is);
+    ("", "", "") when none."""
+    value, full, newest, since = ("", ""), "", "", ""
     for line in text.split("\n"):
         got = progress_of_line(line, name)
         if got:
-            if line.startswith("STAGE "):
+            stage_line = line.startswith("STAGE ")
+            if stage_line:
                 full = got[0]
             elif full.split()[:1] == [got[0]]:
                 got = (full, got[1])        # a heartbeat of the stage the STAGE line named keeps its "<i>/<m>"
             d = line_time(line)
+            if stage_line and d > since:
+                since = d
             if d == "" or d >= newest:
-                value = got + (d if line.startswith("STAGE ") else "",)
+                value = got
                 newest = max(newest, d)
-    return value
+    return value + (since,)
 
 
 def remote_command(path):
     """The one short command: FSIG <n> <lines> <waiting> <1 when the newest such line says "started"> <newest
-    VALID STAGE|HEARTBEAT|STEP line (a malformed one is skipped, C50), its first 99 chars>|<last wake line> FEND (R1: no task name in it; Python picks the task's own stage).
+    VALID STAGE|HEARTBEAT|STEP line (a malformed one is skipped, C50), its first 99 chars>|<last wake line> FEND <newest STAGE line date, "YYYY-MM-DDHH:MM", or empty> (R1: no task name in it; Python picks the task's own stage).
     board-eta: newest by the line's own time = its last two words "<date> <hh:mm>" (a STAGE line's "since" date, a
     heartbeat's "| date"); a tie goes to the later line; a line with no date wins and keeps the time seen so far.
     Under 500 chars or the task is not watched
-    (R1: a send is cut only near 4 KB (W16), the tell chunks are 300; a path of 140 chars must fit)."""
+    (R1: a send is cut only near 4 KB (W16), the tell chunks are 300; a state path of 127 chars must fit)."""
     return ("awk '/^(\\[[^]]*\\] )?(DONE (PASS|FAIL)|CLOSE CASE|QUESTION:|MOCK READY)/"
             "{n++;l=$0;w=/^(\\[[^]]*\\] )?[QM]/?1:2}/^TELL |^ *(\\[[^]]*\\] +)?ANSWER:/{if(w==1||/^T/)w=0}"
-            "/^(STAGE [^ ]+:|HEARTBEAT [^ ]+: step [0-7] of 7, work [0-9]|STEP [0-7])/"
-            "{d=$(NF-1)$NF;if(d~/^20/){if(d<m)next;m=d}v=substr($0,1,99);t=/tarted/}"
-            "END{print \"FSIG\",n,NR,w,t,v\"|\"substr(l,1,%d),\"FEND\"}' %s"
+            "/^(STAGE [^ ]+:|HEARTBEAT [^ ]+: step [0-7]|STEP [0-7])/"
+            "{d=$(NF-1)$NF;if(d~/^20[0-9]*-/){if(/^STA/&&d>s)s=d;if(d<m)next;m=d}v=substr($0,1,99);t=/tarted/}"
+            "END{print \"FSIG\",n,NR,w,t,v\"|\"substr(l,1,%d),\"FEND\",s}' %s"
             % (LAST_CUT, shlex.quote(path + "/agent_state.txt")))
 
 
@@ -524,7 +528,7 @@ def split_fsig(rest):
     return rest[:i], rest[i + 1:]
 
 
-FSIG = re.compile(r"^FSIG (\d*) (\d+) (\d*) ([01]?) (.*) FEND$")
+FSIG = re.compile(r"^FSIG (\d*) (\d+) (\d*) ([01]?) (.*) FEND ?(\d{4}-\d\d-\d\d\d\d:\d\d)?$")
 
 
 class Obs:
@@ -806,7 +810,7 @@ class Engine:
         o.started = hit.group(4) == "1"
         v, o.last = split_fsig(hit.group(5))
         o.stage, o.beat = progress_of_line(v, t.name) or ("", "")
-        o.since = line_time(v) if v.startswith("STAGE ") else ""
+        o.since = (hit.group(6) or "")[:10] + " " + (hit.group(6) or "")[10:] if hit.group(6) else ""
         return o
 
     def run_todo(self, args):
