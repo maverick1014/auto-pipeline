@@ -284,7 +284,8 @@ def opt_values(words, keys):
 
 SKIP_WORDS = ("env", "time", "then", "do", "else", "{", "!")
 OPS = {("terminal", "create"): "create", ("terminal", "close"): "close",
-       ("worktree", "create"): "wt_create", ("worktree", "rm"): "wt_rm"}
+       ("worktree", "create"): "wt_create", ("worktree", "rm"): "wt_rm",
+       ("terminal", "send"): "send", ("orchestration", "send"): "send"}
 
 
 RE_VAR = re.compile(r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})")
@@ -322,7 +323,7 @@ def bash_launches(command):
             continue
         pair = (w[1], w[2])
         if pair in OPS:
-            opts = opt_values(w[3:], ("title", "command", "environment", "worktree", "terminal", "name"))
+            opts = opt_values(w[3:], ("title", "command", "environment", "worktree", "terminal", "name", "text", "body"))
             if "worktree" in opts and "$" in opts["worktree"]:
                 opts["worktree"] = expand_vars(opts["worktree"], env)
             found.append((OPS[pair], opts))
@@ -883,6 +884,27 @@ def make_context(payload):
     return ctx
 
 
+def model_header(ctx, text):
+    """(block, note) of model-floor (requirements/model-floor.md): an order's header must be the sender's current
+    model and effort, and a main manager under the floor needs the owner's MODEL OK."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        old = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            if here not in sys.path:
+                sys.path.insert(0, here)
+            import agent_model
+        finally:
+            sys.dont_write_bytecode = old
+        block, note = agent_model.header_verdict(text, ctx["pid"])
+        if not block and note is None and agent_model.HEADER.match(text or ""):
+            block = agent_model.below_floor_verdict(ctx["common"], ctx["pid"], ctx["role"])
+        return block, note
+    except Exception:
+        return None, None
+
+
 def key_of(tid, n):
     """The record key of the n-th (1-based) create of one Bash call."""
     tid = tid or "toolu_none_%d" % int(time.time())
@@ -924,6 +946,16 @@ def handle(payload):
     if ev == "PreToolUse":
         if ctx["pid"] is None:  # unknown session: no record, never main
             return OK
+        note = None
+        if not payload.get("agent_id"):   # a subagent's own model is not in the settings: not checked
+            texts = [str(tin.get("prompt") or "")] if kind == "agent" else [
+                o.get("text") or o.get("body") or "" for op, o in ops if op == "send"]
+            for text in texts:
+                block, note = model_header(ctx, text)
+                if block:
+                    return ("BLOCK", block)
+        if kind == "bash" and not any(op in ("create", "wt_create") for op, _ in ops):
+            return ("WARN", note) if note else OK
         if kind == "bash":
             items, n = [], 0
             for op, opts in ops:
@@ -942,7 +974,8 @@ def handle(payload):
         desc = str(tin.get("description") or "")
         stype = str(tin.get("subagent_type") or "") or "general-purpose"
         d = decide_agent(ctx, desc, stype)
-        return finish(ctx, [(d, (key_of(tid, 1), {"type": stype}))], quiet)
+        res = finish(ctx, [(d, (key_of(tid, 1), {"type": stype}))], quiet)
+        return ("WARN", note) if note and res == OK else res
 
     if ev == "PostToolUse":
         if not tid:

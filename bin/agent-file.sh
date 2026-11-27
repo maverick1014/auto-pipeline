@@ -22,6 +22,8 @@
 #   agent-file.sh checks gate "<task>" --dir <path> [--base <ref>] [--branch <b>] [--results <file>] [--checks "<list>"]
 #                                                             -> the merge guard: per planned block "<BLOCK>: pass (by <who>)|fail (by <who>)|missing", then "GATE PASS <task>" (exit 0) or "GATE REFUSED <task>: <BLOCK> missing, ..." (exit 1); no todo line and no --checks: exit 2
 #   agent-file.sh next                                        -> "NEXT: <n> can start (room <mb> MB under the <p>% limit)", then START / WAIT lines for the queued tasks
+#   agent-file.sh model ok --owner-quote "<words>" --means "<action>" [--question "<q>"] [--time <t>]  -> the owner says the main manager's model change is intended: verified, stored as MODEL OK <model> <effort> (requirements/model-floor.md)
+#   agent-file.sh model check <model> <effort>               -> exit 0 and "MODEL OK <model> <effort>" while that record stands, else exit 1
 #   agent-file.sh edge add "<text>"                           -> one "edge=<text>" line in agent_repo.conf of this folder's git toplevel; "edge add: already listed" when present
 #   agent-file.sh idea add  "<text>"                          -> agent_ideas.txt
 #   agent-file.sh idea list                                   -> print agent_ideas.txt, numbered (cat -n)
@@ -297,7 +299,7 @@ gi_has() {
   return 1
 }
 kept_readonly() {   # a command that never writes one of the five agent files
-  case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*|show:*|time:*|idea:list|files:*) return 0;; esac
+  case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*|model:*|show:*|time:*|idea:list|files:*) return 0;; esac
   return 1
 }
 kept_save() {   # kept_save <file>: keep the old kept copy as <file>.before-<time>[-n] before anything is written, say it, sweep
@@ -355,7 +357,7 @@ kept_end() {     # a run that ended 0 copies each of the five files it changed t
   return 0
 }
 kept_start "$@"
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|retrain:*|helper-task:*|session-end:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|retrain:*|helper-task:*|session-end:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*|model:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the files in git (agent_share.py): a snapshot before and after, one commit on the data branch when a run changed them.
 # Bash only (no python start when nothing changed): the facts are read from agent_repo.conf with grep and sed.
@@ -1930,6 +1932,8 @@ case "${1:-}:${2:-}" in
     shift; next_run "$@";;
   edge:add)
     shift 2; checks_py edge-add "$@";;
+  model:ok|model:check)
+    cmd=$2; shift 2; checks_py "model-$cmd" "$@";;
   todo:take)
     [ $# -eq 3 ] || refuse "todo take: usage: todo take <task>"
     command -v python3 >/dev/null 2>&1 || refuse "todo take: python3 is needed and was not found"

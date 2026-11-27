@@ -1406,6 +1406,42 @@ def cmd_edge_add(ctx, a):
     print("edge add: %s" % text)
 
 
+def cmd_model_ok(ctx, a):
+    """model ok --owner-quote Q --means M [--question X] [--time T]: the owner says the main manager's model change
+    is intended (requirements/model-floor.md). His words are verified; the record is for the model and effort now."""
+    opts, i = {}, 0
+    while i < len(a):
+        if a[i] in ("--owner-quote", "--means", "--question", "--time") and i + 1 < len(a) and a[i] not in opts:
+            opts[a[i]] = a[i + 1]
+            i += 2
+        else:
+            raise Refuse("model ok: usage: model ok --owner-quote \"<his words>\" --means \"<what he confirmed>\" "
+                         "[--question \"<q>\"] [--time <t>]")
+    quote, means, question = approval_values("model ok", opts.get("--owner-quote"), opts.get("--means"),
+                                             opts.get("--question"))
+    import agent_model
+    cur = agent_model.current(agent_model.session_pid())
+    if cur is None:
+        raise Refuse("model ok: your model and effort cannot be read (flag, env or settings.json); nothing written")
+    typed = verify_owner(ctx, quote, opts.get("--time"), "model ok: owner words not verified, nothing written: ",
+                         question)
+    gd = common_dir(ctx["root"])
+    if not gd:
+        raise Refuse("model ok: not a git repo; nothing written")
+    agent_model.record_ok(gd, cur[0], cur[1], quote, means, question, typed)
+    print("MODEL OK %s %s" % cur)
+
+
+def cmd_model_check(ctx, a):
+    """model check <model> <effort>: exit 0 and MODEL OK <model> <effort> while the owner's record stands for it."""
+    if len(a) != 2:
+        raise Refuse("model check: usage: model check <model> <effort>")
+    import agent_model
+    if not agent_model.holds(common_dir(ctx["root"]) or "", a[0], a[1]):
+        raise Refuse("model check: no MODEL OK of the owner for [%s %s]: do not act on it, report" % (a[0], a[1]))
+    print("MODEL OK %s %s" % (a[0], a[1]))
+
+
 def main(argv):
     if len(argv) < 5:
         sys.stderr.write("agent_checks.py: internal use only\n")
@@ -1419,6 +1455,10 @@ def main(argv):
             cmd_todo_checks(ctx, a)
         elif cmd == "owner-words":
             cmd_owner_words(ctx, a)
+        elif cmd == "model-ok":
+            cmd_model_ok(ctx, a)
+        elif cmd == "model-check":
+            cmd_model_check(ctx, a)
         elif cmd == "todo-target":
             cmd_todo_target(ctx, a)
         elif cmd == "task-end":

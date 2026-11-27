@@ -6,7 +6,7 @@ ANTHROPIC_MODEL and CLAUDE_CODE_EFFORT_LEVEL), never copied from the start text.
 
 import json
 import os
-import re
+import subprocess
 import sys
 import unittest
 
@@ -127,8 +127,24 @@ class TestGuardHeader(tg.GuardCase):
         self.assertIn("header [opus-5.5 xhigh] is not your model [sonnet-5.5 medium]: write [sonnet-5.5 medium]",
                       r.stderr)
 
-    def test_2_the_honest_header_goes_through(self):
+    def ok_record(self):
+        gd = subprocess.run(["git", "-C", self.repo.dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+        with open(os.path.join(gd, "agent_model_ok.json"), "w") as fh:
+            json.dump({"model": "sonnet-5.5", "effort": "medium"}, fh)
+
+    def test_2_the_honest_header_goes_through_once_the_owner_said_it_is_intended(self):
+        self.ok_record()
         r = self.launch("[sonnet-5.5 medium] merge it", SONNET)
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+
+    def test_below_the_floor_without_the_owner_s_yes_the_main_manager_sends_nothing(self):
+        r = self.launch("[sonnet-5.5 medium] merge it", SONNET)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("below the floor", r.stderr)
+
+    def test_above_the_floor_the_honest_header_goes_through(self):
+        r = self.launch("[opus-5.5 xhigh] merge it", OPUS)
         self.assertEqual((r.returncode, r.stderr), (0, ""))
 
     def test_a_wrong_effort_is_refused_too(self):
@@ -161,6 +177,7 @@ class TestGuardHeader(tg.GuardCase):
         r = self.pre_bash(cmd, extra_env=SONNET)
         self.assertEqual(r.returncode, 2, r.stderr)
         self.assertIn("is not your model [sonnet-5.5 medium]", r.stderr)
+        self.ok_record()
         cmd = 'orca terminal send --terminal term_1 --text "[sonnet-5.5 medium] go" --enter'
         self.assertEqual(self.pre_bash(cmd, extra_env=SONNET).returncode, 0)
 
