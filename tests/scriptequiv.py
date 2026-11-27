@@ -198,7 +198,11 @@ def run_old(repo, argv, cwd, env, stdin, timeout, new_bin, root):
         return None
     snap = repo.base + ".equiv-snap"
     shutil.rmtree(snap, ignore_errors=True)
-    shutil.copytree(repo.base, snap, symlinks=True)
+    try:
+        shutil.copytree(repo.base, snap, symlinks=True)
+    except BaseException:
+        shutil.rmtree(snap, ignore_errors=True)     # a half copy never stays (machine-health rule 4)
+        raise
     _STATE["new"] = new_bin
     try:
         swap_to_old(repo, new_bin, old_bin(root))
@@ -216,7 +220,10 @@ def run_old(repo, argv, cwd, env, stdin, timeout, new_bin, root):
         _stop(_procs_under(repo.base) - before)
     finally:
         shutil.rmtree(repo.base, ignore_errors=True)
-        os.rename(snap, repo.base)
+        try:
+            os.rename(snap, repo.base)
+        finally:
+            shutil.rmtree(snap, ignore_errors=True)    # the rename failed: the copy still goes
     return old
 
 

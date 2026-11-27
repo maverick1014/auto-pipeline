@@ -983,7 +983,11 @@ class TestOneSentenceInstall(PackCase):
                                      text=True, input="", timeout=180)
         keep = tempfile.mkdtemp(prefix="cloud_pack_one_")
         atexit.register(shutil.rmtree, keep, True)
-        shutil.copytree(self.target, os.path.join(keep, "target"), symlinks=True)
+        try:
+            shutil.copytree(self.target, os.path.join(keep, "target"), symlinks=True)
+        except BaseException:
+            shutil.rmtree(keep, True)    # a failed copy leaves no folder (machine-health rule 4)
+            raise
         _ONE_SENTENCE["run"] = {
             "dir": keep, "args": self.result.args, "code": self.result.returncode,
             "stdout": self.result.stdout.replace(self.base, _BASE_MARK),

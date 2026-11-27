@@ -8,11 +8,12 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-DEMO = os.path.join(HERE, "check_blocks_demo.sh")
+DEMO = os.environ.get("AGENT_DEMO_SCRIPT") or os.path.join(HERE, "check_blocks_demo.sh")   # (the override: tests/test_machine_health.py)
 
 WALKS = ("===== 1 text only: one locale value =====",
          "===== 5 a merge refused for a missing result line =====",
@@ -47,12 +48,16 @@ class TestTheDemoRuns(unittest.TestCase):
         env = dict(os.environ)
         for k in ("AGENT_ROLE", "CLAUDE_PID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CONFIG_DIR"):
             env.pop(k, None)
-        r = subprocess.run(["bash", DEMO, ROOT], capture_output=True, text=True, timeout=1500, env=env,
-                           stdin=subprocess.DEVNULL)
+        # the demo makes its folder with mktemp under TMPDIR: a private TMPDIR holds it, removed whatever happens
+        # (green, red, a timeout, a kill of the test), so no check-blocks-demo.* is left behind (machine-health rule 4)
+        private = tempfile.mkdtemp(prefix="check-blocks-demo.run.", dir=tempfile.gettempdir())
+        env["TMPDIR"] = private
+        try:
+            r = subprocess.run(["bash", DEMO, ROOT], capture_output=True, text=True, timeout=1500, env=env,
+                               stdin=subprocess.DEVNULL)
+        finally:
+            shutil.rmtree(private, True)
         out = r.stdout + r.stderr
-        m = re.search(r"everything above ran in (\S+) \(delete it when read\)", out)
-        if m and os.path.basename(m.group(1)).startswith("check-blocks-demo."):
-            shutil.rmtree(m.group(1), True)
         self.assertEqual(r.returncode, 0, out[-6000:])
         self.assertNotIn("DEMO FAILED", out)
         for walk in WALKS:

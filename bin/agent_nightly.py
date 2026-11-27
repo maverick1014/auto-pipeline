@@ -338,6 +338,15 @@ def trees_mb(jobs):
     return kb // 1024
 
 
+def machine_limits():
+    """machine-health rule 2: "CPU idle 2% (< 20%)" and/or "swap 95% used (> 90%)", or "" (within, or not readable)."""
+    try:
+        import agent_health
+        return agent_health.limits_line()
+    except Exception:
+        return ""
+
+
 def room(need, reserve_as=None):
     """(ok, line). need is MB (0 for unknown). With reserve_as = an entry, it is stored in the same locked step,
     so two agents never count the same free memory. Fails closed when RAM or the total cannot be read."""
@@ -358,6 +367,9 @@ def room(need, reserve_as=None):
         used = max(0, used - trees_mb(others))
         if used + reserved + need > limit:
             return False, "ROOM: no: %d MB in use + %d MB reserved + %d MB > %d MB" % (used, reserved, need, limit)
+        busy = machine_limits()
+        if busy:
+            return False, "ROOM: no: " + busy
         if reserve_as:
             try:
                 save_jobs(others + [reserve_as])
@@ -431,6 +443,9 @@ def pane_need(gitdir):
 
 def room_main(argv, cwd):
     cmd = argv[0] if argv else ""
+    if cmd in ("health", "sweep"):
+        import agent_health
+        return agent_health.main(argv)
     if cmd == "check" and len(argv) == 2:
         if argv[1] == "unknown":
             need = 0
@@ -1890,7 +1905,8 @@ def main(argv):
         return room_main(argv, cwd)
     if argv and argv[0] == "testrun":
         return testrun(argv[1:])
-    if argv and argv[0] in ("check", "reserve", "reserve-pane", "release-pane", "release", "list", "numbers", "relief", "measure-pane"):
+    if argv and argv[0] in ("check", "reserve", "reserve-pane", "release-pane", "release", "list", "numbers", "relief", "measure-pane",
+                                          "health", "sweep"):
         return room_main(argv, cwd)
     if argv and argv[0] in ("run", "--start", "--release-ok", "--failures") and not need_stored(main_root(cwd)):
         return 1

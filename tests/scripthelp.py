@@ -683,6 +683,7 @@ class ScriptRepo:
         # a cleanup sweep run by any test fetches and pushes only to the
         # fixture's own origin, and never waits long on a stub
         env.pop("AGENT_CLEANUP_DONE", None)
+        env.setdefault("AGENT_NO_TMP_SWEEP", "1")     # housekeep's temp sweep (machine-health): never on the real temp folder
         env.setdefault("AGENT_CLEANUP_TIMEOUT", "3")
         env.pop("ORCA_STUB_SLEEP", None)
         # the status line must not read the terminal the test run sits in (statusline-wide): width unknown unless

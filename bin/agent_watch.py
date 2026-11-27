@@ -599,6 +599,7 @@ class Engine:
         self.orphans_printed = set()
         self.repo_id = ""
         self.slots = []
+        self.health_next = time.time() + self.health_every()      # machine-health rule 5: the first look is one period in
 
     # ---- status file
 
@@ -1048,6 +1049,7 @@ class Engine:
         self.sweep_time = now_text()
         out("%s sweep: %s" % (hhmm(), ", ".join("%s %s" % s for s in states) or "no targets"))
         self.write_status()
+        self.health_warn()
         for line, evidence in events:
             out(line)
             for l in evidence or []:
@@ -1055,6 +1057,31 @@ class Engine:
         if events:
             self.point_to_rules()
         return events
+
+    @staticmethod
+    def health_every():
+        try:
+            return float(os.environ.get("AGENT_HEALTH_EVERY_S", "300"))
+        except ValueError:
+            return 300.0
+
+    def health_warn(self):
+        """machine-health rule 5: one warning line when a connected machine is over the limits (CPU idle under 20%,
+        swap over 90%). Looks every AGENT_HEALTH_EVERY_S (300) seconds, not on every sweep: each look is a shell on that
+        machine. Never raises, never ends the watch (it is a line, not a wake)."""
+        try:
+            if time.time() < self.health_next:
+                return
+            self.health_next = time.time() + self.health_every()
+            if HERE not in sys.path:
+                sys.path.insert(0, HERE)
+            import agent_health
+            for env in agent_health.environments():
+                ok, lines = agent_health.remote_exec(env, self.ctx.main, ["limits"], wait_s=45)
+                if ok and lines:
+                    out("WATCH HEALTH %s: %s" % (env, lines[0]))
+        except Exception:
+            return
 
     def point_to_rules(self):
         """One line to the rules of a wake, once per session (marker <git common dir>/agent_point_<sid>_watch)."""
