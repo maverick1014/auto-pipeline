@@ -1161,13 +1161,15 @@ class TestF3Commits(TestGate):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("PR REVIEW: pass with no commit, not accepted", r.stdout.splitlines())
 
-    def test_lines_before_the_task_opened_are_ignored(self):
+    def test_a_review_dated_before_the_task_opened_is_not_accepted(self):
+        # the time rule no longer drops a line that names a commit (owner 2026-11-27), but a review still needs a
+        # reviewer launched by the main manager after the task opened, so an old review never passes by itself
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
             fh.write("CHECK t PR REVIEW: pass | by t Reviewer | at %s | read it | 2001-01-01 00:00\n" % self.head()[:12])
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("PR REVIEW: missing", r.stdout.splitlines())
+        self.assertNotIn("PR REVIEW: pass (by t Reviewer)", r.stdout.splitlines())
 
 
 @only_own
@@ -1260,17 +1262,33 @@ class TestG9(Gate):
             with self.subTest(block=block):
                 self.assertNotIn("%s: pass" % block, r.stdout)
 
-    def test_a_line_a_minute_before_the_task_opened_is_ignored(self):
-        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+    def old_line(self, block, at):
         line = [l for l in open(os.path.join(self.repo.dir, "agent_todo.txt")) if l.startswith("t | ")][0]
         opened = line.split("opened ")[1][:16]
         t0 = time.mktime(time.strptime(opened, "%Y-%m-%d %H:%M"))
         before = time.strftime("%Y-%m-%d %H:%M", time.localtime(t0 - 60))
         with open(os.path.join(self.repo.dir, "agent_state.txt"), "a") as fh:
-            fh.write("CHECK t PR REVIEW: pass | by t Review | at %s | ok | %s\n" % (self.head()[:12], before))
+            fh.write("CHECK t %s: pass | by t Review | %s| ok | %s\n" % (block, ("at %s " % at) if at else "", before))
+
+    def test_a_line_before_the_task_opened_at_a_commit_of_the_branch_counts(self):
+        # owner 2026-11-27: the git history decides, not the time alone; a restart re-opens the todo line
+        self.passes("DIFF SCAN", "RELATED TESTS")
+        self.old_line("BUILD", self.head()[:12])
+        r = self.gate()
+        self.assertIn("BUILD: pass (by t Review)", r.stdout.splitlines())
+
+    def test_a_line_before_the_task_opened_at_no_commit_is_ignored(self):
+        self.passes("DIFF SCAN", "RELATED TESTS")
+        self.old_line("BUILD", "")
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("PR REVIEW: missing", r.stdout.splitlines())
+        self.assertIn("BUILD: missing", r.stdout.splitlines())
+
+    def test_an_owner_sign_before_the_task_opened_is_still_ignored(self):
+        self.all_pass_but()
+        self.old_line("OWNER SIGN", self.head()[:12])
+        r = self.af("checks", "gate", "t", "--dir", self.repo.dir, "--base", "base", "--checks", "OWNER SIGN")
+        self.assertIn("OWNER SIGN: missing", r.stdout.splitlines())
 
 
 @only_own

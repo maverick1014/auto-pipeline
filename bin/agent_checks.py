@@ -774,7 +774,10 @@ def read_results_file(path, task, best, n=0, since="", until=""):
                 ev, date = " | ".join(parts[1:-1]), parts[-1].strip()
             else:
                 ev, date = " | ".join(parts[1:]), ""
-            if since and date and date < since:     # G9: before this task instance opened (to the minute)
+            # G9: a line before this task instance opened is ignored by time only when it names no commit (or is the
+            # owner's sign); a line with `at <sha>` is judged by the git history in the gate (on_branch, at_head), so a
+            # restart or a re-opened todo line keeps the valid checks of the same code (owner 2026-11-27)
+            if since and date and date < since and (not at or m.group(1) == SIGN):
                 continue
             if until and date > until:      # G6: a line dated in the future is ignored
                 continue
