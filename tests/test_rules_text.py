@@ -339,7 +339,7 @@ class TestPrinciplesW13CloseCase(unittest.TestCase):
     def test_the_quiz_still_has_twenty_nine_questions(self):
         text = read("bin", "agent-start.sh")
         # test-levels (2026-11-20): Q38 and Q39 (R8); approval-design: Q40-Q44
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 37)   # S5 + T4; ask-test: Q37
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 38)   # S5 + T4; ask-test: Q37, Q38
 
 
 class TestCloseCaseSkill(unittest.TestCase):
@@ -1761,7 +1761,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
         # the Files row "agent_repo.conf" is rules/files.md (proof.md old 568, 617)
         f = read("rules", "map.md")
         for phrase in ("bin/agent_blocks.py", "bin/agent-level.sh",
-                       "37-question quiz", "agent-file.sh next", "checks gate"):
+                       "38-question quiz", "agent-file.sh next", "checks gate"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, f)
         self.assertIn("Check deputy", read("rules", "roles.md"))
@@ -4098,9 +4098,9 @@ class TestTheAskTest(unittest.TestCase):
 
     def test_r1_his_own_words_are_the_yes_of_the_doc(self):
         line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("Before the flow:"))
-        self.assertIn("the owner approves it, unless it only writes down his own words. Full flow, in order:", line)
+        self.assertIn("the owner approves it, unless it only writes down his words. Full flow, in order:", line)
         doc = next(l for l in read("rules", "checks.md").splitlines() if "needs no second yes" in l)
-        for phrase in ("requirement doc", "his own words", "adds scope", "owner-level option", "goes to him first"):
+        for phrase in ("requirement doc", "in his words", "adds scope", "owner-level option", "goes to him first"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, doc)
 
@@ -4113,7 +4113,7 @@ class TestTheAskTest(unittest.TestCase):
         core = part(read("PRINCIPLES.md"), "## Talking to the human", "## W17.")
         line = next(l for l in core.splitlines() if "ends with a decide section" in l)
         self.assertEqual(line, "- Every report, job summary, recap, proposal or audit to the human ends with a "
-                               "decide section, normally none: a question must pass the ask test (H3)")
+                               "decide section, normally none (ask test: H3)")
 
     def test_h3_the_ask_test(self):
         h3 = part(read("rules", "human.md"), "H3. ")
@@ -4128,3 +4128,68 @@ class TestTheAskTest(unittest.TestCase):
                 self.assertIn(phrase, h3)
         # the ask test comes before the "Nothing open" line it explains
         self.assertLess(h3.index("Ask test:"), h3.index("Nothing open:"))
+
+
+class TestVerifyTheLaunch(unittest.TestCase):
+    """ask-test item 4 (TELL 2e63d2df, owner 2026-11-27): an agent counts as started only when it is seen
+    working. Evidence: ask-test's brief got TELL FAIL 'pointer not seen (block is in the file)', the pane sat
+    on its welcome screen, the watch swept 'ask-test ok'; found only when the owner asked."""
+
+    def test_r1_the_flow_step_says_seen_working(self):
+        r1 = part(read("PRINCIPLES.md"), "## R1. ", "## W1. ").splitlines()
+        self.assertIn("3. Worktree + task manager, seen working", r1)
+
+    def test_w9_holds_the_rule(self):
+        w9 = part(read("rules", "routing.md"), "W9. ")
+        for phrase in ("A launch counts only when the agent is seen working",
+                       "its `STAGE <task>: brief` line, its pane busy on the brief, or its first reply",
+                       "brief sent, not yet confirmed",
+                       "After every `agent-file.sh tell` read its result",
+                       "TELL FAIL → act at once: the block is in the file, type its pointer line into the pane by hand",
+                       "Within 2 min of a dispatch read the pane",
+                       "still idle on its welcome screen = the brief did not land",
+                       "A watch sweep 'ok' is not proof of a start"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, w9)
+
+    def test_w15_points_to_it(self):
+        w15 = part(read("rules", "watch.md"), "W15. ").splitlines()
+        self.assertIn("- Verify every launch within 2 min: seen working, never a sweep 'ok' (rules/routing.md)", w15)
+        self.assertNotIn("- Verify every launch within 2 min", w15)
+
+    def test_dispatch_confirms_the_start_after_the_tell(self):
+        d = read("skills", "dispatch", "SKILL.md")
+        tell = d.index("Then send it the brief below with")
+        goal = d.index("Then /goal:", tell)
+        step = d[tell:goal]
+        for phrase in ("Then confirm the start", "`TELL OK <name> <sha>`", "`TELL FAIL`",
+                       "type its pointer line into the pane by hand",
+                       "orca terminal read --terminal <handle> --json", "welcome screen",
+                       "brief sent, not yet confirmed", "a watch sweep 'ok' is not proof", "rules/routing.md"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, step)
+
+    def test_the_tell_lines_are_real(self):
+        src = read("bin", "agent_watch.py")
+        self.assertIn('"TELL OK %s %s"', src)
+        self.assertIn('"TELL FAIL %s %s: pointer not seen (block is in the file)"', src)
+
+
+class TestWhereALessonGoes(unittest.TestCase):
+    """ask-test item 5 (TELL 2e63d2df, owner 2026-11-27: 'this dont just record in memories, i want it become
+    a principle, dont just rely on memories. and if all use memories then why principle is use for ?')."""
+
+    def test_r3_an_owner_rule_is_rule_text(self):
+        r3 = part(read("rules", "files.md"), "R3. ", "R4. ")
+        for phrase in ("A rule the owner gives → rule text (the plugin's PRINCIPLES.md or rules/)",
+                       "through a task with PR REVIEW and the quiz", "never only an auto memory",
+                       "every agent, machine and repo that installs the plugin", "tested",
+                       "a memory reaches only one machine's main-manager sessions",
+                       "Memory holds only personal facts that must not go into the public repo",
+                       "machine names, personal preferences"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, r3)
+
+    def test_the_core_points_to_it(self):
+        when = part(read("PRINCIPLES.md"), "## Read when").splitlines()
+        self.assertIn("- An agent_* file, an idea, a doc, an owner's rule: `rules/files.md`", when)
