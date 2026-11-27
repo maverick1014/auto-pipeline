@@ -54,4 +54,4 @@ R8. Check blocks
 - After each bug fix the fixing agent asks "which example would have shown it" and adds one line with `agent-file.sh edge add "<text>"` when the list lacks it
 - Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed
 - A requirement table copies its defaults from the released template and lists every changed default for the owner
-- A requirement doc that only writes down his request in his own words needs no second yes; one that adds scope or picks an owner-level option goes to him first (R1)
+- A requirement doc that only writes down his request in his words needs no second yes; one that adds scope or picks an owner-level option goes to him first (R1)

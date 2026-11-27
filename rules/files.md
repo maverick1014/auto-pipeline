@@ -1,10 +1,13 @@
 # Repo files
-Read when: you write an agent_* file, add or remove a doc, or need which file is written and read by whom.
+Read when: you write an agent_* file, add or remove a doc, the owner gives a rule, or need which file is written and read by whom.
 
 R3. Docs
 - Allowed: requirement, test, main idea
 - Nothing else
 - `PRINCIPLES.md` = main idea doc
+- A rule the owner gives → rule text (the plugin's PRINCIPLES.md or rules/), through a task with PR REVIEW and the quiz; never only an auto memory
+- Rule text reaches every agent, machine and repo that installs the plugin, and it is tested; a memory reaches only one machine's main-manager sessions
+- Memory holds only personal facts that must not go into the public repo: machine names, personal preferences
 - Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `bin/agent-start.sh`)
 - `README.md` allowed: the picture of the tree and the flow, for people new to the repo
 - Config, not docs, allowed: `.claude-plugin/`, `agents/`, `skills/`, `hooks/`, `bin/`

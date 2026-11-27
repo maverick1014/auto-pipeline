@@ -1671,7 +1671,7 @@ class TestQuiz(SharedRepoMixin, ScriptCase):
 
     def test_every_block_named_in_the_quiz_is_in_the_table(self):
         found = set(re.findall(r"\b([A-Z]{2,}(?: [A-Z]{2,})+)\b", self.quiz()))
-        extra = {"GATE REFUSED", "CLOSE CASE", "DONE PASS", "DONE FAIL"}
+        extra = {"GATE REFUSED", "CLOSE CASE", "DONE PASS", "DONE FAIL", "TELL FAIL"}   # status lines, not blocks
         self.assertEqual(sorted(n for n in found if n not in NAMES and n not in extra), [])
 
 
