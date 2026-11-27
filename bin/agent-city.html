@@ -5069,8 +5069,8 @@ function floorWatch(){
 
 /* ---------- selecting a person (a rail row, a person, a head tag, a bubble) ---------- */
 /* select(key): key is a rail row id ('gov:<terr>' or a person's id), or null for "nobody". The view goes to that floor
-   first (from outside: in through the door), the camera zooms in half as far as the island did and follows. The same
-   person again only stops the following. */
+   first (from outside: in through the door). A click never moves or zooms the camera (owner 2026-11-27): no follow,
+   no zoom; the same person again stays selected. */
 function select(key){
   if (!key) { selected = null; stopFollow(); afterSelect(); return; }
   const c = key.slice(0, 4) === 'gov:' ? null : byId(key);
@@ -5079,10 +5079,7 @@ function select(key){
   if (!r) return;
   if (view === 'outside') { enter(r.at, () => select(key)); return; }
   if (!r.inLift && r.at !== cur) goFloor(r.at);
-  if (follow === key && selKey(selected) === key) { stopFollow(); afterSelect(); return; }
   selected = key.slice(0, 4) === 'gov:' ? { t:'gov', terr:key.slice(4) } : { t:'c', id:key };
-  follow = key;
-  cam.wantDist = Math.min(cam.dist, (fitDist() + 9) / 2);
   afterSelect();
 }
 function afterSelect(){
