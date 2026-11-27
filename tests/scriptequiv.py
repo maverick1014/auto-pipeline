@@ -168,6 +168,30 @@ def tree(repo):
     return {k: "\n<next file>\n".join(sorted(v)) for k, v in out.items()}
 
 
+def _procs_under(base):
+    """pids whose command line names the test's temp folder (a background job a script started there)."""
+    try:
+        out = subprocess.run(["ps", "-A", "-o", "pid=,args="], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    me = os.getpid()
+    found = set()
+    for line in out.splitlines():
+        pid, _, args = line.strip().partition(" ")
+        if pid.isdigit() and int(pid) != me and base in args:
+            found.add(int(pid))
+    return found
+
+
+def _stop(pids):
+    import signal
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+
+
 def run_old(repo, argv, cwd, env, stdin, timeout, new_bin, root):
     """Steps 1-3. Returns the old (returncode, stdout, stderr, tree), or None for a call not compared."""
     if not wanted(repo, argv):
@@ -178,6 +202,7 @@ def run_old(repo, argv, cwd, env, stdin, timeout, new_bin, root):
     _STATE["new"] = new_bin
     try:
         swap_to_old(repo, new_bin, old_bin(root))
+        before = _procs_under(repo.base)
         try:
             r = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True,
                                input=stdin if stdin is not None else "", timeout=timeout)
@@ -186,6 +211,9 @@ def run_old(repo, argv, cwd, env, stdin, timeout, new_bin, root):
             old = (r.returncode, r.stdout, r.stderr, tree(repo))
         except subprocess.TimeoutExpired:
             old = ("timeout", "", "", {})
+        # the old run's background jobs (a city server, a nightly, a waiter) end here: they would hold a
+        # port or write into the folder the new run gets
+        _stop(_procs_under(repo.base) - before)
     finally:
         shutil.rmtree(repo.base, ignore_errors=True)
         os.rename(snap, repo.base)
