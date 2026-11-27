@@ -16,6 +16,21 @@ and their details open as today; zoom stays the user's own (the zoom buttons, th
 
 The driver runs the page's own select, stopFollow, stepCamMove, watchFollow and updateCamera (function_source) in node
 with stand-ins for the scene: a floor is a set of people at (x, z) on it, goFloor shows a floor at its whole-floor view.
+
+Item 1 (approved mock v2, mock/city-one-sidebar-mock.html at 2521ed2; owner: "the agent list direct inside the lift list
+design will do. no need split 2"): ONE list on the left, the lift's floor list is the sidebar (#rail). One row per floor
+(= one repo), top floor first, then G (the street). The floor in view is the open one: its repo's team tree sits right
+under its row; the other floors stay one row each. No team block, no second header, no lift panel on the right.
+sideHtml(groups, selId, openTerr, outside, openRest, adds, shut) -> the HTML of #rail-list (a pure function, page sim).
+
+  S1 inside floor A: rows B, A, then G; one team, right under A's row, with A's people; B is one row; no group heads.
+  S2 inside floor B (nobody online): B's team shows the quiet line and the add control; A's people are gone.
+  S3 on the street: no team, G is the current row, no floor is open.
+  S4 a selected person's row is marked; S5 the resting people show when their toggle is open.
+  S6 the repo's add control is the team's last line ("加 agent"); while opening it shows the spinner, no second click.
+  P1-P5 the page: one aside, the lift header in it, no #lift; renderRail draws sideHtml and the office refresh keeps it
+     current; a floor click goes there (goFloor / goOutside) and never folds the bar (phone too); a person pick still
+     folds it on a phone (afterSelect); the floor names stay on a phone.
 """
 import json
 import os
@@ -30,7 +45,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-from citypage import function_source  # noqa: E402
+from citypage import function_source, run_sim, TA, TB, two_territory_view, listener_block, page, css, rule  # noqa: E402
 
 PAGE_FUNCS = ("select", "stopFollow", "stepCamMove", "watchFollow", "updateCamera", "fitDist")
 
@@ -190,6 +205,189 @@ class TestSelectHasNoCameraWords(unittest.TestCase):
         self.assertIsNotNone(src)
         self.assertNotRegex(src, r"cam\.(wantDist|dist|tx|ty|tz|az|el)\s*=(?!=)", "select() never zooms or pans")
         self.assertNotRegex(src, r"\bfollow\s*=(?!=)(?!\s*null\b)", "select() locks the camera onto nobody")
+
+
+# ---------------------------------------------------------------- item 1: one list (mock v2)
+SIDE_REQUIRED = ("apply", "officeState", "railGroups", "sideHtml", "floorTag", "i18n", "byId")
+
+# Two repos (tests/citypage two_territory_view): A = auto-pipeline (an area manager, a task manager, a resting deputy),
+# B = v4-plus (nobody online). Both are on this machine (here), so both have the add control.
+SIDE_DRIVER = r"""
+const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
+A.name = 'auto-pipeline'; B.name = 'v4-plus'; A.here = true; B.here = true;
+for (const t of [A, B]) { const r = V.repos.find(x => x.id === t.id); r.name = t.name; r.here = true; }
+const ag = (id, label, task, terr, extra) => Object.assign({ id, role: 'task-manager', label, task, stuck: false, done: false,
+  tools: {}, terr, lead: '', office: null, relay: '' }, extra || {});
+apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [],
+  govs: [{ terr: A.id, state: 'busy' }], agents: [ag('s:tttt0001', 'city-add-agent Task Manager', 'auto-pipeline', A.id),
+  ag('s:rrrr0002', 'fast-lane-deputy', '按钮颜色', A.id, { role: 'fast-lane-deputy' })], adding: [] });
+byId('s:rrrr0002').state = 'resting';
+const G = railGroups(), none = new Set(), noAdds = new Map();
+const out = { a: A.id, b: B.id };
+out.openA = sideHtml(G, null, A.id, false, none, noAdds, none);
+out.openB = sideHtml(G, null, B.id, false, none, noAdds, none);
+out.outside = sideHtml(G, null, null, true, none, noAdds, none);
+out.sel = sideHtml(G, 's:tttt0001', A.id, false, none, noAdds, none);
+out.rest = sideHtml(G, null, A.id, false, new Set([A.id]), noAdds, none);
+out.opening = sideHtml(G, null, B.id, false, none, new Map([[B.id, { s: 'opening', name: 'v4-plus Manager' }]]), none);
+out.tagA = floorTag(A.id); out.tagB = floorTag(B.id);
+out.t = { none: i18n('rail.none'), add: i18n('add.tip'), outside: i18n('office.outside') };
+__out = out;
+"""
+
+
+def floor_button(html, terr):
+    m = re.search(r'<button[^>]*\bdata-floor="%s"[^>]*>' % re.escape(terr), html)
+    return m
+
+
+def team_of(html):
+    """[(start, end, terr)] of every open team block: <div class="team" ... data-terr="X" ...> up to its </div> pair."""
+    out = []
+    for m in re.finditer(r'<div class="team"[^>]*\bdata-terr="([^"]+)"[^>]*>', html):
+        depth, i = 0, m.start()
+        for t in re.finditer(r"<(/?)div\b[^>]*>", html[m.start():]):
+            depth += -1 if t.group(1) else 1
+            if depth == 0:
+                out.append((m.start(), m.start() + t.end(), m.group(1)))
+                break
+    return out
+
+
+class TestOneList(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.r = run_sim(SIDE_DRIVER, {"view": two_territory_view(), "ta": TA, "tb": TB}, SIDE_REQUIRED)
+        cls.a, cls.b = cls.r["a"], cls.r["b"]
+
+    def rows_in_order(self, html):
+        ia, ib = floor_button(html, self.a), floor_button(html, self.b)
+        g = re.search(r'<button[^>]*\bdata-out="1"[^>]*>', html)
+        self.assertTrue(ia and ib and g, "a row for every floor and G")
+        self.assertLess(ib.start(), ia.start(), "top floor first (B is 2F, A is 1F)")
+        self.assertLess(ia.start(), g.start(), "G (the street) last")
+        return ia, ib, g
+
+    def test_s1_the_floor_in_view_opens_its_team_under_its_row(self):
+        h = self.r["openA"]
+        ia, ib, g = self.rows_in_order(h)
+        teams = team_of(h)
+        self.assertEqual([t[2] for t in teams], [self.a], "one open team: the floor in view")
+        start, end, _ = teams[0]
+        self.assertLess(ia.end(), start, "the team comes after A's row")
+        self.assertEqual(h[ia.end():start].count("<button"), 0, "right under A's row")
+        self.assertLessEqual(end, g.start(), "and before the next row")
+        team = h[start:end]
+        for row in ("gov:" + self.a, "s:tttt0001"):
+            self.assertIn('data-focus="%s"' % row, team, row)
+        self.assertNotIn("s:rrrr0002", team, "a resting person shows only when the toggle is open")
+        self.assertIn('data-rest="%s"' % self.a, team, "the resting toggle sits in the team")
+        self.assertIn('aria-current="true"', ia.group(0))
+        self.assertIn('aria-expanded="true"', ia.group(0))
+        self.assertIn('aria-expanded="false"', ib.group(0), "the other floor is one row")
+        self.assertIn('aria-current="false"', ib.group(0))
+
+    def test_s1_a_floor_row_keeps_the_lift_look(self):
+        h, tag = self.r["openA"], self.r["tagA"]
+        m = floor_button(h, self.a)
+        row = h[m.start():h.index("</button>", m.start())]
+        self.assertIn('class="lb"', row)
+        self.assertIn('<span class="no">%s</span>' % tag["floor"], row)
+        self.assertIn('<span class="ln">auto-pipeline</span>', row)
+        self.assertRegex(row, r'<span class="lc">\s*%d\b' % tag["people"], "the people count")
+
+    def test_s1_no_second_header_no_group_block(self):
+        for k in ("openA", "openB", "outside"):
+            for bit in ("rail-grp", "grp-h", "data-grp", "rail-head"):
+                with self.subTest(case=k, bit=bit):
+                    self.assertNotIn(bit, self.r[k])
+
+    def test_s2_a_floor_with_nobody(self):
+        h = self.r["openB"]
+        self.rows_in_order(h)
+        teams = team_of(h)
+        self.assertEqual([t[2] for t in teams], [self.b])
+        team = h[teams[0][0]:teams[0][1]]
+        self.assertIn(self.r["t"]["none"], team, "the quiet line")
+        self.assertIn('data-add="%s"' % self.b, team)
+        self.assertNotIn("s:tttt0001", h, "A's people are not listed while B is in view")
+        self.assertIn('aria-expanded="false"', floor_button(h, self.a).group(0))
+
+    def test_s3_on_the_street_no_floor_is_open(self):
+        h = self.r["outside"]
+        self.rows_in_order(h)
+        self.assertEqual(team_of(h), [])
+        self.assertNotIn("data-focus=", h)
+        g = re.search(r'<button[^>]*\bdata-out="1"[^>]*>', h).group(0)
+        self.assertIn('aria-current="true"', g)
+        for terr in (self.a, self.b):
+            self.assertIn('aria-expanded="false"', floor_button(h, terr).group(0))
+
+    def test_s4_the_selected_person_is_marked(self):
+        h = self.r["sel"]
+        m = re.search(r'<button[^>]*data-focus="s:tttt0001"[^>]*>', h)
+        self.assertTrue(m)
+        self.assertIn('aria-current="true"', m.group(0))
+
+    def test_s5_resting_people_when_open(self):
+        h = self.r["rest"]
+        start, end, _ = team_of(h)[0]
+        self.assertIn('data-focus="s:rrrr0002"', h[start:end])
+
+    def test_s6_the_add_control_is_the_last_line(self):
+        h = self.r["openA"]
+        start, end, _ = team_of(h)[0]
+        team = h[start:end]
+        i = team.find('data-add="%s"' % self.a)
+        self.assertGreater(i, 0, "the repo's add control is in its team")
+        self.assertGreater(i, team.rfind("data-focus="), "after the people")
+        self.assertIn(self.r["t"]["add"], team[i:], "it reads 加 agent")
+        op = self.r["opening"]
+        s2, e2, _ = team_of(op)[0]
+        self.assertNotIn('data-add="%s"' % self.b, op[s2:e2], "opening: no second click")
+        self.assertIn('class="spin"', op[s2:e2])
+
+
+def aside_block():
+    p = page()
+    i = p.find('<aside class="rail" id="rail"')
+    return p[i:p.index("</aside>", i)] if i >= 0 else ""
+
+
+class TestOneListInThePage(unittest.TestCase):
+    def test_p1_one_aside_with_the_lift_header(self):
+        p, a = page(), aside_block()
+        self.assertTrue(a, "the one sidebar is the aside #rail")
+        for bit in ('class="lift-h"', 'id="rail-fold"', 'id="rail-list"'):
+            self.assertIn(bit, a, bit)
+        self.assertNotIn('data-t="rail.title"', a, "no second header")
+        self.assertNotIn('id="lift"', p, "no lift panel on the right")
+        self.assertNotIn("$('#lift')", p)
+        self.assertNotIn("liftBoxNow", p, "the office centres between the bar and the window only")
+
+    def test_p2_the_list_is_drawn_and_kept_current(self):
+        src = function_source("renderRail") or ""
+        self.assertRegex(src, r"sideHtml\([^;]*railGroups\(\)|railGroups\(\)[\s\S]*sideHtml\(")
+        self.assertRegex(src, r"\bcur\b", "the open floor is the floor in view")
+        self.assertRegex(src, r"view\s*===?\s*'(inside|outside)'")
+        self.assertIn("renderRail(", function_source("renderOffice") or "", "counts and the open floor follow the view")
+        self.assertIsNone(function_source("renderLift"), "the lift has no panel of its own any more")
+
+    def test_p3_a_floor_click_goes_there_and_keeps_the_bar(self):
+        block = listener_block(r"\$\('#rail-list'\)", "click") or ""
+        self.assertRegex(block, r"data-floor|dataset\.floor")
+        self.assertIn("goFloor(", block)
+        self.assertIn("goOutside(", block)
+        self.assertNotIn("setRailFolded", block, "a floor pick keeps the bar open, on a phone too")
+        self.assertLess(block.find("goFloor("), block.find("data-focus"), "a floor row is handled before a person row")
+
+    def test_p4_a_person_pick_still_folds_it_on_a_phone(self):
+        src = function_source("afterSelect") or ""
+        self.assertRegex(src, r"max-width:\s*960px[\s\S]*setRailFolded\(true\)")
+
+    def test_p5_floor_names_show_on_a_phone(self):
+        self.assertIsNone(re.search(r"\.ln[^{}]*\{[^}]*display:\s*none", css()), "no rule hides the floor names")
+        self.assertIn("var(--ink)", rule(".rail"), "the bar has the lift's dark look")
 
 
 if __name__ == "__main__":

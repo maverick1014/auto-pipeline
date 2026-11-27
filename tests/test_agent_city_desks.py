@@ -1153,7 +1153,7 @@ class TestOpenWindowsArePanels(unittest.TestCase):
 
     def test_panel_blocks_name_the_windows(self):
         src = script_function_source("panelBlocks") or ""
-        for sel in ("#floorSign", "#rail", "#rail-tab", "#follow", "#proto", "#lift", ".cam", "#win", "#win-tab", "#ask", "#dPop"):
+        for sel in ("#floorSign", "#rail", "#rail-tab", "#follow", "#proto", ".cam", "#win", "#win-tab", "#ask", "#dPop"):   # city-one-sidebar: no #lift
             with self.subTest(sel=sel):
                 self.assertIn(sel, src)
 
