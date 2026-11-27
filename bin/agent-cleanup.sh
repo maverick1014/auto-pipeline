@@ -17,7 +17,8 @@
 # the runtime kind and hands over.
 
 set -u
-. "$(dirname "$0")/agent-roots.sh"
+case "$0" in */*) _cl_dir=${0%/*}; [ -n "$_cl_dir" ] || _cl_dir=/;; *) _cl_dir=.;; esac
+. "$_cl_dir/agent-roots.sh"
 
 usage() {
   cat <<'EOF'
@@ -88,10 +89,11 @@ if [ "$HAVE_YES" = 1 ]; then
       usage >&2; exit 2;;
   esac
   n_all=0; n_none=0; n_other=0
-  for tok in $(printf '%s' "$YES" | tr 'A-Z,' 'a-z '); do
+  # (the words split on commas and spaces; all and none in any letter case, no tr start)
+  for tok in ${YES//,/ }; do
     case "$tok" in
-      all) n_all=1;;
-      none) n_none=1;;
+      [Aa][Ll][Ll]) n_all=1;;
+      [Nn][Oo][Nn][Ee]) n_none=1;;
       *) n_other=1;;
     esac
   done
@@ -115,15 +117,21 @@ esac
 
 ROOT="$PROJECT_ROOT"
 PLUGIN="$PLUGIN_ROOT"
-. "$(dirname "$0")/agent-runtime.sh"
-KIND=$(runtime_kind)
+. "$_cl_dir/agent-runtime.sh"
 
 if [ "$FILES" = 1 ]; then
+  KIND=$(runtime_kind)
   fargs=(--root "$ROOT" --plugin "$PLUGIN" --gitdir "$PROJECT_GITDIR" --kind "$KIND")
   [ "$HAVE_YES" = 1 ] && fargs+=(--yes "$YES")
   exec python3 "$PLUGIN/bin/agent_cleanfiles.py" "${fargs[@]}"
 fi
 
+# The kind: pinned by the caller (AGENT_RUNTIME, as agent-resume.sh does) is free; otherwise
+# agent_cleanup.py works it out itself (--kind auto), so no python3 start is spent here on the setting.
+case "${AGENT_RUNTIME:-}" in
+  orca|plain|cloud) KIND=$AGENT_RUNTIME;;
+  *) KIND=auto;;
+esac
 args=(--root "$ROOT" --plugin "$PLUGIN" --kind "$KIND")
 [ "$APPLY" = 1 ] && args+=(--apply)
 [ "$SHORT" = 1 ] && args+=(--short)

@@ -3,9 +3,9 @@ Read when: you need a role's full duties, a defect must go back to its builder, 
 
 W6. Roles
 - Main manager (the "Main manager model" setting) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else, except: it writes the requirement doc (R1) and it runs the task itself with subagents on plain or cloud (W7) (decided by the main manager 2026-11-26; the owner can veto)
-- Fast-lane deputy (the "Helper model" setting) = `agents/fast-lane-deputy.md`, new one per small task: works in its own git worktree, writes the example tests of a small logic task, runs its blocks, pushes a branch
-- Merge deputy (the "Helper model" setting) = `agents/merge-deputy.md`. Merges, then deletes branch and worktree
-- Reviewer (Reviewer model, default opus-5.5:high) = `agents/reviewer.md`: PR REVIEW of every task and CORE REVIEW; read only; a fail is a fix order to the builder
+- Fast-lane deputy (the "Helper model" setting) = `agents/fast-lane-deputy.md`, new one per small task: works in its own git worktree, asks its questions first, writes the example tests of a small logic task, runs its blocks, pushes a branch; after the main manager's PR REVIEW pass it merges and cleans up when resumed
+- Merge deputy (the "Helper model" setting) = `agents/merge-deputy.md`. Merges, then deletes branch and worktree (full lane only; a fast-lane deputy merges its own branch)
+- Reviewer (Reviewer model, default opus-5.5:high) = `agents/reviewer.md`: PR REVIEW of every full-lane task and CORE REVIEW (the main manager reviews a fast-lane diff itself); read only; a fail is a fix order to the builder
 - Check deputy (the "Helper model" setting) = `agents/check-deputy.md`, read and browser tools only: FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE; a verdict with evidence, the main manager decides
 - The main manager stays free for the human: it runs no long check itself; it sends the check deputy and gets a short verdict with evidence
 - Task manager (the "Task manager model" setting) = one agent per big feature, in its own worktree (exception: human-direct, W10)
@@ -24,6 +24,7 @@ W10. Second session in the same repo
 - A human-direct session keeps its protection only while the human alone drives it. Once it takes a task from the main manager or reports DONE to it, it runs `agent-file.sh helper-join "<task>"` and is a normal agent
 - The merge of its last open task closes its pane and removes its line, like a task manager; the close message names `claude --resume <session id>`
 - At start: the script adds a line to `agent_worktree.txt` (status human-direct). Also send the main manager a direct message if a channel exists (Orca)
+- The session's end removes that line and its `agent_helper_*` files (the SessionEnd hook); a session that died without the hook: the next main manager's start or housekeep removes it
 - Will change files → open its own worktree first (W7). Only looking → no worktree
 - Human talks to it directly for now. All task manager rules still apply
 - Human says "finish" or "report to main manager" → report done + click path to the main manager, then act as a normal task manager. Merge deputy cleans up

@@ -9,7 +9,8 @@ Run by agent-file.sh, never by hand:
   state dir     the git toplevel of the cwd: agent_state.txt, agent_repo.conf
   now           "YYYY-MM-DD HH:MM"
 
-Commands: norm, todo-checks, todo-builder, todo-est, check, gate, next, after-list, edge-add.
+Commands: norm, todo-checks, todo-builder, todo-est, check, gate, next, after-list, edge-add, plan-add-owner,
+task-end-after (the two merged runs of todo add / todo done: one python3 start instead of several).
 A refusal is one line on stderr and exit 1 (nothing written); a usage error is exit 2.
 Rules: requirements/check-blocks.md, section 9 C3 and section 11.
 """
@@ -142,14 +143,40 @@ def need_line(todo, name):
 
 # ---------------------------------------------------------------- per-clone records (git common dir)
 
-def common_dir(root):
+_COMMON = {}
+
+
+def hinted_gitdir(path):
+    """The git common dir the calling script already asked git for (agent-roots.sh exports AP_ROOTS_*), when PATH is the
+    same folder it asked about or the main worktree: the same answer, one git start less. None: ask git."""
     try:
-        r = subprocess.run(["git", "-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30)
-        out = r.stdout.decode(errors="replace").strip()
-        return out if r.returncode == 0 and out else None
-    except (OSError, subprocess.SubprocessError):
-        return None
+        gd = os.environ.get("AP_ROOTS_GITDIR")
+        if not gd or not os.path.isabs(gd):
+            return None
+        here = os.path.realpath(path)
+        for key in ("AP_ROOTS_CWD", "AP_ROOTS_ROOT", "AP_ROOTS_STATE"):
+            v = os.environ.get(key)
+            if v and os.path.realpath(v) == here:
+                return gd
+    except Exception:
+        pass
+    return None
+
+
+def common_dir(root):
+    if root in _COMMON:
+        return _COMMON[root]
+    out = hinted_gitdir(root)
+    if out is None:
+        try:
+            r = subprocess.run(["git", "-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30)
+            out = r.stdout.decode(errors="replace").strip()
+            out = out if r.returncode == 0 and out else None
+        except (OSError, subprocess.SubprocessError):
+            out = None
+    _COMMON[root] = out
+    return out
 
 
 def load_json(path):
@@ -436,6 +463,68 @@ def cmd_plan_add(ctx, a):
     print(", ".join(b for b in blocks if b not in gone))
 
 
+def owner_name(pwd):
+    """The name todo add / todo done write as owner / by: agent_conf.user_name(pwd), "user" when anything fails."""
+    try:
+        import agent_conf
+        who = str(agent_conf.user_name(pwd))
+        who.encode(sys.stdout.encoding or "utf-8")
+        return who or "user"
+    except Exception:
+        return "user"
+
+
+def cmd_plan_add_owner(ctx, a):
+    """plan-add-owner <task> <checks> <pwd> <norm>: the lines of plan-add and then the owner name. norm is 1 when
+    <checks> still has to be normalised first (todo add --checks): a refusal there is the one of `norm`."""
+    task, checks, pwd = a[0], a[1], a[2]
+    if len(a) > 3 and a[3] == "1":
+        checks = ", ".join(parse_list(checks, True))
+    cmd_plan_add(ctx, [task, checks])
+    print(owner_name(pwd))
+
+
+def cmd_task_end_after(ctx, a):
+    """task-end-after <task> <trim 0|1>: `task-end done <task>`, then `after-list <task>`, then (trim 1 and nobody was
+    waiting after it) `agent_state.py ... trim --auto`; one process for the three. stdout: what task-end printed,
+    a line \\x01A, the names after-list printed, a line \\x01T when the trim ran and then what it printed. The
+    errors of each step go to stderr as the separate calls did."""
+    import io
+    import contextlib
+    task, trim = a[0], len(a) > 1 and a[1] == "1"
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            cmd_task_end(ctx, ["done", task])
+    except Refuse as e:
+        sys.stderr.write(" ".join(str(e).split()) + "\n")
+    except Exception:
+        import traceback
+        traceback.print_exc()
+    out = buf.getvalue() + "\x01A\n"
+    names = []
+    try:
+        nb = io.StringIO()
+        with contextlib.redirect_stdout(nb):
+            cmd_after_list(ctx, [task])
+        names = [n for n in nb.getvalue().split("\n") if n]
+    except Exception:
+        names = []
+    out += "".join(n + "\n" for n in names)
+    if trim and not names:
+        out += "\x01T\n"
+        sb = io.StringIO()
+        try:
+            import agent_state
+            with contextlib.redirect_stdout(sb):
+                agent_state.main(["agent_state.py", ctx["root"], ctx["state"], ctx["now"], "trim", "--auto"])
+        except Exception:
+            import traceback
+            traceback.print_exc()
+        out += sb.getvalue()
+    sys.stdout.write(out)
+
+
 def cmd_todo_checks(ctx, a):
     if not a or not a[0].strip():
         raise Refuse("todo checks: needs a todo name")
@@ -685,7 +774,10 @@ def read_results_file(path, task, best, n=0, since="", until=""):
                 ev, date = " | ".join(parts[1:-1]), parts[-1].strip()
             else:
                 ev, date = " | ".join(parts[1:]), ""
-            if since and date and date < since:     # G9: before this task instance opened (to the minute)
+            # G9: a line before this task instance opened is ignored by time only when it names no commit (or is the
+            # owner's sign); a line with `at <sha>` is judged by the git history in the gate (on_branch, at_head), so a
+            # restart or a re-opened todo line keeps the valid checks of the same code (owner 2026-11-27)
+            if since and date and date < since and (not at or m.group(1) == SIGN):
                 continue
             if until and date > until:      # G6: a line dated in the future is ignored
                 continue
@@ -957,6 +1049,21 @@ def read_launches(gd, task):
     return out
 
 
+FAST_LANE_SKIPS = ("FLOW CHECK", "UI CHECK")
+
+
+def is_fast_lane(builders):
+    """fast-lane-simple: a task built by a `<task> Deputy` and by no task manager is a fast-lane task."""
+    low = [b.lower() for b in builders]
+    return any(b.endswith(" deputy") for b in low) and not any("task manager" in b for b in low)
+
+
+def by_main_manager(who):
+    """The main manager signs as `main` or `<repo> Manager`; a task manager is not it."""
+    w = who.strip().lower()
+    return w == "main" or (w.endswith(" manager") and not w.endswith("task manager"))
+
+
 def launched(launches, kind, date):
     """A record of this kind by the main manager exists and the pass is dated at or after the newest."""
     ats = [at for (t, by, at) in launches if t == kind and by == "main"]
@@ -1126,6 +1233,9 @@ def cmd_gate(ctx, a):
     for p in (os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")):
         builders += launch_builders(p, task)
     lowb = set(b.lower() for b in builders)
+    fast = is_fast_lane(builders)
+    if fast:
+        plan = [b for b in plan if b not in FAST_LANE_SKIPS]
 
     def is_builder(who):
         w = who.lower()
@@ -1147,7 +1257,8 @@ def cmd_gate(ctx, a):
         elif b in BUILDER_BLOCKS and is_builder(r[1]):
             lines.append("%s: pass by the builder (%s), not accepted" % (b, r[1]))
             refused.append("%s by the builder" % b)
-        elif b in LAUNCH_KIND and not launched(launches, LAUNCH_KIND[b][0], r[4]):
+        elif b in LAUNCH_KIND and not launched(launches, LAUNCH_KIND[b][0], r[4]) \
+                and not (fast and b == "PR REVIEW" and by_main_manager(r[1])):
             lines.append("%s: no %s launched by the main manager for %s, not accepted" % (b, LAUNCH_KIND[b][1], task))
             refused.append("%s not launched by the main manager" % b)
         elif not r[3]:
@@ -1314,6 +1425,10 @@ def main(argv):
             cmd_task_end(ctx, a)
         elif cmd == "plan-add":
             cmd_plan_add(ctx, a)
+        elif cmd == "plan-add-owner":
+            cmd_plan_add_owner(ctx, a)
+        elif cmd == "task-end-after":
+            cmd_task_end_after(ctx, a)
         elif cmd == "todo-builder":
             cmd_todo_builder(ctx, a)
         elif cmd == "todo-est":

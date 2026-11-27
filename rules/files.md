@@ -1,10 +1,13 @@
 # Repo files
-Read when: you write an agent_* file, add or remove a doc, or need which file is written and read by whom.
+Read when: you write an agent_* file, add or remove a doc, the owner gives a rule, or need which file is written and read by whom.
 
 R3. Docs
 - Allowed: requirement, test, main idea
 - Nothing else
 - `PRINCIPLES.md` = main idea doc
+- A rule or correction the owner gives, a preference included → rule text (the plugin's PRINCIPLES.md or rules/), through a task with PR REVIEW, and the quiz when the rule changes a decision an agent makes; never only an auto memory
+- Rule text reaches every agent, machine and repo that installs the plugin, and it is tested; a memory reaches only one machine's main-manager sessions
+- Memory holds only personal setup facts that must not go into the public repo: machine names, local paths
 - Entry files allowed: `CLAUDE.md`, `AGENTS.md` (one line, point to `bin/agent-start.sh`)
 - `README.md` allowed: the picture of the tree and the flow, for people new to the repo
 - Config, not docs, allowed: `.claude-plugin/`, `agents/`, `skills/`, `hooks/`, `bin/`
@@ -45,7 +48,8 @@ R7. Worktree file
 - `agent_worktree.txt` = one line per live worktree: path, task manager, module, status (working | final | idle)
 - Task manager updates its own line. Deputy removes the line after cleanup
 - Main manager reads it before every dispatch (W9)
-- The housekeep pass removes a line whose worktree folder is gone and has no live pane; a working, final or human-direct line is only flagged
+- The housekeep pass removes a line whose worktree folder is gone and has no live pane; a working, final or old human-direct line (no pid field) is only flagged
+- A human-direct line whose session's pid on this machine is gone is removed, with that session's files (`agent-file.sh session-end --dead`)
 
 Files:
 

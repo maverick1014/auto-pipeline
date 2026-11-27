@@ -43,6 +43,7 @@
 #   agent-file.sh worktree set "<path>" "<module>" "<status>" -> agent_worktree.txt (add or replace)
 #   agent-file.sh worktree rm  "<path>"                       -> agent_worktree.txt
 #   agent-file.sh helper-task "<Task Name>"                   -> the task of THIS human-direct Helper session: its name becomes "<repo> Helper - <Task Name>"
+#   agent-file.sh session-end <sid> | --dead [--dry-run]      -> a session leaves nothing behind: its agent_*_<sid> files in the git dir and its human-direct line; --dead: the human-direct lines whose pid on this host is gone (one line each: "human-direct line <path> (pid <n> gone)")
 #   agent-file.sh show                                        -> print all four files
 #   agent-file.sh time                                        -> table: name est work wait clock ratio (agent_completed.txt)
 #   agent-file.sh backfill [--dry-run]                        -> old lines: take work and wait from the text of each line
@@ -244,13 +245,29 @@ TIME_DATA_GOAL=30
 DATA_TYPES="page server script docs cloud app data mixed"
 DATA_KEYS="repo type lane mock est work wait clock bounces workers files lines tests adds guess level typed est0 added built stages slices by"
 OPT_CMD="todo done"   # the prefix of a refusal from done_opts; backfill sets it to "backfill"
-. "$(dirname "$0")/agent-roots.sh"
+case "$0" in */*) AF_DIR=${0%/*}; [ -n "$AF_DIR" ] || AF_DIR=/;; *) AF_DIR=.;; esac   # dirname "$0" without a start
+. "$AF_DIR/agent-roots.sh"
 roots_read
 ROOT="$PROJECT_ROOT"
 TODO="$ROOT/agent_todo.txt"; DONE="$ROOT/agent_completed.txt"; IDEAS="$ROOT/agent_ideas.txt"; WT="$ROOT/agent_worktree.txt"
 # the fake clock only with AGENT_TESTING=1 and a repo root under the system temp folder (section 47 G6)
 fake_clock_ok() {
+  local c t r
   [ "${AGENT_TESTING:-}" = 1 ] && [ -n "${AGENT_FAKE_NOW:-}" ] && command -v python3 >/dev/null 2>&1 || return 1
+  # python's tempfile.gettempdir() without a start: the first of $TMPDIR $TEMP $TMP /tmp /var/tmp /usr/tmp that is a writable
+  # folder; the cwd and every case this cannot decide go to python3 as before
+  t=""
+  for c in "${TMPDIR:-}" "${TEMP:-}" "${TMP:-}" /tmp /var/tmp /usr/tmp; do
+    [ -n "$c" ] || continue
+    case "$c" in /*) ;; *) t=""; break;; esac
+    if [ -d "$c" ] && [ -w "$c" ] && [ -x "$c" ]; then t=$(cd "$c" 2>/dev/null && pwd -P) || t=""; break; fi
+  done
+  r=$(cd "$ROOT" 2>/dev/null && pwd -P) || r=""
+  if [ -n "$t" ] && [ -n "$r" ]; then
+    [ "$r" = "$t" ] && return 0
+    case "$r" in "${t%/}/"*) return 0;; esac
+    return 1
+  fi
   python3 -c 'import os, sys, tempfile
 t = os.path.realpath(tempfile.gettempdir()); r = os.path.realpath(sys.argv[1])
 sys.exit(0 if r == t or r.startswith(t.rstrip("/") + "/") else 1)' "$ROOT" 2>/dev/null
@@ -260,7 +277,25 @@ if fake_clock_ok; then NOW=$AGENT_FAKE_NOW; else NOW=$(date '+%Y-%m-%d %H:%M'); 
 # A repo that still tracks an agent file is not moved: nothing here runs for it (grep first, git ls-files only when the line is there).
 AF_FIVE="agent_todo.txt agent_ideas.txt agent_worktree.txt agent_completed.txt agent_estimate.txt"
 KEPT_DIR=""; KEPT_SNAP=""
-kept_snap() { local f; for f in $AF_FIVE; do [ -f "$ROOT/$f" ] && echo "$f $(cksum < "$ROOT/$f")"; done; return 0; }
+# snap_of <var> <file>...: one cksum start over the existing files of $ROOT (in the given order) in <var>, one line each
+snap_of() {
+  local _v=$1 _f _o="" _l=()
+  shift
+  for _f in "$@"; do
+    [ -f "$ROOT/$_f" ] && _l[${#_l[@]}]="$ROOT/$_f"
+  done
+  [ "${#_l[@]}" -eq 0 ] || _o=$(cksum -- "${_l[@]}" 2>/dev/null) || true
+  printf -v "$_v" '%s' "$_o"
+}
+# gi_has <file>: a line that is exactly agent_completed.txt (grep -qx 'agent_completed.txt', the dot is any character)
+gi_has() {
+  local l
+  [ -f "$1" ] && [ -r "$1" ] || return 1
+  while IFS= read -r l || [ -n "$l" ]; do
+    if [[ $l =~ ^agent_completed.txt$ ]]; then return 0; fi
+  done < "$1"
+  return 1
+}
 kept_readonly() {   # a command that never writes one of the five agent files
   case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*|show:*|time:*|idea:list|files:*) return 0;; esac
   return 1
@@ -284,7 +319,7 @@ kept_save() {   # kept_save <file>: keep the old kept copy as <file>.before-<tim
 }
 kept_start() {   # restore a missing working copy from its kept copy; say (never touch) one that differs
   local gd f k
-  [ -e "$ROOT/.git" ] && grep -qx 'agent_completed.txt' "$ROOT/.gitignore" 2>/dev/null || return 0
+  [ -e "$ROOT/.git" ] && gi_has "$ROOT/.gitignore" || return 0
   [ -z "$(git -C "$ROOT" ls-files -- $AF_FIVE 2>/dev/null)" ] || return 0
   gd=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 0
   [ -n "$gd" ] || return 0
@@ -303,27 +338,36 @@ kept_start() {   # restore a missing working copy from its kept copy; say (never
       fi
     fi
   done
-  KEPT_SNAP=$(kept_snap)
+  snap_of KEPT_SNAP $AF_FIVE
   return 0
 }
 kept_end() {     # a run that ended 0 copies each of the five files it changed to its kept copy
-  local f now
+  local f l now=""
   [ -n "$KEPT_DIR" ] || return 0
-  now=$(kept_snap)
-  mkdir -p "$KEPT_DIR" 2>/dev/null || return 0
-  for f in $AF_FIVE; do
-    [ -f "$ROOT/$f" ] || continue
-    printf '%s\n' "$KEPT_SNAP" | grep -qxF "$f $(cksum < "$ROOT/$f")" && continue
+  [ -d "$KEPT_DIR" ] || mkdir -p "$KEPT_DIR" 2>/dev/null || return 0
+  snap_of now $AF_FIVE
+  while IFS= read -r l || [ -n "$l" ]; do
+    [ -n "$l" ] || continue
+    case $'\n'"$KEPT_SNAP"$'\n' in *$'\n'"$l"$'\n'*) continue;; esac
+    f=${l##*/}
     cp -p "$ROOT/$f" "$KEPT_DIR/$f.tmp.$$" 2>/dev/null && mv "$KEPT_DIR/$f.tmp.$$" "$KEPT_DIR/$f"
-  done
+  done <<< "$now"
   return 0
 }
 kept_start "$@"
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|retrain:*|helper-task:*|session-end:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the files in git (agent_share.py): a snapshot before and after, one commit on the data branch when a run changed them.
 # Bash only (no python start when nothing changed): the facts are read from agent_repo.conf with grep and sed.
-conf_fact() { { grep -E "^[[:space:]]*$1[[:space:]]*=" "$ROOT/agent_repo.conf" 2>/dev/null || true; } | tail -n 1 | sed 's/^[^=]*=//; s/[[:space:]]//g'; }
+conf_fact() {   # the value of the last "<key> = <value>" line of agent_repo.conf, blanks removed; nothing when there is none
+  local l v="" got="" f="$ROOT/agent_repo.conf"
+  [ -f "$f" ] && [ -r "$f" ] || return 0
+  while IFS= read -r l || [ -n "$l" ]; do
+    if [[ $l =~ ^[[:space:]]*$1[[:space:]]*= ]]; then v=${l#*=}; got=1; fi
+  done < "$f"
+  [ -n "$got" ] || return 0
+  printf '%s\n' "${v//[[:space:]]/}"
+}
 share_files() {
   local tf; [ -n "$KEPT_DIR" ] || return 0   # not moved: no snapshot, no commit
   [ "$(conf_fact task_place)" != tree ] || return 0
@@ -332,7 +376,7 @@ share_files() {
   # no repo fact: the person's Configure setting may say more, so watch both (agent_share.py commit decides)
   case "$tf" in ideas) echo agent_ideas.txt;; ideas,todo|'') echo agent_ideas.txt; echo agent_todo.txt;; esac
 }
-share_snap() { local f; for f in $(share_files); do [ -f "$ROOT/$f" ] && echo "$f $(cksum < "$ROOT/$f")"; done; return 0; }
+share_snap() { local fl; fl=$(share_files); snap_of SHARE_NOW $fl; }   # the snapshot in SHARE_NOW
 share_msg() {
   case "${1:-}" in
     idea) case "${2:-}" in add) echo "idea add";; *) echo "idea ${2:-} ${3:-}";; esac;;
@@ -340,16 +384,23 @@ share_msg() {
     *) echo "${1:-run}";;
   esac
 }
-SHARE_MSG=$(share_msg "$@" | sed 's/ *$//')
-SHARE_SNAP=$(share_snap)
+SHARE_MSG=$(share_msg "$@")
+case "$SHARE_MSG" in
+  *$'\n'*) SHARE_MSG=$(share_msg "$@" | sed 's/ *$//');;
+  *) SHARE_MSG=${SHARE_MSG%"${SHARE_MSG##*[! ]}"};;
+esac
+SHARE_NOW=""; share_snap; SHARE_SNAP=$SHARE_NOW
 SHARE_COMMITS=1
 share_exit() {
   local rc=$?
   trap - EXIT
   if [ "$rc" -eq 0 ]; then
     kept_end
-    if [ "$SHARE_COMMITS" = 1 ] && [ -n "$SHARE_SNAP$(share_snap)" ] && [ "$(share_snap)" != "$SHARE_SNAP" ]; then
-      command -v python3 >/dev/null 2>&1 && python3 "$(dirname "$0")/agent_share.py" "$ROOT" commit "$SHARE_MSG" || true
+    if [ "$SHARE_COMMITS" = 1 ]; then
+      share_snap
+      if [ -n "$SHARE_SNAP$SHARE_NOW" ] && [ "$SHARE_NOW" != "$SHARE_SNAP" ]; then
+        command -v python3 >/dev/null 2>&1 && python3 "$AF_DIR/agent_share.py" "$ROOT" commit "$SHARE_MSG" || true
+      fi
     fi
   fi
   exit "$rc"
@@ -361,13 +412,26 @@ case "${1:-}" in show|time|data|repos|estimate|estimate-queue|backtest|eta) SHAR
 share_pull() {
   case "$(conf_fact task_files)" in local|ideas) return 0;; esac
   [ -e "$ROOT/.git" ] && command -v python3 >/dev/null 2>&1 || return 0
-  python3 "$(dirname "$0")/agent_share.py" "$ROOT" pull >/dev/null 2>&1 || true
+  python3 "$AF_DIR/agent_share.py" "$ROOT" pull >/dev/null 2>&1 || true
 }
-share_gate() {   # share_gate <task>: refuse (stderr, exit 1) a task of a shared todo this person may not work
+SHARE_WHO=""
+share_gate() {   # share_gate <task> [who]: refuse (stderr, exit 1) a task of a shared todo this person may not work; who: SHARE_WHO = the name for "by"
   local msg
   case "$(conf_fact task_files)" in local|ideas) return 0;; esac
   [ -n "$(first "$TODO" "$1")" ] && command -v python3 >/dev/null 2>&1 || return 0
-  msg=$(python3 "$(dirname "$0")/agent_share.py" "$ROOT" may-work "$1" 2>/dev/null) || { printf '%s\n' "$msg" >&2; exit 1; }
+  if [ "${2:-}" = who ]; then
+    msg=$(python3 "$AF_DIR/agent_share.py" "$ROOT" may-work-who "$1" "$PWD" 2>/dev/null) || { printf '%s\n' "$msg" >&2; exit 1; }
+    SHARE_WHO=$msg
+    return 0
+  fi
+  msg=$(python3 "$AF_DIR/agent_share.py" "$ROOT" may-work "$1" 2>/dev/null) || { printf '%s\n' "$msg" >&2; exit 1; }
+}
+# share_pull_gate <task>: share_pull, then share_gate, in one python3 start (the same two steps, the same refusal)
+share_pull_gate() {
+  local msg
+  case "$(conf_fact task_files)" in local|ideas) return 0;; esac
+  command -v python3 >/dev/null 2>&1 || return 0
+  msg=$(python3 "$AF_DIR/agent_share.py" "$ROOT" pull-may-work "$1" "$PWD" 2>/dev/null) || { printf '%s\n' "$msg" >&2; exit 1; }
 }
 
 # the whole header comment block, whatever its length
@@ -375,10 +439,41 @@ usage() { awk 'NR > 1 { if (/^#/) print; else exit }' "$0"; exit 2; }
 need()  { [ $# -ge "$1" ] || usage; }
 append(){ printf '%s\n' "$2" >> "$1"; }
 # drop lines whose first field (before " | ") equals $2 from file $1
-drop()  { awk -v k="$2" -F' \\| ' '$1 != k' "$1" > "$1.tmp" && mv "$1.tmp" "$1"; }
-first() { awk -v k="$2" -F' \\| ' '$1 == k {print; exit}' "$1"; }
+# (bash only; awk when the name is empty, holds a backslash (awk -v reads escapes) or may read as a number (awk compares numbers
+# as numbers), or the file is not readable)
+awk_name() { case "$1" in ''|*\\*) return 0;; *[!0-9.eE+infaINFA-]*) return 1;; esac; return 0; }
+drop() {
+  local l
+  if awk_name "$2"; then awk -v k="$2" -F' \\| ' '$1 != k' "$1" > "$1.tmp" && mv "$1.tmp" "$1"; return; fi
+  if [ ! -f "$1" ] || [ ! -r "$1" ]; then awk -v k="$2" -F' \\| ' '$1 != k' "$1" > "$1.tmp" && mv "$1.tmp" "$1"; return; fi
+  {
+    while IFS= read -r l || [ -n "$l" ]; do
+      if [ "${l%% | *}" = "$2" ]; then continue; fi
+      printf '%s\n' "$l"
+    done < "$1"
+  } > "$1.tmp" && mv "$1.tmp" "$1"
+}
+first() {
+  local l
+  if awk_name "$2"; then awk -v k="$2" -F' \\| ' '$1 == k {print; exit}' "$1"; return; fi
+  if [ ! -f "$1" ] || [ ! -r "$1" ]; then awk -v k="$2" -F' \\| ' '$1 == k {print; exit}' "$1"; return; fi
+  while IFS= read -r l || [ -n "$l" ]; do
+    if [ "${l%% | *}" = "$2" ]; then printf '%s\n' "$l"; return 0; fi
+  done < "$1"
+  return 0
+}
 # "YYYY-MM-DD HH:MM" -> epoch seconds, BSD date first (macOS), GNU date as fallback
-to_epoch() { date -j -f '%Y-%m-%d %H:%M' "$1" +%s 2>/dev/null || date -d "$1" +%s 2>/dev/null || true; }
+# NOW_EP: the epoch of $NOW once the main shell has asked for it (now_ep), so a $(...) below never starts date for it again
+NOW_EP=""
+to_epoch() {
+  if [ -n "$NOW_EP" ] && [ "$1" = "$NOW" ]; then echo "$NOW_EP"; return 0; fi
+  # BSD date takes the seconds it is not given from the wall clock: give it :00 so the minute is exact
+  case "$1" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\ [0-9][0-9]:[0-9][0-9]) date -j -f '%Y-%m-%d %H:%M:%S' "$1:00" +%s 2>/dev/null || date -d "$1" +%s 2>/dev/null || true; return 0;;
+  esac
+  date -j -f '%Y-%m-%d %H:%M' "$1" +%s 2>/dev/null || date -d "$1" +%s 2>/dev/null || true
+}
+now_ep() { NOW_EP=""; NOW_EP=$(to_epoch "$NOW"); }
 
 # --- small helpers (todo done, time; also for backfill, data, eta)
 # a whole number, 0 or more
@@ -386,7 +481,13 @@ is_num() { case "$1" in ''|*[!0-9]*) return 1;; esac; return 0; }
 # "<line>": ONE line on stderr, exit 1. Call it at the top level, before any file changes.
 refuse() { echo "$1" >&2; exit 1; }
 # folder name of a repo path (no spaces, so it stays one word in a data block)
-repo_name() { basename "$1" | tr ' ' '_'; }
+repo_name() {
+  local p=$1
+  p=${p%"${p##*[!/]}"}
+  if [ -z "$p" ] && [ -n "$1" ]; then p=/; fi   # basename of / is /
+  [ "$p" = / ] || p=${p##*/}
+  printf '%s\n' "${p// /_}"
+}
 # minutes from "YYYY-MM-DD HH:MM" $1 to $2; nothing when a date does not read or $2 is before $1
 minutes_between() {
   local o n
@@ -405,23 +506,58 @@ dblock() {
     "$d_bounces" "$d_workers" "$d_files" "$d_lines" "$d_tests" "$d_adds" "$d_guess" "$d_level" \
     "$d_typed" "$d_est0" "$d_added" "$d_built" "$d_stages" "$d_slices" "$d_by"
 }
+# split_line "<line>": LF[0..], LFN: the fields of a line as awk -F' \\| ' sees them (0-based: awk's $3 is LF[2])
+split_line() {
+  local rest=$1
+  LF=(); LFN=0
+  while :; do
+    case "$rest" in
+      *' | '*) LF[$LFN]=${rest%%' | '*}; rest=${rest#*' | '}; LFN=$((LFN+1));;
+      *) LF[$LFN]=$rest; LFN=$((LFN+1)); break;;
+    esac
+  done
+}
+# fld_re <ERE>: the first of the fields 4.. of the line split_line took that matches; FLD = it (BASH_REMATCH has its groups)
+fld_re() {
+  local i=3
+  FLD=""
+  while [ "$i" -lt "$LFN" ]; do
+    if [[ ${LF[$i]} =~ $1 ]]; then FLD=${LF[$i]}; return 0; fi
+    i=$((i+1))
+  done
+  return 1
+}
+# last_opened "<line>": the date time of the last "opened YYYY-MM-DD HH:MM" in the line
+last_opened() {
+  local t=$1 c re='^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2})'
+  while [[ $t == *"opened "* ]]; do
+    c=${t##*opened }
+    if [[ $c =~ $re ]]; then printf '%s\n' "${BASH_REMATCH[1]}"; return 0; fi
+    t=${t%opened *}
+  done
+  return 0
+}
 # todo_times "<todo line>" [<typed wait>]: t_clock, t_wait (W), t_work from the times on the line ("-" when unknown). Like the board:
 # work = minutes(started, now) - max(0, W - n), else clock - W (opened); W = closed waits + the open wait up to now, or the typed wait when larger.
 todo_times() {
-  local m
-  IFS=$'\t' read -r t_opened t_started t_before t_closed t_wo <<< "$(printf '%s\n' "$1" | awk -F' \\| ' '
-    function ok(x) { return x ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]$/ }
-    { o = s = wo = "-"; b = 0; w = 0
-      for (i = 4; i <= NF; i++) {
-        if (o == "-" && $i ~ /^opened / && ok(substr($i, 8, 16))) o = substr($i, 8, 16)
-        else if (s == "-" && $i ~ /^started / && ok(substr($i, 9, 16))) {
-          s = substr($i, 9, 16)
-          if ($i ~ / after [0-9]+m waited$/) { x = $i; sub(/^.* after /, "", x); b = x + 0 }
-        }
-        else if (wo == "-" && $i ~ /^waiting [^ ]+ since / && ok(substr($i, index($i, " since ") + 7, 16))) wo = substr($i, index($i, " since ") + 7, 16)
-        else if ($i ~ /^waited [0-9]+m$/) w = substr($i, 8) + 0
-      }
-      printf "%s\t%s\t%s\t%s\t%s\n", o, s, b, w, wo; exit }')"
+  local m i f x r dre='^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$'
+  local are=' after [0-9]+m waited$' wre='^waiting [^ ]+ since ' cre='^waited [0-9]+m$'
+  t_opened=-; t_started=-; t_before=0; t_closed=0; t_wo=-
+  split_line "$1"
+  i=3
+  while [ "$i" -lt "$LFN" ]; do
+    f=${LF[$i]}
+    if [ "$t_opened" = - ] && [[ $f == "opened "* ]] && [[ ${f:7:16} =~ $dre ]]; then t_opened=${f:7:16}
+    elif [ "$t_started" = - ] && [[ $f == "started "* ]] && [[ ${f:8:16} =~ $dre ]]; then
+      t_started=${f:8:16}
+      if [[ $f =~ $are ]]; then x=${f##* after }; x=${x%%[!0-9]*}; t_before=$((10#$x)); fi
+    elif [ "$t_wo" = - ] && [[ $f =~ $wre ]]; then
+      r=${f#* since }
+      if [[ ${r:0:16} =~ $dre ]]; then t_wo=${r:0:16}; fi
+    elif [[ $f =~ $cre ]]; then x=${f:7}; x=${x%%[!0-9]*}; t_closed=$((10#$x))
+    fi
+    i=$((i+1))
+  done
   t_wait=$t_closed
   if [ "$t_wo" != - ]; then m=$(minutes_between "$t_wo" "$NOW"); t_wait=$((t_wait + ${m:-0})); fi
   if [ -n "${2:-}" ] && [ "$2" != - ] && [ $((10#$2)) -gt "$t_wait" ]; then t_wait=$((10#$2)); fi
@@ -439,7 +575,9 @@ todo_times() {
 stage_facts() {
   local log out
   d_stages=-; d_slices=-; d_built=-
-  log=$(printf '%s\n' "$1" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage log /) { print substr($i, 11); exit } }')
+  split_line "$1"
+  log=""
+  if fld_re '^stage log '; then log=${FLD:10}; fi
   [ -n "$log" ] || return 0
   IFS=$'\t' read -r d_stages d_slices d_built <<< "$(printf '%s\n' "$log" | awk -v done="$2" '
     { n = split($0, e, ", ")
@@ -481,13 +619,34 @@ dkey() {
   done
 }
 # old_num "<text>" est|actual: n of the first "est <n>m" / "actual <n>m" in the text
-old_num() { printf '%s' "$1" | grep -o "$2 [0-9][0-9]*m" | head -1 | sed "s/$2 //;s/m//"; }
+old_num() {
+  local rest=$1 d
+  while :; do
+    case "$rest" in *"$2 "*) rest=${rest#*"$2 "};; *) return 0;; esac
+    d=${rest%%[!0-9]*}
+    case "$d" in '') continue;; esac
+    case "${rest#"$d"}" in m*) printf '%s\n' "$d"; return 0;; esac
+  done
+}
 # est and clock (the old "actual") of an old completed line "... | est <n>m actual <n>m"
 old_est()   { old_num "${1##* | }" est; }
 old_clock() { old_num "${1##* | }" actual; }
 # lines of agent_completed.txt that have a data block with a work number (dropped lines never count)
 time_data() {
-  awk '/[|] dropped: /{next} sub(/^.* [|] data /,"") && /(^| )work=[0-9]+( |$)/{n++} END{print n+0}' "$DONE"
+  local l n=0 c=0 big="" re='(^| )work=[0-9]+( |$)'
+  if [ -f "$DONE" ] && [ -r "$DONE" ]; then
+    while IFS= read -r l || [ -n "$l" ]; do   # up to 600 lines here, a longer file goes to one awk start
+      c=$((c+1))
+      if [ "$c" -gt 600 ]; then big=1; break; fi
+      case "$l" in *'| dropped: '*) continue;; *' | data '*) ;; *) continue;; esac
+      if [[ ${l##* | data } =~ $re ]]; then n=$((n+1)); fi
+    done < "$DONE"
+    if [ -z "$big" ]; then echo "$n"; else
+      awk '/[|] dropped: /{next} sub(/^.* [|] data /,"") && /(^| )work=[0-9]+( |$)/{n++} END{print n+0}' "$DONE"
+    fi
+  else
+    awk '/[|] dropped: /{next} sub(/^.* [|] data /,"") && /(^| )work=[0-9]+( |$)/{n++} END{print n+0}' "$DONE"
+  fi
 }
 
 # --- todo done options
@@ -723,20 +882,29 @@ data_run() {
 # --- estimate, backtest, retrain
 # est_py <estimate|backtest|retrain> [option...]: the table of data --what into agent_estimate.py (python3 only).
 # The model file is the project root's agent_estimate.txt, today is the date of $NOW (AGENT_FAKE_NOW works).
+# est_settings: the three estimate numbers in one python3 start (agent-roots.sh settings_read), once per run; called in the main
+# shell, so the values are still there when est_py reads them inside $(...)
+est_settings() {
+  if declare -F settings_read >/dev/null 2>&1; then
+    case "${_AP_SET_KEYS:- }" in *" estimate_target_pct "*) ;; *) settings_read estimate_target_pct estimate_bias_min estimate_big_min;; esac
+  fi
+  return 0
+}
 est_py() {
   local cmd="$1" rows
   shift
   command -v python3 >/dev/null 2>&1 || refuse "$cmd: python3 is needed and was not found"
   rows=$(data_run --what 2>/dev/null) || true
+  est_settings
   AGENT_ESTIMATE_REPO=$(repo_name "$ROOT") \
   AGENT_ESTIMATE_TARGET_PCT=$(conf_num estimate_target_pct 1 100 || true) \
   AGENT_ESTIMATE_BIAS_MIN=$(conf_num estimate_bias_min 1 1000 || true) \
   AGENT_ESTIMATE_BIG_MIN=$(conf_num estimate_big_min 1 10000 || true) \
-  python3 "$(dirname "$0")/agent_estimate.py" "$cmd" "$ROOT/agent_estimate.txt" "${NOW%% *}" "$@" <<< "$rows"
+  python3 "$AF_DIR/agent_estimate.py" "$cmd" "$ROOT/agent_estimate.txt" "${NOW%% *}" "$@" <<< "$rows"
 }
 # stale_skip: when this session runs an older plugin than the newest installed, print the one skip line and return 0
 stale_skip() {
-  local v="$(dirname "$0")/agent-version.sh" run newest rest
+  local v="$AF_DIR/agent-version.sh" run newest rest
   [ -f "$v" ] || return 1
   IFS=$'\t' read -r run newest rest < <("$v" check 2>/dev/null) || return 1
   [ -n "$run" ] && [ -n "$newest" ] || return 1
@@ -746,6 +914,7 @@ stale_skip() {
 retrain_auto() {
   local out rc=0
   if stale_skip; then return 0; fi
+  est_settings
   out=$(est_py retrain --auto 2>/dev/null) || rc=$?
   if [ "$rc" -ne 0 ]; then echo "estimate retrain: failed"
   elif [ -n "$out" ]; then printf '%s\n' "$out"
@@ -758,8 +927,11 @@ retrain_auto() {
 # est_gitdir: the absolute git common dir of the project root; fails when there is none
 est_gitdir() {
   local d
-  d=$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null) || return 1
-  case "$d" in /*) ;; *) d="$ROOT/$d";; esac
+  if [ -n "${AP_ROOTS_GITDIR:-}" ] && [ "${AP_ROOTS_ROOT:-}" = "$ROOT" ]; then d=$AP_ROOTS_GITDIR   # roots_read asked git already
+  else
+    d=$(git -C "$ROOT" rev-parse --git-common-dir 2>/dev/null) || return 1
+    case "$d" in /*) ;; *) d="$ROOT/$d";; esac
+  fi
   (cd "$d" 2>/dev/null && pwd -P)
 }
 # est_lock <git dir>: takes the lock dir (a dead pid's lock is taken over); returns 1 when a live runner holds it
@@ -819,11 +991,28 @@ est_after_done() {
 # the sweep after the last task closes: agent_todo.txt has no non-blank line, agent_worktree.txt has no
 # working or final line and no human-direct line, and this is the main manager (or a takeover). Prints the
 # sweep's --short lines. Any failure of it is swallowed: it never changes the exit code of todo done.
+# has_text <file>: a line with a character that is not a space (grep -q '[^[:space:]]'); false for a file that cannot be read
+has_text() {
+  local l re='[^[:space:]]'
+  [ -f "$1" ] && [ -r "$1" ] || return 1
+  while IFS= read -r l || [ -n "$l" ]; do
+    if [[ $l =~ $re ]]; then return 0; fi
+  done < "$1"
+  return 1
+}
 sweep_after_last_task() {
-  local busy
+  local busy l
   [ "${AGENT_CLEANUP_DONE:-}" = 1 ] && return 0
-  if grep -q '[^[:space:]]' "$TODO" 2>/dev/null; then return 0; fi
-  busy=$(awk -F' \\| ' '$3 == "working" || $3 == "final" || $2 == "task manager, human-direct" { n++ } END { print n + 0 }' "$WT" 2>/dev/null) || return 0
+  if has_text "$TODO"; then return 0; fi
+  if [ -f "$WT" ] && [ -r "$WT" ]; then
+    busy=0
+    while IFS= read -r l || [ -n "$l" ]; do
+      split_line "$l"
+      if [ "${LF[2]:-}" = working ] || [ "${LF[2]:-}" = final ] || [ "${LF[1]:-}" = "task manager, human-direct" ]; then busy=$((busy + 1)); fi
+    done < "$WT"
+  else
+    busy=$(awk -F' \\| ' '$3 == "working" || $3 == "final" || $2 == "task manager, human-direct" { n++ } END { print n + 0 }' "$WT" 2>/dev/null) || return 0
+  fi
   [ "${busy:-0}" -eq 0 ] || return 0
   role_read
   case "$role" in main|takeover) ;; *) return 0;; esac
@@ -864,7 +1053,7 @@ eta_run() {
   est=$((10#$est)); s=${step:-0}
   if [ -z "$step" ] && [ -z "$wsf" ]; then   # no old option: the board's numbers (agent_forecast), one answer
     command -v python3 >/dev/null 2>&1 || refuse "eta: python3 is needed and was not found"
-    python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+    python3 "$AF_DIR/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
       --now "$NOW" --lang en --eta "$name" --wait "$wt" || exit $?
     return 0
   fi
@@ -934,12 +1123,82 @@ helper_task() {
   { printf '%s\n' "$task" > "$tmp" && mv "$tmp" "$f"; } 2>/dev/null || { rm -f "$tmp"; refuse "helper-task: cannot write $f"; }
   find "$PROJECT_GITDIR" -maxdepth 1 -type f \( -name 'agent_helper_task_*' -o -name 'agent_helper_title_*' \) -mtime +30 -exec rm -f {} + 2>/dev/null || true
   touch "$WT"
-  awk -F' \\| ' -v p="$PROJECT_CWD" -v t="task: $task" -v now="$NOW" 'BEGIN { OFS = " | " }
-    $1 == p && $2 == "task manager, human-direct" { $3 = t; seen = 1 }
+  hpid=$(agent_pid 2>/dev/null); case "$hpid" in ''|*[!0-9]*) hpid=-;; esac
+  hhost=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
+  awk -F' \\| ' -v p="$PROJECT_CWD" -v t="task: $task" 'BEGIN { OFS = " | " }
+    $1 == p && $2 == "task manager, human-direct" {
+      has = 0; val = ""
+      for (i = 3; i <= NF; i++) if ($i ~ /^session /) { has = 1; val = substr($i, 9) }
+      if (!has || val == sid) { $3 = t; seen = 1 }
+    }
     { print }
-    END { if (!seen) print p, "task manager, human-direct", t, "since " now }' "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
+    END { if (!seen) print p, "task manager, human-direct", t, "since " now, "pid " pid, "host " host, "session " sid }' \
+    pid="$hpid" host="$hhost" sid="$sid" now="$NOW" "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
   repo=$(basename "$PROJECT_ROOT")
   echo "helper task: $task -> \"$repo Helper - $task\" from the human's next prompt"
+}
+
+# session_end_files <sid>: remove the session's files in the shared git dir; prints how many files went
+session_end_files() {
+  local sid=$1 n=0 f
+  for f in "$PROJECT_GITDIR/agent_started_$sid" "$PROJECT_GITDIR/agent_rules_$sid" "$PROJECT_GITDIR/agent_compact_$sid" \
+           "$PROJECT_GITDIR/agent_quiz_$sid" "$PROJECT_GITDIR/agent_stale_$sid" "$PROJECT_GITDIR/agent_autoclear_$sid" \
+           "$PROJECT_GITDIR/agent_helper_task_$sid" "$PROJECT_GITDIR/agent_helper_title_$sid" "$PROJECT_GITDIR/agent_point_${sid}_"*; do
+    case "$f" in "$PROJECT_GITDIR/agent_point_${sid}_"*) case "${f#"$PROJECT_GITDIR/agent_point_${sid}_"}" in *_*) continue;; esac;; esac   # the moment has no "_": agent_point_abc_def_watch is session abc_def's
+    if [ -f "$f" ] || [ -L "$f" ]; then rm -f "$f" 2>/dev/null && n=$((n + 1)); fi
+  done
+  rmdir "$PROJECT_GITDIR/agent_started_$sid.lock" "$PROJECT_GITDIR/agent_rules_$sid.lock" 2>/dev/null || true
+  echo "$n"
+}
+# session_end_valid <sid>: letters, digits, _ and - only, starting with a letter or digit
+session_end_valid() { case "$1" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_-]*) return 1;; esac; return 0; }
+# session_end_lines <sid>: drop the human-direct lines naming that session; prints how many went
+session_end_lines() {
+  local sid=$1 before after
+  [ -f "$WT" ] || { echo 0; return; }
+  before=$(awk 'END { print NR }' "$WT")
+  awk -F' \\| ' -v s="session $sid" '{ if ($2 == "task manager, human-direct") for (i = 3; i <= NF; i++) if ($i == s) next; print }' "$WT" > "$WT.tmp.$$" \
+    || { rm -f "$WT.tmp.$$"; echo 0; return; }
+  after=$(awk 'END { print NR }' "$WT.tmp.$$")
+  if [ "$after" -lt "$before" ]; then mv "$WT.tmp.$$" "$WT"; else rm -f "$WT.tmp.$$"; fi
+  echo $((before - after))
+}
+# session_end <sid> | --dead [--dry-run]
+session_end() {
+  local sid host rows nums="" row nr path pid ssid dry="" nf nl
+  [ $# -ge 1 ] || usage
+  if [ "$1" != --dead ]; then
+    [ $# -eq 1 ] || usage
+    session_end_valid "$1" || refuse "session-end: the session id must be letters, digits, _ and - only (got: $1)"
+    nf=$(session_end_files "$1"); nl=$(session_end_lines "$1")
+    echo "session-end $1: $nf files, $nl lines removed"
+    return 0
+  fi
+  shift
+  case "${1:-}" in --dry-run) dry=1; shift;; esac
+  [ $# -eq 0 ] || usage
+  [ -f "$WT" ] || return 0
+  host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
+  rows=$(awk -F' \\| ' -v h="$host" '$2 == "task manager, human-direct" {
+    pid = ""; hh = ""; s = "-"
+    for (i = 3; i <= NF; i++) {
+      if ($i ~ /^pid [0-9]+$/) pid = substr($i, 5)
+      else if ($i ~ /^host /) hh = substr($i, 6)
+      else if ($i ~ /^session /) s = substr($i, 9)
+    }
+    if (pid != "" && hh == h) print NR "\t" $1 "\t" pid "\t" s }' "$WT")
+  while IFS=$'\t' read -r nr path pid ssid; do
+    [ -n "$nr" ] || continue
+    kill -0 "$pid" 2>/dev/null && continue
+    nums="$nums $nr "
+    echo "human-direct line $path (pid $pid gone)"
+    [ -n "$dry" ] && continue
+    if session_end_valid "$ssid"; then session_end_files "$ssid" >/dev/null; fi
+  done <<< "$rows"
+  if [ -n "$nums" ] && [ -z "$dry" ]; then
+    awk -v nums="$nums" 'index(nums, " " NR " ") == 0' "$WT" > "$WT.tmp.$$" && mv "$WT.tmp.$$" "$WT"
+  fi
+  return 0
 }
 
 # helper-join "<task>": a human-direct Helper takes a task from the main manager (or reports DONE to it): its
@@ -955,7 +1214,11 @@ helper_join() {
   case "$pane" in *[!A-Za-z0-9_.:-]*) pane=-;; esac
   touch "$WT"
   awk -F' \\| ' -v p="$PROJECT_CWD" -v t="$task" -v now="$NOW" -v pane="$pane" -v sid="$sid" 'BEGIN { OFS = " | " }
-    $1 == p && $2 == "task manager, human-direct" { print p, t, "working", "since " now, "pane " pane, "session " sid; seen = 1; next }
+    $1 == p && $2 == "task manager, human-direct" {
+      has = 0; val = ""
+      for (i = 3; i <= NF; i++) if ($i ~ /^session /) { has = 1; val = substr($i, 9) }
+      if (!has || val == sid) { print p, t, "working", "since " now, "pane " pane, "session " sid; seen = 1; next }
+    }
     { print }
     END { if (!seen) print p, t, "working", "since " now, "pane " pane, "session " sid }' "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
   echo "helper-join: $task (pane $pane, session $sid): a normal agent now; the merge of its last task closes this pane"
@@ -1128,10 +1391,20 @@ todo_beat() {
   echo "todo beat: $name -> $text"
 }
 
+# last_waiting "<line>": the date time of the last " | waiting <kind> since YYYY-MM-DD HH:MM" in the line
+last_waiting() {
+  local t=$1 c re='^[^ ]* since ([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2})'
+  while [[ $t == *" | waiting "* ]]; do
+    c=${t##* | waiting }
+    if [[ $c =~ $re ]]; then printf '%s\n' "${BASH_REMATCH[1]}"; return 0; fi
+    t=${t% | waiting *}
+  done
+  return 0
+}
 # todo_stage <name> <stage> [<i>/<m>]
 STAGE_WORDS="brief register mock tests workers verify push report e2e merge"
 todo_stage() {
-  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here= csince tsince keep started wn wo swork
+  local name="${1:-}" stage="${2:-}" frac="${3:-}" line val cur i m wt_here= csince tsince keep started wn wo swork f sfield hasst hasstart
   [ -n "$name" ] || refuse "todo stage: needs a todo name"
   [ -n "$stage" ] || refuse "todo stage: needs a stage"
   case " $STAGE_WORDS " in *" $stage "*) ;; *) refuse "todo stage: the stage is one of: $STAGE_WORDS (got: $stage)";; esac
@@ -1149,18 +1422,25 @@ todo_stage() {
   fi
   val="$stage${frac:+ $frac}"
   if [ "$(cd "$STATE_DIR" 2>/dev/null && pwd -P)" != "$(cd "$PROJECT_ROOT" 2>/dev/null && pwd -P)" ]; then wt_here=1; fi
-  share_pull
-  share_gate "$name"
+  share_pull_gate "$name"
   line=$(first "$TODO" "$name")
   if [ -z "$line" ] && [ -z "$wt_here" ]; then refuse "no todo line named: $name"; fi
   if [ -n "$line" ]; then
-    cur=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage / && $i !~ /^stage log /) { sub(/^stage /, "", $i); sub(/ since .*$/, "", $i); print $i; exit } }')
+    split_line "$line"
+    cur=""; sfield=""; hasst=""; hasstart=""
+    for ((i = 3; i < LFN; i++)); do   # the first stage field (not the stage log): its value and its since; a stage or started field
+      f=${LF[$i]}
+      if [[ $f == "stage "* && $f != "stage log "* ]]; then
+        if [ -z "$hasst" ]; then hasst=1; sfield=$f; cur=${f#stage }; cur=${cur%% since *}; fi
+      elif [[ $f == "started "* ]]; then hasstart=1
+      fi
+    done
     if [ "$cur" != "$val" ]; then
       tsince=$NOW; keep=0; started=
-      if [ -z "$cur" ] && ! printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if (($i ~ /^stage / && $i !~ /^stage log /) || $i ~ /^started /) exit 0; exit 1 }'; then
-        wn=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^waited [0-9]+m$/) { print substr($i, 8) + 0; exit } }')
-        wn=${wn:-0}
-        wo=$(printf '%s\n' "$line" | sed -n 's/.* | waiting [^ ]* since \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
+      if [ -z "$cur" ] && [ -z "$hasst" ] && [ -z "$hasstart" ]; then
+        wn=0
+        if fld_re '^waited ([0-9]+)m$'; then wn=$((10#${BASH_REMATCH[1]})); fi
+        wo=$(last_waiting "$line")
         if [ -n "$wo" ]; then m=$(minutes_between "$wo" "$NOW"); wn=$((wn + ${m:-0})); fi
         started="started $NOW"
         if [ "$wn" -gt 0 ]; then started="$started after ${wn}m waited"; fi
@@ -1169,7 +1449,8 @@ todo_stage() {
         todo_times "$line"; swork=$t_work; [ "$swork" != - ] || swork=0
       fi
       if [ "${cur%% *}" = "$stage" ]; then
-        csince=$(printf '%s\n' "$line" | awk -F' \\| ' '{ for (i = 4; i <= NF; i++) if ($i ~ /^stage / && $i !~ /^stage log /) { if (sub(/^.* since /, "", $i)) print $i; exit } }')
+        csince=""
+        case "$sfield" in *' since '*) csince=${sfield##* since };; esac
         if [ -n "$csince" ]; then tsince=$csince; keep=1; fi
       fi
       NEW="stage $val since $tsince" STARTED="$started" ENTRY="$val $swork" awk -F' \\| ' -v OFS=' | ' -v k="$name" -v keep="$keep" '
@@ -1202,7 +1483,7 @@ todo_stage() {
       # the slip flag: the board's p50 clock of this line, kept as " | p50 <time> at <now>" (no forecast: the line stays)
       if [ -z "$wt_here" ] && command -v python3 >/dev/null 2>&1; then
         local p50
-        p50=$(python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+        p50=$(python3 "$AF_DIR/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
           --now "$NOW" --lang en --p50-of "$name" 2>/dev/null) || p50=
         case "$p50" in
           [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\ [0-9][0-9]:[0-9][0-9])
@@ -1258,12 +1539,12 @@ questions_py() {
   command -v python3 >/dev/null 2>&1 || refuse "questions: python3 is needed and was not found"
   lang=$(setting language 2>/dev/null) || lang=en
   case "$lang" in zh) ;; *) lang=en;; esac
-  python3 "$(dirname "$0")/agent_questions.py" "$PROJECT_ROOT" "$STATE_DIR" "$PROJECT_CWD" "$NOW" "$lang" "$@"
+  python3 "$AF_DIR/agent_questions.py" "$PROJECT_ROOT" "$STATE_DIR" "$PROJECT_CWD" "$NOW" "$lang" "$@"
 }
 # state_py <command> [args...]: agent_state.py does the work (python3 only)
 state_py() {
   command -v python3 >/dev/null 2>&1 || refuse "state: python3 is needed and was not found"
-  python3 "$(dirname "$0")/agent_state.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" "$@"
+  python3 "$AF_DIR/agent_state.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" "$@"
 }
 state_run() {
   case "${1:-}" in
@@ -1342,7 +1623,8 @@ worker_run() {
 # conf_num <key> <low> <high>: the whole number of <key> (a setting or a constant, read by `setting`), if in range
 conf_num() {
   local v
-  v=$(setting "$1" 2>/dev/null | tr -d '[:space:]') || return 1
+  v=$(setting "$1" 2>/dev/null) || v=""
+  v=${v//[[:space:]]/}
   if is_num "$v" && [ "${#v}" -le 9 ] && [ $((10#$v)) -ge "$2" ] && [ $((10#$v)) -le "$3" ]; then echo $((10#$v)); return 0; fi
   return 1
 }
@@ -1369,16 +1651,17 @@ board_run() {
   case "$lang" in zh) ;; *) lang=en;; esac
   host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
   if [ -n "$watch" ]; then
-    exec python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+    exec python3 "$AF_DIR/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
       --now "$NOW" --lang "$lang" --host "$host" ${self:+--self} --watch "$sec"
   fi
-  python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+  python3 "$AF_DIR/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
     --now "$NOW" --lang "$lang" --host "$host" ${self:+--self}
 }
 
 # the risk type of a todo line: fields 4+ only ("level <A-D>", or an old "level <0-4>"); nothing when none
 todo_line_level() {
-  printf '%s\n' "$1" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^level ([0-9]+|[A-D])$/) {v = $i; sub(/^level /, "", v); print v; exit}}'
+  split_line "$1"
+  if fld_re '^level ([0-9]+|[A-D])$'; then printf '%s\n' "${FLD#level }"; fi
 }
 # a type or an old level -> the type letter (0=A 1=B 2,3=C 4=D); empty when it is neither
 risk_type() {
@@ -1422,7 +1705,7 @@ todo_level() {
 # --- check blocks (agent_checks.py does the work)
 checks_py() {
   command -v python3 >/dev/null 2>&1 || refuse "${1:-checks}: python3 is needed and was not found"
-  python3 "$(dirname "$0")/agent_checks.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" "$@"
+  python3 "$AF_DIR/agent_checks.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" "$@"
 }
 # next: the memory rule (section 25) reads the numbers from agent-room.sh; the rest is agent_checks.py
 next_run() {
@@ -1430,7 +1713,7 @@ next_run() {
   [ $# -eq 0 ] || refuse "next: takes nothing after it"
   share_pull
   cap=$(conf_num max_usage_percent 1 100) || cap=80
-  if nums=$(cd "$PROJECT_ROOT" && "$(dirname "$0")/agent-room.sh" numbers 2>/dev/null </dev/null) && [ "$(printf '%s\n' "$nums" | wc -w | tr -d ' ')" -eq 4 ]; then
+  if nums=$(cd "$PROJECT_ROOT" && "$AF_DIR/agent-room.sh" numbers 2>/dev/null </dev/null) && [ "$(printf '%s\n' "$nums" | wc -w | tr -d ' ')" -eq 4 ]; then
     checks_py next $nums "$cap"
   else
     checks_py next unknown
@@ -1439,13 +1722,24 @@ next_run() {
 # batch_done <line> <name>: the last open line of a batch is done -> say what comes next (check-blocks C48)
 batch_done() {
   local b left
-  b=$(printf '%s\n' "$1" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^batch /) {v = $i; sub(/^batch /, "", v); print v; exit}}')
+  split_line "$1"
+  b=""
+  if fld_re '^batch '; then b=${FLD#batch }; fi
   [ -n "$b" ] || return 0
   left=$(awk -F' \\| ' -v b="$b" '{for (i = 4; i <= NF; i++) if ($i == "batch " b) {n++; break}} END {print n + 0}' "$TODO")
   [ "$left" -eq 0 ] || return 0
   echo "batch $b: all merged: agent-promote.sh --sync, then the full suite: agent-nightly.sh --start"
 }
 # released_after <name>: close the queue wait of every open line queued after <name>
+# released_list "<names>": the same lines as released_after for names already read (one name a line)
+released_list() {
+  local n
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    todo_wait "$n" off >/dev/null
+    echo "released: $n"
+  done <<< "$1"
+}
 released_after() {
   local n list
   list=$(checks_py after-list "$1" 2>/dev/null) || return 0
@@ -1463,8 +1757,15 @@ case "${1:-}:${2:-}" in
   helper-join:*)
     [ $# -ge 2 ] || usage
     helper_join "$2";;
+  session-end:*)
+    shift; session_end "$@";;
   todo:add)
     shift 2; guess=""; why=""; haswhy=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""; omeans=""; oquestion=""; orelay=""; oleader=""
+    # --checks is normalised (python3) in the one start that plans the blocks; a refusal that would have come after its
+    # normalising still waits for it: flush_norm runs it first (every refusal below, the usage, the owner words)
+    norm_raw=""; norm_pend=""
+    flush_norm() { if [ -n "$norm_pend" ]; then norm_pend=""; checks=$(checks_py norm "$norm_raw") || exit 1; fi; }
+    refuse() { flush_norm; echo "$1" >&2; exit 1; }
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
       if [ "$1" = "--guess" ]; then
         [ $# -ge 2 ] && is_num "$2" && [ "${#2}" -le 9 ] && [ $((10#$2)) -ge 1 ] || refuse "todo add: --guess wants a whole number, 1 or more (got: ${2:-nothing})"
@@ -1478,7 +1779,7 @@ case "${1:-}:${2:-}" in
         shift 2
       elif [ "$1" = "--checks" ]; then
         [ $# -ge 2 ] || refuse "todo add: --checks needs a list of blocks"
-        checks=$(checks_py norm "$2") || exit 1
+        flush_norm; norm_raw=$2; norm_pend=1
         shift 2
       elif [ "$1" = "--scope" ] || [ "$1" = "--builder" ]; then
         [ $# -ge 2 ] && [ -n "$2" ] || refuse "todo add: $1 needs a value"
@@ -1499,16 +1800,29 @@ case "${1:-}:${2:-}" in
       else rest+=("$1"); shift; fi
     done
     set -- todo add ${rest[@]+"${rest[@]}"}
+    if [ $# -lt 5 ]; then flush_norm; fi
     need 5 "$@"
     if [ -n "$haswhy" ] && [ -z "$guess" ]; then refuse "todo add: --why goes with --guess"; fi
     if [ -n "$guess" ] && [ -z "$why" ] && is_num "${6:-}" && [ "${#6}" -le 9 ] && [ $((10#$6)) -eq "$guess" ]; then
       refuse "todo add: est $((10#$6)) is the --guess; give the number the estimate printed, or --why \"<reason>\""
     fi
     if [ "$target" = production ]; then   # the direct path is bound to the owner's words, verified at once (F1)
+      flush_norm
       checks_py owner-words "$3" "$oquote" "$otime" "$omeans" "$oquestion" "$orelay" "$oleader" || exit 1
     elif [ -n "$oquote$otime$omeans$oquestion$orelay$oleader" ]; then refuse "todo add: --owner-quote, --means, --question, --time, --relayed-from and --relayed-by-leader belong to --target production"
     fi
-    checks=$(checks_py plan-add "$3" "$checks") || exit 1   # the blocks this name ever had are planned again (F11)
+    # the blocks this name ever had are planned again (F11); the owner name comes in the same python3 start
+    if command -v python3 >/dev/null 2>&1; then
+      plan_in=$checks; norm_flag=0
+      if [ -n "$norm_pend" ]; then plan_in=$norm_raw; norm_flag=1; norm_pend=""; fi
+      plan_out=$(checks_py plan-add-owner "$3" "$plan_in" "$PWD" "$norm_flag") || exit 1
+      checks=${plan_out%%$'\n'*}; owner=${plan_out#*$'\n'}
+      [ "$owner" != "$plan_out" ] || owner=user
+    else
+      flush_norm
+      checks=$(checks_py plan-add "$3" "$checks") || exit 1
+      owner=user
+    fi
     drop "$TODO" "$3"
     what="$5"
     [ -n "${6:-}" ] && what="$5 | est ${6}m"
@@ -1521,13 +1835,12 @@ case "${1:-}:${2:-}" in
     [ -z "$target" ] || what="$what | target $target"
     [ -z "$batch" ] || what="$what | batch $batch"
     by="${7:-$WHO}"
-    owner=$(PYTHONPATH="$(dirname "$0")" python3 -c 'import sys, agent_conf; print(agent_conf.user_name(sys.argv[1]))' "$PWD" 2>/dev/null) || owner=user
     append "$TODO" "$3 | $4 | $what | opened $NOW | by $by | owner ${owner:-user}"
     echo "todo added: $3";;
   todo:done)
     need 3 "$@"; name="$3"; line=$(first "$TODO" "$name")
     [ -n "$line" ] || { echo "no todo line named: $name" >&2; exit 1; }
-    share_gate "$name"
+    share_gate "$name" who
     shift 3
     case "${1:-}" in --*) ;; *) [ $# -eq 0 ] || shift;; esac   # the "<result>" text is not stored
     dreset; d_files=; d_lines=
@@ -1535,10 +1848,11 @@ case "${1:-}:${2:-}" in
     miss=; [ "$d_type" != - ] || miss=" --type"; [ "$d_lane" != - ] || miss="$miss --lane"
     [ -z "$miss" ] || echo "todo done: warning: no${miss} given (the estimator learns less from this line)" >&2
     counted=yes; [ -n "$d_files" ] || { counted=; d_files=-; d_lines=-; }
-    what=$(printf '%s\n' "$line" | awk -F' \\| ' '{print $3}')
+    split_line "$line"
+    what=${LF[2]:-}
     est=$(old_num "$line" est)
-    opened=$(printf '%s\n' "$line" | sed -n 's/.*opened \([0-9]\{4\}-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]\).*/\1/p')
-    clock=; [ -z "$opened" ] || clock=$(minutes_between "$opened" "$NOW")
+    opened=$(last_opened "$line")
+    clock=; [ -z "$opened" ] || { now_ep; clock=$(minutes_between "$opened" "$NOW"); }
     d_repo=$(repo_name "$ROOT"); d_est=${est:--}; d_clock=${clock:--}
     d_typed=$d_work                                # the typed --work is kept as typed, the label is measured
     todo_times "$line" "$d_wait"
@@ -1549,26 +1863,45 @@ case "${1:-}:${2:-}" in
       fi
     fi
     [ "$d_typed" = - ] || d_typed=$((10#$d_typed))
-    d_est0=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^est0 [0-9]+m$/) {v = $i; sub(/^est0 /, "", v); sub(/m$/, "", v); print v; exit}}')
+    split_line "$line"
+    d_est0=""; d_added=""; d_guess=""
+    if fld_re '^est0 ([0-9]+)m$'; then d_est0=${BASH_REMATCH[1]}; fi
     d_est0=${d_est0:-$d_est}
-    d_added=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^added [0-9]+m$/) {v = $i; sub(/^added /, "", v); sub(/m$/, "", v); print v; exit}}')
+    if fld_re '^added ([0-9]+)m$'; then d_added=${BASH_REMATCH[1]}; fi
     d_added=${d_added:--}
-    stage_facts "$line" "$d_work"
-    d_guess=$(printf '%s\n' "$line" | awk -F' \\| ' '{for (i = 4; i <= NF; i++) if ($i ~ /^guess [0-9]+m$/) {v = $i; sub(/^guess /, "", v); sub(/m$/, "", v); print v; exit}}')
+    if fld_re '^guess ([0-9]+)m$'; then d_guess=${BASH_REMATCH[1]}; fi
     d_guess=${d_guess:--}
+    stage_facts "$line" "$d_work"
     d_level=$(todo_line_level "$line"); d_level=${d_level:--}
-    d_by=$(PYTHONPATH="$(dirname "$0")" python3 -c 'import sys, agent_conf; print(agent_conf.user_name(sys.argv[1]))' "$PWD" 2>/dev/null) || d_by=user
+    if [ -n "$SHARE_WHO" ]; then d_by=$SHARE_WHO   # the shared-todo check already asked python3 for it
+    else d_by=$(PYTHONPATH="$AF_DIR" python3 -c 'import sys, agent_conf; print(agent_conf.user_name(sys.argv[1]))' "$PWD" 2>/dev/null) || d_by=user
+    fi
     d_by=${d_by:-user}
     date="${NOW%% *}"
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
-    checks_py task-end done "$name" || true     # its removals, stored owner words and planned blocks end (G2, G4)
+    # task-end (its removals, stored owner words and planned blocks end: G2, G4), the list of the lines queued after this
+    # one, and the state trim: ONE python3 start (the trim only when no line was queued after this one)
+    tail_out=""; tail_te=""; tail_names=""; tail_trim=""; tail_ran=""; tail_mark=""
+    if command -v python3 >/dev/null 2>&1; then
+      tail_out=$(checks_py task-end-after "$name" 1) || true
+      case "$tail_out" in *$'\001A'*) tail_mark=1;; esac   # no marker: the batch died, the separate steps run below
+      tail_te=${tail_out%%$'\001A'*}
+      tail_names=${tail_out#*$'\001A'}
+      [ -n "$tail_mark" ] || { tail_te=""; tail_names=""; }
+      case "$tail_names" in *$'\001T'*) tail_trim=${tail_names#*$'\001T'}; tail_names=${tail_names%%$'\001T'*}; tail_ran=1;; esac
+      [ -z "$tail_te" ] || printf '%s' "$tail_te"
+    else
+      checks_py task-end done "$name" || true     # python3 missing: the refusal that ends the run
+    fi
     echo "todo done: $name"
-    released_after "$name"
+    if [ -n "$tail_mark" ]; then released_list "$tail_names"; else released_after "$name"; fi
     batch_done "$line" "$name"
     [ -n "$counted" ] || echo "files and lines: not counted (no --merge or --range)"
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"
     # the finished task no longer counts as open: trim the state file (silent unless lines moved; a refusal is a warning)
-    if command -v python3 >/dev/null 2>&1; then python3 "$(dirname "$0")/agent_state.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" trim --auto || true; fi
+    if [ -n "$tail_ran" ]; then
+      [ -z "${tail_trim#$'\n'}" ] || printf '%s\n' "${tail_trim#$'\n'}"
+    elif command -v python3 >/dev/null 2>&1; then python3 "$AF_DIR/agent_state.py" "$PROJECT_ROOT" "$STATE_DIR" "$NOW" trim --auto || true; fi
     est_after_done || true
     sweep_after_last_task;;
   todo:wait)
@@ -1600,11 +1933,11 @@ case "${1:-}:${2:-}" in
   todo:take)
     [ $# -eq 3 ] || refuse "todo take: usage: todo take <task>"
     command -v python3 >/dev/null 2>&1 || refuse "todo take: python3 is needed and was not found"
-    exec python3 "$(dirname "$0")/agent_share.py" "$ROOT" take "$3";;
+    exec python3 "$AF_DIR/agent_share.py" "$ROOT" take "$3";;
   todo:assign)
     [ $# -eq 4 ] || refuse "todo assign: usage: todo assign <task> <name>"
     command -v python3 >/dev/null 2>&1 || refuse "todo assign: python3 is needed and was not found"
-    exec python3 "$(dirname "$0")/agent_share.py" "$ROOT" assign "$3" "$4";;
+    exec python3 "$AF_DIR/agent_share.py" "$ROOT" assign "$3" "$4";;
   todo:stage)
     shift 2; todo_stage "$@";;
   todo:beat)
@@ -1626,7 +1959,7 @@ case "${1:-}:${2:-}" in
       *) usage;;
     esac
     shift
-    exec python3 "$(dirname "$0")/agent_share.py" "$ROOT" "$@";;
+    exec python3 "$AF_DIR/agent_share.py" "$ROOT" "$@";;
   todo:drop)
     need 5 "$@"; line=$(first "$TODO" "$3")
     [ -n "$line" ] || { echo "no todo line named: $3" >&2; exit 1; }
@@ -1639,7 +1972,7 @@ case "${1:-}:${2:-}" in
     checks_py task-end drop "$3" || true        # its removals and stored owner words end (G2, G4)
     echo "todo dropped: $3";;
   idea:add)
-    need 3 "$@"; by=$(python3 "$(dirname "$0")/agent_share.py" "$ROOT" name 2>/dev/null | head -n 1 || true)
+    need 3 "$@"; by=$(python3 "$AF_DIR/agent_share.py" "$ROOT" name 2>/dev/null | head -n 1 || true)
     append "$IDEAS" "$3 | $NOW | by ${by:-$WHO}"
     echo "idea added";;
   idea:list)
@@ -1719,7 +2052,7 @@ case "${1:-}:${2:-}" in
     [ -n "$hb_text" ] || refuse "heartbeat: say what runs now (the text is empty)"
     hb_work=
     if [ -f "$TODO" ] && [ -n "$(first "$TODO" "$2")" ] && command -v python3 >/dev/null 2>&1; then
-      hb_work=$(python3 "$(dirname "$0")/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
+      hb_work=$(python3 "$AF_DIR/agent_board.py" --root "$PROJECT_ROOT" --state-dir "$STATE_DIR" --cwd "$PROJECT_CWD" \
         --now "$NOW" --lang en --work-of "$2" 2>/dev/null) || hb_work=
       is_num "$hb_work" || hb_work=
     fi
@@ -1743,9 +2076,18 @@ case "${1:-}:${2:-}" in
     command -v python3 >/dev/null 2>&1 || refuse "tell: python3 is needed and was not found"
     # C53: the line before "TELL OK ..." reminds the main manager to add minutes when the message adds work
     tell_rc=0
-    tell_out=$(python3 "$(dirname "$0")/agent_watch.py" tell "$PROJECT_ROOT" "$NOW" "$2" "$3") || tell_rc=$?
+    tell_out=$(python3 "$AF_DIR/agent_watch.py" tell "$PROJECT_ROOT" "$NOW" "$2" "$3") || tell_rc=$?
     tell_hint="if this message adds work: agent-file.sh todo est \"$2\" +<minutes>"
-    printf '%s\n' "$tell_out" | awk -v h="$tell_hint" '{ if ($0 ~ /^TELL OK / && prev != h) print h; print; prev = $0 }'
+    case "$tell_hint" in
+      *\\*) printf '%s\n' "$tell_out" | awk -v h="$tell_hint" '{ if ($0 ~ /^TELL OK / && prev != h) print h; print; prev = $0 }';;
+      *)   # the same filter without a start: the hint line before a "TELL OK " line, unless that line follows it already
+        tell_prev=""
+        while IFS= read -r tell_l || [ -n "$tell_l" ]; do
+          if [[ $tell_l == "TELL OK "* ]] && [ "$tell_prev" != "$tell_hint" ]; then printf '%s\n' "$tell_hint"; fi
+          printf '%s\n' "$tell_l"
+          tell_prev=$tell_l
+        done <<< "$tell_out";;
+    esac
     exit "$tell_rc";;
   backfill:*)
     shift

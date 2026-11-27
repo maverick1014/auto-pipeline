@@ -21,7 +21,7 @@ Owner 2026-11-25: "use the most fast and efficiency way for any of your works". 
 - Managers never write product code; workers never write tests (W3, W6). The main manager assigns, talks to the human, reports and decides; its exceptions: `rules/roles.md`
 
 ## R1. One flow, two lanes
-Before the flow: the main manager writes the requirement doc, the owner approves it. Full flow, in order:
+Before the flow: the main manager writes the requirement doc, the owner approves it, unless it only writes down his words. Full flow, in order:
 1. Todo line + estimate
 2. Mock for a new page or a whole-page re-layout (W2)
 3. Worktree + task manager
@@ -32,10 +32,11 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 8. Acceptance blocks (R8)
 9. Merge into the target branch + cleanup
 10. Todo done
-- Small task → fast lane (one fast-lane deputy); big task (over 2 hours, several slices) → full lane (a task manager)
+- Scope, not time, decides the lane: small (one slice) → fast lane (a deputy); big (several slices, a new page) → full lane (a task manager). Ask before dispatch and before edits
 - Checks follow the block triggers only (R8), never the lane: a small logic task never opens a task manager just for a test
-- A small task grows (past 2x its estimate, or a second slice) → the deputy stops and reports; the main manager opens a task manager from its branch
-- After the build: builder done → reviewer → check deputy only when what the user sees or does changed → merge deputy. A fail → a fix order to the builder
+- A small task grows (past 2x its guess, or a second slice) → the deputy stops and reports; the main manager opens a task manager from its branch
+- After the build: full lane → reviewer → check deputy (visible) → merge deputy; fast lane → the main manager reviews, the deputy merges
+- An agent counts as started only when seen working, never when the brief is sent (rules/routing.md)
 
 ## W1. Finish in one run
 - Never wait for the human, except: the kick-off round, a mock yes, an OWNER SIGN, NEEDS HUMAN E2E
@@ -56,13 +57,14 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 - First action of every agent: copy its brief into `agent_state.txt`
 - A state line: `agent-file.sh state add "<line>"` (it adds the date), never `echo >>`. A brief or report block: one append, then one blank line
 - After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory; then re-read the rules file of your current step
+- A rule or correction the owner gives → rule text, never only an auto memory (rules/files.md)
 
 ## Talking to the human (detail: `rules/output.md`, `rules/human.md`)
 - Lead with the result (E1). Short by default (E3)
 - Talk to the human in the language of the Language setting. Docs, code and rule text stay English (H2)
 - Never cite a rule by its code (W6, S8) to the human. Say what the rule means in plain words (H2)
 - H4. Tables: comparison, series, feature list, task list, options → table, never prose
-- Every report, job summary, recap, proposal or audit to the human ends with a decide section (H3)
+- Every report, job summary, recap, proposal or audit to the human ends with a decide section, normally none (ask test: H3)
 - Open questions numbered, each with a recommendation (zh `建议`, en `Recommendation`) (H3)
 - "verified", "works", "fixed" only with the real evidence named. A green suite is not a real device check (E2)
 

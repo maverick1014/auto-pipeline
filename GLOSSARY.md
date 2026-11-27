@@ -42,7 +42,7 @@ _Avoid_: level (levels are gone; blocks replaced them)
 **Bounce**: a task sent back to its builder (by a fix order, a missing click path or TIME line, or GATE REFUSED); counted in the task's data (from skills/merge/SKILL.md and bin/agent-file.sh).
 **Click path**: the exact steps a checker follows in the UI: start command, URL, clicks, expected result, how to restore (from skills/dispatch/SKILL.md, REPORT).
 **Kick-off round**: the task manager's first questions to the main manager, before step 1 of its brief (from skills/dispatch/SKILL.md, step 0b).
-**Requirement doc**: the doc the owner approves before the flow starts; the reviewer reads the diff against it.
+**Requirement doc**: the doc the owner approves before the flow starts, unless it only writes down his words (R1); the reviewer reads the diff against it.
 **Edge list**: the `edge=` lines of `agent_repo.conf` (from bin/agent-file.sh): real edge cases of this repo; example tests cover its fitting lines.
 **Core path**: a path of the repo listed in `agent_repo.conf` whose change triggers CORE REVIEW (money, permission).
 **Mock**: a clickable prototype of a new page or a whole-page re-layout; once the owner says yes, it is the acceptance criterion.

@@ -13,9 +13,12 @@
 #   bin/agent-runtime.sh close <handle>                    close a terminal (orca only)
 #   bin/agent-runtime.sh -h                                this help
 #
-# KIND is worked out fresh on every call, never cached, never written to a
-# file, because the owner switches between Orca and the Claude app inside one
-# day:
+# KIND is worked out fresh on every script run (every start of a script), never
+# kept between runs, never written to a file, because the owner switches between
+# Orca and the Claude app inside one day. Inside one run it can be asked once: a
+# script that pins it with AGENT_RUNTIME (agent-resume.sh does, after its first
+# runtime_kind, and its child agent-cleanup.sh then takes the pin) pays the
+# probe once for that run:
 #   0. $AGENT_RUNTIME is exactly orca, plain or cloud   -> that one, full stop
 #   1. the `runtime` setting (Configure) is orca, plain or cloud -> that one, full stop
 #   2. CLAUDE_CODE_REMOTE=true                         -> cloud
@@ -48,13 +51,20 @@
 # They differ only in the browser: Claude in Chrome can never reach a cloud
 # VM, so cloud looks for a headless browser instead.
 
-. "$(dirname "${BASH_SOURCE[0]}")/agent-roots.sh"
+# agent-roots.sh again only when the caller has not sourced it already (no dirname start either way)
+if ! declare -F setting >/dev/null 2>&1; then
+  _rt_src=${BASH_SOURCE[0]}
+  case "$_rt_src" in */*) _rt_dir=${_rt_src%/*}; [ -n "$_rt_dir" ] || _rt_dir=/;; *) _rt_dir=.;; esac
+  . "$_rt_dir/agent-roots.sh"
+  unset _rt_src _rt_dir
+fi
 
 # ---- kind ---------------------------------------------------------------
 
-# The `runtime` setting (user level, Configure), read fresh every time through
-# `setting`, never kept in a variable, so a value from an earlier call can
-# never linger. Prints nothing when it cannot be read.
+# The `runtime` setting (user level, Configure), read through `setting`: a script
+# that read its settings in one call (settings_read) is answered from that read,
+# for that run only (the values are never exported to a child script, never kept
+# between runs); otherwise one fresh read. Prints nothing when it cannot be read.
 _runtime_conf_value() {
   setting runtime 2>/dev/null || true
 }
@@ -64,28 +74,32 @@ _runtime_conf_value() {
 # seconds (the only case worth a retry).
 _runtime_probe_orca() {
   command -v orca >/dev/null 2>&1 || return 1
-  local tmp pid step rc
-  tmp="${TMPDIR:-/tmp}/agent-runtime-probe.$$"
-  : > "$tmp" 2>/dev/null
-  orca worktree ps --json >"$tmp" 2>/dev/null </dev/null &
-  pid=$!
-  step=0
-  while [ "$step" -lt 30 ] && kill -0 "$pid" 2>/dev/null; do
-    sleep 0.1
-    step=$((step + 1))
-  done
-  if kill -0 "$pid" 2>/dev/null; then
-    kill -TERM "$pid" 2>/dev/null
-    pkill -TERM -P "$pid" 2>/dev/null
-    wait "$pid" 2>/dev/null
-    rm -f "$tmp"
-    return 2
+  local pid line rrc=0
+  # The call runs in a background job of a child shell that prints the job's pid, then its exit
+  # status when it is done. This shell waits on that pipe with `read -t 3`: it wakes the moment
+  # the call ends (no polling, no sleep start), and cuts it off after 3 seconds. The child shell
+  # and the call have no stdin, stderr or stdout of ours, so a caller piping our output never
+  # waits on them. The answer itself is never read.
+  exec 8< <(
+    exec 2>/dev/null </dev/null
+    orca worktree ps --json >/dev/null 2>&1 &
+    echo "$!"
+    wrc=0
+    wait "$!" || wrc=$?
+    echo "rc=$wrc"
+  )
+  read -r -u 8 pid || { exec 8<&-; return 1; }
+  read -r -t 3 -u 8 line || rrc=$?
+  if [ "$rrc" -eq 0 ]; then
+    exec 8<&-
+    [ "$line" = "rc=0" ] && return 0
+    return 1
   fi
-  wait "$pid"
-  rc=$?
-  rm -f "$tmp"
-  [ "$rc" -eq 0 ] && return 0
-  return 1
+  # no answer line: cut off at 3 seconds (bash 3.2 gives plain 1 for that, bash 4 more than 128)
+  kill -TERM "$pid" 2>/dev/null
+  pkill -TERM -P "$pid" 2>/dev/null
+  exec 8<&-
+  return 2
 }
 
 runtime_kind() {
@@ -101,7 +115,12 @@ runtime_kind() {
     echo cloud
     return 0
   fi
-  rc=0
+  _runtime_probe_kind
+}
+
+# Steps 3 and 4 only (no setting, no env): orca when `orca worktree ps --json` answers, else plain.
+_runtime_probe_kind() {
+  local rc=0
   _runtime_probe_orca || rc=$?
   if [ "$rc" -eq 2 ]; then
     rc=0
@@ -213,6 +232,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   case "${1:-}" in
     -h|--help) _runtime_usage; exit 0;;
     kind) runtime_kind;;
+    probe) _runtime_probe_kind;;
     ps) runtime_ps;;
     browser) runtime_browser;;
     launch) shift; [ $# -eq 3 ] || { _runtime_usage; exit 2; }; runtime_launch "$1" "$2" "$3";;

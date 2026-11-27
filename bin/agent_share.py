@@ -11,6 +11,8 @@ CLI: agent_share.py <project root> <cmd> ...
   name                       the git user name of the project root ("" when none)
   place                      "data <branch>" or "tree"
   may-work <task>            the refusal text (exit 1) when the person may not work the task of a shared todo
+  may-work-who <task> <pwd> may-work, and on success the name todo done writes as by (agent-file.sh: one start for both)
+  pull-may-work <task> <pwd> pull (quiet), then may-work-who when the task still has a todo line (todo stage: one start for both)
   pull                       quiet sync before a decision (shared todo only)
   take <task> | assign <task> <name>    todo take / todo assign (the todo in git)
 
@@ -622,6 +624,47 @@ def cmd_may_work(root, task):
         say(text)
         return 1
     return 0
+
+
+def cmd_may_work_who(root, task, pwd):
+    """may-work, and on success one more line: the name todo done writes as by (agent_conf.user_name of PWD, "user" on any
+    failure), so agent-file.sh needs no second python3 start for it."""
+    text = may_work(root, todo_line(root, task))
+    if text:
+        say(text)
+        return 1
+    try:
+        who = str(agent_conf.user_name(pwd))
+        who.encode(sys.stdout.encoding or "utf-8")
+    except Exception:
+        who = ""
+    say(who or "user")
+    return 0
+
+
+def cmd_pull_may_work(root, task, pwd):
+    """pull (as `pull`: quiet, fd 1 and 2 included, never fails), then the refusal text (exit 1) when the person may not work
+    the task of a shared todo (nothing when the task has no line, as may-work). todo stage: one start for both."""
+    if os.path.exists(os.path.join(root, ".git")):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        saved = (os.dup(1), os.dup(2))
+        dn = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(dn, 1)
+            os.dup2(dn, 2)
+            try:
+                pull(root)
+            except Exception:
+                pass
+            sys.stdout.flush()
+            sys.stderr.flush()
+        finally:
+            os.dup2(saved[0], 1)
+            os.dup2(saved[1], 2)
+            for fd in saved + (dn,):
+                os.close(fd)
+    return cmd_may_work(root, task)
 
 
 def put_todo_line(root, task, new):
@@ -1505,6 +1548,10 @@ def main(argv):
     if cmd == "pull":
         pull(root)
         return 0
+    if cmd == "may-work-who":
+        return cmd_may_work_who(root, rest[0], rest[1]) if len(rest) == 2 else 2
+    if cmd == "pull-may-work":
+        return cmd_pull_may_work(root, rest[0], rest[1]) if len(rest) == 2 else 2
     if cmd == "take":
         return cmd_take(root, rest[0]) if len(rest) == 1 else 2
     if cmd == "assign":

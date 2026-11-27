@@ -187,6 +187,13 @@ class Housekeep(object):
 
     def worktree_lines(self):
         sw = self.sweep
+        # a human-direct line whose session is gone (same machine, pid not running): the line and the session's files go
+        args = ["session-end", "--dead"] + ([] if self.apply else ["--dry-run"])
+        res = self.file_cmd(*args)
+        if res.ok:
+            for text in res.out.splitlines():
+                if text.strip():
+                    self.removed.append("%s: %s" % (self.verb, text.strip()))
         self.read_worktree_file()
         if not self.wt_lines:
             return

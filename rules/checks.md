@@ -4,7 +4,11 @@ Read when: you plan the blocks of a task, run one, write its result line, gate a
 R8. Check blocks
 - Owner 2026-11-25: "let other agents verify the outcome of the code instead of letting test cases do it"; tests only show old things still work and cost memory and time; an urgent fix must not wait for a test flow
 - PR REVIEW, the main check of every task: an agent that did not build it reads the diff against the approved requirement
+- Fast lane (built by a `<task> Deputy`, no task manager): the main manager is the reviewer. Its PR REVIEW line (`--by` its name) counts with no launched reviewer; no FLOW CHECK or UI CHECK is asked
+- Fast lane, a reviewer (CORE REVIEW) only when the diff touches money, permissions, deleting data, publish, or the start or hook scripts
 - It asks: does it do what was asked, nothing else; are the edge list lines covered; is no check deleted; no secret; its cost follows the diff size, one more reason for small tasks
+- A fix round fixes blockers only; a should-fix item becomes a follow-up (`agent-file.sh idea add`), not a fix order (owner 2026-11-27, weekly limit)
+- A docs-only diff (only `.md` files, no `bin/` or `tests/` change) is reviewed at opus-5.5:medium: the one downgrade of the Reviewer model setting
 - A run or browser check (FLOW CHECK, UI CHECK) comes on top only when what the user sees or does changed: only the approved items, a 15-minute time box (`verify_box_min`), extra finds go to the ideas file
 - Owner 2026-11-25: "only do the necessary thing when needed, dont do extra thing. and dont do less thing"
 - No levels: each check is a block with a trigger; a task runs the blocks whose trigger fires, nothing else
@@ -33,7 +37,7 @@ R8. Check blocks
 - PR REVIEW and OWNER SIGN are never removed
 - One result line per block: `agent-file.sh check <task> "<BLOCK>" pass|fail --by <who> --evidence "<text>"`
 - The reviewer and the check deputy always pass --commit <the head they looked at>
-- PR REVIEW, FLOW CHECK and UI CHECK count only from a reviewer or check deputy the main manager launched (the guard records the launch)
+- PR REVIEW, FLOW CHECK and UI CHECK count only from a reviewer or check deputy the main manager launched (the guard records the launch); the fast-lane PR REVIEW by the main manager is the one exception
 - A check line records the commit it saw; PR REVIEW, FLOW CHECK and UI CHECK count only at the head being merged (or a commit after which every commit is a merge of the base)
 - Threat model: the gate guards against mistakes and shortcuts made through the documented commands
 - It does not stop an agent that forges files by hand; a forgery is a breach the main manager reports to the owner
@@ -54,3 +58,5 @@ R8. Check blocks
 - After each bug fix the fixing agent asks "which example would have shown it" and adds one line with `agent-file.sh edge add "<text>"` when the list lacks it
 - Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed
 - A requirement table copies its defaults from the released template and lists every changed default for the owner
+- A requirement doc that only writes down his request in his words needs no second yes; one that adds scope or picks an owner-level option goes to him first (R1)
+- That doc's examples of a money or permission rule still need his yes before code (EXAMPLES TEST)

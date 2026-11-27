@@ -40,6 +40,7 @@ Python standard library only. Runs on Python 3.8+.
 """
 
 import argparse
+import contextlib
 import hashlib
 import hmac
 import http.client
@@ -960,10 +961,68 @@ CHAT_KEEP = 200
 CHAT_BUSY_EVENTS = ("UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest")
 
 
-def load_chat(path):
+try:
+    import fcntl
+except ImportError:      # no flock (not a Unix): the writers then run unlocked
+    fcntl = None
+
+
+@contextlib.contextmanager
+def _chat_file_lock(path):
+    """An exclusive flock on the sidecar PATH + ".lock" (never on the data
+    file itself: a writer that opened the old file would write into the
+    replaced one). Every writer and every rewrite of chat.jsonl holds it.
+    Never raises: when the lock cannot be taken the body runs unlocked."""
+    fd = None
+    if fcntl is not None:
+        try:
+            fd = os.open(path + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                os.fchmod(fd, 0o600)
+            except OSError:
+                pass
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError:
+            if fd is not None:
+                os.close(fd)
+            fd = None
+    try:
+        yield
+    finally:
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(fd)
+
+
+def chat_append(path, row):
+    """The only writer of chat.jsonl (the say hook, the server): one JSON
+    line, private, one os.write, under the file lock. Never raises."""
+    with _chat_file_lock(path):
+        _append_private_jsonl(path, row)
+
+
+def load_chat(path, now=None, live=()):
     """The valid lines of PATH, the last CHAT_KEEP per (sid, aid), in file
-    order; rewrites the file (tmp + rename) when it dropped any. Missing
-    file -> []."""
+    order; rewrites the file (tmp + rename, under the file lock) when it
+    dropped any. An "end" row ({"sid", "aid": "", "kind": "end", "at"}, the
+    city's note that a session ended) is kept; every row of a sid whose LAST
+    row is an end row older than CHAT_GONE_SEC before NOW (epoch seconds,
+    default time.time()) goes, that end row too; so does every row of a sid
+    whose last row is older than CHAT_IDLE_SEC and that is not in LIVE.
+    Missing file -> []."""
+    if now is None:
+        now = time.time()
+    if not os.path.exists(path):
+        return []       # no file, no lock file either
+    with _chat_file_lock(path):
+        return _load_chat_locked(path, now, live)
+
+
+def _load_chat_locked(path, now, live):
+    """load_chat, the caller holds the file lock."""
     try:
         with open(path, encoding="utf-8") as fh:
             raw_lines = fh.readlines()
@@ -986,6 +1045,12 @@ def load_chat(path):
         text = obj.get("text")
         if not isinstance(sid, str) or not sid:
             continue
+        if kind == "end":
+            at = obj.get("at")
+            if isinstance(at, bool) or not isinstance(at, (int, float)):
+                continue
+            valid.append({"sid": sid, "aid": "", "kind": "end", "at": at})
+            continue
         if kind not in ("prompt", "reply", "owner"):
             continue
         if not isinstance(text, str) or not text:
@@ -999,6 +1064,16 @@ def load_chat(path):
         row = {"sid": sid, "aid": aid, "kind": kind, "text": text, "at": at}
         valid.append(row)
 
+    last = {}
+    for row in valid:
+        last[row["sid"]] = row
+    n_valid = len(valid)
+    gone = set(sid for sid, row in last.items()
+               if (row["kind"] == "end" and row["at"] < now - CHAT_GONE_SEC)
+               or (row["at"] < now - CHAT_IDLE_SEC and sid not in live))
+    if gone:
+        valid = [row for row in valid if row["sid"] not in gone]
+
     counts = {}
     for row in valid:
         key = (row["sid"], row["aid"])
@@ -1011,7 +1086,7 @@ def load_chat(path):
         if counts[key] - seen[key] < CHAT_KEEP:
             kept.append(row)
 
-    if len(kept) != len(valid):
+    if len(kept) != n_valid:
         try:
             folder = os.path.dirname(path) or "."
             fd, tmp_path = tempfile.mkstemp(dir=folder, prefix=".chat-", suffix=".tmp")
@@ -1127,7 +1202,20 @@ def pass_city_dir(directory):
     return os.path.abspath(directory)
 
 
-def agent_command(name, folder, city_dir=None, model_key="main_manager", prompt=FIRST_PROMPT, role=None):
+def city_home_for(floors_dir):
+    """The city home a session must be told (AGENT_CITY_HOME) so its `floor bye` finds FLOORS_DIR: None
+    when FLOORS_DIR is None or the default floors folder (~/.claude/agent-city/floors, compared by
+    realpath), else the folder that holds it (absolute)."""
+    if not floors_dir:
+        return None
+    default = os.path.expanduser("~/.claude/agent-city/floors")
+    if os.path.realpath(floors_dir) == os.path.realpath(default):
+        return None
+    return os.path.dirname(os.path.abspath(floors_dir.rstrip("/") or floors_dir))
+
+
+def agent_command(name, folder, city_dir=None, model_key="main_manager", prompt=FIRST_PROMPT, role=None,
+                  city_home=None):
     """The one fixed line a new terminal runs: `claude --name <name>`, then
     `--model <m> --effort <e>` from the MODEL_KEY setting (default main_manager:
     a second session opens with the main manager's values; "interior_designer"
@@ -1137,13 +1225,16 @@ def agent_command(name, folder, city_dir=None, model_key="main_manager", prompt=
     last word. The settings are the user's own (Configure), so FOLDER decides
     nothing. A setting that cannot be read leaves that part out. CITY_DIR
     given: the line starts with `AGENT_CITY_DIR=<city_dir> `, so the session
-    reports to this city; ROLE given: `AGENT_ROLE=<role> ` follows it, right
-    before `claude`. Neither: it starts with `claude `. Never the folder.
+    reports to this city; CITY_HOME given: `AGENT_CITY_HOME=<city_home> `
+    follows it (the floors folder is not the default one); ROLE given:
+    `AGENT_ROLE=<role> ` follows that, right before `claude`. Neither: it starts with `claude `. Never the folder.
     Never raises."""
     import shlex
     words = ["claude", "--name", shlex.quote(name)]
     if role:
         words.insert(0, "AGENT_ROLE=" + shlex.quote(role))
+    if city_home:
+        words.insert(0, "AGENT_CITY_HOME=" + shlex.quote(city_home))
     if city_dir:
         words.insert(0, "AGENT_CITY_DIR=" + shlex.quote(city_dir))
     try:
@@ -1289,6 +1380,8 @@ def machine_resources(folder, script=None):
 
 HIST_KEEP = 200            # lines kept per person, the oldest go
 HIST_GONE_SEC = 86400      # a person who left more than this long ago is forgotten
+CHAT_GONE_SEC = HIST_GONE_SEC  # a session that ended more than this long ago loses its chat
+CHAT_IDLE_SEC = 7 * 86400      # so does a session, not live, whose last row is older than this
 HIST_STEPS = 3             # steps one "steps" line holds
 HIST_COMPACT_ROWS = 5000   # rows appended in one run after which a sweep writes the file compact again
 HIST_KINDS = frozenset(("started", "steps", "stuck", "qa", "toLead", "toGov", "waiting", "done", "left"))
@@ -2114,6 +2207,7 @@ class CityState:
         self._adding = {}         # identity (a designer: "designer:" + identity) -> {"terr", "name", "role", "at" (monotonic), "pending", "seen", "before"}: an open under way
         self.close_fn = close_fn if close_fn is not None else close_session   # terminal handle -> closed? (the designer leaves)
         self._designer_handle = {}  # identity -> terminal handle of the designer this city opened there
+        self._left_sids = {}      # sid -> True of a designer session that said bye / was sent away: its later lines are dropped, bounded (SID_REPO_KEEP)
         self._floors_dir = floors_dir   # None: designs live in memory only
         self._designs = {}        # territory id -> good design
         self._design_hist = {}    # territory id -> history (oldest first), memory-only mode
@@ -2196,6 +2290,10 @@ class CityState:
         self._chat_page_of_sid = {}   # sid -> page id, persists past SessionEnd
         self._chat_ended_pages = set()  # "s:sid" pages whose session ended
         self._chat_written_offset = 0   # bytes of chat_path this process itself wrote
+        self._chat_tail_offset = None   # bytes of chat_path the tail thread has read (None: no tail)
+        self._chat_sids_with_rows = set()  # sids that have a row in chat.jsonl
+        self._chat_end_at = {}          # sid -> epoch seconds its chat's end row says (for the sweep)
+        self._chat_last_at = {}         # sid -> epoch seconds of its last chat row
         self.chat_watchers = {}       # sid -> {"current", "seen"} (chat_next's own, gov_next keeps self.watchers)
         self.listen_grace_sec = listen_grace_sec
         self._chat_waiting = {}       # page id -> watchers waiting for it now
@@ -2212,7 +2310,9 @@ class CityState:
                 self._restore_roster_locked()
 
         if self.chat_path is not None:
-            for row in load_chat(self.chat_path):
+            with self.lock:
+                live = set(sid for sid in self._sess if self._live_sid_locked(sid))
+            for row in load_chat(self.chat_path, live=live):
                 self.feed_chat(row)
 
         # A floor whose local folder is gone is dropped (see _drop_gone_locked): after the roster is
@@ -2621,6 +2721,8 @@ class CityState:
     def feed_line(self, obj, now):
         with self.lock:
             self.lines += 1
+            if isinstance(obj, dict) and isinstance(obj.get("sid"), str) and obj["sid"] in self._left_sids:
+                return   # a designer that left never comes back: no citizen, no roster entry
             self._feed_line_locked(obj, now)
 
     # -- the governor seat: the lock holder's, nobody else's (city-roles) ----
@@ -2800,7 +2902,8 @@ class CityState:
         "opening"), plus 409 "designer-here" while a live designer session is on that floor. Name "<repo>
         Designer", role "designer". Its hold is its own (key "designer:" + identity): it never blocks an add
         agent of the same repo, nor the other way round. The "adding" events say "kind": "designer". The
-        terminal handle the opener answers is kept (leave_designer closes it)."""
+        terminal handle the opener answers is kept (leave_designer closes it). The command carries the city's
+        home (city_home_for) when the floors folder is not the default one."""
         if not isinstance(terr, str) or re.fullmatch(r"[0-9a-f]{8}", terr) is None or not isinstance(force, bool):
             return 400, {"error": "bad"}
         with self.lock:
@@ -2826,7 +2929,7 @@ class CityState:
         try:
             import shlex
             command = agent_command(name, folder, self.city_dir, "interior_designer", designer_prompt(base),
-                                    "interior-designer")
+                                    "interior-designer", city_home=city_home_for(self._floors_dir))
             try:
                 kind = self.kind_fn(folder)
             except Exception:
@@ -2878,10 +2981,14 @@ class CityState:
 
     def _leave_designer_locked(self, identity):
         """Caller holds self.lock. The designer of IDENTITY's floor leaves the page at once (its session
-        ends like a SessionEnd). -> (was one live, the terminal handle to close or "")."""
+        ends like a SessionEnd; its sid is kept, so no later line of it brings it back). -> (was one live, the
+        terminal handle to close or "")."""
         cid = self._live_designer_locked(identity)
         handle = self._designer_handle.pop(identity, "")
         if cid is not None:
+            self._left_sids[cid[2:]] = True    # its later lines are dropped (feed_line)
+            while len(self._left_sids) > SID_REPO_KEEP:
+                del self._left_sids[next(iter(self._left_sids))]
             self._feed_line_locked({"ev": "SessionEnd", "sid": cid[2:], "repo": identity}, time.monotonic())
         return cid is not None, handle
 
@@ -2893,6 +3000,15 @@ class CityState:
             self.close_fn(handle)
         except Exception as exc:
             print("agent_city: could not close %s: %s" % (handle, exc), file=sys.stderr)
+
+    def close_designer_panes(self):
+        """Close every designer pane this city opened and still holds a handle for (the server stops),
+        once: the handles are forgotten. The closes run outside self.lock."""
+        with self.lock:
+            handles = list(self._designer_handle.values())
+            self._designer_handle.clear()
+        for handle in handles:
+            self._close_handle(handle)
 
     def leave_designer(self, terr):
         """The owner sends the designer of floor TERR away -> (code, body). 404 {"error": "none"} with no
@@ -4203,6 +4319,10 @@ class CityState:
             if to.startswith("s:"):
                 self._chat_ended_pages.add(to)
             self._chat_expire_queue_locked(to)
+            if sid in self._chat_sids_with_rows and sid not in self._chat_end_at:
+                end_at = time.time()
+                self._chat_end_at[sid] = end_at
+                self._append_chat_path_locked({"sid": sid, "aid": "", "kind": "end", "at": end_at})
             return
         to = ("gov:" + terr) if reducer.gov_sid == sid else ("s:" + sid)
         self._chat_page_of_sid[sid] = to
@@ -4298,43 +4418,145 @@ class CityState:
 
     def sweep_history(self, now):
         """Forgets every person who left more than a day before NOW (epoch
-        seconds, time.time()); a person who never left stays. The server
-        calls this every recount tick. Returns how many it dropped."""
+        seconds, time.time()); a person who never left stays. Also drops the
+        chat of every session whose end row is more than CHAT_GONE_SEC old,
+        and of every one, not live, whose last row is more than CHAT_IDLE_SEC
+        old (page, records, rows in chat.jsonl). The server calls this every
+        recount tick. Returns how many persons it dropped."""
         with self.lock:
-            return self.history.sweep(now)
+            count = self.history.sweep(now)
+            gone = set(sid for sid, at in self._chat_end_at.items() if now - at > CHAT_GONE_SEC)
+            gone.update(sid for sid, at in self._chat_last_at.items()
+                        if now - at > CHAT_IDLE_SEC and not self._live_sid_locked(sid))
+            if gone:
+                self._drop_chat_of_locked(gone)
+            return count
+
+    def _live_sid_locked(self, sid):
+        """Caller holds self.lock. Is SID a live session (a governor, or a
+        session citizen not done) in some territory?"""
+        for reducer in self.reducers.values():
+            if reducer.gov_sid == sid:
+                return True
+            record = reducer.agents.get("s:" + sid)
+            if record is not None and record["kind"] == "session" and not record["done"]:
+                return True
+        return False
+
+    def _drop_chat_of_locked(self, gone):
+        """Caller holds self.lock. Forgets the chat of the sids in GONE: their
+        own pages, their records and their rows in chat.jsonl (tmp +
+        os.replace). Rows the tail thread has not read yet are fed here, as
+        the tail then starts at the new file's end (the written offset)."""
+        for sid in gone:
+            self._chat_end_at.pop(sid, None)
+            self._chat_last_at.pop(sid, None)
+            self._chat_sids_with_rows.discard(sid)
+            page = "s:" + sid
+            self.chat.pop(page, None)
+            self._chat_busy.pop(page, None)
+            self._chat_page_terr.pop(page, None)
+            self._chat_stop_at.pop(page, None)
+            self._chat_polled_at.pop(page, None)
+            self._chat_ended_pages.discard(page)
+            if self._chat_page_of_sid.get(sid) == page:
+                del self._chat_page_of_sid[sid]
+            self.chat_watchers.pop(sid, None)
+        if self.chat_path is None:
+            return
+        unread = []
+        with _chat_file_lock(self.chat_path):
+            try:
+                with open(self.chat_path, "rb") as fh:
+                    data = fh.read()
+                st = os.stat(self.chat_path)
+            except OSError:
+                return
+            tail_at = self._chat_tail_offset
+            kept = []
+            pos = 0
+            for raw in data.splitlines(True):
+                start, pos = pos, pos + len(raw)
+                try:
+                    obj = json.loads(raw.decode("utf-8"))
+                except ValueError:
+                    obj = None
+                if isinstance(obj, dict) and obj.get("sid") in gone:
+                    continue
+                kept.append(raw if raw.endswith(b"\n") else raw + b"\n")
+                if tail_at is not None and start >= max(tail_at, self._chat_written_offset) and isinstance(obj, dict):
+                    unread.append(obj)
+            try:
+                fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(self.chat_path) or ".", prefix=".chat-", suffix=".tmp")
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(b"".join(kept))
+                os.chmod(tmp_path, stat.S_IMODE(st.st_mode))
+                os.replace(tmp_path, self.chat_path)
+                self._chat_written_offset = os.path.getsize(self.chat_path)
+            except OSError:
+                return
+        for obj in unread:
+            self._feed_chat_locked(obj)
+
+    def note_chat_tail(self, offset):
+        """The tail thread: it has read chat.jsonl up to OFFSET bytes."""
+        self._chat_tail_offset = offset
 
     def feed_chat(self, obj):
-        """One chat.jsonl line: kinds prompt, reply, owner; bad lines
-        ignored. Kept per page, the last CHAT_KEEP."""
+        """One chat.jsonl line: kinds prompt, reply, owner, end; bad lines
+        ignored. Kept per page, the last CHAT_KEEP. An end row shows no
+        entry: it notes when that session ended (for the sweep) and ends
+        its page."""
         with self.lock:
-            if not isinstance(obj, dict):
-                return
-            sid = obj.get("sid")
-            kind = obj.get("kind")
-            text = obj.get("text")
-            if not isinstance(sid, str) or not sid:
-                return
-            if kind not in ("prompt", "reply", "owner"):
-                return
-            if not isinstance(text, str) or not text:
-                return
-            aid = obj.get("aid", "")
-            if not isinstance(aid, str):
-                aid = ""
+            self._feed_chat_locked(obj)
+
+    def _feed_chat_locked(self, obj):
+        """feed_chat, the caller holds self.lock."""
+        if not isinstance(obj, dict):
+            return
+        sid = obj.get("sid")
+        kind = obj.get("kind")
+        text = obj.get("text")
+        if not isinstance(sid, str) or not sid:
+            return
+        if kind == "end":
             at = obj.get("at")
-            if not isinstance(at, (int, float)):
-                at = time.time()
-            to = self._page_id_for_sid(sid, aid)
-            self._chat_seq += 1
-            entry = {"id": self._chat_seq, "kind": kind, "text": text, "at": at}
-            if kind == "owner":
-                entry["state"] = "delivered"  # only ever-delivered owner lines are persisted
-            bucket = self.chat.get(to)
-            if bucket is None:
-                bucket = deque(maxlen=CHAT_KEEP)
-                self.chat[to] = bucket
-            bucket.append(entry)
-            self._broadcast({"type": "chat", "to": to, "entry": dict(entry)})
+            if isinstance(at, bool) or not isinstance(at, (int, float)):
+                return
+            self._chat_sids_with_rows.add(sid)
+            if at >= self._chat_last_at.get(sid, at):
+                self._chat_end_at[sid] = at
+                if self._page_id_for_sid(sid, "") == "s:" + sid:
+                    self._chat_page_of_sid[sid] = "s:" + sid
+                    self._chat_ended_pages.add("s:" + sid)
+            return
+        if kind not in ("prompt", "reply", "owner"):
+            return
+        if not isinstance(text, str) or not text:
+            return
+        aid = obj.get("aid", "")
+        if not isinstance(aid, str):
+            aid = ""
+        at = obj.get("at")
+        if not isinstance(at, (int, float)):
+            at = time.time()
+        to = self._page_id_for_sid(sid, aid)
+        self._chat_sids_with_rows.add(sid)
+        if at > self._chat_end_at.get(sid, at):
+            del self._chat_end_at[sid]      # it came back after its end
+            self._chat_ended_pages.discard("s:" + sid)
+        if at > self._chat_last_at.get(sid, 0.0):
+            self._chat_last_at[sid] = at
+        self._chat_seq += 1
+        entry = {"id": self._chat_seq, "kind": kind, "text": text, "at": at}
+        if kind == "owner":
+            entry["state"] = "delivered"  # only ever-delivered owner lines are persisted
+        bucket = self.chat.get(to)
+        if bucket is None:
+            bucket = deque(maxlen=CHAT_KEEP)
+            self.chat[to] = bucket
+        bucket.append(entry)
+        self._broadcast({"type": "chat", "to": to, "entry": dict(entry)})
 
     def chat_view(self, to):
         with self.lock:
@@ -4406,6 +4628,8 @@ class CityState:
         row = {"by": "owner", "verb": "message", "sid": sid, "text": entry["text"], "at": entry["at"]}
         self._append_jsonl_locked(self.decisions_path, row)
         line = {"sid": sid, "aid": "", "kind": "owner", "text": entry["text"], "at": entry["at"]}
+        self._chat_sids_with_rows.add(sid)
+        self._chat_last_at[sid] = max(self._chat_last_at.get(sid, 0.0), entry["at"])
         self._append_chat_path_locked(line)
         return {"state": "message", "id": entry["id"], "text": entry["text"]}
 
@@ -4422,7 +4646,7 @@ class CityState:
     def _append_chat_path_locked(self, row):
         if self.chat_path is None:
             return
-        _append_private_jsonl(self.chat_path, row)
+        chat_append(self.chat_path, row)
         try:
             self._chat_written_offset = os.path.getsize(self.chat_path)
         except OSError:
@@ -4439,12 +4663,15 @@ class CityState:
         the idle clock (requirements/city.md, "Limits"): a session polling
         to be talked to keeps the server up, even with no browser -- a
         single touch at entry is not enough for a long-poll call that
-        outlives a short idle timeout."""
+        outlives a short idle timeout. A session whose page ended gets
+        {"state": "ended"} at once, so its chat-watch process ends."""
         to = "s:" + sid
         timeout = max(0.0, min(timeout, 30.0))
         deadline = time.monotonic() + timeout
         with self.cond:
             self._touch_idle_locked()
+            if to in self._chat_ended_pages:
+                return {"state": "ended"}
             info = self.chat_watchers.get(sid)
             if info is None:
                 info = {"current": watcher, "seen": {watcher}}
@@ -5042,8 +5269,12 @@ def chat_tail_loop(chat_path, city, stop_event, initial_skip=0):
     a line written between then and this thread's first open is never lost.
     Lines this same process already wrote and fed itself (a delivered owner
     message) are skipped here too: city.chat_written_offset() tracks how
-    far it has gotten."""
+    far it has gotten. When the city rewrote the file (the sweep dropped a
+    gone session's rows: a new file under the same path) the tail opens it
+    again at that offset; it tells the city how far it has read
+    (city.note_chat_tail), so the sweep feeds what is left."""
     fh = None
+    ino = None
     offset = 0
     buf = b""
     skip = initial_skip
@@ -5054,11 +5285,20 @@ def chat_tail_loop(chat_path, city, stop_event, initial_skip=0):
             except OSError:
                 stop_event.wait(TAIL_INTERVAL)
                 continue
-            size_now = os.fstat(fh.fileno()).st_size
-            offset = min(skip, size_now)
+            st_now = os.fstat(fh.fileno())
+            ino = st_now.st_ino
+            offset = min(skip, st_now.st_size)
             skip = 0
             buf = b""
 
+        try:
+            if os.stat(chat_path).st_ino != ino:
+                fh.close()
+                fh = None
+                skip = city.chat_written_offset()
+                continue
+        except OSError:
+            pass
         offset = max(offset, city.chat_written_offset())
         fh.seek(0, os.SEEK_END)
         end = fh.tell()
@@ -5069,6 +5309,7 @@ def chat_tail_loop(chat_path, city, stop_event, initial_skip=0):
             for raw_line in lines:
                 _consume_chat_line(raw_line, city)
             offset = fh.tell()
+        city.note_chat_tail(offset)
 
         stop_event.wait(TAIL_INTERVAL)
 
@@ -5278,6 +5519,10 @@ def cmd_serve(args):
     try:
         server.serve_forever(poll_interval=0.2)
     finally:
+        try:
+            city.close_designer_panes()   # the designer panes this city opened go with it
+        except Exception:
+            pass
         server.server_close()
         try:
             os.remove(on_path)
@@ -5366,20 +5611,8 @@ def _cmd_say_impl(args):
     try:
         os.makedirs(directory, exist_ok=True)
         chat_path = os.path.join(directory, "chat.jsonl")
-        data = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
-        # Private (holds conversation text) and one write per line: two
-        # sessions ending at once must never interleave (requirements/
-        # city.md, "Talking"). A pre-existing wider-permission file is
-        # tightened via fchmod on the open descriptor.
-        fd = os.open(chat_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-        try:
-            try:
-                os.fchmod(fd, 0o600)
-            except OSError:
-                pass
-            os.write(fd, data)
-        finally:
-            os.close(fd)
+        # Private, one write per line, under the file lock: chat_append.
+        chat_append(chat_path, row)
     except OSError:
         pass
     return 0
@@ -6255,6 +6488,25 @@ def _floor_repo(arg, world_file):
     return None, "unknown repo %s. Known repos: %s" % (arg, names)
 
 
+def _designer_leaves():
+    """The interior designer's own `floor bye`: its session's files go (`agent-file.sh session-end <sid>`
+    in the current folder), then its own pane closes ($ORCA_TERMINAL_HANDLE). A failure is ignored."""
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    if re.fullmatch(r"[A-Za-z0-9_-]+", sid):
+        try:
+            subprocess.run([_bin_path("agent-file.sh"), "session-end", sid], cwd=os.getcwd(),
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=ADD_SCRIPT_SEC)
+        except Exception:
+            pass
+    handle = os.environ.get("ORCA_TERMINAL_HANDLE")
+    if handle:
+        try:
+            close_session(handle)
+        except Exception:
+            pass
+
+
 def cmd_floor(args):
     """agent_city.py floor rules | show REPO | set REPO FILE|- | bye REPO (requirements/city.md, "Office")."""
     if args.action == "rules":
@@ -6284,6 +6536,8 @@ def cmd_floor(args):
             print("cannot write the bye file: %s" % exc, file=sys.stderr)
             return 1
         print("bye")
+        if os.environ.get("AGENT_ROLE") == "interior-designer":
+            _designer_leaves()
         return 0
     # set
     if args.file is None:

@@ -4,7 +4,7 @@
 Run by the bash entry, never by hand:
 
     agent_cleanup.py --root <PROJECT_ROOT> --plugin <PLUGIN_ROOT>
-                     --kind orca|plain|cloud [--apply] [--short]
+                     --kind orca|plain|cloud|auto [--apply] [--short]
 
 One mechanical sweep: finished worktrees and branches, dead panes, done panes
 of finished tasks (every agent there in state "done", the task closed or its
@@ -1161,6 +1161,27 @@ class Sweep(object):
         return out
 
 
+def resolve_kind(plugin):
+    """--kind auto: the runtime kind by the rule of bin/agent-runtime.sh (AGENT_RUNTIME, then the runtime
+    setting, then CLAUDE_CODE_REMOTE, then the orca probe), worked out here so the caller spends no
+    python3 start on the setting. Only the probe is a call (agent-runtime.sh probe: it polls and cuts off
+    at 3 seconds, one retry)."""
+    pinned = ("orca", "plain", "cloud")
+    value = os.environ.get("AGENT_RUNTIME", "")
+    if value in pinned:
+        return value
+    try:
+        value = agent_conf.text(agent_conf.get("runtime"))
+    except Exception:
+        value = ""
+    if value in pinned:
+        return value
+    if os.environ.get("CLAUDE_CODE_REMOTE", "") == "true":
+        return "cloud"
+    res = run([os.path.join(plugin, "bin", "agent-runtime.sh"), "probe"], timeout=30)
+    return "orca" if res.out.strip() == "orca" else "plain"
+
+
 def main(argv):
     root = plugin = kind = ""
     apply_ = short = False
@@ -1187,6 +1208,8 @@ def main(argv):
     if not root or not plugin:
         sys.stderr.write("agent_cleanup.py: run bin/agent-cleanup.sh\n")
         return 2
+    if kind == "auto":
+        kind = resolve_kind(plugin)
     sweep = Sweep(root, plugin, kind or "plain", apply_, short)
     try:
         sweep.sweep()

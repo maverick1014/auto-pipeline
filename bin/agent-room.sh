@@ -14,4 +14,5 @@
 #   agent-room.sh measure-pane <pid>      summed RSS of that process tree into the weights key "pane" (the highest of the last 5, never below 550 MB)
 #
 # One reservation file per machine: $AGENT_RESERVE_FILE, default ~/.claude/auto-pipeline-reservations.json. Logic: agent_nightly.py.
-AGENT_ROOM_CLI=1 exec python3 "$(cd "$(dirname "$0")" && pwd -P)/agent_nightly.py" "$@"
+case "$0" in */*) _room_dir=${0%/*}; [ -n "$_room_dir" ] || _room_dir=/;; *) _room_dir=.;; esac
+AGENT_ROOM_CLI=1 exec python3 "$(cd "$_room_dir" && pwd -P)/agent_nightly.py" "$@"

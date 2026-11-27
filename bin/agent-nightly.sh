@@ -14,4 +14,5 @@
 #   agent-nightly.sh --misses           selection misses, then "misses: <n> since <date>"
 #
 # Files in the git common dir: agent_nightly.json, agent_selection_misses.txt. Logic: agent_nightly.py.
-exec python3 "$(cd "$(dirname "$0")" && pwd -P)/agent_nightly.py" "$@"
+case "$0" in */*) _nd=${0%/*};; *) _nd=.;; esac
+exec python3 "$(cd "${_nd:-/}" && pwd -P)/agent_nightly.py" "$@"

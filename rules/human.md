@@ -30,6 +30,13 @@ H3. Report
 - A named thing (PR, task, branch, ticket, file) gets what it is in a few words: `#305 (stock lock settings page)`, never a bare number, tag or code name
 - A question names every task/PR/ticket by id AND its title, + the state + what is asked, e.g. "Task t10211 - Milah Enterprise invoice duplicate due to calculation error, pending approval to merge to main". Never an id or code alone ("PR 1211 ready, approve?" is wrong). The owner must be able to decide from that line alone, even waking up cold
 - Per question: what, why it needs the human now, one line of evidence, then the recommendation. One or two lines, no long explanation
+- The decide section is normally none: the brief, the rules and his words decide; pick a default, log it, go on
+- Ask test: a question goes in only when one of these holds
+  - a permission check blocks the action
+  - it is irreversible, outward or outside the repo, and his words do not cover it
+  - a real product or owner-level choice
+  - his request is ambiguous, or 3 turns of "still broken": one short question (rules/output.md)
+- Never a question: deleting temp files, caches, `.git/agent_*_<sid>` markers or lines of a session that ended, or a checkout switch with a backup first: none loses his data or work (destructive: rules/output.md). Docs and state copies stay his yes (/auto-pipeline:clean-up)
 - Nothing open: keep the heading, one line: none (zh `无`)
 - Every question the main manager puts to the owner in a decide section is recorded with `park add` (--why --evidence --options --rec if known), removed when answered (`park rm` or `questions answer`)
 - Few numbers. One table at most, five rows or fewer, unless the human asks for the full list; a table whose value is completeness (the board, the question list, a ledger) is never cut (decided by the main manager 2026-11-26; the owner can veto)
