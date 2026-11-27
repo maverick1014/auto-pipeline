@@ -1696,7 +1696,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
                        "Checks follow the block triggers only (R8), never the lane",
                        "a small logic task never opens a task manager just for a test",
                        "past 2x its guess", "second slice", "from its branch", "Ask before dispatch and before edits",
-                       "the main manager reviews, the deputy merges"):
+                       "the main manager reviews → merge deputy"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r1)
         self.assertNotIn("over 2 hours", r1)
@@ -1800,7 +1800,7 @@ class TestDispatchSkill(unittest.TestCase):
 
     def test_small_task_subagent_in_its_own_worktree(self):
         step2 = text_between_after_start(self.text(), "\n2. ", "\n3. ")
-        for phrase in ('isolation: "worktree"', "--builder", "EXAMPLES TEST", "merge-deputy"):
+        for phrase in ('isolation: "worktree"', "--builder", "EXAMPLES TEST", "a merge deputy merges"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, step2)
 
@@ -2088,6 +2088,18 @@ class TestWorkingBranchRules(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, w9)
 
+    def test_the_fast_lane_deputy_never_merges(self):
+        # deputy-merge-text: an isolated deputy cannot touch the main checkout; a merge deputy merges after the gate
+        for parts in (("agents", "fast-lane-deputy.md"), ("rules", "routing.md"), ("rules", "roles.md"),
+                      ("skills", "dispatch", "SKILL.md"), ("skills", "merge", "SKILL.md"), ("PRINCIPLES.md",),
+                      ("skills", "flow-diagram", "reference.html")):
+            t = read(*parts)
+            for old in ("resumed with `MERGE`", "Resumed with `MERGE`", "the deputy merges",
+                        "same deputy to merge", "快车道副手自己合"):
+                with self.subTest(file=parts[-1], old=old):
+                    self.assertNotIn(old, t)
+        self.assertIn("a merge deputy merges", read("agents", "fast-lane-deputy.md"))
+
     def test_merge_deputy_merges_into_the_working_branch(self):
         text = read("agents", "merge-deputy.md")
         given = [l for l in text.splitlines() if l.startswith("Your brief gives")][0]
@@ -2220,7 +2232,7 @@ class TestReviewer(unittest.TestCase):
         # the 15 min box is its 15-minute time box, the Reviewer model is rules/roles.md W6
         r1 = part(read("PRINCIPLES.md"), "## R1. ", "## W1. ")
         for phrase in ("full lane → reviewer → check deputy (visible) → merge deputy",
-                       "fast lane → the main manager reviews, the deputy merges"):
+                       "fast lane → the main manager reviews → merge deputy"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r1)
         self.assertIn("reads the diff against the approved requirement", read("rules", "checks.md"))
