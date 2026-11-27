@@ -244,7 +244,7 @@ QUESTION_FILES = {
     29: ["rules/approval.md"], 30: ["rules/approval.md"], 31: ["rules/approval.md"],
     32: ["rules/approval.md"], 33: ["PRINCIPLES.md"], 34: ["rules/approval.md"],
     35: ["rules/routing.md"], 36: ["PRINCIPLES.md"],
-    37: ["rules/human.md"],   # ask-test: the ask test, the main manager's set
+    37: ["rules/human.md", "rules/checks.md"],   # ask-test: the ask test; FIX ORDER 1 (c): checks.md too
     38: ["rules/routing.md"],   # ask-test item 4: verify the launch, the main manager's set
 }
 MAIN_READS = ["rules/human.md", "rules/routing.md", "rules/approval.md", "rules/checks.md",
@@ -261,8 +261,8 @@ def role_questions(reads):
 
 
 MAIN_QUESTIONS = role_questions(MAIN_READS)      # 32
-TASK_QUESTIONS = role_questions(TASK_READS)      # 15
-SECOND_QUESTIONS = role_questions(SECOND_READS)  # 17
+TASK_QUESTIONS = role_questions(TASK_READS)      # 16
+SECOND_QUESTIONS = role_questions(SECOND_READS)  # 18
 
 
 def asked(quiz_out):
@@ -739,7 +739,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
         return self.assertOk(self.start("--quiz", *args, **kwargs))
 
     def test_the_counts(self):
-        self.assertEqual((len(MAIN_QUESTIONS), len(TASK_QUESTIONS), len(SECOND_QUESTIONS)), (32, 15, 17))
+        self.assertEqual((len(MAIN_QUESTIONS), len(TASK_QUESTIONS), len(SECOND_QUESTIONS)), (32, 16, 18))
         self.assertIn(9, MAIN_QUESTIONS)
         self.assertIn(11, MAIN_QUESTIONS)
         self.assertNotIn(4, MAIN_QUESTIONS + TASK_QUESTIONS + SECOND_QUESTIONS)   # the mock rule: not at start
@@ -772,7 +772,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
 
     def test_the_header_names_the_role_and_the_count(self):
         out = self.quiz("--role", "task")
-        self.assertIn("=== QUIZ (task manager) — answer all 15 before any work ===", out)
+        self.assertIn("=== QUIZ (task manager) — answer all 16 before any work ===", out)
         self.assertIn("--answer", out)
 
     def test_the_question_text_is_unchanged(self):
@@ -787,7 +787,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
 
     def test_each_role_passes_with_its_own_set(self):
         # fix order 7841e72f A: --answer grades the session's OWN role (the start's role), never the caller's pick
-        for role, env, n in (("main", {}, 32), ("task", {"AGENT_ROLE": "task-manager"}, 15), ("second", None, 17)):
+        for role, env, n in (("main", {}, 32), ("task", {"AGENT_ROLE": "task-manager"}, 16), ("second", None, 18)):
             with self.subTest(role=role):
                 if env is None:
                     self.live_lock()
@@ -814,7 +814,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
         # without --role the same answers are graded on the main manager's 32
         r = self.start("--answer", self.only(TASK_QUESTIONS), env=env)
         self.assertEqual(r.returncode, 1)
-        self.assertIn("QUIZ RESULT: 12/32 FAIL", r.stdout)
+        self.assertIn("QUIZ RESULT: 13/32 FAIL", r.stdout)
         self.assertFalse(os.path.exists(self.repo.path(".git", "agent_quiz_sess-bypass")))
 
     def test_answer_role_all_is_refused_too(self):
@@ -824,13 +824,13 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
 
     def test_the_own_role_named_is_accepted(self):
         out = self.assertOk(self.start("--answer", self.ANSWERS, "--role", "task", env={"AGENT_ROLE": "task-manager"}))
-        self.assertIn("15/15 PASS", out)
+        self.assertIn("16/16 PASS", out)
 
     def test_a_task_manager_cannot_pass_with_a_smaller_or_other_set(self):
         r = self.start("--answer", self.ANSWERS, "--role", "second", env={"AGENT_ROLE": "task-manager"})
         self.assertEqual(r.returncode, 2, r.stdout)
         self.assertIn("task manager", r.stdout)
-        self.assertIn("15", r.stdout)
+        self.assertIn("16", r.stdout)
 
     def test_the_printed_set_does_not_tell_to_answer_with_role(self):
         # --role is for printing a set only
@@ -840,7 +840,7 @@ class TestQuizPerRole(SharedRepoMixin, StartCase):
 
     def test_only_the_roles_answers_are_needed(self):
         out = self.assertOk(self.start("--answer", self.only(TASK_QUESTIONS), env={"AGENT_ROLE": "task-manager"}))
-        self.assertIn("15/15 PASS", out)
+        self.assertIn("16/16 PASS", out)
 
     def test_a_missing_answer_is_wrong(self):
         r = self.start("--answer", self.only(TASK_QUESTIONS, drop=("27B",)), env={"AGENT_ROLE": "task-manager"})
@@ -885,7 +885,7 @@ class TestNoQuizForSubagents(StartCase):
     def pass_quiz(self, sid="sess-1"):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid(sid)))
-        self.assertIn("15/15 PASS", out)
+        self.assertIn("16/16 PASS", out)
 
     def test_a_pass_writes_the_session_marker(self):
         self.pass_quiz()
@@ -934,7 +934,7 @@ class TestNoQuizForSubagents(StartCase):
         out = self.assertOk(self.start("--answer", self.ANSWERS,
                                        env=self.sid()))
         self.assertEqual(self.lines(out),
-                         ["QUIZ RESULT: 15/15 PASS", "You may start work."])
+                         ["QUIZ RESULT: 16/16 PASS", "You may start work."])
 
     def test_it_still_fits_the_cap(self):
         self.pass_quiz()
@@ -1588,7 +1588,7 @@ QUIZ_Q37 = """Q37. You are the main manager. The owner asked for a CSV export in
 QUIZ_Q38 = """Q38. You are the main manager. You sent a new task manager its brief with agent-file.sh tell. The tell printed TELL FAIL (pointer not seen, block is in the file), and the next watch sweep says the task is ok. You:
   A. Report the task as started: the watch says ok
   B. Open a second task manager in a new worktree and send the brief there
-  C. Act at once: type the pointer line into its pane by hand, read the pane within 2 min, and report "brief sent, not yet confirmed" until its STAGE brief line, a busy pane or its first reply shows it working
+  C. Act at once: read its pane, then type the pointer line into it by hand, and report "brief sent, not yet confirmed" until its STAGE brief line, a busy pane or its first reply shows it working
   D. Wait for its first heartbeat in 15 minutes"""
 
 

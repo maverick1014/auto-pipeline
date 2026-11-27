@@ -4100,7 +4100,8 @@ class TestTheAskTest(unittest.TestCase):
         line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("Before the flow:"))
         self.assertIn("the owner approves it, unless it only writes down his words. Full flow, in order:", line)
         doc = next(l for l in read("rules", "checks.md").splitlines() if "needs no second yes" in l)
-        for phrase in ("requirement doc", "in his words", "adds scope", "owner-level option", "goes to him first"):
+        for phrase in ("requirement doc", "in his words", "adds scope", "owner-level option", "goes to him first",
+                       "the examples of a money or permission rule still need his yes before code (EXAMPLES TEST)"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, doc)
 
@@ -4122,8 +4123,11 @@ class TestTheAskTest(unittest.TestCase):
                        "a permission check blocks the action",
                        "it is irreversible, outward or outside the repo, and his words do not cover it",
                        "a real product or owner-level choice",
-                       "Never a question: deleting temp files, caches or records of dead sessions",
-                       "a checkout switch with a backup first", "none loses his data or work"):
+                       "his request is ambiguous, or 3 turns of \"still broken\": one short question",
+                       "Never a question: deleting temp files, caches, `.git/agent_*_<sid>` markers or lines of a "
+                       "session that ended, or a checkout switch with a backup first",
+                       "none loses his data or work",
+                       "Docs and state copies stay his yes (/auto-pipeline:clean-up)"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, h3)
         # the ask test comes before the "Nothing open" line it explains
@@ -4146,9 +4150,14 @@ class TestVerifyTheLaunch(unittest.TestCase):
         w9 = part(read("rules", "routing.md"), "W9. ")
         for phrase in ("A launch counts only when the agent is seen working",
                        "its `STAGE <task>: brief` line, its pane busy on the brief, or its first reply",
-                       "brief sent, not yet confirmed",
-                       "After every `agent-file.sh tell` read its result",
-                       "TELL FAIL → act at once: the block is in the file, type its pointer line into the pane by hand",
+                       "\"brief sent, not yet confirmed\" (in the Language setting)",
+                       "After every `agent-file.sh tell` read its result line",
+                       "`TELL FAIL <task> <sha>: pointer not seen (block is in the file)` → read the pane first "
+                       "(the tool already sent the pointer twice), then type the pointer by hand: "
+                       "`[<model> <effort>] TELL <sha8>: read the TELL <sha8> block at the end of agent_state.txt "
+                       "and act on it`",
+                       "`TELL FAIL <task> <sha>: file check` → the block is not in the file: run the tell again; "
+                       "never type a pointer to a missing block",
                        "Within 2 min of a dispatch read the pane",
                        "still idle on its welcome screen = the brief did not land",
                        "A watch sweep 'ok' is not proof of a start"):
@@ -4165,17 +4174,25 @@ class TestVerifyTheLaunch(unittest.TestCase):
         tell = d.index("Then send it the brief below with")
         goal = d.index("Then /goal:", tell)
         step = d[tell:goal]
-        for phrase in ("Then confirm the start", "`TELL OK <name> <sha>`", "`TELL FAIL`",
-                       "type its pointer line into the pane by hand",
-                       "orca terminal read --terminal <handle> --json", "welcome screen",
-                       "brief sent, not yet confirmed", "a watch sweep 'ok' is not proof", "rules/routing.md"):
+        # FIX ORDER 1 (g): the commands stay here, the rule has one home (rules/routing.md)
+        for phrase in ("Then confirm the start (the rule: rules/routing.md)", "`TELL OK <name> <sha>`",
+                       "`TELL FAIL <name> <sha>: pointer not seen (block is in the file)`",
+                       "orca terminal read --terminal <handle> --json",
+                       'orca terminal send --terminal <handle> --text "[<model> <effort>] TELL <sha8>: read the '
+                       'TELL <sha8> block at the end of agent_state.txt and act on it" --enter',
+                       "`TELL FAIL <name> <sha>: file check`", "run the `agent-file.sh tell` line again"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, step)
+        for rule_text in ("brief sent, not yet confirmed", "a watch sweep 'ok' is not proof", "welcome screen"):
+            with self.subTest(rule_text=rule_text):
+                self.assertNotIn(rule_text, step)
 
     def test_the_tell_lines_are_real(self):
         src = read("bin", "agent_watch.py")
         self.assertIn('"TELL OK %s %s"', src)
         self.assertIn('"TELL FAIL %s %s: pointer not seen (block is in the file)"', src)
+        self.assertIn('"TELL FAIL %s %s: file check"', src)
+        self.assertIn('"%s TELL %s: read the TELL %s block at the end of agent_state.txt and act on it"', src)
 
 
 class TestWhereALessonGoes(unittest.TestCase):
@@ -4184,18 +4201,26 @@ class TestWhereALessonGoes(unittest.TestCase):
 
     def test_r3_an_owner_rule_is_rule_text(self):
         r3 = part(read("rules", "files.md"), "R3. ", "R4. ")
-        for phrase in ("A rule the owner gives → rule text (the plugin's PRINCIPLES.md or rules/)",
-                       "through a task with PR REVIEW and the quiz", "never only an auto memory",
+        for phrase in ("A rule or correction the owner gives, a preference included → rule text "
+                       "(the plugin's PRINCIPLES.md or rules/)",
+                       "through a task with PR REVIEW, and the quiz when the rule changes a decision an agent makes",
+                       "never only an auto memory",
                        "every agent, machine and repo that installs the plugin", "tested",
                        "a memory reaches only one machine's main-manager sessions",
-                       "Memory holds only personal facts that must not go into the public repo",
-                       "machine names, personal preferences"):
+                       "Memory holds only personal setup facts that must not go into the public repo: "
+                       "machine names, local paths"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r3)
+        self.assertNotIn("preferences", r3)
 
     def test_s8_has_the_line(self):
         # TELL aa2c0529: a line of its own in the core (S8), not only a Read-when pointer
         s8 = part(read("PRINCIPLES.md"), "## S8. ", "## Talking to the human").splitlines()
-        self.assertIn("- A rule the owner gives → rule text, never only an auto memory (rules/files.md)", s8)
+        self.assertIn("- A rule or correction the owner gives → rule text, never only an auto memory (rules/files.md)", s8)
         when = part(read("PRINCIPLES.md"), "## Read when").splitlines()
         self.assertIn("- An agent_* file, an idea, a doc: `rules/files.md`", when)
+
+    def test_the_glossary_matches_r1(self):
+        # FIX ORDER 1 (b)
+        line = next(l for l in read("GLOSSARY.md").splitlines() if l.startswith("**Requirement doc**:"))
+        self.assertIn("the owner approves it before the flow starts, unless it only writes down his words", line)
