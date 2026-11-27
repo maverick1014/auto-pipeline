@@ -3,12 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>city-one-sidebar · 原型 v1</title>
+<title>city-one-sidebar · 原型 v2</title>
 <link rel="icon" href="data:,">
 <style>
-/* Prototype for requirements/city-one-sidebar.md (owner 2026-11-27). The tokens and the .rail / .lift / .lb / .rrow
-   rules below are copied from bin/agent-city.html; only the place of the lift changes: it becomes the top part of the
-   one left bar. Two views: desktop 1440 and phone 390 (plus "today" for comparison). Demo data only. */
+/* Prototype v2 for requirements/city-one-sidebar.md (owner 2026-11-27; v1 had two blocks, the owner: "the agent list
+   direct inside the lift list design will do. no need split 2"). The tokens and the .rail / .lift / .lb / .rrow rules
+   below are copied from bin/agent-city.html. v2: ONE list on the left, the lift's floor list (its look kept); a floor
+   is a repo; a click on a floor goes there and opens that repo's team tree under its row. Views: desktop 1440 and
+   phone 390, plus "today" for comparison. Demo data only. */
 :root{
   --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
   --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8;
@@ -121,13 +123,24 @@ body{margin:0;background:#C9D2EE;color:var(--ink);font:14px/1.55 var(--round)}
 .lb .lc{display:inline-flex;gap:4px;align-items:center;font:600 11px/1 var(--mono);opacity:.85}
 .lb.gnd{margin-top:4px;border-style:dashed}
 
-/* NEW: the lift as the top part of the one bar. Same look; it sits inside the bar with a 6px inset, keeps at most
-   about half the bar's height (a long building scrolls inside the lift), the team list takes the rest. */
-.rail .lift{flex:none;margin:6px 6px 0;max-height:380px;box-shadow:none;border-radius:12px}
-.rail .lift .fold{color:var(--paper);opacity:.85;width:24px;height:24px}
-.rail .lift .fold:hover{background:rgba(255,255,255,.16);color:var(--paper)}
-.rail .lift-h .arw{margin-left:auto}
-.rail .rail-head{border-top:0;margin-top:4px}
+/* NEW (v2): the lift's floor list IS the left bar. One row per floor (= one repo). The floor in view is the open one:
+   its team tree sits right under its row, inside the same dark list, on the repo's colour bar. The other floors stay one
+   row each (people count, the red "waits on you" count). The whole list scrolls when it is long. */
+.lift.side{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px)}
+.lift-h .arw{margin-left:auto}
+.lift .fold{color:var(--paper);opacity:.85;width:24px;height:24px}
+.lift .fold:hover{background:rgba(255,255,255,.16);color:var(--paper)}
+.lb .ar{font-size:10px;opacity:.7;width:10px;text-align:center}
+.lift .team{margin:0 0 2px 10px;padding:3px 0 3px 3px;border-left:3px solid var(--rc)}
+.lift .rrow{color:var(--paper)}
+.lift .rrow:hover{background:rgba(255,255,255,.1)}
+.lift .rrow[aria-current="true"]{background:var(--paper);color:var(--ink)}
+.lift .tw{color:rgba(255,255,255,.55)}
+.lift .tree ul.kids>li::before{border-top-color:rgba(255,255,255,.3)}
+.lift .tree ul.kids>li::after{border-left-color:rgba(255,255,255,.3)}
+.lift .addl{all:unset;cursor:pointer;display:block;margin:4px 6px 2px 22px;padding:3px 8px;border:1.5px dashed rgba(255,255,255,.35);border-radius:8px;font:600 11.5px/1.4 var(--round);color:rgba(255,255,255,.8)}
+.lift .addl:focus-visible{outline:2px solid var(--focus)}
+.lift .none{margin:2px 6px 2px 22px;font-size:12px;opacity:.7}
 /* TODAY (comparison view only): the lift on its own, top right */
 .today .lift.alone{position:absolute;right:12px;top:96px;z-index:4;width:var(--lift-w);max-height:calc(100% - 160px);transition:right .2s}
 .today .stage.win-open .lift.alone{right:calc(var(--msg-w) + 24px)}
@@ -177,7 +190,7 @@ body{margin:0;background:#C9D2EE;color:var(--ink);font:14px/1.55 var(--round)}
 .phone #btnPick{margin-left:auto}
 .phone .btn{padding:0 10px}
 .phone .rail{left:0;top:0;bottom:0;max-height:none;width:min(300px,84%);border-left:0;border-radius:0 16px 16px 0}
-.phone .rail .lift{max-height:42%}
+.phone .lift.side{left:0;top:0;bottom:0;max-height:none;width:min(300px,84%);border-radius:0 16px 16px 0}
 .phone .stage.drawer-open .win,.phone .stage.drawer-open .floorsign,.phone .stage.drawer-open .proto,.phone .stage.drawer-open .zoomnote{visibility:hidden}
 .phone .floorsign{left:42px!important;transform:none;max-width:calc(100% - 54px)}
 .phone .floorsign .frs{display:none}
@@ -190,7 +203,7 @@ body{margin:0;background:#C9D2EE;color:var(--ink);font:14px/1.55 var(--round)}
 </head>
 <body>
 <div class="mk" role="toolbar" aria-label="原型视图">
-  <h1>一个左侧栏 · 原型 v1</h1>
+  <h1>一个左侧栏 · 原型 v2</h1>
   <div class="views">
     <button type="button" data-view="desk" aria-pressed="true">新 · 电脑 1440</button>
     <button type="button" data-view="phone" aria-pressed="false">新 · 手机 390</button>
@@ -201,21 +214,21 @@ body{margin:0;background:#C9D2EE;color:var(--ink);font:14px/1.55 var(--round)}
 
 <div class="notes">
   <section>
-    <h2>改了什么</h2>
+    <h2>v2 改了什么（按你的意见：不分两块）</h2>
     <ol>
-      <li>右边的电梯搬进左边栏的上半部分：样子不变（深色、当前楼层黄色、人数和等你的红点），右边空出来给办公室。</li>
-      <li>下半部分是原来的在线名单（树），也不变。</li>
-      <li>一个 « 折起整条栏；手机上它是左边的标签，点开同时看到楼层和名单。</li>
-      <li>点一个人：镜头不动、不放大，整层都还在画面里；这个人的名牌变成实心并加圈，右边（手机是底部）打开他的窗口。</li>
+      <li>左边只有一个列表，就是电梯的楼层列表（样子不变：深色、当前楼层黄色、人数和等你的红点）。一层 = 一个 repo。</li>
+      <li>点一层：办公室换到那一层（和电梯一样），这个 repo 的在线名单（树）直接在这一行下面展开；其他楼层各占一行，只显示人数。</li>
+      <li>没有第二块名单，也没有第二个标题；右边空出来给办公室。« 折起整条栏。</li>
+      <li>点一个人：镜头不动、不放大；名牌变实心并加圈，窗口打开（这部分已做好）。</li>
     </ol>
   </section>
   <section>
     <h2>请看这几处</h2>
     <ol>
-      <li>楼层多时，电梯最多占栏的一半，自己滚动；名单占剩下的。</li>
-      <li>手机上选了楼层，栏自动收起，直接看到那一层（今天选人时已经这样）。</li>
-      <li>栏折起时：顶部楼层牌还显示当前楼层，标题栏的「选楼层」照常能换层。</li>
-      <li>手动放大后再点人：保持你放大的样子。</li>
+      <li>一次只展开当前这一层；在楼外面（G）时全部收起。</li>
+      <li>手机：栏是左边的标签。选楼层后栏不收起（这样能看到名单），选了人才收起（和今天一样）。</li>
+      <li>这个 repo 的「＋ 加 agent」放在展开的名单最后一行。</li>
+      <li>栏折起时：顶部楼层牌照常显示当前楼层，标题栏的「选楼层」照常能换层。</li>
     </ol>
   </section>
 </div>
@@ -235,11 +248,11 @@ body{margin:0;background:#C9D2EE;color:var(--ink);font:14px/1.55 var(--round)}
         <div class="floorsign" id="floorSign"></div>
         <div class="zoomnote" id="zoomnote"></div>
         <div class="scrim" id="scrim" hidden></div>
-        <aside class="rail" id="rail" aria-label="楼层和在线">
-          <nav class="lift" id="lift" aria-label="电梯"></nav>
-          <div class="rail-head"><span>在线</span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold-today" aria-label="折起名单" hidden>«</button></div>
+        <aside class="rail" id="rail" aria-label="在线" hidden>
+          <div class="rail-head"><span>在线</span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold-today" aria-label="折起名单">«</button></div>
           <div class="rail-list" id="rail-list"></div>
         </aside>
+        <nav class="lift side" id="lift" aria-label="电梯和在线"></nav>
         <nav class="lift alone" id="liftAlone" aria-label="电梯" hidden></nav>
         <button type="button" class="tab rail-tab" id="rail-tab" aria-controls="rail" hidden><span>›</span><span class="v" id="rail-tab-t"></span></button>
         <div class="proto">原型 · 模拟数据</div>
@@ -288,14 +301,18 @@ const personOf = id => { for (const f of FLOORS) { const p = f.people.find(q => 
 const phone = () => S.view === 'phone';
 
 /* the lift block: the same buttons as renderLift() today, top floor first, then G (the street) */
-function liftHtml(inRail){
+function liftHtml(side){
   let h = '<div class="lift-h"><span>电梯</span><span class="arw">' + FLOORS.length + ' 层</span>' +
-    (inRail ? '<button type="button" class="fold" id="rail-fold" aria-label="折起左边栏">«</button>' : '') + '</div>';
+    (side ? '<button type="button" class="fold" id="rail-fold" aria-label="折起左边栏">«</button>' : '') + '</div>';
   for (const f of FLOORS) {
-    const wait = f.people.filter(p => p.wait).length;
-    h += '<button class="lb" type="button" data-floor="' + f.id + '" aria-current="' + (S.floor === f.id) + '" aria-label="' + esc(f.no + ' ' + f.name) + '">' +
+    const wait = f.people.filter(p => p.wait).length, open = side && S.floor === f.id;
+    h += '<button class="lb" type="button" data-floor="' + f.id + '" aria-current="' + (S.floor === f.id) + '"' + (side ? ' aria-expanded="' + open + '"' : '') +
+      ' aria-label="' + esc(f.no + ' ' + f.name) + '">' +
       '<span class="no">' + f.no + '</span><span class="ln">' + esc(f.name) + '</span><span class="lc">' + f.people.length +
-      (wait ? '<span class="you">' + wait + '</span>' : '') + '</span></button>';
+      (wait ? '<span class="you">' + wait + '</span>' : '') + (side ? '<span class="ar">' + (open ? '▾' : '▸') + '</span>' : '') + '</span></button>';
+    // v2: the floor in view opens its repo's team right under its row
+    if (open) h += '<div class="team" style="--rc:' + f.color + '">' + (f.people.length ? '<ul class="rrows tree">' + treeHtml(f, null) + '</ul>' : '<p class="none">没人在线</p>') +
+      '<button type="button" class="addl">＋ 加 agent</button></div>';
   }
   h += '<button class="lb gnd" type="button" data-floor="out" aria-current="' + (S.floor === 'out') + '"><span class="no">G</span><span class="ln">楼外面</span><span class="lc"></span></button>';
   return h;
@@ -348,14 +365,14 @@ function render(){
   const all = FLOORS.reduce((n, f) => n + f.people.length, 0), wait = FLOORS.reduce((n, f) => n + f.people.filter(p => p.wait).length, 0);
   $('#signSub').textContent = FLOORS.length + ' 层办公楼';
   $('#stats').innerHTML = '<span class="stat"><i style="background:#4D7CFE"></i>开发中 <b>4</b></span><span class="stat wait">等你 <b>' + wait + '</b></span><span class="stat"><i style="background:#2FB57A"></i>休息 <b>1</b></span>';
-  // the lift: inside the bar (new) or alone at the right (today)
-  $('#lift').hidden = today; $('#liftAlone').hidden = !today;
-  $('#rail-fold-today').hidden = !today;
-  if (today) $('#liftAlone').innerHTML = liftHtml(false); else $('#lift').innerHTML = liftHtml(true);
+  // new: ONE bar, the lift's list with the open floor's team; today: the team rail left + the lift alone at the right
+  $('#lift').hidden = today || !S.railOpen; $('#rail').hidden = !today || !S.railOpen; $('#liftAlone').hidden = !today;
+  if (today) { $('#liftAlone').innerHTML = liftHtml(false); $('#rail-list').innerHTML = railHtml(); }
+  else $('#lift').innerHTML = liftHtml(true);
   $('#rail-n').textContent = all; $('#rail-you').hidden = !wait; $('#rail-you').textContent = wait;
-  $('#rail-list').innerHTML = railHtml();
-  $('#rail').hidden = !S.railOpen; $('#rail-tab').hidden = S.railOpen;
-  $('#rail-tab-t').textContent = '在线 ' + all;
+  $('#rail-tab').hidden = S.railOpen;
+  const fl0 = floorOf(S.floor);
+  $('#rail-tab-t').textContent = today ? '在线 ' + all : (fl0 ? fl0.no + ' · ' : '') + '在线 ' + all;
   $('#scrim').hidden = !(phone() && S.railOpen);
   stage.classList.toggle('has-rail', S.railOpen && !phone());
   stage.classList.toggle('rail-folded', !S.railOpen);
@@ -384,7 +401,7 @@ document.addEventListener('click', e => {
     for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', b === v); render(); fit(); return; }
   const fl = e.target.closest('[data-floor]');
   if (fl) { S.floor = fl.dataset.floor; S.zoom = 1; S.sel = null; S.winOpen = false;
-    if (phone()) S.railOpen = false;   // phone: the bar folds, the floor shows
+    // v2: the bar stays open on a phone too: the floor's team opens under its row (a person pick folds it)
     render(); return; }
   const pr = e.target.closest('[data-person]');
   if (pr) { const [f] = personOf(pr.dataset.person);
@@ -399,6 +416,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('#zout')) { S.zoom = Math.max(.6, S.zoom / 1.25); render(); return; }
   if (e.target.closest('#zfit')) { S.zoom = 1; render(); return; }
   if (e.target.closest('#btnPick')) { S.railOpen = true; render(); return; }
+  if (e.target.closest('.addl')) { note('（原型）这里打开「加 agent」，和今天一样'); return; }
 });
 /* the desktop frame is 1440 wide: shrink it to the window (CSS zoom keeps clicks exact) */
 function fit(){
