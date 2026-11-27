@@ -7,6 +7,8 @@ R8. Check blocks
 - Fast lane (built by a `<task> Deputy`, no task manager): the main manager is the reviewer. Its PR REVIEW line (`--by` its name) counts with no launched reviewer; no FLOW CHECK or UI CHECK is asked
 - Fast lane, a reviewer (CORE REVIEW) only when the diff touches money, permissions, deleting data, publish, or the start or hook scripts
 - It asks: does it do what was asked, nothing else; are the edge list lines covered; is no check deleted; no secret; its cost follows the diff size, one more reason for small tasks
+- A fix round fixes blockers only; a should-fix item becomes a follow-up (`agent-file.sh idea add`), not a fix order (owner 2026-11-27, weekly limit)
+- A docs-only diff (only `.md` files, no `bin/` or `tests/` change) is reviewed at opus-5.5:medium: the one downgrade of the Reviewer model setting
 - A run or browser check (FLOW CHECK, UI CHECK) comes on top only when what the user sees or does changed: only the approved items, a 15-minute time box (`verify_box_min`), extra finds go to the ideas file
 - Owner 2026-11-25: "only do the necessary thing when needed, dont do extra thing. and dont do less thing"
 - No levels: each check is a block with a trigger; a task runs the blocks whose trigger fires, nothing else
