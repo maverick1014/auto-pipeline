@@ -91,11 +91,8 @@ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--roun
 .fold:hover{background:var(--panel-2);color:var(--ink)}
 .fold:focus-visible{outline:2px solid var(--focus)}
 .rc{width:10px;height:10px;border-radius:50%;background:var(--rc);flex:none;display:inline-block}
-.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
-.rail-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-bottom:1.5px solid var(--line);font-weight:700;font-size:13px}
-.rail-head .n{font:600 12px/1 var(--mono);color:var(--ink-3)}
-.rail-head .fold{margin-left:auto}
-.rail-list{overflow:auto;padding:4px 4px 8px}
+.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px);display:flex;flex-direction:column;gap:6px;background:var(--ink);color:var(--paper);border-radius:16px;padding:8px;box-shadow:0 4px 0 rgba(42,43,69,.25);box-sizing:border-box;overflow-y:auto}
+.rail-list{display:flex;flex-direction:column;gap:6px;flex:none}
 .grp-h{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:6px 6px 3px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
 .grp-h:focus-visible{outline:2px solid var(--focus);border-radius:6px}
 .grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
@@ -354,9 +351,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .askcard.done{border-color:var(--line)}
 
 /* ---------- the office building (city-office; approved look: mock/city-office-mock.html v5) ----------
-   The street and one floor are drawn on the canvas; around them: the floor sign (top middle), the lift panel (top
-   right), the tags of the outside view, the floor picker, the renovation boxes. */
-.stage{--lift-w:168px}
+   The street and one floor are drawn on the canvas; around them: the floor sign (top middle), the tags of the outside view, the floor picker, the renovation boxes. */
 .proto{position:absolute;left:calc(var(--rail-w) + 24px);bottom:12px;max-width:calc(100% - var(--rail-w) - 220px);z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;box-shadow:0 2px 0 rgba(42,43,69,.18);pointer-events:none;white-space:normal}
 .stage.rail-folded .proto{left:42px}
 .stage.rail-none .proto{left:12px}
@@ -388,10 +383,12 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .fedit:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
 .follow{top:58px}
 
-/* lift buttons */
-.lift{position:absolute;right:12px;top:96px;z-index:4;width:var(--lift-w);display:flex;flex-direction:column;background:var(--ink);color:var(--paper);border-radius:16px;padding:8px;gap:6px;box-shadow:0 4px 0 rgba(42,43,69,.25);transition:right .2s;max-height:calc(100% - 160px);overflow-y:auto;box-sizing:border-box}
-.lift-h{display:flex;align-items:center;justify-content:space-between;font:700 12px/1 var(--round);padding:2px 4px 4px;opacity:.85}
-.lift-h .arw{font:700 11px/1 var(--mono);opacity:.7}
+/* the lift's floor list IS the left bar (city-one-sidebar, approved look: mock v2): .lift-h, one .lb per floor, the open floor's .team under its row */
+.lift-h{flex:none;display:flex;align-items:center;justify-content:space-between;gap:6px;font:700 12px/1 var(--round);padding:2px 4px 4px}
+.lift-h>span{opacity:.85}
+.lift-h .arw{font:700 11px/1 var(--mono);opacity:.7;margin-left:auto}
+.rail .fold{color:var(--paper);opacity:.85;width:24px;height:24px}
+.rail .fold:hover{background:rgba(255,255,255,.16);color:var(--paper)}
 .lb{all:unset;cursor:pointer;box-sizing:border-box;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.14)}
 .lb:hover{background:rgba(255,255,255,.16)}
 .lb:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
@@ -400,8 +397,27 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .lb .ln{min-width:0;font:600 11.5px/1.2 var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lb .lc{display:inline-flex;gap:4px;align-items:center;font:600 11px/1 var(--mono);opacity:.85}
 .lb.gnd{margin-top:4px;border-style:dashed}
-.stage.win-open .lift{right:calc(var(--msg-w) + 24px)}
-.stage.win-tab-open .lift{right:52px}
+.lb .ar{font-size:10px;opacity:.7;width:10px;text-align:center}
+.rail .team{margin:0 0 2px 10px;padding:3px 0 3px 3px;border-left:3px solid var(--rc)}
+.rail .rrow{color:var(--paper)}
+.rail .rrow:hover{background:rgba(255,255,255,.1)}
+.rail .rrow[aria-current="true"]{background:var(--paper);color:var(--ink)}
+.rail .tw{color:rgba(255,255,255,.55)}
+.rail .tree ul.kids>li::before{border-top-color:rgba(255,255,255,.3)}
+.rail .tree ul.kids>li::after{border-left-color:rgba(255,255,255,.3)}
+.rail .rrow .more{color:var(--paper);background:transparent;border-color:rgba(255,255,255,.3)}
+.rail .rrow .who{color:var(--paper);border-color:rgba(255,255,255,.4)}
+.rail .rrow[aria-current="true"] .more,.rail .rrow[aria-current="true"] .who{color:var(--ink)}
+.rail .rest-t{color:rgba(255,255,255,.8)}
+.rail .rail-none{color:rgba(255,255,255,.7);margin:2px 6px 2px 22px}
+.rail .addl{display:flex;align-items:center;gap:6px;margin:4px 6px 2px 14px;padding:2px 8px 2px 4px;border:1.5px dashed rgba(255,255,255,.35);border-radius:8px;font:600 11.5px/1.4 var(--round);color:rgba(255,255,255,.8)}
+.rail .addl[data-add]{cursor:pointer}
+.rail .add-i{margin:0;border-color:transparent;color:var(--paper)}
+.rail .add-i:hover{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:var(--paper)}
+.rail .add-i[aria-disabled="true"]{color:rgba(255,255,255,.5);border-color:transparent}
+.rail .add-line{background:rgba(255,255,255,.1);color:var(--paper)}
+.rail .spin{border-color:rgba(255,255,255,.3);border-top-color:var(--butter)}
+.rail .addbox.cmd{background:rgba(255,255,255,.1);color:var(--paper)}
 
 /* the outside view: a tag on every floor, the door hint */
 .ftag{all:unset;position:absolute;left:0;top:0;pointer-events:auto;cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1.5px solid var(--ink);border-radius:10px;padding:4px 9px 4px 5px;font:600 12px/1.2 var(--round);box-shadow:0 2px 0 rgba(42,43,69,.2);white-space:nowrap;will-change:transform;color:var(--ink)}
@@ -459,7 +475,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .dp-msg.err{background:var(--ask-bg);color:var(--ask-ink)}
 .dp-rules summary{cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-2)}
 .dp-rules ul{margin:6px 0 0;padding-left:18px;display:grid;gap:5px;font-size:12px;color:var(--ink-2)}
-.stage.editing .rail,.stage.editing .rail-tab,.stage.editing .lift,.stage.editing .floorsign,.stage.editing .proto,.stage.editing .win,.stage.editing .win-tab,.stage.editing .ask-panel,.stage.editing .follow,.stage.editing .dpop,.stage.editing .ov,.stage.editing .tags{display:none!important}
+.stage.editing .rail,.stage.editing .rail-tab,.stage.editing .floorsign,.stage.editing .proto,.stage.editing .win,.stage.editing .win-tab,.stage.editing .ask-panel,.stage.editing .follow,.stage.editing .dpop,.stage.editing .ov,.stage.editing .tags{display:none!important}
 .stage.editing .cam{right:auto;left:12px;bottom:12px}
 .dp-sw{display:flex;flex-wrap:wrap;gap:6px}.dp-sw .sw{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-2)}.dp-sw .sw i{width:14px;height:14px;border-radius:4px;border:1px solid rgba(0,0,0,.15);display:inline-block}
 .floorsign .frs{cursor:pointer}
@@ -515,16 +531,11 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
 .ex.bye{border-style:solid;border-color:var(--ink);color:var(--ink)}
 
 @media (max-width:720px){
-  .stage{--lift-w:64px}
-  .lift{top:12px;max-height:calc(100% - 96px)}
   .proto{left:12px!important;max-width:calc(100% - 196px)}
   .stage.win-open .proto{display:none}
   .floorsign,.dpop,.follow{left:42px!important;transform:none;max-width:calc(100% - 128px)}
-  .lift .ln,.lift-h span:first-child{display:none}
-  .lb{grid-template-columns:1fr;justify-items:center;gap:3px;padding:6px 4px}
-  .lb .lc{font-size:10px}
   .floorsign .frs{display:none}
-  .stage.win-open .lift,.stage.win-open .cam{right:12px}
+  .stage.win-open .cam{right:12px}
   .stage.win-open .cam{display:none}
 }
 @media (max-width:520px){
@@ -535,7 +546,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .bar{gap:8px}
   #btnPick,#logbtn{padding:0 10px}
 }
-@media (prefers-reduced-motion:reduce){ .doorhint{animation:none} .lift{transition:none} }
+@media (prefers-reduced-motion:reduce){ .doorhint{animation:none} }
 
 /* the window: click a person / building / the governor, or open 动态 -- V1 (city-ux2 v2, owner
    2026-09-29): a right-docked message panel, one person's own (the left rail, V1, is the team list; no
@@ -583,7 +594,7 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
   .acct~#logbtn,#logbtn~.acct{margin-left:0}
   .add-i{width:28px;height:28px;font-size:17px}
   .rail{left:0;top:0;bottom:0;max-height:none;width:min(300px,84%);border-left:0;border-radius:0 16px 16px 0}
-  .stage.drawer-open .win,.stage.drawer-open .ask-panel,.stage.drawer-open .follow,.stage.drawer-open .lift,.stage.drawer-open .floorsign,.stage.drawer-open .proto{visibility:hidden}
+  .stage.drawer-open .win,.stage.drawer-open .ask-panel,.stage.drawer-open .follow,.stage.drawer-open .floorsign,.stage.drawer-open .proto{visibility:hidden}
   .ask-panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:72%}
   /* V1 (city-ux2 v2): the message panel is a bottom sheet on a phone; its folded tab sits centred at
      the bottom edge, horizontal (the rail's own tab stays vertical, on the left edge). */
@@ -620,14 +631,13 @@ select{font:600 13px/1 var(--round);min-height:36px;border:1.5px solid var(--lin
         <div class="ov" id="ov"></div>
         <div class="tags" id="tags"></div>
         <div class="floorsign" id="floorSign"></div>
-        <aside class="rail" id="rail" data-t-aria="rail.title">
-          <div class="rail-head"><span data-t="rail.title"></span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold" data-t-aria="fold.rail">«</button></div>
+        <aside class="rail" id="rail" data-t-aria="office.liftAria">
+          <div class="lift-h"><span data-t="office.lift"></span><span class="arw" id="rail-n"></span><button type="button" class="fold" id="rail-fold" data-t-aria="fold.rail">«</button></div>
           <div class="rail-list" id="rail-list"></div>
         </aside>
         <button type="button" class="tab rail-tab" id="rail-tab" aria-controls="rail" hidden><span>›</span><span class="v" id="rail-tab-t"></span><span class="you" id="rail-tab-you" hidden></span></button>
         <div class="follow" id="follow" role="status" hidden><span id="follow-t"></span><kbd>Esc</kbd><button type="button" id="follow-stop" data-t="follow.stop"></button></div>
         <div class="proto" id="proto" data-t="proto.banner"></div>
-        <nav class="lift" id="lift" data-t-aria="office.liftAria"></nav>
         <div class="cam">
           <button class="btn" id="zin" type="button" data-t-aria="btn.zoomIn"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
           <button class="btn" id="zout" type="button" data-t-aria="btn.zoomOut"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
@@ -3713,18 +3723,50 @@ function railHtml(groups, selId, closed, openRest, adds, shut){
     if (isClosed && you) html += '<span class="you">' + you + '</span>';
     html += '</button>' + (g.add ? addIconHtml(g, st) : '') + '</div>';
     if (g.add) html += addHtml(g, st);   // shows on a folded group too: an answer is never hidden by a fold
-    if (!isClosed) {
-      if (!g.rows.length) html += '<p class="rail-none">' + esc(i18n('rail.none')) + '</p>';
-      html += '<ul class="rrows tree">' + railTreeHtml(active, grp, shut) + '</ul>';
-      if (resting.length) {
-        const open = openRest.has(g.terr);
-        html += '<button type="button" class="rest-t" data-rest="' + esc(g.terr) + '" aria-expanded="' + open + '">' +
-          esc(i18n('rail.rest', { n: resting.length })) + '</button>';
-        if (open) html += '<ul class="rrows">' + resting.map(r => '<li>' + railRowHtml(r, grp) + '</li>').join('') + '</ul>';
-      }
-    }
+    if (!isClosed) html += railBodyHtml(g, grp, active, resting, openRest, shut);
     html += '</section>';
   }
+  return html;
+}
+/* city-one-sidebar (sim): railBodyHtml(g, grp, active, resting, openRest, shut) -> what an open group shows under its
+   head: the quiet line when it has no row, the tree, the resting toggle and (open) the resting rows. railHtml and
+   sideHtml both draw it. */
+function railBodyHtml(g, grp, active, resting, openRest, shut){
+  let html = '';
+  if (!g.rows.length) html += '<p class="rail-none">' + esc(i18n('rail.none')) + '</p>';
+  html += '<ul class="rrows tree">' + railTreeHtml(active, grp, shut) + '</ul>';
+  if (resting.length) {
+    const open = openRest.has(g.terr);
+    html += '<button type="button" class="rest-t" data-rest="' + esc(g.terr) + '" aria-expanded="' + open + '">' +
+      esc(i18n('rail.rest', { n: resting.length })) + '</button>';
+    if (open) html += '<ul class="rrows">' + resting.map(r => '<li>' + railRowHtml(r, grp) + '</li>').join('') + '</ul>';
+  }
+  return html;
+}
+/* city-one-sidebar (sim): sideHtml(groups, selId, openTerr, outside, openRest, adds, shut) -> the HTML of #rail-list,
+   the lift's floor list as the one left bar: one row per floor (groups = railGroups(), top floor first), then G (the
+   street). The floor in view (openTerr) is the open one: its team (railBodyHtml, then the add control as the last line)
+   sits right under its row. outside (the street) or openTerr null: no team at all. */
+function sideHtml(groups, selId, openTerr, outside, openRest, adds, shut){
+  let html = '';
+  shut = shut || new Set();
+  for (const g of groups) {
+    const open = g.terr === openTerr, tag = floorTag(g.terr) || { floor: '', people: g.rows.length, wait: 0 };
+    const t = terrOf(g.terr), name = t ? t.name : g.name;
+    html += '<button class="lb" type="button" data-floor="' + esc(g.terr) + '" aria-current="' + open + '" aria-expanded="' + open +
+      '" aria-label="' + esc(tag.floor + ' ' + name) + '"><span class="no">' + esc(tag.floor) + '</span><span class="ln">' + esc(name) +
+      '</span><span class="lc">' + tag.people + (tag.wait ? '<span class="you">' + tag.wait + '</span>' : '') +
+      '<span class="ar">' + (open ? '▾' : '▸') + '</span></span></button>';
+    if (!open) continue;
+    const grp = { color: g.color, selId }, st = adds ? adds.get(g.terr) : undefined;
+    html += '<div class="team" data-terr="' + esc(g.terr) + '" style="--rc:' + g.color + '">' +
+      railBodyHtml(g, grp, g.rows.filter(r => !r.rest), g.rows.filter(r => r.rest), openRest, shut);
+    if (g.add) html += '<div class="addl"' + (st && st.s ? '' : ' data-add="' + esc(g.terr) + '"') + '>' + addIconHtml(g, st) +
+      '<span>' + esc(i18n('add.tip')) + '</span></div>' + addHtml(g, st);
+    html += '</div>';
+  }
+  html += '<button class="lb gnd" type="button" data-out="1" aria-current="' + !!outside + '" aria-label="' + esc(i18n('office.outside')) +
+    '"><span class="no">G</span><span class="ln">' + esc(i18n('office.outside')) + '</span><span class="lc"></span></button>';
   return html;
 }
 /* cloud-polish Q5 (sim): addIconHtml(group, st) -> the control at the right end of the repo's name row (approved
@@ -4695,7 +4737,7 @@ function panelBlocks(){
   const now = performance.now(), sk = selected ? selected.t + ':' + (selected.id || selected.terr || '') : '';
   if (now - panelBox.at < 250 && panelBox.sel === sk) return panelBox.list;   // read again when the selection changes (its window opens or closes)
   const r0 = ovRoot.getBoundingClientRect(), list = [];
-  for (const el of document.querySelectorAll('#floorSign, #rail, #rail-tab, #follow, #proto, #lift, .cam button, #win, #win-tab, #ask, #dPop')) {
+  for (const el of document.querySelectorAll('#floorSign, #rail, #rail-tab, #follow, #proto, .cam button, #win, #win-tab, #ask, #dPop')) {
     if (el.hidden) continue;
     const r = el.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) list.push([r.left - r0.left, r.top - r0.top, r.right - r0.left, r.bottom - r0.top]);
@@ -4829,7 +4871,7 @@ function updateCamera(dt){
   camera.aspect = W / H;
   // the view offset eases toward the middle of the map that is free between the rail and the message panel
   refreshPanelBoxes(performance.now());
-  const centre = freeCentre(W, H, railBoxNow, winBoxNow), look = liftBoxNow ? freeCentre(W, H, railBoxNow, liftBoxNow) : centre;
+  const centre = freeCentre(W, H, railBoxNow, winBoxNow), look = centre;
   viewShiftX += (look[0] - W / 2 - viewShiftX) * .2;
   viewShiftY += (look[1] - H / 2 - viewShiftY) * .2;
   if (Math.abs(viewShiftX) < .5 && Math.abs(viewShiftY) < .5) camera.clearViewOffset();
@@ -4837,7 +4879,7 @@ function updateCamera(dt){
   camera.updateProjectionMatrix();
   return centre;
 }
-let panelBoxesAt = -Infinity, railBoxNow = null, winBoxNow = null, liftBoxNow = null;
+let panelBoxesAt = -Infinity, railBoxNow = null, winBoxNow = null;
 function refreshPanelBoxes(now){
   if (now - panelBoxesAt < 200) return;
   panelBoxesAt = now;
@@ -4856,13 +4898,6 @@ function refreshPanelBoxes(now){
   if (wEl) {
     const r = wEl.getBoundingClientRect();
     winBoxNow = { left: r.left - sr.left, top: r.top - sr.top, right: r.right - sr.left, bottom: r.bottom - sr.top };
-  }
-  // the lift panel (under the floor sign row) is the right edge of the map the camera centres on
-  const liftEl = $('#lift');
-  liftBoxNow = null;
-  if (!phone && liftEl) {
-    const lr = liftEl.getBoundingClientRect(), left = lr.left - sr.left;
-    if (!winBoxNow || left < winBoxNow.left) liftBoxNow = { left, top:0, right:sr.width, bottom:sr.height };
   }
 }
 function resize(){
@@ -5003,19 +5038,8 @@ function maybeAsk(){
   askedHere.add(cur); askRenovate(cur);
 }
 
-/* ---------- the lift panel and the floor sign ---------- */
-let lastLift = '', lastSign = '';
-function renderLift(){
-  const ts = map.territories;
-  let h = '<div class="lift-h"><span>' + esc(i18n('office.lift')) + '</span><span class="arw">' + ts.length + ' ' + esc(i18n('office.floors')) + '</span></div>';
-  for (const t of ts) {
-    const tag = floorTag(t.id);
-    h += '<button class="lb" type="button" data-floor="' + esc(t.id) + '" aria-current="' + (view === 'inside' && t.id === cur) + '" aria-label="' + esc(tag.floor + ' ' + t.name) + '">' +
-      '<span class="no">' + esc(tag.floor) + '</span><span class="ln">' + esc(t.name) + '</span><span class="lc">' + tag.people + (tag.wait ? '<span class="you">' + tag.wait + '</span>' : '') + '</span></button>';
-  }
-  h += '<button class="lb gnd" type="button" data-out="1" aria-current="' + (view === 'outside') + '" aria-label="' + esc(i18n('office.outside')) + '"><span class="no">G</span><span class="ln">' + esc(i18n('office.outside')) + '</span><span class="lc"></span></button>';
-  if (h !== lastLift) { lastLift = h; $('#lift').innerHTML = h; }
-}
+/* ---------- the floor sign ---------- */
+let lastSign = '';
 function renderFloorSign(){
   const el = $('#floorSign');
   let h, title = '';
@@ -5033,7 +5057,7 @@ function renderFloorSign(){
 }
 /* what a refresh of the office part does (every 0.25 s, and after any change of floor) */
 function renderOffice(){
-  renderLift(); renderFloorSign();
+  renderRail(); renderFloorSign();
   if (view === 'outside') refreshOutside();
   stage.classList.toggle('outside', view === 'outside');
   $('#signSub').textContent = i18n('office.signSub', { n:map.territories.length });
@@ -6193,20 +6217,19 @@ function setRailFolded(v){
   renderRail();
 }
 let lastRail = '';
-/* renderRail():#rail-list from railGroups()/railHtml() (only touches the DOM when the html actually
-   changed, through lastRail); #rail-n / #rail-you (+ the tab's own badges) from railCount(); #rail /
+/* renderRail():#rail-list from railGroups()/sideHtml() (only touches the DOM when the html actually
+   changed, through lastRail); #rail-n = the floors, the tab's text and badge from railCount(); #rail /
    #rail-tab show by railFolded, both hidden when railGroups() is empty. On a phone, the rail unfolded is
    the drawer open -- the stage gets .drawer-open while it covers the win/ask panels. renderPanel() calls
    this. */
 function renderRail(){
   const groups = railGroups(), sel = selKey(selected);
-  const html = railHtml(groups, sel, railClosed, railRestOpen, addState, railShut);   // city-rail-tree P4: + the folded rows
+  const html = sideHtml(groups, sel, view === 'inside' ? cur : null, view === 'outside', railRestOpen, addState, railShut);
   if (html !== lastRail) { lastRail = html; $('#rail-list').innerHTML = html; }
   const counts = railCount(groups);
-  $('#rail-n').textContent = i18n('rail.count', { n: counts.active });
-  $('#rail-you').hidden = !counts.you;
-  $('#rail-you').textContent = counts.you;
-  $('#rail-tab-t').textContent = i18n('rail.tab', { n: counts.active });
+  $('#rail-n').textContent = map.territories.length + ' ' + i18n('office.floors');
+  const tag = view === 'inside' && cur ? floorTag(cur) : null;
+  $('#rail-tab-t').textContent = (tag ? tag.floor + ' · ' : '') + i18n('rail.tab', { n: counts.active });
   $('#rail-tab-you').hidden = !counts.you;
   $('#rail-tab-you').textContent = counts.you;
   const has = groups.length > 0, shown = has && !railFolded;
@@ -6244,6 +6267,9 @@ $('#rail-list').addEventListener('click', e => {
     renderRail();
     return;
   }
+  // city-one-sidebar: a floor row goes to that floor (or the street); it never folds the bar, on a phone too
+  const fl = e.target.closest('[data-floor], [data-out]');
+  if (fl) { stopFollow(); if (fl.dataset.out) goOutside(); else goFloor(fl.dataset.floor); return; }
   const addBtn = e.target.closest('[data-add]');
   if (addBtn) { addAgent(addBtn.dataset.add, false); return; }
   const goBtn = e.target.closest('[data-add-go]');
@@ -6872,7 +6898,7 @@ function endPointer(e){
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 stage.addEventListener('wheel', e => {
-  if (e.target.closest('.win') || e.target.closest('.ask-panel') || e.target.closest('.rail') || e.target.closest('.lift') || e.target.closest('.sheet-bg') || e.target.closest('.dpop') || e.target.closest('.ed-left') || e.target.closest('.ed-right') || e.target.closest('.ed-top')) return;
+  if (e.target.closest('.win') || e.target.closest('.ask-panel') || e.target.closest('.rail') || e.target.closest('.sheet-bg') || e.target.closest('.dpop') || e.target.closest('.ed-left') || e.target.closest('.ed-right') || e.target.closest('.ed-top')) return;
   e.preventDefault();
   camMove = null;
   const m = wheelMove(e, H);
@@ -6883,11 +6909,6 @@ stage.addEventListener('wheel', e => {
 let gestureStartDist = null;   // Safari's own pinch
 stage.addEventListener('gesturestart', e => { e.preventDefault(); gestureStartDist = cam.dist; });
 stage.addEventListener('gesturechange', e => { e.preventDefault(); if (gestureStartDist == null) gestureStartDist = cam.dist; zoomTo(gestureStartDist / e.scale); });
-$('#lift').addEventListener('click', e => {
-  const b = e.target.closest('.lb'); if (!b) return;
-  stopFollow();
-  if (b.dataset.out) goOutside(); else goFloor(b.dataset.floor);
-});
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (!$('#pickBg').hidden) closePicker();
