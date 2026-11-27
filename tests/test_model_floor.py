@@ -191,7 +191,7 @@ class TestRuleText(unittest.TestCase):
         text = self.read("PRINCIPLES.md")
         w17 = text[text.index("## W17."):text.index("## Read when")]
         self.assertIn("MODEL OK", w17)
-        self.assertRegex(w17, r"never copied|read it now|current")
+        self.assertRegex(w17, r"sources, not start text")
 
     def test_the_hook_is_registered(self):
         with open(os.path.join(ROOT, "hooks", "hooks.json")) as fh:

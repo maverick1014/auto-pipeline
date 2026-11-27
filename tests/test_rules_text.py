@@ -1668,6 +1668,7 @@ class TestPrinciplesR8(unittest.TestCase):
                  "GATE PASS", "GATE REFUSED", "CHECK PASS", "CHECK FAIL", "MERGE PASS", "MERGE FAIL",
                  "WATCH SIGNAL", "WATCH STALL", "WATCH LOST", "WATCH ROOM", "AUTO CLEAR",
                  "MODE MISMATCH",                                               # mode-match, W16
+                 "MODEL OK",                                                    # model-floor: the owner's record, W17
                  "OWNER WORDS"}                                                 # approval-design: the gate's stored pair lines
         unknown = sorted(n for n in found if n not in NAMES and n not in extra)
         self.assertEqual(unknown, [], "names in PRINCIPLES.md that are no block: %s" % unknown)
@@ -2458,7 +2459,9 @@ class TestCityHooks(unittest.TestCase):
                         # check-blocks: the board warning hook, tests/test_agent_board.py
                         and "agent-board-warn.sh" not in json.dumps(e)
                         # session-cleanup: the SessionEnd cleanup hook, tests/test_session_cleanup.py
-                        and "agent-session-end.sh" not in json.dumps(e)]
+                        and "agent-session-end.sh" not in json.dumps(e)
+                        # model-floor: the model change hook, tests/test_model_floor.py
+                        and "agent_model.py" not in json.dumps(e)]
                 for event, entries in hooks.items()}
 
     # Interaction (tests/test_agent_city_interact.py): PermissionRequest also
