@@ -378,6 +378,19 @@
    "p85": 84,
    "live_small": 44,
    "live_big": 41
+  },
+  {
+   "date": "2026-11-27",
+   "tasks": 236,
+   "n": 226,
+   "winner": "fit",
+   "work_bias": -0.08,
+   "work_spread": 1.0,
+   "end_bias": 0.22,
+   "end_spread": 1.05,
+   "p85": 84,
+   "live_small": 44,
+   "live_big": 41
   }
  ],
  "checked_date": "2026-11-27"
