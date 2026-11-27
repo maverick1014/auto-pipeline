@@ -340,7 +340,7 @@ def list_terminals(env, path):
     if not isinstance(terms, list):
         return []
     return [t for t in terms if isinstance(t, dict) and t.get("handle")
-            and t.get("connected") is not False and t.get("orphaned") is not True]
+            and t.get("connected") is not False and (t.get("orphaned") is not True or t.get("connected") is True)]
 
 
 def locate(ctx, target):
