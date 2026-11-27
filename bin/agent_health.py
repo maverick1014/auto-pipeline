@@ -267,21 +267,38 @@ def busy_paths():
     return text, cwds
 
 
+def spellings(path):
+    """The path as given and as the system reports it (lsof and ps show /private/var for /var on macOS)."""
+    out = [path]
+    real = os.path.realpath(path)
+    if real != path:
+        out.append(real)
+    return out
+
+
+def run2_owner(path):
+    """For a run2_* folder: "none" (no readable marker: owner unknown), "live" or "dead" (the marker's pid)."""
+    try:
+        with open(os.path.join(path, ".run2_owner")) as fh:
+            pid = int(json.load(fh)["pid"])
+        if pid <= 0:
+            return "none"
+        os.kill(pid, 0)
+        return "live"
+    except ProcessLookupError:
+        return "dead"
+    except PermissionError:
+        return "live"                     # the process exists, it is not ours to signal
+    except (OSError, ValueError, KeyError, TypeError):
+        return "none"
+
+
 def in_use(path, busy):
     text, cwds = busy
-    if path in text:
-        return True
-    if any(c == path or c.startswith(path + "/") for c in cwds):
-        return True
-    try:                                          # run2_*: the marker names the run's pid
-        with open(os.path.join(path, ".run2_owner")) as fh:
-            pid = json.load(fh)["pid"]
-        os.kill(int(pid), 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
+    for p in spellings(path):
+        if p in text or any(c == p or c.startswith(p + "/") for c in cwds):
+            return True
+    return False
 
 
 def sweep(tmpdir=None, apply=False, hours=SWEEP_HOURS):
@@ -301,6 +318,13 @@ def sweep(tmpdir=None, apply=False, hours=SWEEP_HOURS):
             continue
         age = newest_mtime(path, cutoff)
         if age > cutoff:
+            continue
+        owner = run2_owner(path) if name.startswith("run2_") else ""
+        if owner == "none":                  # runner-integrity: a run2 folder with no marker is not ours to remove
+            found.append("kept %s (no run2 marker: owner unknown)" % name)
+            continue
+        if owner == "live":
+            found.append("kept %s (its run2 process is alive)" % name)
             continue
         busy = busy or busy_paths()
         if in_use(path, busy):

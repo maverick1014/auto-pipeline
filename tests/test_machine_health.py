@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -142,6 +143,8 @@ class TestSweep(Case):
         names = ["check-blocks-demo.a", "auto_pipeline_a", "auto_pipeline_b.equiv-snap", "cloud_pack_a",
                  "run2_a", "agent_test_tools_a"]
         paths = [self.folder(n, hours=5) for n in names]
+        self.mark_run2(paths[names.index("run2_a")], self.dead_pid())
+        age(paths[names.index("run2_a")], 5)
         self.sweep("--apply")
         self.assertEqual([p for p in paths if os.path.exists(p)], [])
 
@@ -167,6 +170,59 @@ class TestSweep(Case):
         time.sleep(0.3)
         self.sweep("--apply")
         self.assertTrue(os.path.isdir(old))
+
+    def dead_pid(self):
+        p = subprocess.Popen(["true"])
+        p.wait()
+        return p.pid
+
+    def mark_run2(self, folder, pid):
+        with open(os.path.join(folder, ".run2_owner"), "w") as fh:
+            fh.write('{"pid": %d, "start": "x"}' % pid)
+
+    def test_a_run2_folder_with_no_marker_is_kept_as_owner_unknown(self):
+        old = self.folder("run2_nomarker", hours=5)
+        r = self.sweep("--apply")
+        self.assertTrue(os.path.isdir(old))
+        self.assertIn("kept run2_nomarker (no run2 marker: owner unknown)", r.stdout)
+
+    def test_a_run2_folder_with_an_unreadable_marker_is_kept(self):
+        old = self.folder("run2_badmarker", hours=5)
+        with open(os.path.join(old, ".run2_owner"), "w") as fh:
+            fh.write("not json")
+        age(old, 5)
+        self.sweep("--apply")
+        self.assertTrue(os.path.isdir(old))
+
+    def test_a_run2_folder_of_a_dead_run_is_removed_when_old(self):
+        old = self.folder("run2_dead", hours=5)
+        self.mark_run2(old, self.dead_pid())
+        age(old, 5)
+        young = self.folder("run2_dead_young", hours=1)
+        self.mark_run2(young, self.dead_pid())
+        age(young, 1)
+        self.sweep("--apply")
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.isdir(young))
+
+    def test_a_folder_a_live_process_works_in_is_kept_when_tmpdir_is_an_unresolved_link(self):
+        # macOS: TMPDIR /tmp/x or /var/folders/... is a link; lsof and ps name the resolved /private/... path
+        linkroot = os.path.realpath(tempfile.mkdtemp(prefix="mh_link_"))
+        self.addCleanup(shutil.rmtree, linkroot, True)
+        link = os.path.join(linkroot, "tmplink")
+        os.symlink(self.tmp, link)
+        old = self.folder("cloud_pack_busy", hours=4)
+        gone = self.folder("cloud_pack_idle", hours=4)
+        named = self.folder("auto_pipeline_named", hours=4)
+        self.procs.append(subprocess.Popen(["sleep", "60"], cwd=old))      # its cwd shows as the resolved path
+        self.procs.append(subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)",
+                                            os.path.join(link, "auto_pipeline_named", "x")], cwd="/"))   # the link path in args
+        time.sleep(0.3)
+        r = self.room("sweep", "--apply", TMPDIR=link)
+        self.assertTrue(os.path.isdir(old), r.stdout)
+        self.assertTrue(os.path.isdir(named), r.stdout)
+        self.assertFalse(os.path.exists(gone), r.stdout)
+        self.assertIn("kept cloud_pack_busy", r.stdout)
 
     def test_a_run2_folder_of_a_live_run_is_kept(self):
         old = self.folder("run2_live", hours=4)
@@ -265,6 +321,12 @@ class FakeOrca(Case):
                  FAKE_REMOTE_TMP=self.remote_tmp, FAKE_ROOT=ROOT)
         return e
 
+    def patch_env(self, **extra):
+        """This process's environment for the test, every key put back after (run2 groups share one process)."""
+        patch = mock.patch.dict(os.environ, self.env(**extra))
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def calls(self):
         with open(self.log) as fh:
             return [l.strip() for l in fh]
@@ -308,8 +370,7 @@ class TestRemote(FakeOrca):
         keep = os.path.join(self.remote_tmp, "jest_dy")
         os.makedirs(keep)
         age(keep, 6)
-        os.environ.update(self.env())
-        self.addCleanup(lambda: [os.environ.pop(k, None) for k in ("FAKE_OUT", "FAKE_LOG", "FAKE_REMOTE_TMP", "FAKE_ROOT")])
+        self.patch_env()
         self.assertEqual(agent_health.environments(), ["pc2"])
         ok, lines = agent_health.remote_exec("pc2", ROOT, ["sweep", "--apply"], wait_s=20)
         self.assertTrue(ok, lines)
@@ -320,12 +381,48 @@ class TestRemote(FakeOrca):
 
     def test_remote_without_a_checkout_says_so(self):
         import agent_health
-        os.environ.update(self.env(FAKE_NOMAIN="1"))
-        self.addCleanup(lambda: [os.environ.pop(k, None) for k in ("FAKE_OUT", "FAKE_LOG", "FAKE_REMOTE_TMP", "FAKE_ROOT", "FAKE_NOMAIN")])
+        self.patch_env(FAKE_NOMAIN="1")
         ok, lines = agent_health.remote_exec("pc2", ROOT, ["limits"], wait_s=5)
         self.assertFalse(ok)
         self.assertIn("no checkout of this repo", lines[0])
         self.assertFalse(any(c.startswith("terminal") for c in self.calls()))
+
+
+class TestWatchLine(FakeOrca):
+    """Rule 5: the watch prints one warning line when a connected machine is over the limits."""
+
+    def watch(self, **env):
+        import contextlib
+        import io
+        import types
+        import agent_watch
+        self.patch_env(**env)
+        stub = types.SimpleNamespace(ctx=types.SimpleNamespace(main=ROOT), health_next=0, health_every=lambda: 300.0)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            agent_watch.Engine.health_warn(stub)
+        return buf.getvalue().splitlines(), stub
+
+    def test_a_machine_over_the_limits_gets_one_warning_line(self):
+        lines, _ = self.watch(AGENT_FAKE_CPU_IDLE="2", AGENT_FAKE_SWAP="4800/5120")
+        self.assertEqual(lines, ["WATCH HEALTH pc2: CPU idle 2% (< 20%); swap 94% used (> 90%)"])
+
+    def test_a_machine_within_the_limits_gets_no_line(self):
+        lines, _ = self.watch(AGENT_FAKE_CPU_IDLE="60", AGENT_FAKE_SWAP="100/5120")
+        self.assertEqual(lines, [])
+
+    def test_the_next_look_waits_one_period(self):
+        lines, stub = self.watch(AGENT_FAKE_CPU_IDLE="2")
+        self.assertGreater(stub.health_next, time.time() + 200)
+
+    def test_before_the_period_is_over_nothing_is_asked(self):
+        import types
+        import agent_watch
+        self.patch_env(AGENT_FAKE_CPU_IDLE="2")
+        stub = types.SimpleNamespace(ctx=types.SimpleNamespace(main=ROOT), health_next=time.time() + 100,
+                                     health_every=lambda: 300.0)
+        agent_watch.Engine.health_warn(stub)
+        self.assertFalse(os.path.exists(self.log))
 
 
 if __name__ == "__main__":
