@@ -305,6 +305,7 @@ class TestOrphanedButConnected(tw.AllCase):
 
     def test_a_remote_tm_and_shell_pane_connected_but_orphaned_are_watched(self):
         t = self.task("alpha", env=ENV, launch=False)
+        self.todo("alpha", ENV, t["path"])      # no LAUNCH record: the todo line's "on <machine> <path>" names the machine
         self.terminals([tm_row(t, t["pane"], connected=True, orphaned=True),
                         {"handle": t["shell"], "title": "alpha shell", "worktreePath": t["path"],
                          "connected": True, "orphaned": True}], env=ENV)
