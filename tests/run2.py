@@ -297,7 +297,8 @@ def proc_start(pid):
     """The start time of a process as `ps` says it (a string), or None."""
     try:
         out = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True,
-                             text=True, timeout=10).stdout.strip()
+                             text=True, timeout=10,
+                             env=dict(os.environ, LC_ALL="C", LANG="C", TZ="UTC")).stdout.strip()
     except Exception:
         return None
     return out or None
@@ -372,7 +373,7 @@ def capped(lines, left):
 
 
 # the test processes now running, and whether a stop signal came: no new process after it
-CHILDREN, CHILDREN_LOCK, STOPPING = set(), threading.Lock(), [False]
+CHILDREN, CHILDREN_LOCK, STOPPING = set(), threading.RLock(), [False]
 LOGS = [None]
 TOOLS = [None]   # the agent_test_tools_* folder this process made (its atexit does not run on a signal)
 
@@ -442,7 +443,7 @@ def split(names, timings, n, listing=None):
 
 
 RUNNER = r"""
-import json, os, sys, time, unittest
+import json, os, re, sys, time, unittest
 
 def walk(suite):
     if not isinstance(suite, unittest.TestSuite):
@@ -452,7 +453,7 @@ def walk(suite):
         yield from walk(t)
 
 sys.path.insert(0, os.getcwd())   # as `python -m unittest` has it
-suite, owner, counts, skips = unittest.TestSuite(), {}, {}, {}
+suite, owner, counts, skips, fixtures = unittest.TestSuite(), {}, {}, {}, {}
 for name in sys.argv[1:]:
     part = unittest.defaultTestLoader.loadTestsFromName(name)
     for t in walk(part):
@@ -471,6 +472,10 @@ class Result(unittest.TextTestResult):
     def addSkip(self, test, reason):
         if id(test) in owner:
             skips[owner[id(test)]] = skips.get(owner[id(test)], 0) + 1
+        else:   # setUpModule / setUpClass skipped: unittest's _ErrorHolder, "setUpClass (test_x.TestY)"
+            m = re.search(r"\(([\w.]+)\)", str(test))
+            if m:
+                fixtures[m.group(1).split(".")[0]] = fixtures.get(m.group(1).split(".")[0], 0) + 1
         super().addSkip(test, reason)
 
     def stopTest(self, test):
@@ -488,7 +493,7 @@ with open(os.environ["RUN2_COUNTS"], "w") as fh:
 with open(os.environ["RUN2_COUNTS"] + ".secs", "w") as fh:
     json.dump(secs, fh)
 with open(os.environ["RUN2_COUNTS"] + ".skips", "w") as fh:
-    json.dump(skips, fh)
+    json.dump({"tests": skips, "fixtures": fixtures}, fh)
 sys.exit(0 if res.wasSuccessful() else 1)
 """
 
@@ -528,7 +533,7 @@ def run_unittest(tests_dir, modules, log_path):
                 side.append(json.load(fh))
         except (OSError, ValueError):
             side.append({})
-    return code, time.time() - start, text, side[0], side[1], side[2]
+    return code, time.time() - start, text, side[0], side[1], side[2]  # skips: {"tests": {...}, "fixtures": {...}}
 
 
 def summary(text):
@@ -563,11 +568,12 @@ def main():
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         old[sig] = signal.signal(sig, on_signal)
     remove_stale_folders()
+    mine = {"pid": os.getpid(), "start": proc_start(os.getpid()) or ""}   # before the folder: no ps call between it and its marker
     logs = tempfile.mkdtemp(prefix="run2_")
     LOGS[0] = logs
     try:
         with open(os.path.join(logs, MARKER), "w") as fh:
-            json.dump({"pid": os.getpid(), "start": proc_start(os.getpid()) or ""}, fh)
+            json.dump(mine, fh)
         return run_all(args, tests_dir, root, names, logs)
     finally:
         shutil.rmtree(logs, ignore_errors=True)
@@ -603,7 +609,7 @@ def run_all(args, tests_dir, root, names, logs):
             classes = [(s, n, key) for r in rows for key, (s, n) in r[5].items()]
             for s, n, key in sorted(classes, key=lambda c: (-c[0], c[2])):
                 fh.write("%.1f\t%d\t%s\n" % (s, n, key))
-        bad = [r for r in rows if r[1] != 0]
+        bad = [r for r in rows if r[1] != 0 or r[4] == "NO RESULT"]
         budget = [TOTAL_LINES]
         for name, code, secs, tests, verdict, _classes in rows:
             print("%7.1f  %5d  %s%s" % (secs, tests, name, "" if code == 0 else "  " + verdict))
@@ -634,16 +640,18 @@ def run_all(args, tests_dir, root, names, logs):
             results = list(pool.map(go, enumerate(groups)))
     failed = False
     budget = [TOTAL_LINES]
-    ran_by_file, skipped_by_file = {}, {}
+    ran_by_file, skipped_by_file, fixture_skips = {}, {}, {}
     for i, mods, est, (code, secs, text, counts, _class_secs, skips) in results:
         tests, verdict = summary(text)
         for item, n in counts.items():
             ran_by_file[item.split(".")[0]] = ran_by_file.get(item.split(".")[0], 0) + n
-        for item, n in skips.items():
+        for item, n in skips.get("tests", {}).items():
             skipped_by_file[item.split(".")[0]] = skipped_by_file.get(item.split(".")[0], 0) + n
+        for item, n in skips.get("fixtures", {}).items():
+            fixture_skips[item] = fixture_skips.get(item, 0) + n
         print("process %d: %d files or classes, %d tests, %.0f s (planned %.0f s): %s"
               % (i + 1, len(mods), tests, secs, est, verdict))
-        if code != 0:
+        if code != 0 or verdict == "NO RESULT":
             failed = True
             for block in re.findall(r"^(?:FAIL|ERROR): .*$", text, re.M):
                 print("  " + block)
@@ -653,21 +661,28 @@ def run_all(args, tests_dir, root, names, logs):
     for n in names:
         if n in reasons:
             print("NOT LISTED: %s could not be listed: %s" % (n, reasons[n]))
+            print("  ERROR: %s (tests.%s) NOT LISTED" % (n, n))
             failed = True
     unlisted = [n for n in runnable if listing.get(n) is None]
     if unlisted:
         print("count check skipped: the loader could not list %s" % ", ".join(unlisted))
     for n in runnable:
         if listing.get(n) is not None:
-            line = count_mismatch(sum(c for _, c in listing[n]), ran_by_file.get(n, 0))
+            found, ran = sum(c for _, c in listing[n]), ran_by_file.get(n, 0)
+            line = count_mismatch(found, ran)
             if line:
                 print("%s in %s" % (line, n))
                 failed = True
     for n in runnable:
         ran = ran_by_file.get(n, 0)
-        if ran > 0 and skipped_by_file.get(n, 0) == ran and n not in ok_files:
-            print("ALL SKIPPED: %s: %d of %d tests skipped, none ran (if that is right: "
-                  "all_skip_ok=%s: <reason> in agent_repo.conf)" % (n, ran, ran, n))
+        skipped = skipped_by_file.get(n, 0)
+        if (skipped or fixture_skips.get(n)) and ran - skipped == 0 and n not in ok_files:
+            fx = fixture_skips.get(n, 0)
+            what = ("%d of %d started tests skipped, %d setUpModule/setUpClass skip%s"
+                    % (skipped, ran, fx, "" if fx == 1 else "s")) if fx else "%d of %d tests skipped" % (skipped, ran)
+            print("ALL SKIPPED: %s: %s, none ran (if that is right: "
+                  "all_skip_ok=%s: <reason> in agent_repo.conf)" % (n, what, n))
+            print("  ERROR: %s (tests.%s) ALL SKIPPED" % (n, n))
             failed = True
     return 1 if failed else 0
 
