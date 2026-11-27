@@ -2,7 +2,7 @@
   "name": "auto-pipeline",
   "author": { "name": "Maverick" },
   "description": "Agent pipeline rules, scripts, agents, skills and a startup quiz gate for any repo",
-  "version": "0.48.0",
+  "version": "0.49.0",
   "userConfig": {
     "language": {
       "type": "string",
