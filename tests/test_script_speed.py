@@ -4,27 +4,31 @@ agent-resume.sh do the same work with fewer process starts.
 Every test COUNTS the processes one call starts (tests/proccount.py), it never times them, so it does
 not flake on a busy machine. The way (main manager, 2026-11-27): no port to Python; the cheapest
 changes first (each value asked once, plain text work in bash without a pipe, back-to-back python3
-calls merged into one), measured after each slice, stopped when the time targets are met
-(agent-start.sh <= 0.5 s a call, agent-file.sh todo <= 0.2 s, agent-resume.sh <= 0.4 s). The caps are
-the counts the change reached; a cap is never above today's count. Today's count (pc2, 2026-11-27,
-before the change) and the cap:
+calls merged into one), measured after each slice, stopped when the time targets were met. The time
+a call in the tests (8 related files, run2 -j 6, pc2, back to back): agent-start.sh 0.934 -> 0.358 s
+(target 0.5), agent-file.sh todo 0.247 -> 0.137 s (0.2), agent-resume.sh 0.798 -> 0.373 s (0.4).
 
-| Call | python3 today -> cap | all starts today -> cap |
+The caps are the counts the change reached (2026-11-27, pc2): python3 exact, all starts + 2 (a ps or
+sysctl fallback on another machine). A cap is never above today's count. A change that starts more
+processes raises the cap here, with its reason.
+
+| Call | python3 before -> cap | all starts before -> reached (cap) |
 |---|---|---|
-| agent-start.sh, main manager (by hand and from the hook) | 27 -> 10 | 159 -> 60 |
-| agent-start.sh, task manager | 7 -> 3 | 61 -> 25 |
-| agent-start.sh, second session | 11 -> 4 | 142 -> 30 |
-| agent-start.sh --quiz | 0 -> 0 | 20 -> 12 |
-| agent-start.sh --rules | 0 -> 0 | 24 -> 15 |
-| agent-start.sh --answer, pass and fail (shasum 15 -> one hash pass) | 0 -> 1 | 107 -> 15 |
-| agent-resume.sh, main manager | 8 -> 3 | 28 -> 18 |
-| agent-file.sh todo add (with and without --checks) | 2-3 -> 1 | 19-21 -> 12 |
-| agent-file.sh todo stage (with and without a slice) | 3 -> 1 | 31 -> 15 |
-| agent-file.sh todo done, the cleanup sweep due | 15 -> 5 | 166 -> 60 |
-| agent-file.sh todo done, no such line | 0 -> 0 | 12 -> 8 |
-| agent-file.sh tell, local, reads back | 2 -> 1 | 21 -> 8 + its orca calls |
+| agent-start.sh, main manager by hand | 27 -> 5 | 157 -> 43 (45) |
+| agent-start.sh, main manager from the hook | 28 -> 6 | 157 -> 46 (48) |
+| agent-start.sh, task manager | 7 -> 1 | 65 -> 11 (13) |
+| agent-start.sh, second session | 11 -> 1 | 142 -> 23 (25) |
+| agent-start.sh --quiz | 0 -> 0 | 24 -> 6 (8) |
+| agent-start.sh --rules | 0 -> 0 | 28 -> 6 (8) |
+| agent-start.sh --answer, pass and fail (shasum 15 -> 0: one hashlib pass) | 0 -> 1 | 115 -> 6 (8) |
+| agent-resume.sh, main manager | 9 -> 3 | 48 -> 17 (19) |
+| agent-file.sh todo add (with and without --checks) | 2-3 -> 1 | 19-21 -> 8 (10) |
+| agent-file.sh todo stage (with and without a slice) | 3 -> 2 | 31 -> 9 (11) |
+| agent-file.sh todo done, the cleanup sweep due | 15 -> 6 | 167 -> 45 (47) |
+| agent-file.sh todo done, no such line | 0 -> 0 | 12 -> 5 (7) |
+| agent-file.sh tell, local, reads back | 2 -> 1 | 21 -> 10 = 5 + 5 orca (7 + its orca calls) |
 
-Every call: no git command line twice ("git asked once per value").
+Every call: no git command line twice ("git asked once per value"; before: up to 6 repeats a call).
 
 The tell read-back (rule 3): today it waits up to 20 x 0.5 s for the block's hash line. Tests shorten
 it only with AGENT_TELL_READBACK_S (seconds, default 10); real use never sets it.
@@ -88,19 +92,19 @@ class TestStartCounts(CountCase):
         r, starts = self.counted("agent-start.sh", env={"CLAUDE_PID": NOBODY})
         self.assertOk(r)
         self.assertIn("ROLE: main manager", r.stdout)
-        self.assertStarts(starts, 60, python3=10)
+        self.assertStarts(starts, 45, python3=5)
 
     def test_main_manager_from_the_hook(self):
         r, starts = self.counted("agent-start.sh", env={"CLAUDE_PID": NOBODY}, stdin=self.hook())
         self.assertOk(r)
         self.assertIn("ROLE: main manager", r.stdout)
-        self.assertStarts(starts, 60, python3=10)
+        self.assertStarts(starts, 48, python3=6)
 
     def test_task_manager(self):
         r, starts = self.counted("agent-start.sh", env=TASK)
         self.assertOk(r)
         self.assertIn("ROLE: task-manager", r.stdout)
-        self.assertStarts(starts, 25, python3=3)
+        self.assertStarts(starts, 13, python3=1)
 
     def test_second_session(self):
         live = subprocess.Popen(["sleep", "120"])
@@ -111,32 +115,32 @@ class TestStartCounts(CountCase):
         r, starts = self.counted("agent-start.sh", env={"CLAUDE_PID": NOBODY})
         self.assertOk(r)
         self.assertIn("ROLE: task manager, human-direct", r.stdout)
-        self.assertStarts(starts, 30, python3=4)
+        self.assertStarts(starts, 25, python3=1)
 
     def test_quiz(self):
         r, starts = self.counted("agent-start.sh", "--quiz", env=TASK)
         self.assertOk(r)
         self.assertIn("=== QUIZ (task manager) — answer all 15 before any work ===", r.stdout)
-        self.assertStarts(starts, 12, python3=0)
+        self.assertStarts(starts, 8, python3=0)
 
     def test_rules(self):
         r, starts = self.counted("agent-start.sh", "--rules", env=TASK)
         self.assertOk(r)
         self.assertIn("# PRINCIPLES", r.stdout)
-        self.assertStarts(starts, 15, python3=0)
+        self.assertStarts(starts, 8, python3=0)
 
     def test_answer_all_right_is_one_hash_pass(self):
         r, starts = self.counted("agent-start.sh", "--answer", TASK_ANSWERS, env=TASK)
         self.assertOk(r)
         self.assertEqual(r.stdout, "QUIZ RESULT: 15/15 PASS\nYou may start work.\n")
-        self.assertStarts(starts, 15, hashes=1)
+        self.assertStarts(starts, 8, python3=1, hashes=0)
 
     def test_answer_one_wrong_is_one_hash_pass_and_todays_text(self):
         r, starts = self.counted("agent-start.sh", "--answer", "1B" + TASK_ANSWERS[2:], env=TASK)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertEqual(r.stdout, "QUIZ RESULT: 14/15 FAIL\nQ1: re-read PRINCIPLES.md\n"
                                    "Re-read those files, then answer again.\n")
-        self.assertStarts(starts, 15, hashes=1)
+        self.assertStarts(starts, 8, python3=1, hashes=0)
 
 
 class TestResumeCounts(CountCase):
@@ -145,7 +149,7 @@ class TestResumeCounts(CountCase):
     def test_main_manager(self):
         r, starts = self.counted("agent-resume.sh", env={"CLAUDE_PID": NOBODY})
         self.assertOk(r)
-        self.assertStarts(starts, 18, python3=3)
+        self.assertStarts(starts, 19, python3=3)
 
 
 class TestTodoCounts(CountCase):
@@ -155,26 +159,26 @@ class TestTodoCounts(CountCase):
         r, starts = self.counted("agent-file.sh", "todo", "add", "x", "small", "do a thing", "10")
         self.assertOk(r)
         self.assertIn("x | small | do a thing", self.repo.read("agent_todo.txt"))
-        self.assertStarts(starts, 12)
+        self.assertStarts(starts, 10)
 
     def test_add_with_checks(self):
         r, starts = self.counted("agent-file.sh", "todo", "add", "y", "big", "do b", "60",
                                  "--checks", "UI CHECK,PR REVIEW")
         self.assertOk(r)
         self.assertIn("checks PR REVIEW, UI CHECK", self.repo.read("agent_todo.txt"))
-        self.assertStarts(starts, 12)
+        self.assertStarts(starts, 10)
 
     def test_stage(self):
         self.assertOk(self.repo.run("agent-file.sh", "todo", "add", "x", "small", "do a thing", "10"))
         r, starts = self.counted("agent-file.sh", "todo", "stage", "x", "tests")
         self.assertOk(r)
-        self.assertStarts(starts, 15)
+        self.assertStarts(starts, 11, python3=2)
 
     def test_stage_with_a_slice(self):
         self.assertOk(self.repo.run("agent-file.sh", "todo", "add", "x", "small", "do a thing", "10"))
         r, starts = self.counted("agent-file.sh", "todo", "stage", "x", "workers", "1/2")
         self.assertOk(r)
-        self.assertStarts(starts, 15)
+        self.assertStarts(starts, 11, python3=2)
 
     def test_done_with_the_cleanup_sweep_due(self):
         self.assertOk(self.repo.run("agent-file.sh", "todo", "add", "x", "small", "do a thing", "10"))
@@ -182,13 +186,13 @@ class TestTodoCounts(CountCase):
         self.assertOk(r)
         self.assertIn("todo done: x", r.stdout)
         self.assertIn(" | x | ", self.repo.read("agent_completed.txt"))
-        self.assertStarts(starts, 60, python3=5)
+        self.assertStarts(starts, 47, python3=6)
 
     def test_done_no_such_line(self):
         r, starts = self.counted("agent-file.sh", "todo", "done", "nope")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("no todo line named: nope", r.stdout + r.stderr)
-        self.assertStarts(starts, 8, python3=0)
+        self.assertStarts(starts, 7, python3=0)
 
 
 class TellCountCase(Counts, AllCase):
@@ -216,7 +220,7 @@ class TestTellCounts(TellCountCase):
         self.assertIn("TELL OK alpha %s" % sha8(SIG + " hello"), r.stdout)
         # the orca calls are the pane's own (read, wait, send, read back); the rest is the script
         orca = len(pc.names(starts, "orca"))
-        self.assertStarts(starts, 8 + orca)
+        self.assertStarts(starts, 7 + orca)
 
 
 class TestTellReadBack(TellCountCase):

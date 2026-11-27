@@ -48,11 +48,18 @@ _STATE = {"bin": None}
 GIT_SKIP_DIRS = {"objects", "logs"}
 GIT_SKIP_FILES = {"index", "ORIG_HEAD", "FETCH_HEAD", "COMMIT_EDITMSG"}
 SKIP_FILES = {"proc_starts.log"}
+# Written by the detached estimate runner (agent-file.sh estimate-runner, started in the background by
+# todo done): a background process of the old run may still write after the snapshot is put back.
+SKIP_DIRS_ANY = {"agent_estimate.lock", "agent_estimate.queue"}
+SKIP_FILES_ANY_GIT = {"agent_estimate.log"}
 
 EPOCH = re.compile(r"\b1[6-9]\d{8}(\.\d+)?\b")          # a time.time() value
 PIDKEY = re.compile(r'("key": "[a-z-]+)-\d+-(\d+")')        # a reservation key: <what>-<pid>-<n>
 PANEMB = re.compile(r'("pane_recent": \[)[\d, ]*(\])')        # the measured MB of a live pane
-STAMP = re.compile(r"\b\d{4}-\d\d-\d\d-\d{6}\b")          # an archive name: <date>-<hhmmss>
+STAMP = re.compile(r"\b\d{4}-\d\d-\d\d-\d{6}\b|\b\d{8}-\d{6}\b")   # archive / kept-copy names: <date>-<hhmmss>
+WATCHPID = re.compile(r"(\(pid |\"pid\": |'pid': )\d+")       # a process's own pid (watch start line, status and job files)
+WEIGHT = re.compile(r"\b(\d+ s )\d+( MB)")                      # a measured weight: "<seconds> s <peak> MB"
+RAN = re.compile(r"\bRan (\d+) tests? in [\d.]+s\b")            # a unittest summary line of a run the script made
 QUEUE = re.compile(r"<epoch>-\d+-\d+")                        # a queue file name: <epoch>-<pid>-<random>
 HEX = re.compile(r"\b[0-9a-f]{7,40}\b")
 CLOCK = re.compile(r"\b\d\d:\d\d(:\d\d)?\b")
@@ -105,6 +112,9 @@ def swap_to_old(repo, new_bin, old):
 def norm(text, base):
     text = text.replace(base, "<BASE>")
     text = STAMP.sub("<stamp>", text)
+    text = WATCHPID.sub(r"\1<pid>", text)
+    text = WEIGHT.sub(r"\1<mb>\2", text)
+    text = RAN.sub(r"Ran \1 tests in <s>", text)
     text = EPOCH.sub("<epoch>", text)
     text = QUEUE.sub("<queue>", text)
     text = PIDKEY.sub(r"\1-<pid>-\2", text)
@@ -122,11 +132,13 @@ def tree(repo):
     base = repo.base
     for top, dirs, files in os.walk(base):
         rel_top = os.path.relpath(top, base)
-        gitdir = os.path.isfile(os.path.join(top, "HEAD")) and os.path.isdir(os.path.join(top, "refs"))
-        dirs[:] = sorted(d for d in dirs if d != "__pycache__" and not (gitdir and d in GIT_SKIP_DIRS)
+        gitdir = os.path.isfile(os.path.join(top, "HEAD")) and (os.path.isdir(os.path.join(top, "refs"))
+                                                              or os.path.isfile(os.path.join(top, "commondir")))
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__" and d not in SKIP_DIRS_ANY
+                         and not (gitdir and d in GIT_SKIP_DIRS)
                          and os.path.normpath(os.path.join(rel_top, d)) != os.path.join("plugin", "bin"))
         for f in files:
-            if f in SKIP_FILES or f.endswith(".pyc") or (gitdir and f in GIT_SKIP_FILES):
+            if f in SKIP_FILES or f.endswith(".pyc") or (gitdir and (f in GIT_SKIP_FILES or f in SKIP_FILES_ANY_GIT)):
                 continue
             full = os.path.join(top, f)
             rel = os.path.normpath(os.path.join(rel_top, f))
@@ -154,6 +166,7 @@ def run_old(repo, argv, cwd, env, stdin, timeout, new_bin, root):
     snap = repo.base + ".equiv-snap"
     shutil.rmtree(snap, ignore_errors=True)
     shutil.copytree(repo.base, snap, symlinks=True)
+    _STATE["new"] = new_bin
     try:
         swap_to_old(repo, new_bin, old_bin(root))
         try:
@@ -166,6 +179,31 @@ def run_old(repo, argv, cwd, env, stdin, timeout, new_bin, root):
         shutil.rmtree(repo.base, ignore_errors=True)
         os.rename(snap, repo.base)
     return old
+
+
+_BIN_TEXT = {}
+
+
+def _bin_text(folder, name, base):
+    key = (folder, name, base)
+    if key not in _BIN_TEXT:
+        full = os.path.join(folder, name)
+        try:
+            with open(full, "rb") as fh:
+                _BIN_TEXT[key] = norm(fh.read().decode("utf-8"), base)
+        except (OSError, UnicodeDecodeError):
+            _BIN_TEXT[key] = None
+    return _BIN_TEXT[key]
+
+
+def own_copy(rel, a, b, base):
+    """A copy of one of the plugin's own bin/ files that the script (or a test stub it starts) made
+    inside the temp folder, e.g. a fake plugin cache: the old run copies the old file, the new run the
+    new one. Equal when old = the old ref's file and new = the new file of that name."""
+    name = os.path.basename(rel)
+    if a is None or b is None or _STATE["bin"] is None or _STATE.get("new") is None:
+        return False
+    return a == _bin_text(_STATE["bin"], name, base) and b == _bin_text(_STATE["new"], name, base)
 
 
 def test_id():
@@ -190,7 +228,7 @@ def compare(repo, argv, old, new):
             diffs.append((name, a, b))
     for rel in sorted(set(o_tree) | set(n_tree)):
         a, b = o_tree.get(rel), n_tree.get(rel)
-        if a != b:
+        if a != b and not own_copy(rel, a, b, base):
             diffs.append(("file " + rel, a if a is not None else "<missing>", b if b is not None else "<missing>"))
     if not diffs:
         return
