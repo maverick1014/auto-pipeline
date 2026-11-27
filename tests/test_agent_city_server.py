@@ -3399,7 +3399,8 @@ class TestLaunchLine(LineCase):
         import inspect
         params = inspect.signature(ac.agent_command).parameters
         # city-office O6: the interior designer's line takes its own model key, prompt and AGENT_ROLE
-        self.assertEqual(list(params), ["name", "folder", "city_dir", "model_key", "prompt", "role"])
+        # session-cleanup rule 7: and the city home, so the designer's `floor bye` lands where the server looks
+        self.assertEqual(list(params), ["name", "folder", "city_dir", "model_key", "prompt", "role", "city_home"])
 
     def test_local_uses_permission_mode(self):
         conf = conf_text(permission_mode="bypassPermissions")

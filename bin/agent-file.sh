@@ -43,6 +43,7 @@
 #   agent-file.sh worktree set "<path>" "<module>" "<status>" -> agent_worktree.txt (add or replace)
 #   agent-file.sh worktree rm  "<path>"                       -> agent_worktree.txt
 #   agent-file.sh helper-task "<Task Name>"                   -> the task of THIS human-direct Helper session: its name becomes "<repo> Helper - <Task Name>"
+#   agent-file.sh session-end <sid> | --dead [--dry-run]      -> a session leaves nothing behind: its agent_*_<sid> files in the git dir and its human-direct line; --dead: the human-direct lines whose pid on this host is gone (one line each: "human-direct line <path> (pid <n> gone)")
 #   agent-file.sh show                                        -> print all four files
 #   agent-file.sh time                                        -> table: name est work wait clock ratio (agent_completed.txt)
 #   agent-file.sh backfill [--dry-run]                        -> old lines: take work and wait from the text of each line
@@ -319,7 +320,7 @@ kept_end() {     # a run that ended 0 copies each of the five files it changed t
   return 0
 }
 kept_start "$@"
-case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|retrain:*|helper-task:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
+case "${1:-}:${2:-}" in data:*|repos:*|eta:*|estimate:*|estimate-runner:*|estimate-queue:*|backtest:*|retrain:*|helper-task:*|session-end:*|board:*|park:*|worker:*|questions:*|state:*|tell:*|heartbeat:*|todo:level|check:*|checks:*|next:*|edge:*) ;; *) touch "$TODO" "$DONE" "$IDEAS" "$WT";; esac   # these only read (retrain writes agent_estimate.txt only; helper-task touches nothing before it is sure; park and worker write agent_state.txt only)
 
 # the files in git (agent_share.py): a snapshot before and after, one commit on the data branch when a run changed them.
 # Bash only (no python start when nothing changed): the facts are read from agent_repo.conf with grep and sed.
@@ -934,12 +935,77 @@ helper_task() {
   { printf '%s\n' "$task" > "$tmp" && mv "$tmp" "$f"; } 2>/dev/null || { rm -f "$tmp"; refuse "helper-task: cannot write $f"; }
   find "$PROJECT_GITDIR" -maxdepth 1 -type f \( -name 'agent_helper_task_*' -o -name 'agent_helper_title_*' \) -mtime +30 -exec rm -f {} + 2>/dev/null || true
   touch "$WT"
-  awk -F' \\| ' -v p="$PROJECT_CWD" -v t="task: $task" -v now="$NOW" 'BEGIN { OFS = " | " }
+  hpid=$(agent_pid 2>/dev/null); case "$hpid" in ''|*[!0-9]*) hpid=-;; esac
+  hhost=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
+  awk -F' \\| ' -v p="$PROJECT_CWD" -v t="task: $task" 'BEGIN { OFS = " | " }
     $1 == p && $2 == "task manager, human-direct" { $3 = t; seen = 1 }
     { print }
-    END { if (!seen) print p, "task manager, human-direct", t, "since " now }' "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
+    END { if (!seen) print p, "task manager, human-direct", t, "since " now, "pid " pid, "host " host, "session " sid }' \
+    pid="$hpid" host="$hhost" sid="$sid" now="$NOW" "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
   repo=$(basename "$PROJECT_ROOT")
   echo "helper task: $task -> \"$repo Helper - $task\" from the human's next prompt"
+}
+
+# session_end_files <sid>: remove the session's files in the shared git dir; prints how many files went
+session_end_files() {
+  local sid=$1 n=0 f
+  for f in "$PROJECT_GITDIR/agent_started_$sid" "$PROJECT_GITDIR/agent_rules_$sid" "$PROJECT_GITDIR/agent_compact_$sid" \
+           "$PROJECT_GITDIR/agent_quiz_$sid" "$PROJECT_GITDIR/agent_stale_$sid" "$PROJECT_GITDIR/agent_autoclear_$sid" \
+           "$PROJECT_GITDIR/agent_helper_task_$sid" "$PROJECT_GITDIR/agent_helper_title_$sid" "$PROJECT_GITDIR/agent_point_${sid}_"*; do
+    if [ -f "$f" ] || [ -L "$f" ]; then rm -f "$f" 2>/dev/null && n=$((n + 1)); fi
+  done
+  rmdir "$PROJECT_GITDIR/agent_started_$sid.lock" "$PROJECT_GITDIR/agent_rules_$sid.lock" 2>/dev/null || true
+  echo "$n"
+}
+# session_end_valid <sid>: letters, digits, _ and - only
+session_end_valid() { case "$1" in ''|*[!A-Za-z0-9_-]*) return 1;; esac; return 0; }
+# session_end_lines <sid>: drop the human-direct lines naming that session; prints how many went
+session_end_lines() {
+  local sid=$1 before after
+  [ -f "$WT" ] || { echo 0; return; }
+  before=$(awk 'END { print NR }' "$WT")
+  awk -F' \\| ' -v s="session $sid" '{ if ($2 == "task manager, human-direct") for (i = 3; i <= NF; i++) if ($i == s) next; print }' "$WT" > "$WT.tmp.$$" \
+    || { rm -f "$WT.tmp.$$"; echo 0; return; }
+  after=$(awk 'END { print NR }' "$WT.tmp.$$")
+  if [ "$after" -lt "$before" ]; then mv "$WT.tmp.$$" "$WT"; else rm -f "$WT.tmp.$$"; fi
+  echo $((before - after))
+}
+# session_end <sid> | --dead [--dry-run]
+session_end() {
+  local sid host rows nums="" row nr path pid ssid dry="" nf nl
+  [ $# -ge 1 ] || usage
+  if [ "$1" != --dead ]; then
+    [ $# -eq 1 ] || usage
+    session_end_valid "$1" || refuse "session-end: the session id must be letters, digits, _ and - only (got: $1)"
+    nf=$(session_end_files "$1"); nl=$(session_end_lines "$1")
+    echo "session-end $1: $nf files, $nl lines removed"
+    return 0
+  fi
+  shift
+  case "${1:-}" in --dry-run) dry=1; shift;; esac
+  [ $# -eq 0 ] || usage
+  [ -f "$WT" ] || return 0
+  host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
+  rows=$(awk -F' \\| ' -v h="$host" '$2 == "task manager, human-direct" {
+    pid = ""; hh = ""; s = "-"
+    for (i = 3; i <= NF; i++) {
+      if ($i ~ /^pid [0-9]+$/) pid = substr($i, 5)
+      else if ($i ~ /^host /) hh = substr($i, 6)
+      else if ($i ~ /^session /) s = substr($i, 9)
+    }
+    if (pid != "" && hh == h) print NR "\t" $1 "\t" pid "\t" s }' "$WT")
+  while IFS=$'\t' read -r nr path pid ssid; do
+    [ -n "$nr" ] || continue
+    kill -0 "$pid" 2>/dev/null && continue
+    nums="$nums $nr "
+    echo "human-direct line $path (pid $pid gone)"
+    [ -n "$dry" ] && continue
+    if session_end_valid "$ssid"; then session_end_files "$ssid" >/dev/null; fi
+  done <<< "$rows"
+  if [ -n "$nums" ] && [ -z "$dry" ]; then
+    awk -v nums="$nums" 'index(nums, " " NR " ") == 0' "$WT" > "$WT.tmp.$$" && mv "$WT.tmp.$$" "$WT"
+  fi
+  return 0
 }
 
 # helper-join "<task>": a human-direct Helper takes a task from the main manager (or reports DONE to it): its
@@ -1463,6 +1529,8 @@ case "${1:-}:${2:-}" in
   helper-join:*)
     [ $# -ge 2 ] || usage
     helper_join "$2";;
+  session-end:*)
+    shift; session_end "$@";;
   todo:add)
     shift 2; guess=""; why=""; haswhy=""; level=""; rest=(); checks=""; scope=""; builder=""; target=""; batch=""; oquote=""; otime=""; omeans=""; oquestion=""; orelay=""; oleader=""
     while [ $# -gt 0 ]; do   # --guess <m> may stand anywhere after "todo add"; the other args keep their order
