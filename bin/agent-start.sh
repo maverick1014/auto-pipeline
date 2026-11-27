@@ -34,6 +34,14 @@
 set -u
 case "$0" in */*) _as_dir=${0%/*};; *) _as_dir=.;; esac; . "${_as_dir:-/}/agent-roots.sh"
 
+# ---- the interior designer (AGENT_ROLE=interior-designer, a pane the city server opens): nearly nothing,
+# before any file is written or stdin is read. --rules prints nothing; every other call prints one line.
+# No quiz, no reading list, no marker, no pane weight (session-cleanup rule 6). ----
+if [ "${AGENT_ROLE:-}" = interior-designer ]; then
+  [ "${1:-}" = "--rules" ] || echo "ROLE: interior designer, opened from the Agent City page. Follow $PLUGIN_ROOT/agents/interior-designer.md; no quiz, no pipeline files."
+  exit 0
+fi
+
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
 KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 b75587e9915ec885 b10039ac08596652 6e172188c9c4bc39 5e1a8ca54c3fbadd 13127809c0aa4e07 2de03a63345b0488 d019670ac24fe392 1a6951e83e3e46bb 52fcf5e8a49617f0 d7dd4d5626dfebb7 14d3ea7536a00bbf d956db8d1ed42790 72241f6e3363d877 c20dbe1e5d7e0c3a f4c5ea8cff8e3805 1abb73a3e6683277 ed3aa1e779d86517 7fb8bf29915b93ba 53f2f80016081d7b 452e097c150557a7 86748978724ff86c 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 f9d86ca36f2238ad 6ef895678e4d73f6 60a1877ffe0c9ecf fc755642e7b2d547 81b9e6e9fb8fe2c5 a06bbc5adaee446e 23168b3ea65a8215 2ec8ada5beb1f8cd 30cdb903ad852072 )
@@ -824,13 +832,21 @@ CAP=2000
 # the way agent-file.sh does it: build the new text next to the target, then
 # mv it over, so a half-written file is never left behind.
 announce_human_direct() {
-  local wt tmp
+  local wt tmp sid host pid
   wt="$PROJECT_ROOT/agent_worktree.txt"
   tmp="$wt.tmp"
+  sid="${SID:-${CLAUDE_CODE_SESSION_ID:-}}"
+  case "$sid" in ''|*[!A-Za-z0-9_-]*) sid="-";; esac
+  pid="${ME:--}"
+  host=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
+  host=${host//[[:space:]]/_}
   touch "$wt"
-  awk -v p="$PROJECT_CWD" -F' \\| ' \
-    '!($1 == p && $2 == "task manager, human-direct")' "$wt" > "$tmp"
-  printf '%s\n' "$PROJECT_CWD | task manager, human-direct | task: (ask the human) | since $NOW" >> "$tmp"
+  # replace this session's own line (or an old line with no session field); another session's line stays
+  # unknown sid ("-"): the "session -" line with the same pid ("-" pid: any "session -" line)
+  awk -v p="$PROJECT_CWD" -v s="$sid" -v me="$pid" -F' \\| ' \
+    '!($1 == p && $2 == "task manager, human-direct" && (!/ \| session / || \
+      (s != "-" ? $NF == "session " s : ($NF == "session -" && (me == "-" || index($0, " | pid " me " | "))))))' "$wt" > "$tmp"
+  printf '%s\n' "$PROJECT_CWD | task manager, human-direct | task: (ask the human) | since $NOW | pid $pid | host $host | session $sid" >> "$tmp"
   mv "$tmp" "$wt"
   keep_worktree_copy
 }
@@ -1292,6 +1308,10 @@ fi
 CLEAN_TEXT=""
 if [ "$role" = main ] || [ "$role" = takeover ]; then
   CLEAN_TEXT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --apply --short 2>/dev/null </dev/null || true; printf 'X'); CLEAN_TEXT=${CLEAN_TEXT%X}
+  # a Helper whose session is gone: its human-direct line and files go (session-cleanup rule 2)
+  if [ -z "${AGENT_ROLE:-}" ] && [ "$SRC" != compact ]; then
+    "$PLUGIN_ROOT/bin/agent-file.sh" session-end --dead >/dev/null 2>&1 </dev/null || true
+  fi
 fi
 
 # the old-file move runs first (inside the batch), so the lines below already read the moved values

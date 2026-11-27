@@ -23,7 +23,7 @@ Helper (a human-direct session):
 2. Housekeep (and the start of the next main manager) removes a human-direct line whose session no longer runs.
 3. The designer's pane always closes when the designer is done: `floor bye` closes the designer's own pane (its ORCA_TERMINAL_HANDLE) after writing the bye, so no server memory is needed; the server keeps closing it as today when it holds the handle. A server stop closes the designer panes it opened.
 4. A session that said bye never comes back: the city ignores later hook lines of that session id; a new designer can start at once.
-5. The city drops an ended session's `chat.jsonl` lines 24 h after it left, like `history.jsonl`, also at load when no server ran in between.
+5. The city drops an ended session's `chat.jsonl` lines 24 h after it left, like `history.jsonl`, also at load when no server ran in between. A session with no end line whose last line is older than 7 days and that is not live goes too (main manager 2026-11-27, fix order 9bbb819c: 166 of 172 sessions in today's 8.9 MB file have no end line). A rewrite never loses a line written at the same moment.
 6. The start hook gives the designer only what it needs: no quiz, no task-manager reading list, no pane weight measuring, no auto clear; one line that names its role.
 7. The designer command carries the city's floors folder (AGENT_CITY_HOME) so `floor bye` lands where the server looks.
 8. Kept on purpose (not leftovers): the floor design `floors/<tid>.json`, its undo history (`floors/<tid>.history.jsonl`, last 5), and Claude's own transcripts.
@@ -36,6 +36,7 @@ Helper (a human-direct session):
 - A Helper session ends: its human-direct line and its `agent_helper_*` files are gone; the board has no Helper row.
 - A human-direct line whose session died without the hook: housekeep removes it; a live Helper's line stays.
 - `chat.jsonl` holds lines of a session that ended 25 h ago and of one that ended 1 h ago: after a load, only the second remains.
+- `chat.jsonl` holds lines of a session last seen 8 days ago (no end line, not live), of a live one last seen 8 days ago, and of one last seen 6 days ago: after a load, the first is gone.
 - The designer's start text has no QUIZ line and no reading list; `agent_test_weights.json` gets no pane weight from it.
 - A city with a non-default floors folder: the designer's bye is seen and acted on.
 

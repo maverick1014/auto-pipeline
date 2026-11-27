@@ -845,7 +845,9 @@ class TestSay(SayCase):
         self.say({"hook_event_name": "Stop", "session_id": "s1", "last_assistant_message": "ok"})
         self.assertEqual(os.stat(self.chat).st_mode & 0o777, 0o600)
         import inspect
-        src = inspect.getsource(ac._cmd_say_impl)
+        # session-cleanup S1: the hook writes through the one locked writer, chat_append
+        self.assertIn("chat_append(", inspect.getsource(ac._cmd_say_impl))
+        src = inspect.getsource(ac.chat_append) + inspect.getsource(ac._append_private_jsonl)
         self.assertIn("os.O_APPEND", src)
         self.assertIn("os.write(", src)
 
@@ -3405,7 +3407,8 @@ class TestLaunchLine(LineCase):
         import inspect
         params = inspect.signature(ac.agent_command).parameters
         # city-office O6: the interior designer's line takes its own model key, prompt and AGENT_ROLE
-        self.assertEqual(list(params), ["name", "folder", "city_dir", "model_key", "prompt", "role"])
+        # session-cleanup rule 7: and the city home, so the designer's `floor bye` lands where the server looks
+        self.assertEqual(list(params), ["name", "folder", "city_dir", "model_key", "prompt", "role", "city_home"])
 
     def test_local_uses_permission_mode(self):
         conf = conf_text(permission_mode="bypassPermissions")

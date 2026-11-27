@@ -48,7 +48,8 @@ R7. Worktree file
 - `agent_worktree.txt` = one line per live worktree: path, task manager, module, status (working | final | idle)
 - Task manager updates its own line. Deputy removes the line after cleanup
 - Main manager reads it before every dispatch (W9)
-- The housekeep pass removes a line whose worktree folder is gone and has no live pane; a working, final or human-direct line is only flagged
+- The housekeep pass removes a line whose worktree folder is gone and has no live pane; a working, final or old human-direct line (no pid field) is only flagged
+- A human-direct line whose session's pid on this machine is gone is removed, with that session's files (`agent-file.sh session-end --dead`)
 
 Files:
 

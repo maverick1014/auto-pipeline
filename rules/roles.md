@@ -24,6 +24,7 @@ W10. Second session in the same repo
 - A human-direct session keeps its protection only while the human alone drives it. Once it takes a task from the main manager or reports DONE to it, it runs `agent-file.sh helper-join "<task>"` and is a normal agent
 - The merge of its last open task closes its pane and removes its line, like a task manager; the close message names `claude --resume <session id>`
 - At start: the script adds a line to `agent_worktree.txt` (status human-direct). Also send the main manager a direct message if a channel exists (Orca)
+- The session's end removes that line and its `agent_helper_*` files (the SessionEnd hook); a session that died without the hook: the next main manager's start or housekeep removes it
 - Will change files → open its own worktree first (W7). Only looking → no worktree
 - Human talks to it directly for now. All task manager rules still apply
 - Human says "finish" or "report to main manager" → report done + click path to the main manager, then act as a normal task manager. Merge deputy cleans up
