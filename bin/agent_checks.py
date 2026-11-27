@@ -1061,7 +1061,7 @@ def is_fast_lane(builders):
 # gate-self-check rule 1: the code behind `checks gate`, the guard and promote
 GATE_FILES = ("bin/agent_checks.py", "bin/agent-file.sh", "bin/agent_guard.py", "bin/agent-guard.sh",
               "bin/agent_promote.py", "bin/agent-promote.sh", "bin/agent_level.py", "bin/agent-level.sh",
-              "bin/agent-owner-order.sh", "bin/agent_owner_order.py", "bin/agent_blocks.py", "hooks/hooks.json")
+              "bin/agent-owner-order.sh", "bin/agent_owner_order.py", "bin/agent_blocks.py", "bin/agent_model.py", "hooks/hooks.json")
 
 
 def main_built_blocks():
@@ -1070,7 +1070,7 @@ def main_built_blocks():
         import agent_blocks
         names = list(agent_blocks.NAMES)
     except Exception:
-        names = []
+        names = block_names()  # the table does not import: the fallback list, so DB CHECK and the data blocks stay refused
     return (set(names) | set(BUILDER_BLOCKS) | {"DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS", "EXAMPLES TEST"}) - {SIGN}
 
 
