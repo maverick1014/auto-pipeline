@@ -20,7 +20,8 @@ normal suite:
     AGENT_EQUIV_OLD=78b565f AGENT_EQUIV_LOG=/tmp/equiv.jsonl python3 tests/run2.py tests/test_agent_start.py ...
 
 AGENT_EQUIV_SCRIPTS (comma list of script names) limits the calls compared; unset: every script
-started from the plugin's bin/.
+started from the plugin's bin/. AGENT_EQUIV_SETTLE=<seconds> waits that long after each run before its
+files are read (background jobs the script started); unset: read at once.
 """
 
 import atexit
@@ -34,11 +35,19 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 OLD = os.environ.get("AGENT_EQUIV_OLD", "")
 LOG = os.environ.get("AGENT_EQUIV_LOG", "")
 ONLY = [s for s in os.environ.get("AGENT_EQUIV_SCRIPTS", "").split(",") if s]
+# seconds to wait after each run before its files are read, so a job the script started in the
+# background (nohup: nightly start, pane measure, the autoclear waiter, the estimate runner) is done
+# in both runs; 0 (unset) = read at once
+try:
+    SETTLE = float(os.environ.get("AGENT_EQUIV_SETTLE") or 0)
+except ValueError:
+    SETTLE = 0.0
 
 _STATE = {"bin": None}
 
@@ -172,6 +181,8 @@ def run_old(repo, argv, cwd, env, stdin, timeout, new_bin, root):
         try:
             r = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True,
                                input=stdin if stdin is not None else "", timeout=timeout)
+            if SETTLE:
+                time.sleep(SETTLE)
             old = (r.returncode, r.stdout, r.stderr, tree(repo))
         except subprocess.TimeoutExpired:
             old = ("timeout", "", "", {})
@@ -218,6 +229,8 @@ def compare(repo, argv, old, new):
     """Step 4's check: a difference is logged and fails the test."""
     base = repo.base
     o_rc, o_out, o_err, o_tree = old
+    if SETTLE:
+        time.sleep(SETTLE)
     n_tree = tree(repo)
     diffs = []
     if o_rc != new.returncode:

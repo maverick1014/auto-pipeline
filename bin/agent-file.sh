@@ -468,6 +468,10 @@ first() {
 NOW_EP=""
 to_epoch() {
   if [ -n "$NOW_EP" ] && [ "$1" = "$NOW" ]; then echo "$NOW_EP"; return 0; fi
+  # BSD date takes the seconds it is not given from the wall clock: give it :00 so the minute is exact
+  case "$1" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\ [0-9][0-9]:[0-9][0-9]) date -j -f '%Y-%m-%d %H:%M:%S' "$1:00" +%s 2>/dev/null || date -d "$1" +%s 2>/dev/null || true; return 0;;
+  esac
   date -j -f '%Y-%m-%d %H:%M' "$1" +%s 2>/dev/null || date -d "$1" +%s 2>/dev/null || true
 }
 now_ep() { NOW_EP=""; NOW_EP=$(to_epoch "$NOW"); }
