@@ -923,6 +923,8 @@ def handle(payload):
             kind = "agent"
             if ev == "PreToolUse":
                 _POINT["moment"] = POINT_AGENTS.get(base_type(str(tin.get("subagent_type") or "")))
+        elif tool == "SendMessage" and ev == "PreToolUse":
+            kind = "send"
         elif tool == "Bash":
             command = str(tin.get("command") or "")
             ops = bash_launches(command)
@@ -956,6 +958,9 @@ def handle(payload):
                     return ("BLOCK", block)
         if kind == "bash" and not any(op in ("create", "wt_create") for op, _ in ops):
             return ("WARN", note) if note else OK
+        if kind == "send":
+            record_resume(ctx, str(tin.get("to") or ""), tid)
+            return OK
         if kind == "bash":
             items, n = [], 0
             for op, opts in ops:
@@ -985,6 +990,7 @@ def handle(payload):
             if not isinstance(resp, dict) or not resp.get("status"):
                 return OK
             aid = str(resp.get("agentId") or "")
+            remember_agent(ctx, tid, aid)
             if resp.get("status") == "completed":
                 run_edit(ctx, mut_remove(lambda d: d["key"] == tid or (aid != "" and d.get("agent") == aid)))
                 return OK
@@ -1116,6 +1122,74 @@ def write_launch_record(ctx, task, stype):
         pass
 
 
+def first_stage(ctx, task):
+    """board-fast-lane rule 1: a fast-lane deputy launch for an open task whose todo line has no stage field
+    writes the first stage (todo stage also writes "started"). Never raises, never blocks."""
+    try:
+        with open(os.path.join(ctx["main"], "agent_todo.txt"), encoding="utf-8", errors="replace") as fh:
+            line = next((l for l in fh if l.split(" | ", 1)[0].strip() == task), None)
+        if line is None or any(f.startswith("stage ") and not f.startswith("stage log ")
+                               for f in line.rstrip("\n").split(" | ")[1:]):
+            return
+        here = os.path.dirname(os.path.abspath(__file__))
+        subprocess.run([os.path.join(here, "agent-file.sh"), "todo", "stage", task, "brief"], cwd=ctx["main"],
+                       capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+def known_path(ctx):
+    return os.path.join(ctx["common"], "agent_known_agents.jsonl")
+
+
+def remember_agent(ctx, tid, aid):
+    """board-fast-lane rule 3: one line per launched agent with an id, so a later SendMessage to it is known."""
+    if not aid:
+        return
+    try:
+        for line in read_lines(os.path.join(ctx["folder"], "agent_state.txt")):
+            d = parse_launch(line)
+            if d is not None and d["key"] == tid:
+                rec = {"agent": aid, "task": d["task"], "kind": d["kind"], "title": d["title"],
+                       "type": d.get("type", "")}
+                with open(known_path(ctx), "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(rec) + "\n")
+                return
+    except OSError:
+        pass
+
+
+def record_resume(ctx, to, tid):
+    """board-fast-lane rule 3: a SendMessage to a known deputy / worker of an open task is a launch record."""
+    if not to or ctx["pid"] is None:
+        return
+    try:
+        known = None
+        with open(known_path(ctx), encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(r, dict) and (r.get("agent") == to or r.get("title") == to):
+                    known = r
+        if known is None or base_type(known.get("type", "")) not in ("fast-lane-deputy", "worker"):
+            return
+        opens, _ = read_todo(ctx["main"])
+        if not opens or known["task"] not in opens:
+            return
+        for line in read_lines(os.path.join(ctx["folder"], "agent_state.txt")):
+            d = parse_launch(line)
+            if d is not None and d.get("agent") == known["agent"]:
+                return
+        fields = {"key": tid or "toolu_none_%d" % int(time.time()), "kind": known["kind"], "task": known["task"],
+                  "title": clean_title(known["title"]), "since": ctx["now"], "pid": str(ctx["pid"]),
+                  "by": ctx["role"], "type": known.get("type", ""), "agent": known["agent"]}
+        add_record(ctx, build_launch(fields))
+    except (OSError, Busy):
+        pass
+
+
 def finish(ctx, items, quiet):
     """items: [(Decision, (key, extra) or None)]. Block (whole call) or record, then the protocol line."""
     if ctx["mode"] == "on":
@@ -1137,6 +1211,8 @@ def finish(ctx, items, quiet):
             if not quiet and not warn:
                 warn = "board guard: state file busy; allowed"
             break
+        if d.kind == "deputy" and base_type(fields.get("type", "")) == "fast-lane-deputy":
+            first_stage(ctx, d.task)
     if warn and not quiet:
         return ("WARN", warn)
     return OK
