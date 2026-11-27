@@ -1104,9 +1104,9 @@ def other_folders(ctx):
 
 
 def write_launch_record(ctx, task, stype):
-    """F2: a durable line per reviewer / check-deputy launch in <git common dir>/agent_launches.jsonl."""
+    """F2: a durable line per reviewer / check-deputy / fast-lane-deputy launch in <git common dir>/agent_launches.jsonl."""
     base = base_type(stype)
-    if base not in ("reviewer", "check-deputy"):
+    if base not in ("reviewer", "check-deputy", "fast-lane-deputy"):
         return
     rec = {"task": task, "type": base, "by": ctx["role"], "at": ctx["now"]}
     try:

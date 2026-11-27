@@ -44,6 +44,17 @@ def part(text, start, end=None):
     return text[begin:text.index(end, begin + len(start))]
 
 
+class TestGateSelfCheckText(unittest.TestCase):
+    """gate-self-check rule 2: the gate that decides a merge is the base's gate, run from the main checkout."""
+
+    def test_the_merge_skill_and_deputy_run_the_gate_from_the_main_checkout(self):
+        for name, text in (("merge skill", read("skills", "merge", "SKILL.md")),
+                           ("merge deputy", read("agents", "merge-deputy.md"))):
+            with self.subTest(name=name):
+                self.assertIn("from the main checkout", text)
+                self.assertIn("never `<scratch>/bin/`", text)
+
+
 class TestPrinciplesW6Names(unittest.TestCase):
 
     def setUp(self):

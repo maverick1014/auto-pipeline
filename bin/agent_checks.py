@@ -1058,6 +1058,30 @@ def is_fast_lane(builders):
     return any(b.endswith(" deputy") for b in low) and not any("task manager" in b for b in low)
 
 
+# gate-self-check rule 1: the code behind `checks gate`, the guard and promote
+GATE_FILES = ("bin/agent_checks.py", "bin/agent-file.sh", "bin/agent_guard.py", "bin/agent-guard.sh",
+              "bin/agent_promote.py", "bin/agent-promote.sh", "bin/agent_level.py", "bin/agent-level.sh",
+              "bin/agent-owner-order.sh", "bin/agent_owner_order.py", "bin/agent_blocks.py", "hooks/hooks.json")
+
+
+def main_built_blocks():
+    """gate-self-check rule 4: every block but OWNER SIGN, from the block table (a new block is covered)."""
+    try:
+        import agent_blocks
+        names = list(agent_blocks.NAMES)
+    except Exception:
+        names = []
+    return (set(names) | set(BUILDER_BLOCKS) | {"DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS", "EXAMPLES TEST"}) - {SIGN}
+
+
+def gate_change_files(d, base, head):
+    """gate-self-check rule 1: the files of base..head that are the gate, the guard or promote."""
+    if not head or not git_line(d, "rev-parse", "--verify", "-q", "%s^{commit}" % base):
+        return []
+    names = git_line(d, "diff", "--name-only", "%s...%s" % (base, head)).splitlines()
+    return [n for n in names if n.strip() in GATE_FILES]
+
+
 def by_main_manager(who):
     """The main manager signs as `main` or `<repo> Manager`; a task manager is not it."""
     w = who.strip().lower()
@@ -1189,6 +1213,7 @@ def cmd_gate(ctx, a):
     base = opts.get("--base") or default_base(ctx["root"], d, f)
     planned = set()
     builders = []
+    notes = []
     if f is not None:
         c = field_of(f, "checks")
         if c:
@@ -1233,7 +1258,16 @@ def cmd_gate(ctx, a):
     for p in (os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")):
         builders += launch_builders(p, task)
     lowb = set(b.lower() for b in builders)
-    fast = is_fast_lane(builders)
+    gate_files = gate_change_files(d, base, head)
+    if gate_files:
+        notes.append("note: a gate change (%s): full lane, PR REVIEW and CORE REVIEW from a launched reviewer"
+                     % ", ".join(gate_files))
+        if "CORE REVIEW" not in plan:
+            plan = sorted(plan + ["CORE REVIEW"], key=order_key)
+    # rule 3: fast lane at the gate only when the guard saw the main manager launch a fast-lane deputy for the task
+    fast = is_fast_lane(builders) and not gate_files \
+        and any(t == "fast-lane-deputy" and by == "main" for (t, by, at) in launches)
+    main_built = any(by_main_manager(b) for b in builders)
     if fast:
         plan = [b for b in plan if b not in FAST_LANE_SKIPS]
 
@@ -1242,7 +1276,7 @@ def cmd_gate(ctx, a):
         t = task.lower()
         return w in lowb or w.startswith(t + " task manager") or w.startswith(t + " deputy") \
             or w.startswith(t + " worker")
-    lines, refused, notes = [], [], []
+    lines, refused = [], []
     for b in plan:
         r = res.get(b)
         if r is None:
@@ -1257,6 +1291,13 @@ def cmd_gate(ctx, a):
         elif b in BUILDER_BLOCKS and is_builder(r[1]):
             lines.append("%s: pass by the builder (%s), not accepted" % (b, r[1]))
             refused.append("%s by the builder" % b)
+        elif main_built and b in main_built_blocks() and by_main_manager(r[1]):
+            lines.append("%s: pass by the builder (%s), not accepted" % (b, r[1]))
+            refused.append("%s by the builder" % b)
+        elif gate_files and b in ("PR REVIEW", "CORE REVIEW") \
+                and (by_main_manager(r[1]) or not launched(launches, "reviewer", r[4])):
+            lines.append("%s: a gate change needs a launched reviewer" % b)
+            refused.append("%s needs a launched reviewer (gate change)" % b)
         elif b in LAUNCH_KIND and not launched(launches, LAUNCH_KIND[b][0], r[4]) \
                 and not (fast and b == "PR REVIEW" and by_main_manager(r[1])):
             lines.append("%s: no %s launched by the main manager for %s, not accepted" % (b, LAUNCH_KIND[b][1], task))

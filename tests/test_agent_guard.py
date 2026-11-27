@@ -1201,6 +1201,14 @@ class TestF2TheGuardWritesTheRecord(GuardCase):
         with open(path) as fh:
             return [json.loads(l) for l in fh if l.strip()]
 
+    def test_a_fast_lane_deputy_launched_by_the_main_manager(self):
+        # gate-self-check rule 3: the gate reads this record to know a task is fast lane
+        self.make_main()
+        self.put_todo("t")
+        self.pre_agent("t Deputy", stype="auto-pipeline:fast-lane-deputy")
+        recs = [r for r in self.records() if r.get("task") == "t"]
+        self.assertEqual([(r["type"], r["by"]) for r in recs], [("fast-lane-deputy", "main")])
+
     def test_a_reviewer_launched_by_the_main_manager(self):
         self.make_main()
         self.put_todo("t")
