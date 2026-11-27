@@ -54,9 +54,16 @@ NOW = "2026-11-02 14:00"
 
 
 class Counts:
-    """Mixin: count_starts on the repo, then counted() runs one call and returns (result, starts)."""
+    """Mixin: count_starts on the repo, then counted() runs one call and returns (result, starts).
+
+    The machine is quiet: a pgrep stub finds no other agent process. Without it the cleanup sweep's
+    leftover check (agent-resources.sh stop-leftovers) runs a second pgrep and an lsof, awk and ps
+    for every watch some other test left running, so the count would follow the machine, not the
+    call. The stub is still counted; the leftover logic has its own tests (test_agent_resources,
+    test_agent_cleanup)."""
 
     def count_on(self):
+        self.repo.stub_tool("pgrep", "#!/bin/bash\nexit 1\n")
         self.log = pc.count_starts(self.repo)
 
     def counted(self, script, *args, **kwargs):

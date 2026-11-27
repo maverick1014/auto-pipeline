@@ -2964,10 +2964,16 @@ class TestCliModel(unittest.TestCase):
     def test_one_place(self):
         with open(os.path.join(BIN, "agent-resume.sh"), encoding="utf-8") as fh:
             resume = fh.read()
-        self.assertIn("agent_conf.py", resume)
-        self.assertIn("cli-model", resume, "agent-resume.sh's model_name must ask agent_conf.py cli-model")
+        # script-speed: agent-resume.sh hands the spec to its one python3 start (agent_nightly.py resume-prep
+        # --model), which asks agent_conf.cli_model; before, it ran agent_conf.py cli-model itself
+        self.assertIn("agent_nightly.py", resume)
+        self.assertIn("--model", resume, "agent-resume.sh's model word must come from agent_conf's cli_model")
+        with open(os.path.join(BIN, "agent_nightly.py"), encoding="utf-8") as fh:
+            nightly = fh.read()
+        self.assertIn("agent_conf.cli_model(", nightly)
         for family in ("opus*)", "sonnet*)", "haiku*)", "fable*)"):
             self.assertNotIn(family, resume, "no second copy of the family list")
+            self.assertNotIn(family, nightly, "no second copy of the family list")
         with open(SERVER, encoding="utf-8") as fh:
             server = fh.read()
         self.assertIn("cli_model(", server)
