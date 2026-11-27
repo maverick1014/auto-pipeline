@@ -240,7 +240,7 @@ QFILES=( _
   "rules/context.md" "rules/human.md" "PRINCIPLES.md rules/human.md" "rules/worktrees.md" "rules/branches.md"
   "PRINCIPLES.md" "rules/checks.md" "rules/branches.md" "rules/approval.md" "rules/approval.md"
   "rules/approval.md" "rules/approval.md" "PRINCIPLES.md" "rules/approval.md" "rules/routing.md"
-  "PRINCIPLES.md" "rules/human.md" "rules/routing.md" )
+  "PRINCIPLES.md" "rules/human.md rules/checks.md" "rules/routing.md" )
 MAIN_READS="rules/human.md rules/routing.md rules/approval.md rules/checks.md rules/branches.md rules/worktrees.md rules/watch.md rules/files.md"
 TASK_READS="rules/tests.md rules/checks.md rules/watch.md rules/context.md rules/resources.md"
 SECOND_READS="rules/roles.md $TASK_READS"
@@ -514,7 +514,7 @@ Q37. You are the main manager. The owner asked for a CSV export in his own words
 Q38. You are the main manager. You sent a new task manager its brief with agent-file.sh tell. The tell printed TELL FAIL (pointer not seen, block is in the file), and the next watch sweep says the task is ok. You:
   A. Report the task as started: the watch says ok
   B. Open a second task manager in a new worktree and send the brief there
-  C. Act at once: type the pointer line into its pane by hand, read the pane within 2 min, and report "brief sent, not yet confirmed" until its STAGE brief line, a busy pane or its first reply shows it working
+  C. Act at once: read its pane, then type the pointer line into it by hand, and report "brief sent, not yet confirmed" until its STAGE brief line, a busy pane or its first reply shows it working
   D. Wait for its first heartbeat in 15 minutes
 QUIZ
 }

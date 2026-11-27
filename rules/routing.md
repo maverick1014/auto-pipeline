@@ -22,6 +22,8 @@ W9. Task routing (main manager, before every dispatch)
 - A task is started in the turn it is added, or its wait is recorded with the reason in that turn
 - What only the main manager can do and an agent waits on (a requirement doc, an answer, a decision) comes before work nothing waits on
 - The todo line comes first: `todo add` before the worktree, the pane or any agent. The guard refuses a main manager launch for a task that is not open (W14)
-- A launch counts only when the agent is seen working: its `STAGE <task>: brief` line, its pane busy on the brief, or its first reply; until then every report says "brief sent, not yet confirmed"
-- After every `agent-file.sh tell` read its result. TELL FAIL → act at once: the block is in the file, type its pointer line into the pane by hand
+- A launch counts only when the agent is seen working: its `STAGE <task>: brief` line, its pane busy on the brief, or its first reply; until then every report says "brief sent, not yet confirmed" (in the Language setting)
+- After every `agent-file.sh tell` read its result line; a TELL FAIL is acted on at once:
+  - `TELL FAIL <task> <sha>: pointer not seen (block is in the file)` → read the pane first (the tool already sent the pointer twice), then type the pointer by hand: `[<model> <effort>] TELL <sha8>: read the TELL <sha8> block at the end of agent_state.txt and act on it`
+  - `TELL FAIL <task> <sha>: file check` → the block is not in the file: run the tell again; never type the pointer of a missing block
 - Within 2 min of a dispatch read the pane: still idle on its welcome screen = the brief did not land. A watch sweep 'ok' is not proof of a start

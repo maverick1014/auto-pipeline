@@ -57,7 +57,7 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 - First action of every agent: copy its brief into `agent_state.txt`
 - A state line: `agent-file.sh state add "<line>"` (it adds the date), never `echo >>`. A brief or report block: one append, then one blank line
 - After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory; then re-read the rules file of your current step
-- A rule the owner gives → rule text, never only an auto memory (rules/files.md)
+- A rule or correction the owner gives → rule text, never only an auto memory (rules/files.md)
 
 ## Talking to the human (detail: `rules/output.md`, `rules/human.md`)
 - Lead with the result (E1). Short by default (E3)

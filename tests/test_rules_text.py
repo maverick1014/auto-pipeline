@@ -4100,10 +4100,12 @@ class TestTheAskTest(unittest.TestCase):
         line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("Before the flow:"))
         self.assertIn("the owner approves it, unless it only writes down his words. Full flow, in order:", line)
         doc = next(l for l in read("rules", "checks.md").splitlines() if "needs no second yes" in l)
-        for phrase in ("requirement doc", "in his words", "adds scope", "owner-level option", "goes to him first",
-                       "the examples of a money or permission rule still need his yes before code (EXAMPLES TEST)"):
+        for phrase in ("requirement doc", "in his words", "adds scope", "owner-level option", "goes to him first"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, doc)
+        # FIX ORDER 1 (e): the EXAMPLES TEST rule still holds
+        self.assertIn("- That doc's examples of a money or permission rule still need his yes before code (EXAMPLES TEST)",
+                      read("rules", "checks.md").splitlines())
 
     def test_e1_destructive_means_his_data_or_work(self):
         e1 = part(read("rules", "output.md"), "E1. ", "E2. ").splitlines()
@@ -4157,7 +4159,7 @@ class TestVerifyTheLaunch(unittest.TestCase):
                        "`[<model> <effort>] TELL <sha8>: read the TELL <sha8> block at the end of agent_state.txt "
                        "and act on it`",
                        "`TELL FAIL <task> <sha>: file check` → the block is not in the file: run the tell again; "
-                       "never type a pointer to a missing block",
+                       "never type the pointer of a missing block",
                        "Within 2 min of a dispatch read the pane",
                        "still idle on its welcome screen = the brief did not land",
                        "A watch sweep 'ok' is not proof of a start"):
@@ -4223,4 +4225,4 @@ class TestWhereALessonGoes(unittest.TestCase):
     def test_the_glossary_matches_r1(self):
         # FIX ORDER 1 (b)
         line = next(l for l in read("GLOSSARY.md").splitlines() if l.startswith("**Requirement doc**:"))
-        self.assertIn("the owner approves it before the flow starts, unless it only writes down his words", line)
+        self.assertIn("the doc the owner approves before the flow starts, unless it only writes down his words (R1)", line)

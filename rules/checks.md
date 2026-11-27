@@ -55,3 +55,4 @@ R8. Check blocks
 - Beyond the reviewer's PR REVIEW, a second agent's opinion only for CORE REVIEW, or when someone wants a tool-triggered block removed
 - A requirement table copies its defaults from the released template and lists every changed default for the owner
 - A requirement doc that only writes down his request in his words needs no second yes; one that adds scope or picks an owner-level option goes to him first (R1)
+- That doc's examples of a money or permission rule still need his yes before code (EXAMPLES TEST)

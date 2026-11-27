@@ -35,7 +35,8 @@ H3. Report
   - a permission check blocks the action
   - it is irreversible, outward or outside the repo, and his words do not cover it
   - a real product or owner-level choice
-- Never a question: deleting temp files, caches or records of dead sessions, or a checkout switch with a backup first: none loses his data or work (destructive: rules/output.md)
+  - his request is ambiguous, or 3 turns of "still broken": one short question (rules/output.md)
+- Never a question: deleting temp files, caches, `.git/agent_*_<sid>` markers or lines of a session that ended, or a checkout switch with a backup first: none loses his data or work (destructive: rules/output.md). Docs and state copies stay his yes (/auto-pipeline:clean-up)
 - Nothing open: keep the heading, one line: none (zh `无`)
 - Every question the main manager puts to the owner in a decide section is recorded with `park add` (--why --evidence --options --rec if known), removed when answered (`park rm` or `questions answer`)
 - Few numbers. One table at most, five rows or fewer, unless the human asks for the full list; a table whose value is completeness (the board, the question list, a ledger) is never cut (decided by the main manager 2026-11-26; the owner can veto)
