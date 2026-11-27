@@ -23,6 +23,17 @@ chat.jsonl: when the city sees the SessionEnd of a session that has chat rows, i
     CHAT_GONE_SEC (= HIST_GONE_SEC, 24 h) and writes the file without them; a newer end row stays
     (returned too, so the city knows when it ended). CityState drops them at load (also when no server
     ran in between) and in sweep_history(now) (every recount tick).
+Fix order 9bbb819c:
+    FO4: a page is ended only while the end row is that session's LAST row: a row after it (a session
+        resumed with the same sid) un-ends it, also at load after a restart (chat_next is not "ended",
+        chat_view can_send is True once the session is live).
+    S1: every writer of chat.jsonl (the say hook, the server) goes through chat_append(path, row), which
+        holds an exclusive flock on <path>.lock around its one O_APPEND write; every rewrite (load_chat's,
+        the sweep's) holds the same lock from its read to its os.replace, so no live row is lost.
+    S4: CHAT_IDLE_SEC = 7 days. load_chat(path, now=None, live=()) also drops every row of a sid whose last
+        row is older than CHAT_IDLE_SEC and that is not in LIVE (no end row needed); CityState passes the
+        sessions it brought back from the roster; sweep_history(now) drops them too, unless the session
+        is live.
 The designer command carries the city's home: city_home_for(floors_dir) -> None for the default
     floors folder (~/.claude/agent-city/floors) or None, else the folder that holds the floors folder;
     agent_command(..., city_home=X) puts `AGENT_CITY_HOME=X ` right before `AGENT_ROLE=`/`claude`
@@ -402,6 +413,148 @@ class TestChatOfAnEndedSession(ChatCase):
         self.state.sweep_history(time.time() + DAY + 60)
         self.assertEqual(self.chat_sids(), ["s3"], "a live session's chat stays")
         self.assertTrue(self.gone_page(self.state, "s1"))
+
+
+class TestAResumedSessionIsNotEnded(ChatCase):
+    """fix order 9bbb819c FO4."""
+
+    def test_a_row_after_the_end_row_un_ends_it_at_load(self):
+        now = time.time()
+        self.write_chat([chat_row("s1", "prompt", now - 3 * 3600), chat_row("s1", "end", now - 2 * 3600),
+                         chat_row("s1", "prompt", now - 3600)])
+        self.state = self.make(chat_path=self.chat)
+        self.feed(line("UserPromptSubmit", "s1", self.shop), line("Stop", "s1", self.shop))
+        self.assertEqual(self.state.chat_next("s1", "w-1", 0.1), {"state": "none"})
+        code, body = self.state.chat_view("s:s1")
+        self.assertEqual((code, body.get("can_send")), (200, True), body)
+
+    def test_an_end_row_that_is_last_still_ends_it(self):
+        now = time.time()
+        self.write_chat([chat_row("s2", "prompt", now - 3 * 3600), chat_row("s2", "end", now - 2 * 3600)])
+        self.state = self.make(chat_path=self.chat)
+        self.assertEqual(self.state.chat_next("s2", "w-1", 5.0), {"state": "ended"})
+
+
+class TestNoLiveRowIsLost(ChatCase):
+    """fix order 9bbb819c S1: the rewrite of chat.jsonl and its writers share one lock."""
+
+    def hold(self):
+        import fcntl
+        fh = open(self.chat + ".lock", "a+")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        self.addCleanup(fh.close)
+        return fh
+
+    def release(self, fh):
+        import fcntl
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+    def in_thread(self, fn):
+        import threading
+        t = threading.Thread(target=fn, daemon=True)
+        t.start()
+        return t
+
+    def test_the_writer_waits_for_the_lock(self):
+        self.write_chat([])
+        fh = self.hold()
+        t = self.in_thread(lambda: ac.chat_append(self.chat, chat_row("w1", "prompt", time.time())))
+        time.sleep(0.3)
+        self.assertEqual(self.chat_sids(), [], "no write while the lock is held")
+        self.release(fh)
+        t.join(5)
+        self.assertEqual(self.chat_sids(), ["w1"])
+
+    def test_the_rewrite_at_load_waits_for_the_lock(self):
+        now = time.time()
+        self.write_chat([chat_row("old", "prompt", now - 30 * 3600), chat_row("old", "end", now - 25 * 3600)])
+        fh = self.hold()
+        t = self.in_thread(lambda: ac.load_chat(self.chat, now=now))
+        time.sleep(0.3)
+        self.assertEqual(self.chat_sids(), ["old"], "the rewrite waits")
+        self.release(fh)
+        t.join(5)
+        self.assertEqual(self.chat_sids(), [])
+
+    def test_the_sweep_waits_for_the_lock(self):
+        now = time.time()
+        self.write_chat([chat_row("s1", "prompt", now - 60)])
+        self.state = self.make(chat_path=self.chat)
+        self.feed(line("UserPromptSubmit", "s1", self.shop), line("SessionEnd", "s1", self.shop))
+        fh = self.hold()
+        t = self.in_thread(lambda: self.state.sweep_history(time.time() + DAY + 60))
+        time.sleep(0.3)
+        self.assertIn("s1", self.chat_sids(), "the sweep waits")
+        self.release(fh)
+        t.join(5)
+        self.assertNotIn("s1", self.chat_sids())
+
+    def test_the_say_hook_uses_the_one_writer(self):
+        self.assertIn("chat_append(", inspect.getsource(ac._cmd_say_impl))
+        self.assertIn("chat_append(", inspect.getsource(ac.CityState._append_chat_path_locked))
+
+    def test_rows_written_during_many_sweeps_all_stay(self):
+        # a second process appends while the city rewrites the file again and again
+        self.write_chat([])
+        self.state = self.make(chat_path=self.chat)
+        n = 300
+        writer = subprocess.Popen(
+            [sys.executable, "-c",
+             "import sys, time; sys.path.insert(0, %r); import agent_city as ac\n"
+             "for i in range(%d):\n"
+             "    ac.chat_append(%r, {'sid': 'live', 'aid': '', 'kind': 'prompt', 'text': 'r%%d' %% i, 'at': time.time()})\n"
+             % (os.path.join(ROOT, "bin"), n, self.chat)])
+        k = 0
+        while writer.poll() is None and k < 200:
+            sid = "gone%d" % k
+            ac.chat_append(self.chat, chat_row(sid, "prompt", time.time() - 3 * DAY))
+            self.state.feed_chat(chat_row(sid, "prompt", time.time() - 3 * DAY))
+            self.state.feed_chat(chat_row(sid, "end", time.time() - 2 * DAY))
+            self.state.sweep_history(time.time())
+            k += 1
+        writer.wait(60)
+        self.assertEqual(writer.returncode, 0)
+        self.assertGreater(k, 0, "at least one rewrite ran while the writer wrote")
+        texts = [r.get("text") for r in self.chat_rows() if r["sid"] == "live"]
+        self.assertEqual(len(texts), n, "every live row stays")
+
+
+class TestAnIdleSessionGoesAfterAWeek(ChatCase):
+    """fix order 9bbb819c S4: a session with no end row whose last row is older than 7 days, and that
+    is not live, loses its chat too."""
+
+    def test_the_idle_time_is_a_week(self):
+        self.assertEqual(ac.CHAT_IDLE_SEC, 7 * DAY)
+
+    def test_load_chat(self):
+        now = 2000000000.0
+        self.write_chat([chat_row("idle8", "prompt", now - 8 * DAY), chat_row("idle6", "prompt", now - 6 * DAY),
+                         chat_row("live8", "prompt", now - 8 * DAY)])
+        rows = ac.load_chat(self.chat, now=now, live={"live8"})
+        self.assertEqual(sorted(set(r["sid"] for r in rows)), ["idle6", "live8"])
+        self.assertEqual(self.chat_sids(), ["idle6", "live8"])
+
+    def test_the_city_keeps_a_live_session_at_load(self):
+        roster = os.path.join(self.base, "roster.json")
+        first = self.make(roster_path=roster)
+        first.feed_line(line("UserPromptSubmit", "live8", self.shop, pid=str(os.getpid())), self.now)
+        self.assertTrue(os.path.exists(roster), "the live session is in the roster")
+        now = time.time()
+        self.write_chat([chat_row("idle8", "prompt", now - 8 * DAY), chat_row("live8", "prompt", now - 8 * DAY),
+                         chat_row("idle6", "prompt", now - 6 * DAY)])
+        self.make(roster_path=roster, chat_path=self.chat)
+        self.assertEqual(self.chat_sids(), ["idle6", "live8"])
+
+    def test_the_sweep_drops_an_idle_session_not_a_live_one(self):
+        now = time.time()
+        self.write_chat([chat_row("idle", "prompt", now - 60), chat_row("live", "prompt", now - 60)])
+        self.state = self.make(chat_path=self.chat)
+        self.feed(line("UserPromptSubmit", "live", self.shop))
+        self.state.sweep_history(time.time() + 6 * DAY)
+        self.assertEqual(self.chat_sids(), ["idle", "live"])
+        self.state.sweep_history(time.time() + 8 * DAY)
+        self.assertEqual(self.chat_sids(), ["live"])
+        self.assertTrue(self.gone_page(self.state, "idle"))
 
 
 if __name__ == "__main__":

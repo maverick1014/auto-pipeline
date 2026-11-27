@@ -5,10 +5,12 @@ Written by the task manager first.
 CONTRACT
 
 agent-file.sh session-end <sid>
-    <sid>: letters, digits, "_" and "-" only, else refused (exit 1, one line on stderr, nothing removed).
+    <sid>: letters, digits, "_" and "-" only, starting with a letter or digit (so "-", "--" and
+    "--dry-run" are refused), else refused (exit 1, one line on stderr, nothing removed).
     Removes, in the project's shared git dir, every file of that session:
         agent_started_<sid> agent_rules_<sid> agent_compact_<sid> agent_quiz_<sid> agent_stale_<sid>
-        agent_autoclear_<sid> agent_helper_task_<sid> agent_helper_title_<sid> agent_point_<sid>_*
+        agent_autoclear_<sid> agent_helper_task_<sid> agent_helper_title_<sid> agent_point_<sid>_<moment>
+    (<moment> has no "_": session abc never takes agent_point_abc_def_watch of session abc_def)
     and every human-direct line of agent_worktree.txt whose field "session <sid>" names it. Every other
     file and line stays as it was (byte for byte, in its order). Nothing found: exit 0.
 agent-file.sh session-end --dead
@@ -23,6 +25,8 @@ The human-direct line a Helper's start writes (and helper-task adds when there i
     <path> | task manager, human-direct | task: <task> | since <YYYY-MM-DD HH:MM> | pid <pid> | host <host> | session <sid>
     pid: the session's pid (agent_pid), host: this machine, sid: the hook's session_id, else
     $CLAUDE_CODE_SESSION_ID; "-" when unknown. helper-task changes field 3 only.
+    helper-task and helper-join change only the caller's own line ("session <its sid>"); an old line with
+    no session field still matches by path; another Helper's line in the same folder never changes.
 
 bin/agent-session-end.sh  the SessionEnd hook (hooks/hooks.json, next to the city's entry)
     stdin {"session_id", "cwd", ...} -> agent-file.sh session-end <sid> for the repo of cwd. Prints
@@ -137,6 +141,14 @@ class TestSessionEndCommand(EndCase):
         for name in KEEP:
             self.assertTrue(os.path.exists(os.path.join(self.gitdir, name)), name)
 
+    def test_a_longer_session_id_is_not_taken(self):
+        # fix order 9bbb819c FO2: session abc never removes the files of session abc_def
+        self.make_markers("abc")
+        self.make_markers("abc_def")
+        self.assertOk(self.end("abc"))
+        self.assertEqual(self.present("abc"), [])
+        self.assertEqual(len(self.present("abc_def")), len(MARKERS))
+
     def test_its_human_direct_line_goes_and_nothing_else(self):
         mine = helper_line(self.repo.dir, SID, pid=4242)
         twin = helper_line(self.repo.dir, OTHER, pid=4343, task="Other Work")
@@ -153,7 +165,7 @@ class TestSessionEndCommand(EndCase):
     def test_a_bad_session_id_is_refused(self):
         self.make_markers(SID)
         self.set_lines([helper_line(self.repo.dir, SID, pid=4242)])
-        for bad in ("", "*", "../x", "a b", "a|b", SID[:3] + "*"):
+        for bad in ("", "*", "../x", "a b", "a|b", SID[:3] + "*", "-", "--", "--dry-run", "_x"):
             with self.subTest(sid=bad):
                 result = self.end(bad)
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
@@ -190,9 +202,11 @@ class TestSessionEndDead(EndCase):
         gone = dead_pid()
         self.set_lines([helper_line(self.repo.dir, "-", pid=gone)])
         self.make_markers(SID)
+        self.make_markers("-")      # fix order 9bbb819c FO1: "agent_*_-" files are nobody's session
         self.assertOk(self.end("--dead"))
         self.assertEqual(self.lines(), [])
         self.assertEqual(len(self.present(SID)), len(MARKERS))
+        self.assertEqual(len(self.present("-")), len(MARKERS))
 
     def test_dry_run_changes_nothing(self):
         gone = dead_pid()
@@ -323,6 +337,50 @@ class TestHelperLine(SeatCase):
         out = self.assertOk(self.start(4242, "mm-new"))
         self.assertIn("ROLE: main manager", out)
         self.assertEqual(self.lines(), [live_line])
+
+
+class TestTwoHelpersInOneFolder(SeatCase):
+    """fix order 9bbb819c FO3: helper-task and helper-join change only the caller's own line."""
+
+    def setUp(self):
+        super().setUp()
+        self.hold_lock()
+        self.assertOk(self.start(5151, "hs-1"))
+        self.assertOk(self.start(5252, "hs-2"))
+        self.first = self.mine("hs-1")
+
+    def mine(self, sid):
+        rows = [l for l in self.lines() if l.endswith(" | session " + sid)]
+        self.assertEqual(len(rows), 1, self.lines())
+        return rows[0]
+
+    def as_helper(self, pid, sid, *args):
+        return self.repo.run("agent-file.sh", *args, env={"CLAUDE_PID": str(pid), "CLAUDE_CODE_SESSION_ID": sid,
+                                                          "AGENT_FAKE_HOST": HOST, "ORCA_TERMINAL_HANDLE": "term_h-2"})
+
+    def test_both_lines_are_there(self):
+        self.assertEqual(len([l for l in self.lines() if "human-direct" in l]), 2, self.lines())
+
+    def test_helper_task_retitles_only_its_own_line(self):
+        self.assertOk(self.as_helper(5252, "hs-2", "helper-task", "Second Work"))
+        self.assertIn(" | task: Second Work | ", self.mine("hs-2"))
+        self.assertEqual(self.mine("hs-1"), self.first)
+
+    def test_helper_join_turns_only_its_own_line(self):
+        self.assertOk(self.as_helper(5252, "hs-2", "helper-join", "join-task"))
+        joined = [l for l in self.lines() if l.split(" | ")[1:2] == ["join-task"]]
+        self.assertEqual(len(joined), 1, self.lines())
+        self.assertTrue(joined[0].endswith(" | session hs-2"), joined[0])
+        self.assertEqual(self.mine("hs-1"), self.first)
+        self.assertEqual(len([l for l in self.lines() if "human-direct" in l]), 1)
+
+    def test_an_old_line_still_matches_by_path(self):
+        old = helper_line(self.repo.dir, "-")      # written before session-cleanup: no session field
+        self.set_lines([old])
+        self.assertOk(self.as_helper(5353, "hs-3", "helper-task", "Old Work"))
+        rows = [l for l in self.lines() if "human-direct" in l]
+        self.assertEqual(len(rows), 1, rows)
+        self.assertIn(" | task: Old Work | ", rows[0] + " | ")
 
 
 class TestHousekeepDropsGoneHelpers(th.HousekeepCase):
