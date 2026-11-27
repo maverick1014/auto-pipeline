@@ -14,8 +14,8 @@ processes raises the cap here, with its reason.
 
 | Call | python3 before -> cap | all starts before -> reached (cap) |
 |---|---|---|
-| agent-start.sh, main manager by hand | 27 -> 5 | 157 -> 43 (45) |
-| agent-start.sh, main manager from the hook | 28 -> 6 | 157 -> 46 (48) |
+| agent-start.sh, main manager by hand | 27 -> 5 | 157 -> 47 (49: +4 session-cleanup 2b1ad6f, session-end --dead) |
+| agent-start.sh, main manager from the hook | 28 -> 6 | 157 -> 50 (52: +4 session-cleanup 2b1ad6f, session-end --dead) |
 | agent-start.sh, task manager | 7 -> 1 | 65 -> 11 (13) |
 | agent-start.sh, second session | 11 -> 1 | 142 -> 23 (25) |
 | agent-start.sh --quiz | 0 -> 0 | 24 -> 6 (8) |
@@ -48,7 +48,8 @@ from watchhelp import ENV, AllCase, sha8  # noqa: E402
 
 NOBODY = "999999"   # a CLAUDE_PID no lock names and no process has
 TASK = {"AGENT_ROLE": "task-manager"}
-TASK_ANSWERS = "1A 2D 5D 7C 8D 10C 13B 15D 20B 21B 23B 26C 27B 33B 36B"
+# the task manager quiz is 16 questions since the ask-test merge (3721f0f; 27ffb91: Q37 also rules/checks.md)
+TASK_ANSWERS = "1A 2D 5D 7C 8D 10C 13B 15D 20B 21B 23B 26C 27B 33B 36B 37C"
 SIG = "[Opus 5.5 xhigh]"
 NOW = "2026-11-02 14:00"
 
@@ -99,13 +100,13 @@ class TestStartCounts(CountCase):
         r, starts = self.counted("agent-start.sh", env={"CLAUDE_PID": NOBODY})
         self.assertOk(r)
         self.assertIn("ROLE: main manager", r.stdout)
-        self.assertStarts(starts, 45, python3=5)
+        self.assertStarts(starts, 49, python3=5)   # 45 + 4: session-cleanup (2b1ad6f) drops a gone Helper at start
 
     def test_main_manager_from_the_hook(self):
         r, starts = self.counted("agent-start.sh", env={"CLAUDE_PID": NOBODY}, stdin=self.hook())
         self.assertOk(r)
         self.assertIn("ROLE: main manager", r.stdout)
-        self.assertStarts(starts, 48, python3=6)
+        self.assertStarts(starts, 52, python3=6)   # 48 + 4: session-cleanup (2b1ad6f) drops a gone Helper at start
 
     def test_task_manager(self):
         r, starts = self.counted("agent-start.sh", env=TASK)
@@ -127,7 +128,7 @@ class TestStartCounts(CountCase):
     def test_quiz(self):
         r, starts = self.counted("agent-start.sh", "--quiz", env=TASK)
         self.assertOk(r)
-        self.assertIn("=== QUIZ (task manager) — answer all 15 before any work ===", r.stdout)
+        self.assertIn("=== QUIZ (task manager) — answer all 16 before any work ===", r.stdout)
         self.assertStarts(starts, 8, python3=0)
 
     def test_rules(self):
@@ -139,13 +140,13 @@ class TestStartCounts(CountCase):
     def test_answer_all_right_is_one_hash_pass(self):
         r, starts = self.counted("agent-start.sh", "--answer", TASK_ANSWERS, env=TASK)
         self.assertOk(r)
-        self.assertEqual(r.stdout, "QUIZ RESULT: 15/15 PASS\nYou may start work.\n")
+        self.assertEqual(r.stdout, "QUIZ RESULT: 16/16 PASS\nYou may start work.\n")
         self.assertStarts(starts, 8, python3=1, hashes=0)
 
     def test_answer_one_wrong_is_one_hash_pass_and_todays_text(self):
         r, starts = self.counted("agent-start.sh", "--answer", "1B" + TASK_ANSWERS[2:], env=TASK)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertEqual(r.stdout, "QUIZ RESULT: 14/15 FAIL\nQ1: re-read PRINCIPLES.md\n"
+        self.assertEqual(r.stdout, "QUIZ RESULT: 15/16 FAIL\nQ1: re-read PRINCIPLES.md\n"
                                    "Re-read those files, then answer again.\n")
         self.assertStarts(starts, 8, python3=1, hashes=0)
 
@@ -300,7 +301,7 @@ class TestReviewFixOrder1(ScriptCase):
         r = self.repo.run("agent-start.sh", "--answer", "1A", env=TASK)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         lines = r.stdout.splitlines()
-        self.assertEqual(lines[0], "QUIZ RESULT: 1/15 FAIL")
+        self.assertEqual(lines[0], "QUIZ RESULT: 1/16 FAIL")
         self.assertEqual(lines[1], "Q2: re-read PRINCIPLES.md, rules/files.md")
         self.assertNotIn("Q1: re-read PRINCIPLES.md", r.stdout)
 
