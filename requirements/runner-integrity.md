@@ -11,8 +11,8 @@ Found by the release-check-loosen reviews (2026-11-26). No test file does this t
 ## The rule
 
 1. A test file the loader cannot list (any exit, exception or zero test ids at import) makes the run RED, with one line naming the file and the reason.
-2. A file where every test was skipped makes the run RED, with one line naming the file, unless the file is listed in a repo fact `all_skip_ok` in `agent_repo.conf` (empty for this repo; a file is added only with the reason next to it).
-3. run2.py removes its own temp folder when it ends: green, red, error or Ctrl-C.
+2. A file where every test was skipped makes the run RED, with one line naming the file, unless the file is listed in a repo fact `all_skip_ok` in `agent_repo.conf` (one line `all_skip_ok=<file>: <reason>` per file; a line without a reason is ignored and said). This repo has one entry: `test_check_blocks_demo`, heavy, its one test runs only in the full run (AGENT_FULL_RUN=1, which run2 clears for named files), so every named run of it skips everything; it is picked as a related test whenever a diff touches tests/run2.py (main manager 2026-11-27, answer 1A).
+3. run2.py removes its own temp folder when it ends: green, red, error or Ctrl-C (also SIGTERM and SIGHUP, as the test-run monitor stops a run; its test processes are stopped first). Since the log folder goes, a red run prints each failed process's failure blocks inline, every line prefixed `  | `: at most 60 lines per failed process and 300 in total, then one line `  | ... <n> more lines cut` when cut; the log-path lines go; the `  FAIL: x` / `  ERROR: x` lines stay exactly as today, so the nightly reads the same names (main manager 2026-11-27, answer 2A).
 4. At start it removes old `run2_*` folders only when it can prove they are its own and dead: a marker file inside names the process id and start time, and that process no longer runs. A folder without a marker, or with a live process, is never touched.
 5. The per-file count check, the FAIL line format and the exit codes of a normal run stay as today.
 

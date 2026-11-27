@@ -3,11 +3,15 @@ against what the unittest loader discovers.
 """
 
 import importlib.util
+import json
 import os
+import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -321,6 +325,697 @@ class TestDirectTools(unittest.TestCase):
                         "print(json.dumps([direct_tools(), os.environ.get('AGENT_TEST_TOOLS'),"
                         " os.environ.get('PYTHONPYCACHEPREFIX')]))")
         self.assertEqual(__import__("json").loads(out), [None, None, None])
+
+
+# ------------------------------------------------------------------ runner-integrity
+# requirements/runner-integrity.md: a run is never green for a file that did not really run,
+# and run2 leaves no run2_* folder of its own behind. Fixture files live under temp folders,
+# never in tests/; every run gets an empty TMPDIR of the test's own, so run2 makes and sweeps
+# its folders there and nowhere else.
+
+MARKER = ".run2_owner"   # in run2's folder: {"pid": <run2's pid>, "start": <that process's start time>}
+
+EXITS = "import sys\nsys.exit(0)\n"
+OS_EXIT = "import os\nos._exit(0)\n"
+RAISES = "raise RuntimeError('broken at import')\n"
+IMPORTS_MISSING = "import no_such_module_runner_integrity\n"
+NO_TESTS = "import unittest\n"
+
+SKIPPED = '''import unittest
+
+
+class TestSkipped(unittest.TestCase):
+    @unittest.skip("later")
+    def test_later(self):
+        pass
+'''
+
+HALF_SKIPPED = '''import unittest
+
+
+class TestHalf(unittest.TestCase):
+    @unittest.skip("later")
+    def test_later(self):
+        pass
+
+    def test_now(self):
+        pass
+'''
+
+# two classes, every test skipped; the timings make run2 deal it out class by class (-j 2)
+BIG_SKIPPED = '''import unittest
+
+
+@unittest.skip("later")
+class TestSkipA(unittest.TestCase):
+    def test_a(self):
+        pass
+
+
+@unittest.skip("later")
+class TestSkipB(unittest.TestCase):
+    def test_b(self):
+        pass
+'''
+BIG_SKIPPED_TIMINGS = "# seconds\ttests\tfile\n10.0\t2\ttest_bigskip\n1.0\t1\ttest_small\n"
+
+FAILING = '''import unittest
+
+
+class TestFailing(unittest.TestCase):
+    def test_fail(self):
+        self.assertEqual(1, 2, "runner-integrity-detail")
+'''
+
+# writes its pid to tests/started (atomically), then sleeps far longer than any test waits
+SLOW = '''import os
+import time
+import unittest
+
+
+class TestSlow(unittest.TestCase):
+    def test_slow(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, "started.tmp"), "w") as fh:
+            fh.write(str(os.getpid()))
+        os.replace(os.path.join(here, "started.tmp"), os.path.join(here, "started"))
+        time.sleep(90)
+'''
+
+
+def test_name(module, cls, method, sub_desc=None):
+    """A test's name as this interpreter's unittest prints it: "m (mod.Cls)" up to 3.10,
+    "m (mod.Cls.m)" from 3.11 (FIX ORDER 3 item 2); a subtest adds " (i=2)"."""
+    case = type(cls, (unittest.TestCase,), {method: lambda self: None, "__module__": module})(method)
+    return str(case) + ("" if sub_desc is None else " " + sub_desc)
+
+
+def fixture_root(case, files):
+    """A repo root under a temp folder: tests/<name> per file; agent_repo.conf at the root."""
+    root = tempfile.mkdtemp(prefix="r2fix_")
+    case.addCleanup(shutil.rmtree, root, True)
+    os.makedirs(os.path.join(root, "tests"))
+    for name, text in files.items():
+        path = os.path.join(root, name) if name == "agent_repo.conf" else os.path.join(root, "tests", name)
+        with open(path, "w") as fh:
+            fh.write(text)
+    return root
+
+
+def own_tmp(case):
+    tmp = tempfile.mkdtemp(prefix="r2tmp_")
+    case.addCleanup(shutil.rmtree, tmp, True)
+    return tmp
+
+
+def run2_env(tmp, own_tools=False):
+    env = dict(os.environ)
+    env.pop("AGENT_FULL_RUN", None)
+    env["TMPDIR"] = tmp
+    if own_tools:
+        # as from a plain shell: run2 makes its own fasttools folder (macOS), in this TMPDIR
+        for k in ("AGENT_TEST_TOOLS", "PYTHONPYCACHEPREFIX"):
+            env.pop(k, None)
+        env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep)
+                                      if "agent_test_tools_" not in p)
+    return env
+
+
+def run_run2(root, tmp, *extra):
+    cmd = [sys.executable, RUN2] + (["--root", root] if root else []) + list(extra)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=run2_env(tmp))
+
+
+def left(tmp):
+    """The run2_* entries in a TMPDIR."""
+    return sorted(n for n in os.listdir(tmp) if n.startswith("run2_"))
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def wait_for(path, limit_s=30):
+    end = time.time() + limit_s
+    while time.time() < end:
+        if os.path.exists(path):
+            with open(path) as fh:
+                return fh.read()
+        time.sleep(0.05)
+    raise AssertionError("never appeared: %s" % path)
+
+
+def start_slow_run(case, tmp, own_tools=False, extra_env=None):
+    """(Popen of run2 on one slow test, the slow test's pid), once that test runs."""
+    root = fixture_root(case, {"test_slow.py": SLOW})
+    proc = subprocess.Popen([sys.executable, RUN2, "--root", root, "-j", "1"],
+                            env=dict(run2_env(tmp, own_tools), **(extra_env or {})),
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            start_new_session=True)
+
+    def stop():
+        if proc.poll() is None:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                pass
+        proc.communicate(timeout=30)
+    case.addCleanup(stop)
+    test_pid = int(wait_for(os.path.join(root, "tests", "started")))
+    case.addCleanup(lambda: alive(test_pid) and os.kill(test_pid, signal.SIGKILL))
+    return proc, test_pid
+
+
+class TestNotListedIsRed(unittest.TestCase):
+    """Rule 1: a file the loader cannot list (any exit, exception or zero test ids at import)
+    makes the run RED with one line naming the file and the reason; the other files are still
+    listed as before."""
+
+    CASES = (("test_exits", EXITS, r"exit"),
+             ("test_osexit", OS_EXIT, r"exit"),
+             ("test_raises", RAISES, r"RuntimeError"),
+             ("test_missing", IMPORTS_MISSING, r"ModuleNotFoundError|No module named"),
+             ("test_empty", NO_TESTS, r"no tests"))
+
+    def test_each_kind_is_red_with_one_line_and_its_reason(self):
+        for name, text, why in self.CASES:
+            for jobs in ("1", "2"):
+                with self.subTest(file=name, j=jobs):
+                    root = fixture_root(self, {name + ".py": text, "test_small.py": SMALL})
+                    out = run_run2(root, own_tmp(self), "-j", jobs)
+                    self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+                    lines = [l for l in out.stdout.splitlines() if "could not be listed" in l]
+                    self.assertEqual(len(lines), 1, out.stdout)
+                    head = "NOT LISTED: %s could not be listed: " % name
+                    self.assertTrue(lines[0].startswith(head), lines[0])
+                    self.assertRegex(lines[0][len(head):], re.compile(why, re.I))
+
+    def test_a_sys_exit_file_alone_in_its_process_is_red(self):
+        # the hole the reviews found: alone in its process the run printed "count check skipped" and exit 0
+        root = fixture_root(self, {"test_exits.py": EXITS})
+        out = run_run2(root, own_tmp(self))
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("NOT LISTED: test_exits could not be listed: ", out.stdout)
+
+    def test_a_listable_suite_has_no_such_line_and_stays_green(self):
+        root = fixture_root(self, {"helper_base.py": HELPER, "test_big.py": BIG, "test_small.py": SMALL})
+        for jobs in ("1", "2"):
+            with self.subTest(j=jobs):
+                out = run_run2(root, own_tmp(self), "-j", jobs)
+                self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+                self.assertNotIn("could not be listed", out.stdout)
+                self.assertNotIn("ALL SKIPPED", out.stdout)
+
+
+class TestAllSkippedIsRed(unittest.TestCase):
+    """Rule 2: a file where every test was skipped makes the run RED, naming the file, unless
+    agent_repo.conf lists it in all_skip_ok with its reason (one all_skip_ok=<file>: <reason>
+    line per file)."""
+
+    def red(self, out, name):
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        lines = [l for l in out.stdout.splitlines() if l.startswith("ALL SKIPPED: ")]
+        self.assertEqual(len(lines), 1, out.stdout)
+        self.assertTrue(lines[0].startswith("ALL SKIPPED: %s" % name), lines[0])
+        self.assertNotRegex(lines[0], r"^\s*(?:FAIL|ERROR): ")   # the nightly never reads it as a test
+
+    def test_full_run_and_named_run_are_red(self):
+        for extra in ((), ("test_skipped", "test_small")):
+            with self.subTest(named=bool(extra)):
+                root = fixture_root(self, {"test_skipped.py": SKIPPED, "test_small.py": SMALL})
+                self.red(run_run2(root, own_tmp(self), "-j", "1", *extra), "test_skipped")
+
+    def test_a_file_dealt_out_class_by_class_counts_as_one_file(self):
+        root = fixture_root(self, {"test_bigskip.py": BIG_SKIPPED, "test_small.py": SMALL,
+                                   "timings.txt": BIG_SKIPPED_TIMINGS})
+        out = run_run2(root, own_tmp(self), "-j", "2")
+        self.assertEqual(len([l for l in out.stdout.splitlines() if l.startswith("process ")]), 2, out.stdout)
+        self.red(out, "test_bigskip")
+
+    def test_one_test_run_is_enough(self):
+        root = fixture_root(self, {"test_half.py": HALF_SKIPPED, "test_small.py": SMALL})
+        out = run_run2(root, own_tmp(self), "-j", "1")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertNotIn("ALL SKIPPED", out.stdout)
+
+    def test_listed_in_all_skip_ok_with_a_reason_is_green(self):
+        for entry in ("test_skipped", "test_skipped.py", "tests/test_skipped.py"):
+            with self.subTest(entry=entry):
+                conf = "version=1\nall_skip_ok=%s: needs a tool this machine lacks\n" % entry
+                root = fixture_root(self, {"test_skipped.py": SKIPPED, "test_small.py": SMALL,
+                                           "agent_repo.conf": conf})
+                out = run_run2(root, own_tmp(self), "-j", "1")
+                self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+                self.assertNotIn("ALL SKIPPED", out.stdout)
+
+    def test_an_entry_without_a_reason_is_ignored_and_said(self):
+        for line in ("all_skip_ok=test_skipped", "all_skip_ok=test_skipped:   "):
+            with self.subTest(line=line):
+                root = fixture_root(self, {"test_skipped.py": SKIPPED, "test_small.py": SMALL,
+                                           "agent_repo.conf": "version=1\n%s\n" % line})
+                out = run_run2(root, own_tmp(self), "-j", "1")
+                self.red(out, "test_skipped")
+                said = [l for l in out.stdout.splitlines() if "all_skip_ok" in l and "no reason" in l]
+                self.assertEqual(len(said), 1, out.stdout)
+                self.assertIn("test_skipped", said[0])
+
+
+LONG = """import unittest
+
+
+class TestLong(unittest.TestCase):
+    def test_long(self):
+        self.fail("\\n".join("line-%03d" % i for i in range(1, 201)))
+"""
+
+NIGHTLY_RED = """import unittest
+
+
+class TestRed(unittest.TestCase):
+    def test_fail(self):
+        self.fail("FAIL: test_fake (test_trap.TestFake)\\nERROR: test_fake2 (test_trap.TestFake)")
+
+    def test_error(self):
+        raise RuntimeError("ERROR: test_fake3 (test_trap.TestFake)")
+
+    def test_sub(self):
+        for i in (1, 2, 3):
+            with self.subTest(i=i):
+                self.assertEqual(i, 1)
+
+    def test_ok(self):
+        pass
+"""
+
+def old_red_output():
+    """What run2 printed for NIGHTLY_RED before runner-integrity (origin/ap-main-maverick 78b565f,
+    -j 1, recorded on 3.9), the log path made neutral and the names in this interpreter's format;
+    the trap line test_fake2 comes from the old run2 too (it reads every FAIL/ERROR line of the log)."""
+    n = lambda m, sub_desc=None: test_name("test_red", "TestRed", m, sub_desc)
+    return "\n".join([
+        "process 1: 1 files or classes, 4 tests, 0 s (planned 1 s): FAILED (failures=3, errors=1)",
+        "  log: <folder>/run2_old/group1.log",
+        "  ERROR: " + n("test_error"),
+        "  FAIL: " + n("test_fail"),
+        "  ERROR: test_fake2 (test_trap.TestFake)",
+        "  FAIL: " + n("test_sub", "(i=2)"),
+        "  FAIL: " + n("test_sub", "(i=3)"),
+        "wall 0 s, 1 processes (-j 1)", ""])
+
+
+CUT = re.compile(r"^  \| \.\.\. (\d+) more lines cut$")
+
+
+class TestRedOutputCap(unittest.TestCase):
+    """Main manager's answer 2 (TELL 386d601f): a red run prints each failed process's failure
+    blocks inline, prefixed "  | ", at most 60 lines per failed process and 300 in total, then
+    one line "  | ... <n> more lines cut" when cut; the nightly reads the same names as before."""
+
+    def sections(self, stdout, head):
+        """[(detail lines, cut count or None)] per section that starts with a line matching head."""
+        out = []
+        for line in stdout.splitlines():
+            if re.match(head, line):
+                out.append([[], None])
+            elif out and line.startswith("  | "):
+                m = CUT.match(line)
+                if m:
+                    self.assertIsNone(out[-1][1], "one cut line per failed process")
+                    out[-1][1] = int(m.group(1))
+                else:
+                    self.assertIsNone(out[-1][1], "no detail line after the cut line")
+                    out[-1][0].append(line)
+        return [(d, c) for d, c in out]
+
+    def check_one(self, detail, cut):
+        self.assertTrue(detail, "the failure is shown")
+        self.assertLessEqual(len(detail), 60, detail)
+        shown = [l for l in detail if re.search(r"line-\d{3}$", l)]
+        self.assertTrue(shown, detail)
+        self.assertEqual(cut, 200 - len(shown), detail[-3:])
+
+    def test_one_long_traceback_is_cut_at_60(self):
+        root = fixture_root(self, {"test_long.py": LONG})
+        out = run_run2(root, own_tmp(self), "-j", "1")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("  FAIL: " + test_name("test_long", "TestLong", "test_long"), out.stdout.splitlines())
+        [(detail, cut)] = self.sections(out.stdout, r"^process \d+: ")
+        self.check_one(detail, cut)
+
+    def test_time_mode_has_the_same_cap(self):
+        root = fixture_root(self, {"test_long.py": LONG})
+        out = run_run2(root, own_tmp(self), "--time", "-j", "1", "--out", os.path.join(root, "t.txt"))
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        [(detail, cut)] = self.sections(out.stdout, r"^FAILED test_long$")
+        self.check_one(detail, cut)
+
+    def test_all_processes_together_show_at_most_300(self):
+        files = dict(("test_long%d.py" % i, LONG) for i in range(1, 7))
+        out = run_run2(fixture_root(self, files), own_tmp(self), "-j", "6")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        parts = self.sections(out.stdout, r"^process \d+: ")
+        self.assertEqual(len(parts), 6, out.stdout)
+        self.assertLessEqual(sum(len(d) for d, _ in parts), 300)
+        self.assertTrue(all(len(d) <= 60 for d, _ in parts))
+        whole = [len(d) + (c or 0) for d, c in parts]
+        self.assertEqual(len(set(whole)), 1, "every cut says how many lines went: %s" % whole)
+        self.assertTrue(all(c for _, c in parts), "every long block was cut")
+
+    def test_the_nightly_reads_the_same_names_as_before(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        try:
+            import agent_nightly
+        finally:
+            sys.path.pop(0)
+        out = run_run2(fixture_root(self, {"test_red.py": NIGHTLY_RED}), own_tmp(self), "-j", "1")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        old = agent_nightly.failed_tests(old_red_output())
+        self.assertEqual(len(old), 5, old)
+        self.assertEqual(agent_nightly.failed_tests(out.stdout), old)
+        self.assertIn("  | ", out.stdout)   # the new detail is there and adds no name
+
+
+# FIX ORDER 3 (TELL 94235283, PR REVIEW at 950e593)
+
+FR_TOKYO = {"LC_ALL": "fr_FR.UTF-8", "LANG": "fr_FR.UTF-8", "TZ": "Asia/Tokyo"}
+C_UTC = {"LC_ALL": "C", "LANG": "C", "TZ": "UTC"}
+
+
+class TestStartTimeIgnoresLocaleAndTz(unittest.TestCase):
+    """Item 1: ps prints a start time in the caller's TZ and locale; the same process must have one
+    start time for every run2, or a run2 with another locale deletes a live run's folder."""
+
+    def test_the_same_process_has_one_start_time(self):
+        run2 = load_run2()
+        p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        self.addCleanup(lambda: (p.kill(), p.wait()))
+        old = dict(os.environ)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(old)))
+        os.environ.update(C_UTC)
+        a = run2.proc_start(p.pid)
+        os.environ.update(FR_TOKYO)
+        b = run2.proc_start(p.pid)
+        self.assertTrue(a)
+        self.assertEqual(a, b)
+
+    def test_a_live_run_keeps_its_folder_when_a_run_with_another_locale_starts(self):
+        tmp = own_tmp(self)
+        live, _test_pid = start_slow_run(self, tmp, extra_env=FR_TOKYO)
+        [own] = left(tmp)
+        env = dict(run2_env(tmp), **C_UTC)
+        root = fixture_root(self, {"test_small.py": SMALL})
+        out = subprocess.run([sys.executable, RUN2, "--root", root, "-j", "1"],
+                             capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual(left(tmp), [own], "the live run's folder went")
+        self.assertTrue(os.path.exists(os.path.join(tmp, own, MARKER)))
+
+
+# a file that runs only whole (load_tests) and gives no result, or skips at module or class level
+WHOLE = "import unittest\n\n\ndef load_tests(loader, tests, pattern):\n    return tests\n\n\n"
+DIES_IN_A_TEST = "import os\n" + WHOLE + (
+    "class TestDies(unittest.TestCase):\n"
+    "    def test_dies(self):\n"
+    "        os._exit(0)\n")
+EXITS_UNDER_THE_RUNNER = "import sys\n" + WHOLE + (
+    "if sys.argv[0] != '-c':   # the lister runs under -c and lists it; the runner ends at import\n"
+    "    sys.exit(0)\n\n\n"
+    "class TestNever(unittest.TestCase):\n"
+    "    def test_never(self):\n"
+    "        pass\n")
+MODULE_SKIP = WHOLE + (
+    "def setUpModule():\n"
+    "    raise unittest.SkipTest('the tool is not here')\n\n\n"
+    "class TestModuleSkipped(unittest.TestCase):\n"
+    "    def test_one(self):\n"
+    "        pass\n")
+CLASS_SKIP = WHOLE + (
+    "class TestClassSkipped(unittest.TestCase):\n"
+    "    @classmethod\n"
+    "    def setUpClass(cls):\n"
+    "        raise unittest.SkipTest('the tool is not here')\n\n"
+    "    def test_one(self):\n"
+    "        pass\n")
+
+
+class TestNoResultIsRed(unittest.TestCase):
+    """Item 4: a process that exits 0 with no result (no counts file, or no unittest verdict) is
+    failed; a setUpModule or setUpClass skip counts toward the file's all-skipped check."""
+
+    def test_a_process_without_a_result_is_red(self):
+        for name, text in (("test_dies", DIES_IN_A_TEST), ("test_exits_late", EXITS_UNDER_THE_RUNNER)):
+            with self.subTest(file=name):
+                root = fixture_root(self, {name + ".py": text})
+                out = run_run2(root, own_tmp(self), "-j", "1")
+                self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+                self.assertIn("NO RESULT", out.stdout)
+
+    def test_time_mode_too(self):
+        root = fixture_root(self, {"test_dies.py": DIES_IN_A_TEST})
+        out = run_run2(root, own_tmp(self), "--time", "-j", "1", "--out", os.path.join(root, "t.txt"))
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+
+    def test_a_module_or_class_skip_counts_as_all_skipped(self):
+        for name, text in (("test_modskip", MODULE_SKIP), ("test_clsskip", CLASS_SKIP)):
+            with self.subTest(file=name):
+                root = fixture_root(self, {name + ".py": text, "test_small.py": SMALL})
+                out = run_run2(root, own_tmp(self), "-j", "1")
+                self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+                lines = [l for l in out.stdout.splitlines() if l.startswith("ALL SKIPPED: ")]
+                self.assertEqual(len(lines), 1, out.stdout)
+                self.assertTrue(lines[0].startswith("ALL SKIPPED: " + name), lines[0])
+                conf = "version=1\nall_skip_ok=%s: the tool is not on this machine\n" % name
+                root = fixture_root(self, {name + ".py": text, "test_small.py": SMALL, "agent_repo.conf": conf})
+                out = run_run2(root, own_tmp(self), "-j", "1")
+                self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+
+# a listable file: one class skips in setUpClass, another has a test only the lister sees
+SKIP_AND_SHRINK = (
+    "import sys\n"
+    "import unittest\n\n\n"
+    "class TestClassSkipped(unittest.TestCase):\n"
+    "    @classmethod\n"
+    "    def setUpClass(cls):\n"
+    "        raise unittest.SkipTest('the tool is not here')\n\n"
+    "    def test_one(self):\n"
+    "        pass\n\n\n"
+    "class TestShrinks(unittest.TestCase):\n"
+    "    def test_a(self):\n"
+    "        pass\n\n"
+    "    if sys.argv[0] == '-c':   # the lister sees one test more than the run\n"
+    "        def test_only_listed(self):\n"
+    "            pass\n")
+
+
+class TestCountCheckStaysWithAFixtureSkip(unittest.TestCase):
+    """Verify finding on FIX ORDER 3: the count check stays as it was (rule 5); a setUpClass skip
+    in a file never hides a test the run lost."""
+
+    def test_a_lost_test_is_still_a_count_mismatch(self):
+        root = fixture_root(self, {"test_skipshrink.py": SKIP_AND_SHRINK, "test_small.py": SMALL})
+        out = run_run2(root, own_tmp(self), "-j", "1")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertTrue([l for l in out.stdout.splitlines()
+                         if l.startswith("COUNT MISMATCH: ") and l.endswith(" in test_skipshrink")], out.stdout)
+
+
+class TestTheNightlyNamesTheFile(unittest.TestCase):
+    """Item 3: for each NOT LISTED and each ALL SKIPPED file the output has one line the nightly
+    reads (its FAIL/ERROR reader), and that name leads the nightly to the file."""
+
+    def nightly(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        try:
+            import agent_nightly
+        finally:
+            sys.path.pop(0)
+        return agent_nightly
+
+    def test_a_not_listed_and_an_all_skipped_file_are_named(self):
+        an = self.nightly()
+        for name, text in (("test_exits", EXITS), ("test_raises", RAISES), ("test_empty", NO_TESTS),
+                           ("test_skipped", SKIPPED), ("test_modskip", MODULE_SKIP)):
+            with self.subTest(file=name):
+                root = fixture_root(self, {name + ".py": text, "test_small.py": SMALL})
+                out = run_run2(root, own_tmp(self), "-j", "2")
+                self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+                names = an.failed_tests(out.stdout)
+                self.assertEqual(len(names), 1, names)
+                self.assertEqual(an.test_file(root, names[0]), "tests/%s.py" % name, names)
+                lines = [l for l in out.stdout.splitlines() if re.match(r"^\s*(?:FAIL|ERROR): ", l)]
+                self.assertEqual(lines, ["  ERROR: " + names[0]], out.stdout)
+
+
+class TestStopLock(unittest.TestCase):
+    """Item 5: a second signal while stop_children holds the children lock must not hang."""
+
+    def test_the_lock_can_be_taken_again_by_the_same_thread(self):
+        lock = load_run2().CHILDREN_LOCK
+        self.assertTrue(lock.acquire(timeout=1))
+        self.addCleanup(lock.release)
+        got = lock.acquire(timeout=1)
+        if got:
+            lock.release()
+        self.assertTrue(got, "the lock is not re-entrant: a signal in stop_children would deadlock")
+
+
+class TestThisRepoAllSkipOk(unittest.TestCase):
+    """runner-integrity decision 1A: test_check_blocks_demo's one test runs only in the full run
+    (AGENT_FULL_RUN=1, which run2 clears for named files), so a named run of it skips everything;
+    this repo lists it in all_skip_ok with that reason, and a task that names it stays green."""
+
+    def test_a_named_run_of_the_full_run_only_demo_is_green(self):
+        out = run_run2(None, own_tmp(self), "-j", "1", "test_check_blocks_demo")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertNotIn("ALL SKIPPED", out.stdout)
+        self.assertNotIn("no reason", out.stdout)
+
+
+class TestNoFolderLeft(unittest.TestCase):
+    """Rule 3: run2 removes its own temp folder when it ends: green, red, error or a stop
+    (SIGINT, and SIGTERM as the test-run monitor sends). A red run still shows what failed,
+    since its log folder is gone; the FAIL line and the exit codes stay as today (rule 5)."""
+
+    def gone(self, tmp, out_text):
+        self.assertEqual(left(tmp), [], out_text)
+        for t in {tmp, os.path.realpath(tmp)}:
+            self.assertNotIn(os.path.join(t, "run2_"), out_text, "a printed path into the removed folder")
+
+    def test_green_run(self):
+        tmp = own_tmp(self)
+        out = run_run2(fixture_root(self, {"test_small.py": SMALL}), tmp, "-j", "1")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.gone(tmp, out.stdout + out.stderr)
+
+    def test_red_run_shows_the_failure_inline(self):
+        tmp = own_tmp(self)
+        out = run_run2(fixture_root(self, {"test_failing.py": FAILING, "test_small.py": SMALL}), tmp, "-j", "1")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("  FAIL: " + test_name("test_failing", "TestFailing", "test_fail"), out.stdout.splitlines())
+        self.assertIn("runner-integrity-detail", out.stdout)
+        # the detail lines never look like a FAIL/ERROR line to the nightly
+        detail = [l for l in out.stdout.splitlines() if "runner-integrity-detail" in l]
+        self.assertFalse([l for l in detail if re.match(r"^\s*(?:FAIL|ERROR): ", l)], detail)
+        self.gone(tmp, out.stdout + out.stderr)
+
+    def test_time_runs_green_and_red(self):
+        for files, code in (({"test_small.py": SMALL}, 0), ({"test_failing.py": FAILING}, 1)):
+            with self.subTest(code=code):
+                tmp = own_tmp(self)
+                root = fixture_root(self, files)
+                out = run_run2(root, tmp, "--time", "-j", "1", "--out", os.path.join(root, "t.txt"))
+                self.assertEqual(out.returncode, code, out.stdout + out.stderr)
+                if code:
+                    self.assertIn("runner-integrity-detail", out.stdout)
+                self.gone(tmp, out.stdout + out.stderr)
+
+    def test_an_error_inside_run2(self):
+        tmp = own_tmp(self)
+        root = fixture_root(self, {"test_small.py": SMALL})
+        script = ("import importlib.util, sys\n"
+                  "spec = importlib.util.spec_from_file_location('run2_err', %r)\n"
+                  "mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)\n"
+                  "def broken(*a, **k):\n    raise RuntimeError('broken inside run2')\n"
+                  "mod.loader_listing = broken\nmod.split = broken\n"
+                  "sys.argv = ['run2.py', '--root', %r, '-j', '1']\n"
+                  "sys.exit(mod.main())\n" % (RUN2, root))
+        out = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
+                             timeout=120, env=run2_env(tmp))
+        self.assertNotEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("broken inside run2", out.stderr)
+        self.gone(tmp, out.stdout + out.stderr)
+
+    def test_once_a_stop_came_no_process_puts_a_file_in_the_folder(self):
+        # verify finding: a group starting while the signal lands wrote its runner and log into the
+        # folder after the folder was removed, which left an unmarked run2_* folder for good
+        run2 = load_run2()
+        root = fixture_root(self, {"test_small.py": SMALL})
+        folder = own_tmp(self)
+        run2.STOPPING[0] = True
+        with self.assertRaises(Exception):
+            run2.run_unittest(os.path.join(root, "tests"), ["test_small"], os.path.join(folder, "group1.log"))
+        self.assertEqual(os.listdir(folder), [])
+
+    def test_a_stopped_run_leaves_no_folder_and_no_test_process(self):
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=sig.name):
+                tmp = own_tmp(self)
+                proc, test_pid = start_slow_run(self, tmp, own_tools=True)
+                self.assertEqual(len(left(tmp)), 1, "run2 makes one folder")
+                os.kill(proc.pid, sig)            # run2 alone, not its group: it stops its own test processes
+                text, _ = proc.communicate(timeout=20)   # the slow test sleeps 90 s: waiting for it fails here
+                self.assertNotEqual(proc.returncode, 0, text)
+                self.gone(tmp, text)
+                # verify finding: a re-sent signal skips atexit, so fasttools' folder (macOS) stayed
+                self.assertEqual([n for n in os.listdir(tmp) if n.startswith("agent_test_tools_")], [])
+                end = time.time() + 5
+                while alive(test_pid) and time.time() < end:
+                    time.sleep(0.05)
+                self.assertFalse(alive(test_pid), "the test process outlived the stopped run")
+
+
+class TestStaleFolders(unittest.TestCase):
+    """Rule 4: at start run2 removes an old run2_* folder only when a marker inside names a pid
+    and start time and that process no longer runs; no marker, an unreadable one, one without a
+    start time or a live process: never touched. Links and plain files are never touched."""
+
+    def plant(self, tmp, name, marker=None, raw=None):
+        path = os.path.join(tmp, name)
+        os.makedirs(path)
+        with open(os.path.join(path, "group1.log"), "w") as fh:
+            fh.write("kept?\n")
+        if marker is not None:
+            with open(os.path.join(path, MARKER), "w") as fh:
+                json.dump(marker, fh)
+        if raw is not None:
+            with open(os.path.join(path, MARKER), "w") as fh:
+                fh.write(raw)
+        return path
+
+    def test_only_folders_of_dead_runs_go(self):
+        tmp = own_tmp(self)
+        live, _test_pid = start_slow_run(self, tmp)
+        [own] = left(tmp)
+        with open(os.path.join(tmp, own, MARKER)) as fh:
+            mark = json.load(fh)
+        self.assertEqual(mark.get("pid"), live.pid, mark)
+        self.assertTrue(mark.get("start"), mark)
+        start = mark["start"]
+        other = start + 1 if isinstance(start, (int, float)) else str(start) + " (another process)"
+        gone_proc = subprocess.Popen([sys.executable, "-c", "pass"])
+        gone_proc.wait()
+        dead = gone_proc.pid
+        outside = own_tmp(self)
+        self.plant(outside, "target", {"pid": dead, "start": start})
+
+        self.plant(tmp, "run2_dead", {"pid": dead, "start": start})
+        self.plant(tmp, "run2_reused", {"pid": live.pid, "start": other})   # the pid now names another process
+        self.plant(tmp, "run2_twin", dict(mark))                             # a live run: same pid, same start
+        self.plant(tmp, "run2_nomarker")
+        self.plant(tmp, "run2_garbled", raw="not json\n")
+        self.plant(tmp, "run2_nostart", {"pid": dead})
+        with open(os.path.join(tmp, "run2_file"), "w") as fh:
+            fh.write("a file, not a folder\n")
+        os.symlink(os.path.join(outside, "target"), os.path.join(tmp, "run2_link"))
+
+        out = run_run2(fixture_root(self, {"test_small.py": SMALL}), tmp, "-j", "1")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual(left(tmp), sorted([own, "run2_twin", "run2_nomarker", "run2_garbled",
+                                            "run2_nostart", "run2_file", "run2_link"]), out.stdout)
+        self.assertTrue(os.path.exists(os.path.join(outside, "target", "group1.log")))
+        self.assertTrue(os.path.exists(os.path.join(tmp, "run2_nomarker", "group1.log")))
+
+        os.kill(live.pid, signal.SIGINT)
+        text, _ = live.communicate(timeout=20)
+        self.assertNotIn(own, left(tmp), text)
+
 
 if __name__ == "__main__":
     unittest.main()
