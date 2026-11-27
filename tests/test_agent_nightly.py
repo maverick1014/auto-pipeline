@@ -215,6 +215,24 @@ class TestNightly(NetCase):
         self.assertTrue(any("test_x_red" in f for f in st["failed"]), st)
         self.assertIn("test_x_red", self.nightly("--failures").stdout)
 
+    def test_a_file_run2_cannot_list_is_named_when_it_is_the_only_failure(self):
+        # runner-integrity FIX ORDER 3 item 3: the record was only "full_cmd exit 1"
+        with open(os.path.join(os.path.dirname(BIN), "tests", "run2.py")) as fh:
+            runner = fh.read()
+        self.put({"agent_repo.conf": "version=1\nfull_cmd=python3 tests/run2.py\n"
+                                     "related_cmd=python3 tests/run2.py {tests}\n",
+                  "tests/run2.py": runner,
+                  "tests/test_imp.py": "import sys\nsys.exit(0)\n",
+                  "tests/test_q.py": "import unittest\n\n\nclass X(unittest.TestCase):\n"
+                                     "    def test_x_green(self):\n        pass\n"})
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "run2 and a file that exits at import")
+        self.nightly("--start", "--wait")
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertTrue(any("test_imp" in f for f in st["failed"]), st)
+        self.assertNotIn("full_cmd exit 1", st["failed"], st)
+
     def test_due(self):
         late = {"AGENT_FAKE_NOW": "2026-11-25 23:00"}
         self.assertEqual(self.nightly("--due", env=late).returncode, 0)
