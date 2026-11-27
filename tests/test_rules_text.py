@@ -1692,12 +1692,14 @@ class TestPrinciplesOtherRules(unittest.TestCase):
         # md-slim-principles: R1 is in the core; rows 37, 39, 41 of report.md are reworded (the deputy's own
         # worktree and example tests moved to rules/roles.md W6, "triggers only" joined with the small-logic line)
         r1 = part(self.text(), "## R1. ", "## W1. ")
-        for phrase in ("Small task → fast lane (one fast-lane deputy)", "over 2 hours", "task manager",
+        for phrase in ("Scope, not time, decides the lane", "fast lane", "full lane", "task manager",
                        "Checks follow the block triggers only (R8), never the lane",
                        "a small logic task never opens a task manager just for a test",
-                       "past 2x its estimate", "second slice", "from its branch"):
+                       "past 2x its guess", "second slice", "from its branch", "Ask before dispatch and before edits",
+                       "the main manager reviews, the deputy merges"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r1)
+        self.assertNotIn("over 2 hours", r1)
         self.assertNotIn("TDD", r1)
         self.assertIn("own git worktree", part(read("rules", "roles.md"), "W6. ", "W10. "))
 
@@ -2217,8 +2219,8 @@ class TestReviewer(unittest.TestCase):
         # md-slim-principles: report.md row 42 rewords this line; the diff read is rules/checks.md R8 (PR REVIEW),
         # the 15 min box is its 15-minute time box, the Reviewer model is rules/roles.md W6
         r1 = part(read("PRINCIPLES.md"), "## R1. ", "## W1. ")
-        for phrase in ("builder done → reviewer → check deputy only when what the user sees or does changed",
-                       "→ merge deputy", "A fail → a fix order to the builder"):
+        for phrase in ("full lane → reviewer → check deputy (visible) → merge deputy",
+                       "fast lane → the main manager reviews, the deputy merges"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r1)
         self.assertIn("reads the diff against the approved requirement", read("rules", "checks.md"))

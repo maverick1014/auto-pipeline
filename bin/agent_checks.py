@@ -1049,6 +1049,21 @@ def read_launches(gd, task):
     return out
 
 
+FAST_LANE_SKIPS = ("FLOW CHECK", "UI CHECK")
+
+
+def is_fast_lane(builders):
+    """fast-lane-simple: a task built by a `<task> Deputy` and by no task manager is a fast-lane task."""
+    low = [b.lower() for b in builders]
+    return any(b.endswith(" deputy") for b in low) and not any("task manager" in b for b in low)
+
+
+def by_main_manager(who):
+    """The main manager signs as `main` or `<repo> Manager`; a task manager is not it."""
+    w = who.strip().lower()
+    return w == "main" or (w.endswith(" manager") and not w.endswith("task manager"))
+
+
 def launched(launches, kind, date):
     """A record of this kind by the main manager exists and the pass is dated at or after the newest."""
     ats = [at for (t, by, at) in launches if t == kind and by == "main"]
@@ -1218,6 +1233,9 @@ def cmd_gate(ctx, a):
     for p in (os.path.join(d, "agent_state.txt"), os.path.join(ctx["root"], "agent_state.txt")):
         builders += launch_builders(p, task)
     lowb = set(b.lower() for b in builders)
+    fast = is_fast_lane(builders)
+    if fast:
+        plan = [b for b in plan if b not in FAST_LANE_SKIPS]
 
     def is_builder(who):
         w = who.lower()
@@ -1239,7 +1257,8 @@ def cmd_gate(ctx, a):
         elif b in BUILDER_BLOCKS and is_builder(r[1]):
             lines.append("%s: pass by the builder (%s), not accepted" % (b, r[1]))
             refused.append("%s by the builder" % b)
-        elif b in LAUNCH_KIND and not launched(launches, LAUNCH_KIND[b][0], r[4]):
+        elif b in LAUNCH_KIND and not launched(launches, LAUNCH_KIND[b][0], r[4]) \
+                and not (fast and b == "PR REVIEW" and by_main_manager(r[1])):
             lines.append("%s: no %s launched by the main manager for %s, not accepted" % (b, LAUNCH_KIND[b][1], task))
             refused.append("%s not launched by the main manager" % b)
         elif not r[3]:
