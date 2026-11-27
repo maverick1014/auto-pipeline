@@ -4135,9 +4135,12 @@ class TestVerifyTheLaunch(unittest.TestCase):
     working. Evidence: ask-test's brief got TELL FAIL 'pointer not seen (block is in the file)', the pane sat
     on its welcome screen, the watch swept 'ask-test ok'; found only when the owner asked."""
 
-    def test_r1_the_flow_step_says_seen_working(self):
+    def test_r1_has_the_line(self):
+        # TELL aa2c0529: a line of its own in the core, the flow steps as before
         r1 = part(read("PRINCIPLES.md"), "## R1. ", "## W1. ").splitlines()
-        self.assertIn("3. Worktree + task manager, seen working", r1)
+        self.assertIn("- An agent counts as started only when seen working, never when the brief is sent "
+                      "(rules/routing.md)", r1)
+        self.assertIn("3. Worktree + task manager", r1)
 
     def test_w9_holds_the_rule(self):
         w9 = part(read("rules", "routing.md"), "W9. ")
@@ -4190,6 +4193,9 @@ class TestWhereALessonGoes(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, r3)
 
-    def test_the_core_points_to_it(self):
+    def test_s8_has_the_line(self):
+        # TELL aa2c0529: a line of its own in the core (S8), not only a Read-when pointer
+        s8 = part(read("PRINCIPLES.md"), "## S8. ", "## Talking to the human").splitlines()
+        self.assertIn("- A rule the owner gives → rule text, never only an auto memory (rules/files.md)", s8)
         when = part(read("PRINCIPLES.md"), "## Read when").splitlines()
-        self.assertIn("- An agent_* file, an idea, a doc, an owner's rule: `rules/files.md`", when)
+        self.assertIn("- An agent_* file, an idea, a doc: `rules/files.md`", when)

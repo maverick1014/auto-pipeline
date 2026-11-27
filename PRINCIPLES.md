@@ -24,7 +24,7 @@ Owner 2026-11-25: "use the most fast and efficiency way for any of your works". 
 Before the flow: the main manager writes the requirement doc, the owner approves it, unless it only writes down his words. Full flow, in order:
 1. Todo line + estimate
 2. Mock for a new page or a whole-page re-layout (W2)
-3. Worktree + task manager, seen working
+3. Worktree + task manager
 4. Failing tests first
 5. Workers build
 6. Verify
@@ -36,6 +36,7 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 - Checks follow the block triggers only (R8), never the lane: a small logic task never opens a task manager just for a test
 - A small task grows (past 2x its estimate, or a second slice) → the deputy stops and reports; the main manager opens a task manager from its branch
 - After the build: builder done → reviewer → check deputy only when what the user sees or does changed → merge deputy. A fail → a fix order to the builder
+- An agent counts as started only when seen working, never when the brief is sent (rules/routing.md)
 
 ## W1. Finish in one run
 - Never wait for the human, except: the kick-off round, a mock yes, an OWNER SIGN, NEEDS HUMAN E2E
@@ -56,6 +57,7 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 - First action of every agent: copy its brief into `agent_state.txt`
 - A state line: `agent-file.sh state add "<line>"` (it adds the date), never `echo >>`. A brief or report block: one append, then one blank line
 - After a compaction the startup hook re-prints PRINCIPLES.md and `agent_state.txt`. No quiz then. Continue from the file, not from memory; then re-read the rules file of your current step
+- A rule the owner gives → rule text, never only an auto memory (rules/files.md)
 
 ## Talking to the human (detail: `rules/output.md`, `rules/human.md`)
 - Lead with the result (E1). Short by default (E3)
@@ -87,7 +89,7 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 - Another repo, a peer manager: `rules/cross-repo.md`
 - A run, build, pane or agent: its room and its machine; memory over the limit: `rules/resources.md`
 - Long state, compaction, /clear, resume, model pick, worker brief: `rules/context.md`
-- An agent_* file, an idea, a doc, an owner's rule: `rules/files.md`
+- An agent_* file, an idea, a doc: `rules/files.md`
 - Push denied, message held, pane send cut or lost, finding a pane, reading a terminal, Linux outside Orca, locked screen, MODE MISMATCH, STALE PLUGIN: `rules/traps.md`
 - Setup, a setting or a fixed number, a cloud pack; which script does a job: `rules/setup.md`, `rules/map.md`
 - Route a task, close case, the todo board, the question list: `rules/routing.md`, `rules/close-case.md`, `rules/board.md`, `rules/questions.md`; the skills dispatch, close-case, todo, question run them

@@ -1693,7 +1693,7 @@ class TestQuiz(SharedRepoMixin, ScriptCase):
 # A repo not set up: the output part only (=== rules/output.md === and E1-E4).
 # Once per session and source, like the start part (its own marker).
 
-RULES_BLOCK_CAP = 9700   # fix order 7841e72f C: a margin under Claude Code's hard 10,000
+RULES_BLOCK_CAP = 9900   # fix order 7841e72f C: a margin under Claude Code's hard 10,000; ask-test (TELL aa2c0529): 9700 -> 9900
 PATH_ROOM = 200          # tested as if the plugin path were 200 characters
 START_PART_CAP = 2000    # bytes: the start part holds no rule text
 # The human-direct start part on a busy project is over START_PART_CAP since before this task (2,216 bytes at

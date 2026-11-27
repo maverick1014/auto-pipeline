@@ -5,7 +5,7 @@ Agent skills: `/auto-pipeline:dispatch` (route one task), `/auto-pipeline:merge`
 
 ```
 Scripts, not agents (cost no tokens):
-  bin/agent-start.sh   RAM/CPU guard, prints the rules, 37-question quiz gate, main-manager lock
+  bin/agent-start.sh   RAM/CPU guard, prints the rules, 38-question quiz gate, main-manager lock
   bin/agent-nightly.sh  the nightly run of all tests: gates nothing, records selection misses, --release-ok
   bin/agent-test-run.sh  every test run: reserves its measured memory, a monitor watches it (S3, S5)
   bin/agent-room.sh  the memory gate: check, reserve, release, list, relief, measure-pane
