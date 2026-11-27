@@ -796,6 +796,36 @@ class TestNoResultIsRed(unittest.TestCase):
                 self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
 
 
+# a listable file: one class skips in setUpClass, another has a test only the lister sees
+SKIP_AND_SHRINK = (
+    "import sys\n"
+    "import unittest\n\n\n"
+    "class TestClassSkipped(unittest.TestCase):\n"
+    "    @classmethod\n"
+    "    def setUpClass(cls):\n"
+    "        raise unittest.SkipTest('the tool is not here')\n\n"
+    "    def test_one(self):\n"
+    "        pass\n\n\n"
+    "class TestShrinks(unittest.TestCase):\n"
+    "    def test_a(self):\n"
+    "        pass\n\n"
+    "    if sys.argv[0] == '-c':   # the lister sees one test more than the run\n"
+    "        def test_only_listed(self):\n"
+    "            pass\n")
+
+
+class TestCountCheckStaysWithAFixtureSkip(unittest.TestCase):
+    """Verify finding on FIX ORDER 3: the count check stays as it was (rule 5); a setUpClass skip
+    in a file never hides a test the run lost."""
+
+    def test_a_lost_test_is_still_a_count_mismatch(self):
+        root = fixture_root(self, {"test_skipshrink.py": SKIP_AND_SHRINK, "test_small.py": SMALL})
+        out = run_run2(root, own_tmp(self), "-j", "1")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertTrue([l for l in out.stdout.splitlines()
+                         if l.startswith("COUNT MISMATCH: ") and l.endswith(" in test_skipshrink")], out.stdout)
+
+
 class TestTheNightlyNamesTheFile(unittest.TestCase):
     """Item 3: for each NOT LISTED and each ALL SKIPPED file the output has one line the nightly
     reads (its FAIL/ERROR reader), and that name leads the nightly to the file."""
