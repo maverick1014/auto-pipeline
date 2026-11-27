@@ -15,7 +15,7 @@ Split: the files are dealt to the processes by the seconds in tests/timings.txt,
 slowest first, each to the process with the least time so far, so all end at
 about the same moment. A file not in timings.txt counts as the median; a file
 bigger than a third of one process's share is dealt out class by class (classes and counts from the real unittest
-loader, one short subprocess; a file the loader cannot list runs whole).
+loader, one short subprocess; a file the loader lists but cannot split class by class runs whole; a file it cannot list at all does not run (NOT LISTED)).
 
 Load (owner 2026-11-25): CPU stays under 80% (the default -j), and a process is
 started only while memory in use + about 30 MB for it stays under 80%; else it
@@ -26,18 +26,30 @@ With no test file named (the full suite: the release run, the nightly) every pro
 Plain `python3 -m unittest discover -s tests` still runs everything in one process.
 Exit code: 0 when every process passed and, for each file, the tests run equal the tests
 the loader discovers in it (else the line COUNT MISMATCH: discovered x, ran y in <file>),
-else 1. A file the loader cannot list is named in one "count check skipped" line; the
-other files are still checked. The run counts per file come from a small runner that
-does what `python -m unittest` does and records each test under the file it was named for.
+else 1. Also 1 (one line each): a file the loader cannot list, from an exit, an exception,
+a failed import or zero tests at import (NOT LISTED: <file> could not be listed: <reason>);
+a file where every test that started was skipped (ALL SKIPPED: <file> ...), unless
+agent_repo.conf has all_skip_ok=<file>: <reason> (no reason: ignored and said). A file that
+only runs whole (load_tests, a class defined elsewhere) is named in one "count check skipped"
+line; the other files are still checked. The run counts per file come from a small runner that
+does what `python -m unittest` does and records each test and each skip under the file it was
+named for. A red run prints the failure sections of each failed process, every line prefixed "  | ".
+Folder: the run's logs live in one run2_* folder in the temp dir, removed when the run ends
+(green, red, error, SIGINT, SIGTERM, SIGHUP; on a signal the test processes are stopped first).
+Marker: <folder>/.run2_owner holds the pid and start time of the run; at start a run2_* folder
+whose marker names a process that is gone (or another process now) is removed; any other is left.
 """
 
 import argparse
 import json
 import os
 import re
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -136,6 +148,14 @@ def read_timings(path):
 LISTER = r"""
 import json, sys, unittest
 
+real, sys.stdout = sys.stdout, sys.stderr   # what the files print at import is not our answer
+
+
+def emit(**item):   # one JSON line per module, flushed: a lister that dies names the module it was on
+    real.write(json.dumps(item) + "\n")
+    real.flush()
+
+
 def walk(suite):
     for t in suite:
         if isinstance(t, unittest.TestSuite):
@@ -143,23 +163,39 @@ def walk(suite):
         else:
             yield t
 
-out = {}
+
+def one_line(text):
+    return " ".join(str(text).split())[:300]
+
+
 for name in sys.argv[1:]:
     try:
         suite = unittest.defaultTestLoader.loadTestsFromName(name)
-        mod = sys.modules[name]
-        counts = {}
-        ok = not hasattr(mod, "load_tests")   # load_tests: only the whole file is right
+        mod = sys.modules.get(name)   # none when the import failed
+        counts, failed = {}, None
+        whole = hasattr(mod, "load_tests")   # load_tests: only the whole file is right
         for t in walk(suite):
             cls = type(t)
-            if cls.__name__ == "_FailedTest" or getattr(mod, cls.__name__, None) is not cls:
-                ok = False
+            if cls.__name__ == "_FailedTest":
+                exc = getattr(t, "_exception", None)
+                last = [l for l in str(exc).splitlines() if l.strip()][-1:]   # the traceback's last line names the exception
+                failed = "import failed: %s" % one_line(last[0] if last else type(exc).__name__)
                 break
+            if getattr(mod, cls.__name__, None) is not cls:
+                whole = True
             counts[cls.__name__] = counts.get(cls.__name__, 0) + 1
-        out[name] = {"classes": sorted(counts.items()), "total": sum(counts.values())} if ok else None
-    except BaseException:
-        out[name] = None
-print(json.dumps(out))
+        if failed:
+            emit(module=name, failed=failed)
+        elif not counts:
+            emit(module=name, failed="no tests found at import")
+        elif whole:
+            emit(module=name, whole=True)
+        else:
+            emit(module=name, classes=sorted(counts.items()))
+    except SystemExit as e:
+        emit(module=name, failed="sys.exit(%s) at import" % one_line(e.code))
+    except BaseException as e:
+        emit(module=name, failed="%s: %s at import" % (type(e).__name__, one_line(e)))
 """
 
 
@@ -169,23 +205,192 @@ def unittest_env(tests_dir):
     return env
 
 
-def loader_listing(tests_dir, modules):
-    """{module: [(class name, tests)] or None}: what the real unittest loader finds,
-    from one short subprocess with the cwd and PYTHONPATH of run_unittest. None for
-    a module that cannot be listed exactly (then it runs whole, never split)."""
+def list_modules(tests_dir, modules):
+    """({module: [(class, tests)] or None}, {module: reason}). None with no reason: the
+    module runs whole (load_tests, or a class defined elsewhere). None with a reason: it
+    could not be listed (exit, exception, failed import, no tests, or the lister itself
+    failed). A lister that dies on a module is restarted on the modules after it."""
     out = {m: None for m in modules}
-    try:
-        done = subprocess.run([sys.executable, "-c", LISTER] + list(modules),
-                              cwd=os.path.dirname(tests_dir), env=unittest_env(tests_dir),
-                              capture_output=True, text=True, timeout=300)
-        data = json.loads(done.stdout.strip().splitlines()[-1])
-    except Exception:
-        return out
-    for m in modules:
-        item = data.get(m)
-        if item:
-            out[m] = [(c, n) for c, n in item["classes"]]
+    reasons = {}
+    todo = list(modules)
+    while todo:
+        died, whole_failure, text = None, None, ""
+        try:
+            done = subprocess.run([sys.executable, "-c", LISTER] + todo,
+                                  cwd=os.path.dirname(tests_dir), env=unittest_env(tests_dir),
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                  universal_newlines=True, timeout=300)
+            text = done.stdout or ""
+            died = "the import ended the process (exit %s)" % done.returncode
+        except subprocess.TimeoutExpired as e:
+            text = e.stdout or ""
+            if isinstance(text, bytes):
+                text = text.decode("utf-8", "replace")
+            whole_failure = "the lister timed out after 300 s"
+        except Exception as e:
+            whole_failure = "the lister failed: %s: %s" % (type(e).__name__, e)
+        got = set()
+        for line in text.splitlines():
+            try:
+                item = json.loads(line)
+                m = item["module"]
+            except (ValueError, KeyError, TypeError):
+                continue
+            if m not in todo or m in got:
+                continue
+            got.add(m)
+            if item.get("failed"):
+                reasons[m] = item["failed"]
+            elif item.get("classes"):
+                out[m] = [(c, n) for c, n in item["classes"]]
+        todo = [m for m in todo if m not in got]
+        if todo and whole_failure:
+            for m in todo:
+                reasons[m] = whole_failure
+            break
+        if todo:
+            reasons[todo[0]] = died
+            todo = todo[1:]
+    return out, reasons
+
+
+def loader_listing(tests_dir, modules, reasons=None):
+    """{module: [(class name, tests)] or None}: what the real unittest loader finds,
+    from a short subprocess with the cwd and PYTHONPATH of run_unittest. None for a
+    module that cannot be listed exactly (then it runs whole, never split). With a dict
+    as `reasons`, it is filled with {module: why} for a module that could not be listed
+    at all."""
+    out, why = list_modules(tests_dir, modules)
+    if reasons is not None:
+        reasons.update(why)
     return out
+
+
+def all_skip_ok(root):
+    """{file name: reason} from the all_skip_ok= lines of <root>/agent_repo.conf. An
+    entry with no reason is not honoured and is said in one line."""
+    ok = {}
+    try:
+        with open(os.path.join(root, "agent_repo.conf")) as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        return ok
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() != "all_skip_ok":
+            continue
+        entry, _, reason = value.strip().partition(":")
+        name = os.path.basename(entry.strip())
+        if name.endswith(".py"):
+            name = name[:-3]
+        if not reason.strip():
+            print("all_skip_ok: %s has no reason, ignored" % (entry.strip() or line))
+        else:
+            ok[name] = reason.strip()
+    return ok
+
+
+def proc_start(pid):
+    """The start time of a process as `ps` says it (a string), or None."""
+    try:
+        out = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True,
+                             text=True, timeout=10).stdout.strip()
+    except Exception:
+        return None
+    return out or None
+
+
+MARKER = ".run2_owner"
+
+
+def remove_stale_folders():
+    """Remove run2_* folders in the temp dir that a dead run2 left: a real folder with a
+    marker (pid, start time) whose process is gone or is another process now. Nothing
+    else is touched."""
+    base = tempfile.gettempdir()
+    try:
+        entries = os.listdir(base)
+    except OSError:
+        return
+    for entry in entries:
+        path = os.path.join(base, entry)
+        if not entry.startswith("run2_") or os.path.islink(path) or not os.path.isdir(path):
+            continue
+        try:
+            with open(os.path.join(path, MARKER)) as fh:
+                mark = json.load(fh)
+            pid, start = mark["pid"], mark["start"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if type(pid) is not int or pid <= 0 or not isinstance(start, str) or not start.strip():
+            continue
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            shutil.rmtree(path, ignore_errors=True)
+            continue
+        except OSError:
+            pass   # the process exists (not ours to signal): compare the start time
+        now = proc_start(pid)
+        if now is not None and now != start:
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def failure_lines(text):
+    """The failure sections of a unittest log (each block from its "=====" line with
+    FAIL:/ERROR: through its traceback), every line prefixed "  | "; with none, the last
+    40 lines of the log."""
+    lines = text.splitlines()
+    out, inside = [], False
+    for i, line in enumerate(lines):
+        nxt = lines[i + 1] if i + 1 < len(lines) else ""
+        if line.startswith("=" * 10):
+            inside = bool(re.match(r"(FAIL|ERROR): ", nxt))
+        elif inside and line.startswith("-" * 10) and nxt.startswith("Ran "):
+            inside = False
+        if inside:
+            out.append(line)
+    while out and not out[-1].strip():
+        out.pop()
+    return ["  | " + l for l in (out or lines[-40:])]
+
+
+# the test processes now running, and whether a stop signal came: no new process after it
+CHILDREN, CHILDREN_LOCK, STOPPING = set(), threading.Lock(), [False]
+LOGS = [None]
+
+
+def stop_children():
+    with CHILDREN_LOCK:
+        STOPPING[0] = True
+        procs = list(CHILDREN)
+    for p in procs:
+        try:
+            p.terminate()
+        except OSError:
+            pass
+    end = time.time() + 2
+    for p in procs:
+        try:
+            p.wait(max(0.01, end - time.time()))
+        except subprocess.TimeoutExpired:
+            try:
+                p.kill()
+            except OSError:
+                pass
+        except Exception:
+            pass
+
+
+def on_signal(sig, frame):
+    stop_children()
+    if LOGS[0]:
+        shutil.rmtree(LOGS[0], ignore_errors=True)
+    signal.signal(sig, signal.SIG_DFL)
+    os.kill(os.getpid(), sig)
 
 
 def count_mismatch(discovered, ran):
@@ -232,7 +437,7 @@ def walk(suite):
         yield from walk(t)
 
 sys.path.insert(0, os.getcwd())   # as `python -m unittest` has it
-suite, owner, counts = unittest.TestSuite(), {}, {}
+suite, owner, counts, skips = unittest.TestSuite(), {}, {}, {}
 for name in sys.argv[1:]:
     part = unittest.defaultTestLoader.loadTestsFromName(name)
     for t in walk(part):
@@ -248,6 +453,11 @@ class Result(unittest.TextTestResult):
         counts[name] = counts.get(name, 0) + 1
         super().startTest(test)
 
+    def addSkip(self, test, reason):
+        if id(test) in owner:
+            skips[owner[id(test)]] = skips.get(owner[id(test)], 0) + 1
+        super().addSkip(test, reason)
+
     def stopTest(self, test):
         super().stopTest(test)
         now = time.perf_counter()
@@ -262,37 +472,48 @@ with open(os.environ["RUN2_COUNTS"], "w") as fh:
     json.dump(counts, fh)
 with open(os.environ["RUN2_COUNTS"] + ".secs", "w") as fh:
     json.dump(secs, fh)
+with open(os.environ["RUN2_COUNTS"] + ".skips", "w") as fh:
+    json.dump(skips, fh)
 sys.exit(0 if res.wasSuccessful() else 1)
 """
 
 
 def run_unittest(tests_dir, modules, log_path):
-    """(exit code, seconds, output, {module or module.Class: tests run}, {file.Class: [seconds, tests]})."""
+    """(exit code, seconds, output, {module or module.Class: tests run}, {file.Class: [seconds, tests]},
+    {module or module.Class: tests skipped}). No new process once a stop signal came."""
     start = time.time()
     runner, counts_path = log_path + ".runner.py", log_path + ".counts"
-    with open(runner, "w") as fh:
-        fh.write(RUNNER)
-    with open(log_path, "w") as log:
+    # one locked section: the stop check, every file made in the folder, and the start; once
+    # stop_children set STOPPING (under this lock) no thread can put a file in the folder
+    with CHILDREN_LOCK:
+        if STOPPING[0]:
+            raise RuntimeError("stopped")
+        with open(runner, "w") as fh:
+            fh.write(RUNNER)
         # cwd = the repo root, tests/ on the path: both `import scripthelp` and
         # `from tests.scripthelp import ...` work, as under `unittest discover -s tests`
         env = unittest_env(tests_dir)
         env["RUN2_COUNTS"] = counts_path
-        code = subprocess.call([sys.executable, runner] + modules,
-                               cwd=os.path.dirname(tests_dir), env=env,
-                               stdout=log, stderr=subprocess.STDOUT)
+        with open(log_path, "w") as log:
+            proc = subprocess.Popen([sys.executable, runner] + modules,
+                                    cwd=os.path.dirname(tests_dir), env=env,
+                                    stdout=log, stderr=subprocess.STDOUT)
+        CHILDREN.add(proc)
+    try:
+        code = proc.wait()
+    finally:
+        with CHILDREN_LOCK:
+            CHILDREN.discard(proc)
     with open(log_path) as fh:
         text = fh.read()
-    try:
-        with open(counts_path) as fh:
-            counts = json.load(fh)
-    except (OSError, ValueError):
-        counts = {}
-    try:
-        with open(counts_path + ".secs") as fh:
-            class_secs = json.load(fh)
-    except (OSError, ValueError):
-        class_secs = {}
-    return code, time.time() - start, text, counts, class_secs
+    side = []
+    for suffix in ("", ".secs", ".skips"):
+        try:
+            with open(counts_path + suffix) as fh:
+                side.append(json.load(fh))
+        except (OSError, ValueError):
+            side.append({})
+    return code, time.time() - start, text, side[0], side[1], side[2]
 
 
 def summary(text):
@@ -321,14 +542,35 @@ def main():
     if args.j is None:
         args.j = default_jobs()
     tests_dir = os.path.join(os.path.abspath(args.root), "tests") if args.root else HERE
+    root = os.path.dirname(tests_dir)
     names = test_files(tests_dir, args.files)
+    old = {}
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        old[sig] = signal.signal(sig, on_signal)
+    remove_stale_folders()
     logs = tempfile.mkdtemp(prefix="run2_")
+    LOGS[0] = logs
+    try:
+        with open(os.path.join(logs, MARKER), "w") as fh:
+            json.dump({"pid": os.getpid(), "start": proc_start(os.getpid()) or ""}, fh)
+        return run_all(args, tests_dir, root, names, logs)
+    finally:
+        shutil.rmtree(logs, ignore_errors=True)
+        LOGS[0] = None
+        for sig, handler in old.items():
+            signal.signal(sig, handler)
+
+
+def run_all(args, tests_dir, root, names, logs):
     start = time.time()
 
     if args.time:
+        texts = {}
+
         def one(name):
             wait_for_room()
-            code, secs, text, counts, class_secs = run_unittest(tests_dir, [name], os.path.join(logs, name + ".log"))
+            code, secs, text, counts, class_secs, _skips = run_unittest(tests_dir, [name], os.path.join(logs, name + ".log"))
+            texts[name] = text
             tests, verdict = summary(text)
             return name, code, secs, tests, verdict, class_secs
 
@@ -353,11 +595,16 @@ def main():
               % (len(rows), sum(r[3] for r in rows), sum(r[2] for r in rows),
                  time.time() - start, args.j, out))
         for name, code, secs, tests, verdict, _classes in bad:
-            print("FAILED %s: see %s" % (name, os.path.join(logs, name + ".log")))
+            print("FAILED %s" % name)
+            for line in failure_lines(texts.get(name, "")):
+                print(line)
         return 1 if bad else 0
 
-    listing = loader_listing(tests_dir, names)
-    groups = split(names, read_timings(os.path.join(tests_dir, "timings.txt")), max(1, args.j), listing)
+    ok_files = all_skip_ok(root)
+    reasons = {}
+    listing = loader_listing(tests_dir, names, reasons)
+    runnable = [n for n in names if n not in reasons]
+    groups = split(runnable, read_timings(os.path.join(tests_dir, "timings.txt")), max(1, args.j), listing)
 
     def go(i_group):
         i, (mods, est) = i_group
@@ -365,31 +612,46 @@ def main():
         wait_for_room()
         return i, mods, est, run_unittest(tests_dir, mods, os.path.join(logs, "group%d.log" % (i + 1)))
 
-    with ThreadPoolExecutor(max_workers=len(groups)) as pool:
-        results = list(pool.map(go, enumerate(groups)))
+    results = []
+    if groups:
+        with ThreadPoolExecutor(max_workers=len(groups)) as pool:
+            results = list(pool.map(go, enumerate(groups)))
     failed = False
-    ran_by_file = {}
-    for i, mods, est, (code, secs, text, counts, _class_secs) in results:
+    ran_by_file, skipped_by_file = {}, {}
+    for i, mods, est, (code, secs, text, counts, _class_secs, skips) in results:
         tests, verdict = summary(text)
         for item, n in counts.items():
             ran_by_file[item.split(".")[0]] = ran_by_file.get(item.split(".")[0], 0) + n
+        for item, n in skips.items():
+            skipped_by_file[item.split(".")[0]] = skipped_by_file.get(item.split(".")[0], 0) + n
         print("process %d: %d files or classes, %d tests, %.0f s (planned %.0f s): %s"
               % (i + 1, len(mods), tests, secs, est, verdict))
         if code != 0:
             failed = True
-            print("  log: %s" % os.path.join(logs, "group%d.log" % (i + 1)))
             for block in re.findall(r"^(?:FAIL|ERROR): .*$", text, re.M):
                 print("  " + block)
+            for line in failure_lines(text):
+                print(line)
     print("wall %.0f s, %d processes (-j %d)" % (time.time() - start, len(groups), args.j))
-    unlisted = [n for n in names if listing.get(n) is None]
+    for n in names:
+        if n in reasons:
+            print("NOT LISTED: %s could not be listed: %s" % (n, reasons[n]))
+            failed = True
+    unlisted = [n for n in runnable if listing.get(n) is None]
     if unlisted:
         print("count check skipped: the loader could not list %s" % ", ".join(unlisted))
-    for n in names:
+    for n in runnable:
         if listing.get(n) is not None:
             line = count_mismatch(sum(c for _, c in listing[n]), ran_by_file.get(n, 0))
             if line:
                 print("%s in %s" % (line, n))
                 failed = True
+    for n in runnable:
+        ran = ran_by_file.get(n, 0)
+        if ran > 0 and skipped_by_file.get(n, 0) == ran and n not in ok_files:
+            print("ALL SKIPPED: %s: %d of %d tests skipped, none ran (if that is right: "
+                  "all_skip_ok=%s: <reason> in agent_repo.conf)" % (n, ran, ran, n))
+            failed = True
     return 1 if failed else 0
 
 
