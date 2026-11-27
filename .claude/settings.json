@@ -1,5 +1,5 @@
 {
-  "autoMemoryEnabled": false,
+  "autoMemoryEnabled": true,
   "permissions": {
     "allow": [
       "Bash(git push origin --delete *)",
