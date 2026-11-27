@@ -339,7 +339,7 @@ class TestPrinciplesW13CloseCase(unittest.TestCase):
     def test_the_quiz_still_has_twenty_nine_questions(self):
         text = read("bin", "agent-start.sh")
         # test-levels (2026-11-20): Q38 and Q39 (R8); approval-design: Q40-Q44
-        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 36)   # S5 + T4
+        self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", text)), 37)   # S5 + T4; ask-test: Q37
 
 
 class TestCloseCaseSkill(unittest.TestCase):

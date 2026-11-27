@@ -14,7 +14,7 @@ E1. Shape
 - Lists: 5 items or fewer per group, ranked. Keep the rest, never drop them
 - No preamble, no recap, no closer
 - Break the shape: "explain" or "walk me through" → full length, headers
-- Destructive action → confirm first
+- Destructive action (loses the owner's data or work) → confirm first
 - 3 turns of "still broken" → name the assumption, ask one question
 - Ambiguous request → one short question
 - A rule that would delete the answer → the task wins, the shape stays

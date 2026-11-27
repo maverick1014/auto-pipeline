@@ -1623,7 +1623,7 @@ class TestQuiz(SharedRepoMixin, ScriptCase):
     def test_no_level_words_in_the_quiz(self):
         self.assertEqual(LEVEL_WORDS.findall(self.quiz()), [])
 
-    def test_37_and_the_new_key_passes(self):
+    def test_36_and_the_new_key_passes(self):
         out = self.quiz()
         self.assertEqual(len(re.findall(r"(?m)^Q\d+\. ", out)), 37)
         r = self.repo.run("agent-start.sh", "--answer", ANSWERS)
@@ -3545,7 +3545,7 @@ class TestQuiz36(SharedRepoMixin, ScriptCase):
         self.assertEqual([o[:2] for o in options], ["A.", "B.", "C.", "D."])
         return lines[0], options
 
-    def test_37_questions(self):
+    def test_36_questions(self):
         out = self.quiz()
         self.assertIn("=== QUIZ — answer all 37 before any work ===", out)
         self.assertIn('--answer "1A 2B 3C ... 37D"', out)
@@ -3580,7 +3580,7 @@ class TestQuiz36(SharedRepoMixin, ScriptCase):
         r = self.repo.run("agent-start.sh", "--answer", ANSWERS[:-8])
         self.assertEqual(r.returncode, 1)
 
-    def test_usage_and_readme_say_37(self):
+    def test_usage_and_readme_say_36(self):
         src = read("bin", "agent-start.sh")
         self.assertIn("print the 37 quiz questions", src)
         self.assertIn('--answer "1A 2D ... 37D"', src)

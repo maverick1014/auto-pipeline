@@ -5,9 +5,9 @@
 #   ./agent-start.sh --rules                  the rules block (the second SessionStart entry): the core,
 #                                             the output rules, the PATHS line, the role's READ NOW line
 #   ./agent-start.sh --quiz [--role main|task|second|all]
-#                                             print the 36 quiz questions (all), or the role's set (no --role:
+#                                             print the 37 quiz questions (all), or the role's set (no --role:
 #                                             the role of this session)
-#   ./agent-start.sh --answer "1A 2D ... 36D" [--role ...]
+#   ./agent-start.sh --answer "1A 2D ... 37D" [--role ...]
 #                                             grade your quiz answers (only the role's questions; a wrong one
 #                                             names the file to re-read)
 #   ./agent-start.sh --take-over              this session becomes the main manager
@@ -36,9 +36,9 @@ set -u
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
-KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 b75587e9915ec885 b10039ac08596652 6e172188c9c4bc39 5e1a8ca54c3fbadd 13127809c0aa4e07 2de03a63345b0488 d019670ac24fe392 1a6951e83e3e46bb 52fcf5e8a49617f0 d7dd4d5626dfebb7 14d3ea7536a00bbf d956db8d1ed42790 72241f6e3363d877 c20dbe1e5d7e0c3a f4c5ea8cff8e3805 1abb73a3e6683277 ed3aa1e779d86517 7fb8bf29915b93ba 53f2f80016081d7b 452e097c150557a7 86748978724ff86c 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 f9d86ca36f2238ad 6ef895678e4d73f6 60a1877ffe0c9ecf fc755642e7b2d547 81b9e6e9fb8fe2c5 a06bbc5adaee446e 23168b3ea65a8215 )
-RULE=( _ W1 R6 H1 W2 W4 W12 S3 H3 R5 R2 R3 H3 R1 W7 W6 W7 W9 S1 W10 S8 S8 H1 H3 W8 R8 W17 R8 R8 R8 R8 R8 R8 P1 R8 W9 P1 )
-N=36
+KEY=( _ ff689d761d10c13d 38ebe4aa1afa125b 5b09070227aba9ed 8fad5dd001704a23 526a99cc5399c609 b75587e9915ec885 b10039ac08596652 6e172188c9c4bc39 5e1a8ca54c3fbadd 13127809c0aa4e07 2de03a63345b0488 d019670ac24fe392 1a6951e83e3e46bb 52fcf5e8a49617f0 d7dd4d5626dfebb7 14d3ea7536a00bbf d956db8d1ed42790 72241f6e3363d877 c20dbe1e5d7e0c3a f4c5ea8cff8e3805 1abb73a3e6683277 ed3aa1e779d86517 7fb8bf29915b93ba 53f2f80016081d7b 452e097c150557a7 86748978724ff86c 8ceef70be9e82efe 0a9317bb53ca4942 5beab162ea6db1e0 f9d86ca36f2238ad 6ef895678e4d73f6 60a1877ffe0c9ecf fc755642e7b2d547 81b9e6e9fb8fe2c5 a06bbc5adaee446e 23168b3ea65a8215 2ec8ada5beb1f8cd )
+RULE=( _ W1 R6 H1 W2 W4 W12 S3 H3 R5 R2 R3 H3 R1 W7 W6 W7 W9 S1 W10 S8 S8 H1 H3 W8 R8 W17 R8 R8 R8 R8 R8 R8 P1 R8 W9 P1 H3 )
+N=37
 
 sha() { if command -v shasum >/dev/null; then shasum -a 256; else sha256sum; fi; }
 h()   { printf '%s' "$1" | sha | cut -c1-16; }
@@ -228,7 +228,7 @@ if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ] || [ "${1:-}" = "-
   exit 0
 fi
 
-# ---- the quiz per role (md-slim-principles B 8). The 36 questions, their order, the
+# ---- the quiz per role (md-slim-principles B 8). The 37 questions, their order, the
 # answer key and the SALT do not change. Each question carries the file(s) that hold
 # its rule; a role is asked the questions whose file is PRINCIPLES.md or on its
 # reading list. ----
@@ -240,7 +240,7 @@ QFILES=( _
   "rules/context.md" "rules/human.md" "PRINCIPLES.md rules/human.md" "rules/worktrees.md" "rules/branches.md"
   "PRINCIPLES.md" "rules/checks.md" "rules/branches.md" "rules/approval.md" "rules/approval.md"
   "rules/approval.md" "rules/approval.md" "PRINCIPLES.md" "rules/approval.md" "rules/routing.md"
-  "PRINCIPLES.md" )
+  "PRINCIPLES.md" "rules/human.md" )
 MAIN_READS="rules/human.md rules/routing.md rules/approval.md rules/checks.md rules/branches.md rules/worktrees.md rules/watch.md rules/files.md"
 TASK_READS="rules/tests.md rules/checks.md rules/watch.md rules/context.md rules/resources.md"
 SECOND_READS="rules/roles.md $TASK_READS"
@@ -504,6 +504,12 @@ Q36. A live task manager is changing the discount logic of the billing module. T
   B. Send it to that task manager: it is a follow-up on the logic it is changing right now; a different part of the module would get its own branch and agent
   C. Hold it until that task is merged
   D. Do it yourself in the main chat
+
+Q37. You are the main manager. The owner asked for a CSV export in his own words. Open points: your requirement doc that only writes down his request, an old temp test folder to delete, a helper name no rule or word of his fixes, and a push to another team's repo his words do not cover. Your decide section asks:
+  A. All four: he should see everything
+  B. Nothing: decide all four yourself, the push too
+  C. Only the push: it leaves the repo and his words do not cover it; the doc needs no second yes, the temp folder is not his data or work, the helper name is a default you log
+  D. The doc and the helper name
 QUIZ
 }
 
@@ -513,8 +519,8 @@ if [ "${1:-}" = "--quiz" ]; then
   quiz_parse_role "$@" && quiz_role "$QROLE_ARG" || { echo 'usage: ./agent-start.sh --quiz [--role main|task|second|all]'; exit 2; }
   quiz_set
   if [ "$QROLE" = all ]; then
-    echo "=== QUIZ — answer all 36 before any work ==="
-    echo 'Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 36D"'
+    echo "=== QUIZ — answer all 37 before any work ==="
+    echo 'Reply by running:   ./agent-start.sh --answer "1A 2B 3C ... 37D"'
     echo "Do not start work until you see PASS."
     echo
     quiz_body
@@ -535,9 +541,9 @@ fi
 # ---- grade: only the role's questions; a wrong one names the file(s) to re-read ----
 if [ "${1:-}" = "--answer" ]; then
   ANSWER="${2:-}"
-  [ -z "$ANSWER" ] || [ "$ANSWER" = "--role" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D" [--role main|task|second|all]'; exit 2; }
+  [ -z "$ANSWER" ] || [ "$ANSWER" = "--role" ] && { echo 'usage: ./agent-start.sh --answer "1A 2D ... 37D" [--role main|task|second|all]'; exit 2; }
   shift 2
-  quiz_parse_role "$@" && quiz_role "$QROLE_ARG" || { echo 'usage: ./agent-start.sh --answer "1A 2D ... 36D"'; exit 2; }
+  quiz_parse_role "$@" && quiz_role "$QROLE_ARG" || { echo 'usage: ./agent-start.sh --answer "1A 2D ... 37D"'; exit 2; }
   ASKED=$QROLE
   quiz_role ""
   quiz_set

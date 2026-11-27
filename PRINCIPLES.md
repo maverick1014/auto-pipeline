@@ -21,7 +21,7 @@ Owner 2026-11-25: "use the most fast and efficiency way for any of your works". 
 - Managers never write product code; workers never write tests (W3, W6). The main manager assigns, talks to the human, reports and decides; its exceptions: `rules/roles.md`
 
 ## R1. One flow, two lanes
-Before the flow: the main manager writes the requirement doc, the owner approves it. Full flow, in order:
+Before the flow: the main manager writes the requirement doc, the owner approves it, unless it only writes down his own words. Full flow, in order:
 1. Todo line + estimate
 2. Mock for a new page or a whole-page re-layout (W2)
 3. Worktree + task manager
@@ -62,7 +62,7 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 - Talk to the human in the language of the Language setting. Docs, code and rule text stay English (H2)
 - Never cite a rule by its code (W6, S8) to the human. Say what the rule means in plain words (H2)
 - H4. Tables: comparison, series, feature list, task list, options → table, never prose
-- Every report, job summary, recap, proposal or audit to the human ends with a decide section (H3)
+- Every report, job summary, recap, proposal or audit to the human ends with a decide section, normally none: a question must pass the ask test (H3)
 - Open questions numbered, each with a recommendation (zh `建议`, en `Recommendation`) (H3)
 - "verified", "works", "fixed" only with the real evidence named. A green suite is not a real device check (E2)
 
