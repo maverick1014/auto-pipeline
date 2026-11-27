@@ -638,6 +638,17 @@ class TestNoFolderLeft(unittest.TestCase):
         self.assertIn("broken inside run2", out.stderr)
         self.gone(tmp, out.stdout + out.stderr)
 
+    def test_once_a_stop_came_no_process_puts_a_file_in_the_folder(self):
+        # verify finding: a group starting while the signal lands wrote its runner and log into the
+        # folder after the folder was removed, which left an unmarked run2_* folder for good
+        run2 = load_run2()
+        root = fixture_root(self, {"test_small.py": SMALL})
+        folder = own_tmp(self)
+        run2.STOPPING[0] = True
+        with self.assertRaises(Exception):
+            run2.run_unittest(os.path.join(root, "tests"), ["test_small"], os.path.join(folder, "group1.log"))
+        self.assertEqual(os.listdir(folder), [])
+
     def test_a_stopped_run_leaves_no_folder_and_no_test_process(self):
         for sig in (signal.SIGINT, signal.SIGTERM):
             with self.subTest(signal=sig.name):
