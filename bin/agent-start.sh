@@ -575,7 +575,7 @@ if [ "${1:-}" = "--answer" ]; then
   set +f
   if [ ${#hin[@]} -gt 0 ]; then
     hout=$(hash_all "${hin[@]}") || hout=""
-    while IFS= read -r l; do HL[${#HL[@]}]=$l; done <<<"$hout"
+    while IFS= read -r l; do [ -z "$l" ] || HL[${#HL[@]}]=$l; done <<<"$hout"
     if [ ${#HL[@]} -ne ${#hin[@]} ]; then   # no python3, or a short answer: one hash start each, as before
       HL=(); for l in "${hin[@]}"; do HL[${#HL[@]}]=$(h "$l"); done
     fi

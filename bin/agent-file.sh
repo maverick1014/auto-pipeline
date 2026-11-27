@@ -447,8 +447,7 @@ drop() {
   if [ ! -f "$1" ] || [ ! -r "$1" ]; then awk -v k="$2" -F' \\| ' '$1 != k' "$1" > "$1.tmp" && mv "$1.tmp" "$1"; return; fi
   {
     while IFS= read -r l || [ -n "$l" ]; do
-      if [ "$l" = "$2" ]; then continue; fi
-      case "$l" in "$2 | "*) continue;; esac
+      if [ "${l%% | *}" = "$2" ]; then continue; fi
       printf '%s\n' "$l"
     done < "$1"
   } > "$1.tmp" && mv "$1.tmp" "$1"
@@ -458,8 +457,7 @@ first() {
   if awk_name "$2"; then awk -v k="$2" -F' \\| ' '$1 == k {print; exit}' "$1"; return; fi
   if [ ! -f "$1" ] || [ ! -r "$1" ]; then awk -v k="$2" -F' \\| ' '$1 == k {print; exit}' "$1"; return; fi
   while IFS= read -r l || [ -n "$l" ]; do
-    if [ "$l" = "$2" ]; then printf '%s\n' "$l"; return 0; fi
-    case "$l" in "$2 | "*) printf '%s\n' "$l"; return 0;; esac
+    if [ "${l%% | *}" = "$2" ]; then printf '%s\n' "$l"; return 0; fi
   done < "$1"
   return 0
 }
@@ -634,13 +632,17 @@ old_est()   { old_num "${1##* | }" est; }
 old_clock() { old_num "${1##* | }" actual; }
 # lines of agent_completed.txt that have a data block with a work number (dropped lines never count)
 time_data() {
-  local l n=0 re='(^| )work=[0-9]+( |$)'
+  local l n=0 c=0 big="" re='(^| )work=[0-9]+( |$)'
   if [ -f "$DONE" ] && [ -r "$DONE" ]; then
-    while IFS= read -r l || [ -n "$l" ]; do
+    while IFS= read -r l || [ -n "$l" ]; do   # up to 600 lines here, a longer file goes to one awk start
+      c=$((c+1))
+      if [ "$c" -gt 600 ]; then big=1; break; fi
       case "$l" in *'| dropped: '*) continue;; *' | data '*) ;; *) continue;; esac
       if [[ ${l##* | data } =~ $re ]]; then n=$((n+1)); fi
     done < "$DONE"
-    echo "$n"
+    if [ -z "$big" ]; then echo "$n"; else
+      awk '/[|] dropped: /{next} sub(/^.* [|] data /,"") && /(^| )work=[0-9]+( |$)/{n++} END{print n+0}' "$DONE"
+    fi
   else
     awk '/[|] dropped: /{next} sub(/^.* [|] data /,"") && /(^| )work=[0-9]+( |$)/{n++} END{print n+0}' "$DONE"
   fi
@@ -1802,18 +1804,20 @@ case "${1:-}:${2:-}" in
     drop "$TODO" "$name"; append "$DONE" "$date | $name | $what | $(dblock)"
     # task-end (its removals, stored owner words and planned blocks end: G2, G4), the list of the lines queued after this
     # one, and the state trim: ONE python3 start (the trim only when no line was queued after this one)
-    tail_out=""; tail_te=""; tail_names=""; tail_trim=""; tail_ran=""
+    tail_out=""; tail_te=""; tail_names=""; tail_trim=""; tail_ran=""; tail_mark=""
     if command -v python3 >/dev/null 2>&1; then
       tail_out=$(checks_py task-end-after "$name" 1) || true
+      case "$tail_out" in *$'\001A'*) tail_mark=1;; esac   # no marker: the batch died, the separate steps run below
       tail_te=${tail_out%%$'\001A'*}
       tail_names=${tail_out#*$'\001A'}
+      [ -n "$tail_mark" ] || { tail_te=""; tail_names=""; }
       case "$tail_names" in *$'\001T'*) tail_trim=${tail_names#*$'\001T'}; tail_names=${tail_names%%$'\001T'*}; tail_ran=1;; esac
       [ -z "$tail_te" ] || printf '%s' "$tail_te"
     else
       checks_py task-end done "$name" || true     # python3 missing: the refusal that ends the run
     fi
     echo "todo done: $name"
-    if [ -n "$tail_ran" ] || command -v python3 >/dev/null 2>&1; then released_list "$tail_names"; else released_after "$name"; fi
+    if [ -n "$tail_mark" ]; then released_list "$tail_names"; else released_after "$name"; fi
     batch_done "$line" "$name"
     [ -n "$counted" ] || echo "files and lines: not counted (no --merge or --range)"
     echo "TIME DATA: $(time_data) of $TIME_DATA_GOAL"

@@ -498,6 +498,9 @@ def cmd_task_end_after(ctx, a):
             cmd_task_end(ctx, ["done", task])
     except Refuse as e:
         sys.stderr.write(" ".join(str(e).split()) + "\n")
+    except Exception:
+        import traceback
+        traceback.print_exc()
     out = buf.getvalue() + "\x01A\n"
     names = []
     try:

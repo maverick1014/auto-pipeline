@@ -305,10 +305,15 @@ count_lines() {
     [ -z "$_cl_l" ] || _cl_n=$((_cl_n + 1))
   done <"$1"
 }
+# a file that cannot be read goes to the old grep (same count, same stderr), never ends the run
 todo_n=0
-if [ -s "$TODO" ]; then count_lines "$TODO"; todo_n=$_cl_n; fi
+if [ -s "$TODO" ]; then
+  if [ -r "$TODO" ]; then count_lines "$TODO"; todo_n=$_cl_n; else todo_n=$(grep -c . "$TODO" || true); fi
+fi
 ideas_n=0
-if [ -s "$IDEAS" ]; then count_lines "$IDEAS"; ideas_n=$_cl_n; fi
+if [ -s "$IDEAS" ]; then
+  if [ -r "$IDEAS" ]; then count_lines "$IDEAS"; ideas_n=$_cl_n; else ideas_n=$(grep -c . "$IDEAS" || true); fi
+fi
 echo "todo: ${todo_n:-0} open"
 echo "ideas: ${ideas_n:-0} waiting"
 [ -z "$CLEAN_OUT" ] || printf '%s\n' "$CLEAN_OUT"

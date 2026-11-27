@@ -13,9 +13,12 @@
 #   bin/agent-runtime.sh close <handle>                    close a terminal (orca only)
 #   bin/agent-runtime.sh -h                                this help
 #
-# KIND is worked out fresh on every call, never cached, never written to a
-# file, because the owner switches between Orca and the Claude app inside one
-# day:
+# KIND is worked out fresh on every script run (every start of a script), never
+# kept between runs, never written to a file, because the owner switches between
+# Orca and the Claude app inside one day. Inside one run it can be asked once: a
+# script that pins it with AGENT_RUNTIME (agent-resume.sh does, after its first
+# runtime_kind, and its child agent-cleanup.sh then takes the pin) pays the
+# probe once for that run:
 #   0. $AGENT_RUNTIME is exactly orca, plain or cloud   -> that one, full stop
 #   1. the `runtime` setting (Configure) is orca, plain or cloud -> that one, full stop
 #   2. CLAUDE_CODE_REMOTE=true                         -> cloud
@@ -58,9 +61,10 @@ fi
 
 # ---- kind ---------------------------------------------------------------
 
-# The `runtime` setting (user level, Configure), read fresh every time through
-# `setting`, never kept in a variable, so a value from an earlier call can
-# never linger. Prints nothing when it cannot be read.
+# The `runtime` setting (user level, Configure), read through `setting`: a script
+# that read its settings in one call (settings_read) is answered from that read,
+# for that run only (the values are never exported to a child script, never kept
+# between runs); otherwise one fresh read. Prints nothing when it cannot be read.
 _runtime_conf_value() {
   setting runtime 2>/dev/null || true
 }

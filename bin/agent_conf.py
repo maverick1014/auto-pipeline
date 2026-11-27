@@ -1050,7 +1050,7 @@ def shared_lines(project_root, env=None):
 
 # ------------------------------------------------------------------ CLI
 
-USAGE = ("usage: agent_conf.py get <key> | show | migrate <project root> "
+USAGE = ("usage: agent_conf.py get <key> [<key> ...] | show | migrate <project root> "
          "| cli-model <model[:effort]> | you <role_key> <pid> | working-branch <repo> | stored-working-branch <repo>\n")
 
 
