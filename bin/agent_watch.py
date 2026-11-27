@@ -514,6 +514,16 @@ def remote_command(path):
             % (LAST_CUT, shlex.quote(path + "/agent_state.txt")))
 
 
+def split_fsig(rest):
+    """(v, last) of the remote answer "<v>|<last wake line>". v (at most 99 chars) keeps the line's own " | " (STAGE:
+    " | since <date>", heartbeat: " | <date>"): the separator is the first "|" not followed by a space; a v cut at 99
+    chars may end in that line's own "|" (index 98), then the separator is index 99."""
+    i = next((k for k, c in enumerate(rest) if c == "|" and rest[k + 1:k + 2] != " "), len(rest))
+    if i == 98 and rest[99:100] == "|":
+        i = 99
+    return rest[:i], rest[i + 1:]
+
+
 FSIG = re.compile(r"^FSIG (\d*) (\d+) (\d*) ([01]?) (.*) FEND$")
 
 
@@ -794,9 +804,7 @@ class Engine:
             return Obs("exited", lines=lines) if exited else Obs("fail", err, lines)
         o.fn, o.fl, o.w = int(hit.group(1) or 0), int(hit.group(2)), int(hit.group(3) or 0)
         o.started = hit.group(4) == "1"
-        # the line's own " | " (STAGE: " | since <date>", heartbeat: " | <date>") stays in v; the separator is a "|"
-        # not followed by a space
-        v, o.last = re.match(r"((?:[^|]|\| )*)(?:\|(.*))?$", hit.group(5)).groups("")
+        v, o.last = split_fsig(hit.group(5))
         o.stage, o.beat = progress_of_line(v, t.name) or ("", "")
         o.since = line_time(v) if v.startswith("STAGE ") else ""
         return o
