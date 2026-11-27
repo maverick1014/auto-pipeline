@@ -45,7 +45,7 @@
 #   agent-file.sh worktree set "<path>" "<module>" "<status>" -> agent_worktree.txt (add or replace)
 #   agent-file.sh worktree rm  "<path>"                       -> agent_worktree.txt
 #   agent-file.sh helper-task "<Task Name>"                   -> the task of THIS human-direct Helper session: its name becomes "<repo> Helper - <Task Name>"
-#   agent-file.sh session-end <sid> | --dead [--dry-run]      -> a session leaves nothing behind: its agent_*_<sid> files in the git dir and its human-direct line; --dead: the human-direct lines whose pid on this host is gone (one line each: "human-direct line <path> (pid <n> gone)"), and an old-format line with no pid and no session id 12 h old or more ("human-direct line <path> (no pid, no session id, <n>h old)")
+#   agent-file.sh session-end <sid> | --dead [--dry-run]      -> a session leaves nothing behind: its agent_*_<sid> files in the git dir and its human-direct line; --dead: the human-direct lines whose pid on this host is gone (one line each: "human-direct line <path> (pid <n> gone)"), and an old-format line with no pid and no session id 12 h old or more is only FLAGGED, never removed ("flag: human-direct line <path>: no pid, no session id, <n>h old: ...")
 #   agent-file.sh show                                        -> print all four files
 #   agent-file.sh time                                        -> table: name est work wait clock ratio (agent_completed.txt)
 #   agent-file.sh backfill [--dry-run]                        -> old lines: take work and wait from the text of each line
@@ -1193,11 +1193,10 @@ session_end() {
     else if (pid == "" && hh == "" && s == "-" && since != "") print NR "\t" $1 "\t-\t" since }' "$WT")
   while IFS=$'\t' read -r nr path pid ssid; do
     [ -n "$nr" ] || continue
-    if [ "$pid" = - ]; then   # board-fast-lane rule 4: no pid, no session id: nothing to find a process by; 12 h old or more goes
+    if [ "$pid" = - ]; then   # board-fast-lane rule 4: no pid, no session id: nothing to find a process by; 12 h old or more is FLAGGED, never removed (only the main manager removes a human-direct line, after the owner says it is finished)
       m=$(minutes_between "$ssid" "$NOW")
       [ -n "$m" ] && [ "$m" -ge 720 ] || continue
-      nums="$nums $nr "
-      echo "human-direct line $path (no pid, no session id, $((m / 60))h old)"
+      echo "flag: human-direct line $path: no pid, no session id, $((m / 60))h old: close it with agent-file.sh worktree rm when the owner says it is finished"
       continue
     fi
     kill -0 "$pid" 2>/dev/null && continue
