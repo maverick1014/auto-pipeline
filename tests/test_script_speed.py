@@ -202,6 +202,47 @@ class TestTodoCounts(CountCase):
         self.assertStarts(starts, 7, python3=0)
 
 
+# A BSD date (macOS) that fills the seconds a -j -f format leaves out from the wall clock, here a moving
+# one: the first parse gets :00, every later one :59. A format with %S is exact.
+BSD_DATE = r"""#!/bin/bash
+if [ "${1:-}" = -j ] && [ "${2:-}" = -f ] && [ "${5:-}" = +%s ]; then
+  case "$3" in
+    *%S*) e=$(python3 -c 'import sys, time; print(int(time.mktime(time.strptime(sys.argv[2], sys.argv[1]))))' "$3" "$4") || exit 1
+          echo "$e"; exit 0;;
+  esac
+  e=$(python3 -c 'import sys, time; print(int(time.mktime(time.strptime(sys.argv[2], sys.argv[1]))))' "$3" "$4") || exit 1
+  n=$(cat "$DATE_STUB_COUNT" 2>/dev/null || echo 0); echo $((n + 1)) > "$DATE_STUB_COUNT"
+  if [ "$n" = 0 ]; then echo "$e"; else echo $((e + 59)); fi
+  exit 0
+fi
+exec @REAL@ "$@"
+"""
+
+
+class TestClockMinutes(ScriptCase):
+    """Found by the proof run (TestTodoDoneLevel, clock 59 against the old 60): a cached epoch of NOW
+    and a later parse of the opened time can be up to 59 s apart on macOS, where `date -j -f` without
+    %S takes the seconds from the wall clock. The minutes between two "YYYY-MM-DD HH:MM" times are
+    exact whatever second each parse runs in."""
+
+    def test_todo_done_clock_is_exact_whatever_the_seconds(self):
+        import shutil
+        real = shutil.which("date", path=os.pathsep.join(p for p in self.repo._path().split(os.pathsep)
+                                                           if p != self.repo.bin))
+        self.repo.stub_tool("date", BSD_DATE.replace("@REAL@", real))
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write("t1 | big | build it | est 70m | opened 2026-11-20 09:00 | by main\n")
+        r = self.repo.run("agent-file.sh", "todo", "done", "t1", "--work", "60", "--type", "script",
+                          "--lane", "full", env={"AGENT_FAKE_NOW": "2026-11-20 10:00", "AGENT_CLEANUP_DONE": "1",
+                                                 "DATE_STUB_COUNT": os.path.join(self.repo.base, "date_calls")})
+        self.assertOk(r)
+        self.assertNotIn("more than the clock", r.stderr)
+        line = [l for l in self.repo.read("agent_completed.txt").splitlines() if " | t1 | " in l]
+        self.assertEqual(len(line), 1, self.repo.read("agent_completed.txt"))
+        self.assertIn(" work=60 ", line[0])
+        self.assertIn(" clock=60 ", line[0])
+
+
 class TellCountCase(Counts, AllCase):
     def setUp(self):
         super().setUp()
