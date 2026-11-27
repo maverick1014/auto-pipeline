@@ -1290,7 +1290,7 @@ def remote_script(token, key="nightly"):
     Out of scope (a deliberately hostile suite): the open script, the shell history, and its own pane through
     the orca CLI, found by folder."""
     lines = [
-        'rm -f "$0"; T=%s; F=$(printf %%s "$1" | base64 -d); O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)' % token,
+        'rm -f "$0" .nightly-cmd.b64; T=%s; F=$(printf %%s "$1" | base64 -d); O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)' % token,
         "printf '@@NIGHTLY-%s %s\\n' BEGIN \"$T\"",
         'R=$(git rev-parse HEAD)',
         '[ -n "$B" ] && git checkout -q --detach HEAD && git branch -q -D "$B"',
@@ -1356,9 +1356,81 @@ def read_terminal(env, handle):
     return tail if isinstance(tail, list) else None
 
 
+PROMPT_ENDS = "$%#>\u276f\u279c\u00bb"       # a shell prompt ends with one of these: $ % # > (heavy angle) (arrow) (guillemet)
+CHUNK = 500                     # characters of base64 in one sent line: far under the ~1 KB tty line limit (W16)
+NEVER = "the connected machine: the remote run never started (no begin marker in %d s, %d tries)"
+
+
+def at_prompt(tail):
+    """True when the last non-empty line of the terminal reads like a shell prompt: the shell is ready for input."""
+    for line in reversed(tail or []):
+        text = str(line).rstrip()
+        if text:
+            return text[-1] in PROMPT_ENDS
+    return False
+
+
+def run_limit(gitdir, key):
+    """The time limit (seconds) of a whole remote run, counted from its BEGIN: 2 x the last measured weight,
+    at least 20 minutes; no measured weight yet: 3 hours. AGENT_NIGHTLY_REMOTE_TIMEOUT_S overrides."""
+    if "AGENT_NIGHTLY_REMOTE_TIMEOUT_S" in os.environ:
+        try:
+            return float(os.environ["AGENT_NIGHTLY_REMOTE_TIMEOUT_S"])
+        except ValueError:
+            return 10800.0
+    got = parse_weight(read_weights(gitdir).get(key, ""))
+    return max(1200.0, 2.0 * got[0]) if got else 10800.0
+
+
+def env_seconds(name, default):
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return float(default)
+
+
+def remote_lines(token, script_b64, cmd_b64):
+    """The short lines typed into the remote shell, in order: the script and the command are written into the
+    worktree in pieces (never one long line, W16), the last line decodes and runs the script."""
+    lines = ["rm -f .nightly-run.b64 .nightly-cmd.b64"]
+    for name, text in ((".nightly-run.b64", script_b64), (".nightly-cmd.b64", cmd_b64)):
+        for i in range(0, len(text), CHUNK):
+            lines.append("printf %%s %s >> %s" % (text[i:i + CHUNK], name))
+    lines.append('base64 -d < .nightly-run.b64 > .nightly-run.sh && rm -f .nightly-run.b64 && '
+                 'bash .nightly-run.sh "$(cat .nightly-cmd.b64)"')
+    return lines
+
+
 def remote_run(root, env, commit, cmd):
-    """Run CMD at COMMIT on the connected machine ENV: a worktree of that commit, one terminal, markers read back.
+    """Run CMD at COMMIT on the connected machine ENV; a try that never prints BEGIN is cleaned and tried once more.
     {"state": ok | failed | noroom | nocreate, "failed": [...], "note": ..., "weight": ...}. Always cleans up."""
+    notes, tries = [], 2
+    for attempt in range(tries):
+        out = remote_try(root, env, commit, cmd)
+        if out.get("note"):
+            notes.append(out["note"])
+        if not out.pop("never", False):
+            break
+    else:
+        out["failed"] = [NEVER % (env_seconds("AGENT_NIGHTLY_BEGIN_S", 60), tries)]
+    out["note"] = "; ".join(notes)
+    return out
+
+
+def wait_prompt(env, handle):
+    """Read the new terminal until it shows a prompt (AGENT_NIGHTLY_PROMPT_S, default 30 s); go on after that: a lost
+    send is caught by the begin check."""
+    end, poll = time.time() + env_seconds("AGENT_NIGHTLY_PROMPT_S", 30), env_seconds("AGENT_NIGHTLY_POLL_S", 5)
+    while True:
+        if at_prompt(read_terminal(env, handle)):
+            return True
+        if time.time() >= end:
+            return False
+        time.sleep(min(poll, 1.0))
+
+
+def remote_try(root, env, commit, cmd):
+    """One try of remote_run. "never": True in the answer when no BEGIN marker arrived (the run did not start)."""
     out = {"state": "failed", "failed": [], "note": "", "weight": ""}
     try:
         remote_stale(env, root)
@@ -1391,20 +1463,19 @@ def remote_run(root, env, commit, cmd):
         token = uuid.uuid4().hex
         # only letters, digits, + / = are typed into the remote shell: no quote of any shell can break the line
         b64 = lambda text: base64.b64encode(text.encode("utf-8")).decode("ascii")
-        line = "printf %%s %s | base64 -d > .nightly-run.sh && bash .nightly-run.sh %s" % (
-            b64(remote_script(token, weight_key())),
-            b64(os.environ.get("AGENT_NIGHTLY_CMD") or conf_at(root, commit, "full_cmd") or cmd))
-        sent, why = orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--text", line,
-                               "--enter", "--json"], 60)
-        if sent is None:
-            out["failed"] = ["the connected machine did not take the command (%s)" % why]
-            return out
-        try:
-            limit = float(os.environ.get("AGENT_NIGHTLY_REMOTE_TIMEOUT_S", "10800"))
-            poll = float(os.environ.get("AGENT_NIGHTLY_POLL_S", "5"))
-        except ValueError:
-            limit, poll = 10800.0, 5.0
-        end, bad, got = time.time() + limit, 0, None
+        lines = remote_lines(token, b64(remote_script(token, weight_key())),
+                             b64(os.environ.get("AGENT_NIGHTLY_CMD") or conf_at(root, commit, "full_cmd") or cmd))
+        wait_prompt(env, handle)
+        for line in lines:
+            sent, why = orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--text", line,
+                                   "--enter", "--json"], 60)
+            if sent is None:
+                out["failed"] = ["the connected machine did not take the command (%s)" % why]
+                return out
+        poll = env_seconds("AGENT_NIGHTLY_POLL_S", 5)
+        begin_s = env_seconds("AGENT_NIGHTLY_BEGIN_S", 60)
+        limit = run_limit(common_dir(root), weight_key())
+        begin_by, end, bad, got = time.time() + begin_s, None, 0, None
         while True:
             lines = read_terminal(env, handle)
             if lines is None:
@@ -1415,14 +1486,18 @@ def remote_run(root, env, commit, cmd):
             else:
                 bad = 0
                 got = parse_remote(lines, token)
+                if got["begin"] and end is None:
+                    end = time.time() + limit       # the limit of the whole run counts from BEGIN
                 if got["end"]:
                     break
-            if time.time() >= end:
+            if end is None and time.time() >= begin_by:
                 orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--interrupt", "--json"], 30)
-                half = got is not None and got["begin"]
-                out["failed"] = ["the connected machine: %s after %d s"
-                                 % ("the run stopped half way, timed out" if half else
-                                    "timed out without a readable result", limit)]
+                out["never"] = True
+                out["failed"] = [NEVER % (begin_s, 1)]
+                return out
+            if end is not None and time.time() >= end:
+                orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--interrupt", "--json"], 30)
+                out["failed"] = ["the connected machine: the run stopped half way, timed out after %d s" % limit]
                 return out
             time.sleep(poll)
         if got["stray"]:

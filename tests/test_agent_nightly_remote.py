@@ -102,12 +102,26 @@ elif verb == "terminal send":
         ok({})
     if os.path.exists(os.path.join(R, "hang")):
         ok({})
+    text = opt("--text")
+    nr = os.path.join(R, "notready")
+    cut = len(text) > 1000                      # the W16 trap: a long send arrives cut, only its tail
+    if os.path.exists(nr) and int(open(nr).read() or "0") > 0:
+        cut = True                              # the shell is not ready yet: the send is lost
+    if os.path.exists(os.path.join(R, "cutall")):
+        cut = True
+    if os.path.exists(os.path.join(R, "cutfirst")) and text.startswith("printf"):
+        os.remove(os.path.join(R, "cutfirst"))
+        cut = True
+    if cut:
+        text = text[-30:]
     ran = os.path.join(R, "ran")
     if os.path.exists(ran):
         want = open(ran).read().strip()
         subprocess.run(["git", "-C", path, "checkout", "-q", "--detach", want], capture_output=True)
-    run = subprocess.run(["bash", "-c", opt("--text")], cwd=path, capture_output=True, text=True)
+    run = subprocess.run(["bash", "-c", text], cwd=path, capture_output=True, text=True)
     out = run.stdout
+    if os.path.exists(os.path.join(R, "begin_only")):
+        out = "".join(l + "\n" for l in out.splitlines()[:1])      # BEGIN, then the run never ends
     if os.path.exists(os.path.join(R, "garbage")):
         out = "\x1b[31m%%%% nothing you can read\n"
     if os.path.exists(os.path.join(R, "double")):
@@ -125,6 +139,12 @@ elif verb == "terminal read":
         fail("terminal_handle_stale")
     buf = os.path.join(R, "buf-" + os.path.basename(path))
     lines = open(buf).read().splitlines() if os.path.exists(buf) else []
+    nr = os.path.join(R, "notready")
+    if os.path.exists(nr) and int(open(nr).read() or "0") > 0:
+        left = int(open(nr).read()) - 1
+        open(nr, "w").write(str(left))      # each read is a tick of the starting shell
+    elif not os.path.exists(os.path.join(R, "noprompt")):
+        lines.append("user@box auto-pipeline % ")
     ok({"terminal": {"handle": opt("--terminal"), "status": "running", "tail": lines[-int(opt("--limit") or 120):]}})
 elif verb == "terminal close":
     ok({})
@@ -264,7 +284,7 @@ class TestRemoteFullRun(RemoteCase):
     def test_output_that_cannot_be_read_is_a_failed_run(self):
         self.machine()
         self.flag("garbage")
-        r = self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_REMOTE_TIMEOUT_S": "2"})
+        r = self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_REMOTE_TIMEOUT_S": "2", "AGENT_NIGHTLY_BEGIN_S": "1"})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         st = self.status_file()
         self.assertEqual(st["result"], "red")
@@ -274,7 +294,7 @@ class TestRemoteFullRun(RemoteCase):
 
     def test_a_timeout_stops_the_run_and_cleans_up(self):
         self.machine()
-        self.flag("hang")
+        self.flag("begin_only")
         r = self.nightly("--start", "--wait", env={"AGENT_NIGHTLY_REMOTE_TIMEOUT_S": "1"})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         st = self.status_file()
@@ -328,6 +348,100 @@ class TestRemoteFullRun(RemoteCase):
                 pass
         self.assertEqual(self.status_file()["result"], "green")
         self.assertEqual(self.left_over(), [])
+
+
+class TestSendAndStart(RemoteCase):
+    """nightly-remote-send: requirements/nightly-remote-send.md. The stub cuts any send over 1000 characters."""
+
+    FAST = {"AGENT_NIGHTLY_BEGIN_S": "1", "AGENT_NIGHTLY_PROMPT_S": "2"}
+
+    def sends(self):
+        return [c[c.index("--text") + 1] for c in self.calls() if c[:2] == ["terminal", "send"] and "--text" in c]
+
+    def creates(self):
+        return [c for c in self.calls() if c[:2] == ["worktree", "create"]]
+
+    def test_no_sent_line_is_long_and_the_run_is_green(self):
+        self.machine()
+        r = self.nightly("--start", "--wait", env=self.FAST)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.status_file()["result"], "green", self.status_file())
+        sends = self.sends()
+        self.assertGreater(len(sends), 2, "the script goes in chunks")
+        self.assertLess(max(len(t) for t in sends), 700, [len(t) for t in sends])
+        self.assertEqual(len(self.creates()), 1)
+        self.assertEqual(self.left_over(), [])
+
+    def test_a_cut_send_is_cleaned_and_tried_once_more(self):
+        self.machine()
+        self.flag("cutfirst")
+        r = self.nightly("--start", "--wait", env=self.FAST)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual((st["result"], st["failed"]), ("green", []), st)
+        self.assertEqual(len(self.creates()), 2, self.verbs())
+        verbs = self.verbs()
+        first_rm = verbs.index("worktree rm")
+        second_create = [i for i, v in enumerate(verbs) if v == "worktree create"][1]
+        self.assertLess(first_rm, second_create, "the cut try is cleaned before the next one")
+        self.assertEqual(self.left_over(), [])
+
+    def test_a_run_that_never_starts_is_failed_with_the_reason_not_running(self):
+        self.machine()
+        self.flag("cutall")
+        r = self.nightly("--start", "--wait", env=self.FAST)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertIn("the connected machine: the remote run never started", st["failed"][0])
+        self.assertEqual(len(self.creates()), 2, "one retry, no more")
+        self.assertEqual(self.left_over(), [])
+        self.assertEqual(self.nightly("--release-ok").returncode, 1)
+
+    def test_a_run_past_its_time_limit_is_failed_with_the_reason(self):
+        self.machine()
+        self.flag("begin_only")
+        r = self.nightly("--start", "--wait", env=dict(self.FAST, AGENT_NIGHTLY_REMOTE_TIMEOUT_S="1"))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertRegex(st["failed"][0], r"stopped half way, timed out after 1 s")
+        self.assertEqual(len(self.creates()), 1, "a started run is never retried")
+        self.assertTrue(os.path.exists(os.path.join(self.remote_dir(), "interrupted")))
+        self.assertEqual(self.left_over(), [])
+
+    def test_nothing_is_sent_before_the_shell_shows_a_prompt(self):
+        self.machine()
+        self.flag("notready", "3")
+        r = self.nightly("--start", "--wait", env=self.FAST)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.status_file()["result"], "green", self.status_file())
+        self.assertEqual(len(self.creates()), 1, "no retry was needed")
+        verbs = self.verbs()
+        self.assertGreaterEqual(verbs[:verbs.index("terminal send")].count("terminal read"), 3, verbs)
+
+    def test_the_time_limit_is_twice_the_weight_at_least_20_minutes(self):
+        import agent_nightly
+        gitdir = self.gitdir()
+        old = os.environ.pop("AGENT_NIGHTLY_REMOTE_TIMEOUT_S", None)
+        try:
+            self.assertEqual(agent_nightly.run_limit(gitdir, "nightly"), 10800.0)
+            for text, want in (("3000 s 500 MB", 6000.0), ("100 s 300 MB", 1200.0)):
+                with open(os.path.join(gitdir, "agent_test_weights.json"), "w") as fh:
+                    json.dump({"nightly": text}, fh)
+                self.assertEqual(agent_nightly.run_limit(gitdir, "nightly"), want)
+            os.environ["AGENT_NIGHTLY_REMOTE_TIMEOUT_S"] = "7"
+            self.assertEqual(agent_nightly.run_limit(gitdir, "nightly"), 7.0)
+        finally:
+            os.environ.pop("AGENT_NIGHTLY_REMOTE_TIMEOUT_S", None)
+            if old is not None:
+                os.environ["AGENT_NIGHTLY_REMOTE_TIMEOUT_S"] = old
+
+    def test_the_prompt_check_reads_the_last_line(self):
+        import agent_nightly
+        for tail, want in ((["x", "me@box dir % "], True), (["$ "], True), (["", "me@box ~ ❯", ""], True),
+                           ([], False), (["Last login: Thu"], False), (["", ""], False)):
+            self.assertEqual(agent_nightly.at_prompt(tail), want, tail)
 
 
 ATTACK = """#!/usr/bin/env bash
@@ -485,12 +599,13 @@ class TestNeverGreenOnARedSuite(RemoteCase):
     def test_the_token_is_in_no_argument(self):
         self.machine()
         self.nightly("--start", "--wait")
-        send = [c for c in self.calls() if c[:2] == ["terminal", "send"]][0]
+        sends = [c for c in self.calls() if c[:2] == ["terminal", "send"]]
         import base64
-        text = send[send.index("--text") + 1]
         import re
+        text = "\n".join(c[c.index("--text") + 1] for c in sends)
         self.assertFalse(re.search(r"nightly-run.sh [0-9a-f]{10}", text), text)
-        script = base64.b64decode(re.search(r"printf %s (\S+) \|", text).group(1)).decode()
+        pieces = re.findall(r"printf %s (\S+) >> \.nightly-run\.b64", text)
+        script = base64.b64decode("".join(pieces)).decode()
         tok = re.search(r"T=([0-9a-f]+);", script).group(1)
         self.assertNotIn(tok, text)
         self.assertGreaterEqual(len(tok), 32)
