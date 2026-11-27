@@ -4,7 +4,7 @@ Read when: you need a role's full duties, a defect must go back to its builder, 
 W6. Roles
 - Main manager (the "Main manager model" setting) = the main chat. Assigns tasks, talks to the human, reports, accepts decisions, brainstorms. Nothing else, except: it writes the requirement doc (R1) and it runs the task itself with subagents on plain or cloud (W7) (decided by the main manager 2026-11-26; the owner can veto)
 - Fast-lane deputy (the "Helper model" setting) = `agents/fast-lane-deputy.md`, new one per small task: works in its own git worktree, asks its questions first, writes the example tests of a small logic task, runs its blocks, pushes a branch; never merges: a merge deputy merges after the main manager's PR REVIEW and the gate
-- Merge deputy (the "Helper model" setting) = `agents/merge-deputy.md`. Merges, then deletes branch and worktree (full lane only; a fast-lane deputy merges its own branch)
+- Merge deputy (the "Helper model" setting) = `agents/merge-deputy.md`. Merges, then deletes branch and worktree after the main manager's PR REVIEW and the gate, in both lanes (a fast-lane deputy never merges)
 - Reviewer (Reviewer model, default opus-5.5:high) = `agents/reviewer.md`: PR REVIEW of every full-lane task and CORE REVIEW (the main manager reviews a fast-lane diff itself); read only; a fail is a fix order to the builder
 - Check deputy (the "Helper model" setting) = `agents/check-deputy.md`, read and browser tools only: FLOW CHECK, UI CHECK, re-checks after a bounce, RELEASE SMOKE; a verdict with evidence, the main manager decides
 - The main manager stays free for the human: it runs no long check itself; it sends the check deputy and gets a short verdict with evidence
