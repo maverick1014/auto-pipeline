@@ -32,10 +32,10 @@ Before the flow: the main manager writes the requirement doc, the owner approves
 8. Acceptance blocks (R8)
 9. Merge into the target branch + cleanup
 10. Todo done
-- Small task → fast lane (one fast-lane deputy); big task (over 2 hours, several slices) → full lane (a task manager)
+- Scope, not time, decides the lane: small (one slice) → fast lane (a deputy); big (several slices, a new page) → full lane (a task manager). Ask before dispatch and before edits
 - Checks follow the block triggers only (R8), never the lane: a small logic task never opens a task manager just for a test
-- A small task grows (past 2x its estimate, or a second slice) → the deputy stops and reports; the main manager opens a task manager from its branch
-- After the build: builder done → reviewer → check deputy only when what the user sees or does changed → merge deputy. A fail → a fix order to the builder
+- A small task grows (past 2x its guess, or a second slice) → the deputy stops and reports; the main manager opens a task manager from its branch
+- After the build: full lane → reviewer → check deputy (visible) → merge deputy; fast lane → the main manager reviews, the deputy merges
 - An agent counts as started only when seen working, never when the brief is sent (rules/routing.md)
 
 ## W1. Finish in one run

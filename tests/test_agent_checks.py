@@ -1114,6 +1114,68 @@ class TestF2Launches(TestGate):
 
 
 @only_own
+class TestFastLaneGate(TestGate):
+    """fast-lane-simple: a fast-lane task takes the main manager's own PR REVIEW and no FLOW or UI CHECK."""
+    PLAN = "FLOW CHECK,UI CHECK"
+
+    def launches_file(self):
+        return os.path.join(self.git("rev-parse", "--path-format=absolute", "--git-common-dir").strip(),
+                            "agent_launches.jsonl")
+
+    def setUp(self):
+        super().setUp()
+        os.remove(self.launches_file())                      # no reviewer or check deputy was launched
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+
+    def review(self, by):
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", by, "--evidence", "read the diff")
+
+    def test_main_manager_review_passes_a_fast_lane_task_with_no_flow_or_ui_check(self):
+        self.ok("todo", "builder", "t", "t Deputy")
+        self.review("auto-pipeline Manager")
+        r = self.gate("--checks", self.PLAN)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.splitlines()[-1], "GATE PASS t")
+        self.assertNotIn("FLOW CHECK: missing", r.stdout)
+        self.assertNotIn("UI CHECK: missing", r.stdout)
+
+    def test_the_same_lines_on_a_full_lane_task_are_refused(self):
+        self.ok("todo", "builder", "t", "t Task Manager")
+        self.review("auto-pipeline Manager")
+        r = self.gate("--checks", self.PLAN)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        lines = r.stdout.splitlines()
+        self.assertIn("PR REVIEW: no reviewer launched by the main manager for t, not accepted", lines)
+        self.assertIn("FLOW CHECK: missing", lines)
+        self.assertIn("UI CHECK: missing", lines)
+
+    def test_a_fast_lane_pr_review_by_someone_else_still_needs_a_launched_reviewer(self):
+        self.ok("todo", "builder", "t", "t Deputy")
+        self.review("t Reviewer")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: no reviewer launched by the main manager for t, not accepted", r.stdout.splitlines())
+
+    def test_a_task_manager_is_not_the_main_manager(self):
+        self.ok("todo", "builder", "t", "t Deputy")
+        self.review("t Task Manager")
+        self.assertEqual(self.gate().returncode, 1)
+
+    def test_the_deputy_cannot_review_its_own_work(self):
+        self.ok("todo", "builder", "t", "t Deputy")
+        self.review("t Deputy")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: pass by the builder (t Deputy), not accepted", r.stdout.splitlines())
+
+    def test_core_review_stays_for_a_fast_lane_task(self):
+        self.ok("todo", "builder", "t", "t Deputy")
+        self.review("auto-pipeline Manager")
+        r = self.gate("--checks", "CORE REVIEW")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("CORE REVIEW: missing", r.stdout.splitlines())
+
+
 class TestF3Commits(TestGate):
     def head(self):
         return self.git("rev-parse", "HEAD").strip()
