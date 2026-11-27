@@ -284,7 +284,8 @@ def opt_values(words, keys):
 
 SKIP_WORDS = ("env", "time", "then", "do", "else", "{", "!")
 OPS = {("terminal", "create"): "create", ("terminal", "close"): "close",
-       ("worktree", "create"): "wt_create", ("worktree", "rm"): "wt_rm"}
+       ("worktree", "create"): "wt_create", ("worktree", "rm"): "wt_rm",
+       ("terminal", "send"): "send", ("orchestration", "send"): "send"}
 
 
 RE_VAR = re.compile(r"\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})")
@@ -322,7 +323,7 @@ def bash_launches(command):
             continue
         pair = (w[1], w[2])
         if pair in OPS:
-            opts = opt_values(w[3:], ("title", "command", "environment", "worktree", "terminal", "name"))
+            opts = opt_values(w[3:], ("title", "command", "environment", "worktree", "terminal", "name", "text", "body"))
             if "worktree" in opts and "$" in opts["worktree"]:
                 opts["worktree"] = expand_vars(opts["worktree"], env)
             found.append((OPS[pair], opts))
@@ -883,6 +884,27 @@ def make_context(payload):
     return ctx
 
 
+def model_header(ctx, text, transcript):
+    """(block, note) of model-floor (requirements/model-floor.md): an order's header must be the sender's current
+    model and effort, and a main manager under the floor needs the owner's MODEL OK."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        old = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            if here not in sys.path:
+                sys.path.insert(0, here)
+            import agent_model
+        finally:
+            sys.dont_write_bytecode = old
+        block, note = agent_model.header_verdict(text, transcript)
+        if not block and note is None and agent_model.HEADER.match(text or ""):
+            block = agent_model.below_floor_verdict(ctx["common"], transcript, ctx["role"])
+        return block, note
+    except Exception:
+        return None, None
+
+
 def key_of(tid, n):
     """The record key of the n-th (1-based) create of one Bash call."""
     tid = tid or "toolu_none_%d" % int(time.time())
@@ -901,6 +923,8 @@ def handle(payload):
             kind = "agent"
             if ev == "PreToolUse":
                 _POINT["moment"] = POINT_AGENTS.get(base_type(str(tin.get("subagent_type") or "")))
+        elif tool == "SendMessage" and ev == "PreToolUse":
+            kind = "send"
         elif tool == "Bash":
             command = str(tin.get("command") or "")
             ops = bash_launches(command)
@@ -924,6 +948,19 @@ def handle(payload):
     if ev == "PreToolUse":
         if ctx["pid"] is None:  # unknown session: no record, never main
             return OK
+        note = None
+        if not payload.get("agent_id"):   # a subagent's own model is not in the settings: not checked
+            texts = [str(tin.get("prompt") or "")] if kind == "agent" else [
+                o.get("text") or o.get("body") or "" for op, o in ops if op == "send"]
+            for text in texts:
+                block, note = model_header(ctx, text, payload.get('transcript_path'))
+                if block:
+                    return ("BLOCK", block)
+        if kind == "bash" and not any(op in ("create", "wt_create") for op, _ in ops):
+            return ("WARN", note) if note else OK
+        if kind == "send":
+            record_resume(ctx, str(tin.get("to") or ""), tid)
+            return OK
         if kind == "bash":
             items, n = [], 0
             for op, opts in ops:
@@ -942,7 +979,8 @@ def handle(payload):
         desc = str(tin.get("description") or "")
         stype = str(tin.get("subagent_type") or "") or "general-purpose"
         d = decide_agent(ctx, desc, stype)
-        return finish(ctx, [(d, (key_of(tid, 1), {"type": stype}))], quiet)
+        res = finish(ctx, [(d, (key_of(tid, 1), {"type": stype}))], quiet)
+        return ("WARN", note) if note and res == OK else res
 
     if ev == "PostToolUse":
         if not tid:
@@ -952,6 +990,7 @@ def handle(payload):
             if not isinstance(resp, dict) or not resp.get("status"):
                 return OK
             aid = str(resp.get("agentId") or "")
+            remember_agent(ctx, tid, aid)
             if resp.get("status") == "completed":
                 run_edit(ctx, mut_remove(lambda d: d["key"] == tid or (aid != "" and d.get("agent") == aid)))
                 return OK
@@ -1071,15 +1110,83 @@ def other_folders(ctx):
 
 
 def write_launch_record(ctx, task, stype):
-    """F2: a durable line per reviewer / check-deputy launch in <git common dir>/agent_launches.jsonl."""
+    """F2: a durable line per reviewer / check-deputy / fast-lane-deputy launch in <git common dir>/agent_launches.jsonl."""
     base = base_type(stype)
-    if base not in ("reviewer", "check-deputy"):
+    if base not in ("reviewer", "check-deputy", "fast-lane-deputy"):
         return
     rec = {"task": task, "type": base, "by": ctx["role"], "at": ctx["now"]}
     try:
         with open(os.path.join(ctx["common"], "agent_launches.jsonl"), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec) + "\n")
     except OSError:
+        pass
+
+
+def first_stage(ctx, task):
+    """board-fast-lane rule 1: a fast-lane deputy launch for an open task whose todo line has no stage field
+    writes the first stage (todo stage also writes "started"). Never raises, never blocks."""
+    try:
+        with open(os.path.join(ctx["main"], "agent_todo.txt"), encoding="utf-8", errors="replace") as fh:
+            line = next((l for l in fh if l.split(" | ", 1)[0].strip() == task), None)
+        if line is None or any(f.startswith("stage ") and not f.startswith("stage log ")
+                               for f in line.rstrip("\n").split(" | ")[1:]):
+            return
+        here = os.path.dirname(os.path.abspath(__file__))
+        subprocess.run([os.path.join(here, "agent-file.sh"), "todo", "stage", task, "brief"], cwd=ctx["main"],
+                       capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+def known_path(ctx):
+    return os.path.join(ctx["common"], "agent_known_agents.jsonl")
+
+
+def remember_agent(ctx, tid, aid):
+    """board-fast-lane rule 3: one line per launched agent with an id, so a later SendMessage to it is known."""
+    if not aid:
+        return
+    try:
+        for line in read_lines(os.path.join(ctx["folder"], "agent_state.txt")):
+            d = parse_launch(line)
+            if d is not None and d["key"] == tid:
+                rec = {"agent": aid, "task": d["task"], "kind": d["kind"], "title": d["title"],
+                       "type": d.get("type", "")}
+                with open(known_path(ctx), "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(rec) + "\n")
+                return
+    except OSError:
+        pass
+
+
+def record_resume(ctx, to, tid):
+    """board-fast-lane rule 3: a SendMessage to a known deputy / worker of an open task is a launch record."""
+    if not to or ctx["pid"] is None:
+        return
+    try:
+        known = None
+        with open(known_path(ctx), encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(r, dict) and (r.get("agent") == to or r.get("title") == to):
+                    known = r
+        if known is None or base_type(known.get("type", "")) not in ("fast-lane-deputy", "worker"):
+            return
+        opens, _ = read_todo(ctx["main"])
+        if not opens or known["task"] not in opens:
+            return
+        for line in read_lines(os.path.join(ctx["folder"], "agent_state.txt")):
+            d = parse_launch(line)
+            if d is not None and d.get("agent") == known["agent"]:
+                return
+        fields = {"key": tid or "toolu_none_%d" % int(time.time()), "kind": known["kind"], "task": known["task"],
+                  "title": clean_title(known["title"]), "since": ctx["now"], "pid": str(ctx["pid"]),
+                  "by": ctx["role"], "type": known.get("type", ""), "agent": known["agent"]}
+        add_record(ctx, build_launch(fields))
+    except (OSError, Busy):
         pass
 
 
@@ -1104,6 +1211,8 @@ def finish(ctx, items, quiet):
             if not quiet and not warn:
                 warn = "board guard: state file busy; allowed"
             break
+        if d.kind == "deputy" and base_type(fields.get("type", "")) == "fast-lane-deputy":
+            first_stage(ctx, d.task)
     if warn and not quiet:
         return ("WARN", warn)
     return OK

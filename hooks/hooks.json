@@ -39,7 +39,7 @@
         ]
       },
       {
-        "matcher": "Agent|Task|Bash",
+        "matcher": "Agent|Task|Bash|SendMessage",
         "hooks": [
           {
             "type": "command",
@@ -212,6 +212,15 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/agent-keyword.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/agent_model.py\" hook",
             "timeout": 5
           }
         ]

@@ -192,8 +192,11 @@ class Housekeep(object):
         res = self.file_cmd(*args)
         if res.ok:
             for text in res.out.splitlines():
-                if text.strip():
-                    self.removed.append("%s: %s" % (self.verb, text.strip()))
+                text = text.strip()
+                if text.startswith("flag: "):   # a flag, not a removal (dead-line-flag)
+                    self.flags_gone.append(text)
+                elif text:
+                    self.removed.append("%s: %s" % (self.verb, text))
         self.read_worktree_file()
         if not self.wt_lines:
             return
@@ -578,6 +581,27 @@ class Housekeep(object):
             if line.startswith("CLEANUP: "):
                 self.cleanup.append("cleanup: " + line[len("CLEANUP: "):])
 
+    # ---- e2. this repo's own temp folders (machine-health rule 3): here, and on every connected machine
+
+    def run_tmp_sweep(self):
+        if os.environ.get("AGENT_NO_TMP_SWEEP"):      # (tests: a fixture run never sweeps the real temp folder)
+            return
+        import agent_health
+        flag = ["--apply"] if self.apply else []
+        where = [("this machine", agent_health.sweep(apply=self.apply))]
+        if self.kind == "orca":
+            for env in agent_health.environments():
+                ok, lines = agent_health.remote_exec(env, self.root, ["sweep"] + flag)
+                if ok:
+                    where.append((env, lines))
+                else:
+                    self.cleanup.append("tmp sweep: " + " ".join(lines))
+        for name, lines in where:
+            n = len([l for l in lines if l.startswith(("removed ", "would remove "))])
+            if n:
+                self.cleanup.append("tmp sweep on %s: %s %d old temp folder(s) of this repo (%s)"
+                                    % (name, self.verb, n, "; ".join(l for l in lines if l.startswith(("removed ", "would remove ")))[:300]))
+
     # ---- f. the nightly run (check-blocks section 15): started in the background when it is due
 
     def run_nightly(self):
@@ -714,6 +738,7 @@ class Housekeep(object):
         self.stage(self.ideas)
         self.stage(self.related_repos)
         self.stage(self.run_cleanup)
+        self.stage(self.run_tmp_sweep)
         self.stage(self.run_nightly)
         block = self.block()
         sys.stdout.write("".join(l + "\n" for l in block))
