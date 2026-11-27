@@ -1024,9 +1024,10 @@ class TestSending(ChatCase):
 
     def test_delivered_messages_survive_a_restart(self):
         self.team()
-        self.state.feed_chat({"sid": "tm1", "aid": "", "kind": "prompt", "text": "go", "at": 1.0})
+        at = time.time()   # session-cleanup S4: a row idle over a week would go at the restart
+        self.state.feed_chat({"sid": "tm1", "aid": "", "kind": "prompt", "text": "go", "at": at})
         with open(self.chat_path, "a") as fh:
-            fh.write(json.dumps({"sid": "tm1", "aid": "", "kind": "prompt", "text": "go", "at": 1.0}) + "\n")
+            fh.write(json.dumps({"sid": "tm1", "aid": "", "kind": "prompt", "text": "go", "at": at}) + "\n")
         self.feed(line("Stop", "tm1", role="task-manager"))
         self.state.chat_send("s:tm1", "hello", 0)
         self.state.chat_next("tm1", "w1", 0)
@@ -1046,7 +1047,8 @@ class TestLoadChat(unittest.TestCase):
                     fh.write(json.dumps({"sid": "s1", "aid": "", "kind": "reply", "text": str(i), "at": i}) + "\n")
                 fh.write("garbage\n")
                 fh.write(json.dumps({"sid": "s2", "aid": "", "kind": "prompt", "text": "p", "at": 1}) + "\n")
-            got = ac.load_chat(path)
+            # session-cleanup S4: rows idle over a week go at load; these rows are seconds old at NOW
+            got = ac.load_chat(path, now=ac.CHAT_KEEP + 10)
             self.assertEqual(len([x for x in got if x["sid"] == "s1"]), ac.CHAT_KEEP)
             self.assertEqual(got[0]["text"], "3")
             self.assertEqual(got[-1]["sid"], "s2")

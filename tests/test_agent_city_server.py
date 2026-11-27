@@ -845,7 +845,9 @@ class TestSay(SayCase):
         self.say({"hook_event_name": "Stop", "session_id": "s1", "last_assistant_message": "ok"})
         self.assertEqual(os.stat(self.chat).st_mode & 0o777, 0o600)
         import inspect
-        src = inspect.getsource(ac._cmd_say_impl)
+        # session-cleanup S1: the hook writes through the one locked writer, chat_append
+        self.assertIn("chat_append(", inspect.getsource(ac._cmd_say_impl))
+        src = inspect.getsource(ac.chat_append) + inspect.getsource(ac._append_private_jsonl)
         self.assertIn("os.O_APPEND", src)
         self.assertIn("os.write(", src)
 
