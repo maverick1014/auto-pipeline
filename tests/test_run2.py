@@ -421,10 +421,16 @@ def own_tmp(case):
     return tmp
 
 
-def run2_env(tmp):
+def run2_env(tmp, own_tools=False):
     env = dict(os.environ)
     env.pop("AGENT_FULL_RUN", None)
     env["TMPDIR"] = tmp
+    if own_tools:
+        # as from a plain shell: run2 makes its own fasttools folder (macOS), in this TMPDIR
+        for k in ("AGENT_TEST_TOOLS", "PYTHONPYCACHEPREFIX"):
+            env.pop(k, None)
+        env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep)
+                                      if "agent_test_tools_" not in p)
     return env
 
 
@@ -458,10 +464,10 @@ def wait_for(path, limit_s=30):
     raise AssertionError("never appeared: %s" % path)
 
 
-def start_slow_run(case, tmp):
+def start_slow_run(case, tmp, own_tools=False):
     """(Popen of run2 on one slow test, the slow test's pid), once that test runs."""
     root = fixture_root(case, {"test_slow.py": SLOW})
-    proc = subprocess.Popen([sys.executable, RUN2, "--root", root, "-j", "1"], env=run2_env(tmp),
+    proc = subprocess.Popen([sys.executable, RUN2, "--root", root, "-j", "1"], env=run2_env(tmp, own_tools),
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                             start_new_session=True)
 
@@ -572,6 +578,117 @@ class TestAllSkippedIsRed(unittest.TestCase):
                 self.assertIn("test_skipped", said[0])
 
 
+LONG = """import unittest
+
+
+class TestLong(unittest.TestCase):
+    def test_long(self):
+        self.fail("\\n".join("line-%03d" % i for i in range(1, 201)))
+"""
+
+NIGHTLY_RED = """import unittest
+
+
+class TestRed(unittest.TestCase):
+    def test_fail(self):
+        self.fail("FAIL: test_fake (test_trap.TestFake)\\nERROR: test_fake2 (test_trap.TestFake)")
+
+    def test_error(self):
+        raise RuntimeError("ERROR: test_fake3 (test_trap.TestFake)")
+
+    def test_sub(self):
+        for i in (1, 2, 3):
+            with self.subTest(i=i):
+                self.assertEqual(i, 1)
+
+    def test_ok(self):
+        pass
+"""
+
+# what run2 printed for NIGHTLY_RED before runner-integrity (origin/ap-main-maverick 78b565f, -j 1),
+# the log path made neutral; the trap line test_fake2 comes from the old run2 too
+OLD_RED_OUTPUT = """process 1: 1 files or classes, 4 tests, 0 s (planned 1 s): FAILED (failures=3, errors=1)
+  log: <folder>/run2_old/group1.log
+  ERROR: test_error (test_red.TestRed)
+  FAIL: test_fail (test_red.TestRed)
+  ERROR: test_fake2 (test_trap.TestFake)
+  FAIL: test_sub (test_red.TestRed) (i=2)
+  FAIL: test_sub (test_red.TestRed) (i=3)
+wall 0 s, 1 processes (-j 1)
+"""
+
+CUT = re.compile(r"^  \| \.\.\. (\d+) more lines cut$")
+
+
+class TestRedOutputCap(unittest.TestCase):
+    """Main manager's answer 2 (TELL 386d601f): a red run prints each failed process's failure
+    blocks inline, prefixed "  | ", at most 60 lines per failed process and 300 in total, then
+    one line "  | ... <n> more lines cut" when cut; the nightly reads the same names as before."""
+
+    def sections(self, stdout, head):
+        """[(detail lines, cut count or None)] per section that starts with a line matching head."""
+        out = []
+        for line in stdout.splitlines():
+            if re.match(head, line):
+                out.append([[], None])
+            elif out and line.startswith("  | "):
+                m = CUT.match(line)
+                if m:
+                    self.assertIsNone(out[-1][1], "one cut line per failed process")
+                    out[-1][1] = int(m.group(1))
+                else:
+                    self.assertIsNone(out[-1][1], "no detail line after the cut line")
+                    out[-1][0].append(line)
+        return [(d, c) for d, c in out]
+
+    def check_one(self, detail, cut):
+        self.assertTrue(detail, "the failure is shown")
+        self.assertLessEqual(len(detail), 60, detail)
+        shown = [l for l in detail if re.search(r"line-\d{3}$", l)]
+        self.assertTrue(shown, detail)
+        self.assertEqual(cut, 200 - len(shown), detail[-3:])
+
+    def test_one_long_traceback_is_cut_at_60(self):
+        root = fixture_root(self, {"test_long.py": LONG})
+        out = run_run2(root, own_tmp(self), "-j", "1")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("  FAIL: test_long (test_long.TestLong)", out.stdout.splitlines())
+        [(detail, cut)] = self.sections(out.stdout, r"^process \d+: ")
+        self.check_one(detail, cut)
+
+    def test_time_mode_has_the_same_cap(self):
+        root = fixture_root(self, {"test_long.py": LONG})
+        out = run_run2(root, own_tmp(self), "--time", "-j", "1", "--out", os.path.join(root, "t.txt"))
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        [(detail, cut)] = self.sections(out.stdout, r"^FAILED test_long$")
+        self.check_one(detail, cut)
+
+    def test_all_processes_together_show_at_most_300(self):
+        files = dict(("test_long%d.py" % i, LONG) for i in range(1, 7))
+        out = run_run2(fixture_root(self, files), own_tmp(self), "-j", "6")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        parts = self.sections(out.stdout, r"^process \d+: ")
+        self.assertEqual(len(parts), 6, out.stdout)
+        self.assertLessEqual(sum(len(d) for d, _ in parts), 300)
+        self.assertTrue(all(len(d) <= 60 for d, _ in parts))
+        whole = [len(d) + (c or 0) for d, c in parts]
+        self.assertEqual(len(set(whole)), 1, "every cut says how many lines went: %s" % whole)
+        self.assertTrue(all(c for _, c in parts), "every long block was cut")
+
+    def test_the_nightly_reads_the_same_names_as_before(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
+        try:
+            import agent_nightly
+        finally:
+            sys.path.pop(0)
+        out = run_run2(fixture_root(self, {"test_red.py": NIGHTLY_RED}), own_tmp(self), "-j", "1")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        old = agent_nightly.failed_tests(OLD_RED_OUTPUT)
+        self.assertEqual(len(old), 5, old)
+        self.assertEqual(agent_nightly.failed_tests(out.stdout), old)
+        self.assertIn("  | ", out.stdout)   # the new detail is there and adds no name
+
+
 class TestThisRepoAllSkipOk(unittest.TestCase):
     """runner-integrity decision 1A: test_check_blocks_demo's one test runs only in the full run
     (AGENT_FULL_RUN=1, which run2 clears for named files), so a named run of it skips everything;
@@ -653,12 +770,14 @@ class TestNoFolderLeft(unittest.TestCase):
         for sig in (signal.SIGINT, signal.SIGTERM):
             with self.subTest(signal=sig.name):
                 tmp = own_tmp(self)
-                proc, test_pid = start_slow_run(self, tmp)
+                proc, test_pid = start_slow_run(self, tmp, own_tools=True)
                 self.assertEqual(len(left(tmp)), 1, "run2 makes one folder")
                 os.kill(proc.pid, sig)            # run2 alone, not its group: it stops its own test processes
                 text, _ = proc.communicate(timeout=20)   # the slow test sleeps 90 s: waiting for it fails here
                 self.assertNotEqual(proc.returncode, 0, text)
                 self.gone(tmp, text)
+                # verify finding: a re-sent signal skips atexit, so fasttools' folder (macOS) stayed
+                self.assertEqual([n for n in os.listdir(tmp) if n.startswith("agent_test_tools_")], [])
                 end = time.time() + 5
                 while alive(test_pid) and time.time() < end:
                     time.sleep(0.05)
