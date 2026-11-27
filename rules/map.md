@@ -32,6 +32,7 @@ Scripts, not agents (cost no tokens):
   bin/agent_questions.py  the question list: every question pending on the owner, as a chat list, JSON or an Artifact page; records the answers
   bin/agent-questions-page.html  the page template (one page grouped by task, lettered options, answer bar)
   bin/agent-name.sh       SessionStart + UserPromptSubmit hook: names the session by role (W6; a human-direct one is `<repo> Helper - <Task Name>`), also the Orca tab
+  bin/agent-session-end.sh  SessionEnd hook: a session leaves nothing behind (its git-dir markers, a Helper's line and files; agent-file.sh session-end)
   bin/agent-guard.sh     hook: records every Agent launch and orca pane on the board, refuses a manager's launch that names no open todo task when the Todo before agent setting is on; off records only
   bin/agent-promote.sh   the working branch to production, only on the owner's verified words (--owner-quote), `--task` for a direct merge, `--sync` for production into the working branch
   bin/agent-runtime.sh   which runtime this agent is in (orca, plain, cloud) and the browser; the one place that knows
