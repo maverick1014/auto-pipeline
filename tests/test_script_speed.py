@@ -243,6 +243,135 @@ class TestClockMinutes(ScriptCase):
         self.assertIn(" clock=60 ", line[0])
 
 
+LINE_A = "a | small | the a task | est 30m | opened 2026-11-26 09:00 | by main\n"
+AT = {"AGENT_FAKE_NOW": "2026-11-26 10:00", "AGENT_CLEANUP_DONE": "1"}
+
+
+class TestReviewFixOrder1(ScriptCase):
+    """The PR REVIEW / CORE REVIEW of 17a3a34 (FIX ORDER 1, TELL dddf2dd3): each case as 78b565f did it."""
+
+    def todo_a(self):
+        with open(self.repo.path("agent_todo.txt"), "w") as fh:
+            fh.write(LINE_A)
+
+    # 1: a name holding " | " is never the first field of a line (awk's $1 == k)
+    def test_done_with_a_name_holding_a_bar_is_no_line(self):
+        self.todo_a()
+        r = self.repo.run("agent-file.sh", "todo", "done", "a | small", env=AT)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("no todo line named: a | small", r.stderr)
+        self.assertEqual(self.repo.read("agent_todo.txt"), LINE_A)
+        self.assertEqual(self.repo.read("agent_completed.txt") or "", "")
+
+    def test_add_with_a_name_holding_a_bar_keeps_the_other_line(self):
+        self.todo_a()
+        r = self.repo.run("agent-file.sh", "todo", "add", "a | small", "small", "x", "10", env=AT)
+        self.assertOk(r)
+        self.assertEqual(r.stdout, "todo added: a | small\n")
+        lines = self.repo.read("agent_todo.txt").splitlines(True)
+        self.assertEqual(lines[0], LINE_A)
+        self.assertEqual(len(lines), 2, lines)
+        self.assertTrue(lines[1].startswith("a | small | small | x | est 10m | opened 2026-11-26 10:00 | by main"), lines)
+
+    def test_stage_with_a_name_holding_a_bar_is_no_line(self):
+        self.todo_a()
+        r = self.repo.run("agent-file.sh", "todo", "stage", "a | small", "tests", env=AT)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("no todo line named: a | small", r.stderr)
+        self.assertEqual(self.repo.read("agent_todo.txt"), LINE_A)
+
+    # 2: an unreadable todo or ideas file counts as none, the resume still ends 0
+    def test_resume_counts_an_unreadable_file_as_none(self):
+        self.todo_a()
+        with open(self.repo.path("agent_ideas.txt"), "w") as fh:
+            fh.write("an idea | 2026-11-26 09:00 | by main\n")
+        for name in ("agent_todo.txt", "agent_ideas.txt"):
+            os.chmod(self.repo.path(name), 0)
+            self.addCleanup(os.chmod, self.repo.path(name), 0o644)
+        unreadable = not os.access(self.repo.path("agent_todo.txt"), os.R_OK)
+        r = self.repo.run("agent-resume.sh", env={"CLAUDE_PID": NOBODY})
+        self.assertOk(r)
+        self.assertIn("todo: %d open\n" % (0 if unreadable else 1), r.stdout)
+        self.assertIn("ideas: %d waiting\n" % (0 if unreadable else 1), r.stdout)
+
+    # 3d: the hash pass fails (python3 there but failing): the shell hash grades, also for one token
+    def test_answer_grades_one_token_when_python3_fails(self):
+        self.repo.stub_tool("python3", "#!/bin/bash\nexit 1\n")
+        r = self.repo.run("agent-start.sh", "--answer", "1A", env=TASK)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        lines = r.stdout.splitlines()
+        self.assertEqual(lines[0], "QUIZ RESULT: 1/15 FAIL")
+        self.assertEqual(lines[1], "Q2: re-read PRINCIPLES.md, rules/files.md")
+        self.assertNotIn("Q1: re-read PRINCIPLES.md", r.stdout)
+
+    # 4a: a long agent_completed.txt is read by one awk start, not a bash loop (the count_lines cap)
+    def test_time_data_reads_a_long_file_in_one_start(self):
+        self.todo_a()
+        with open(self.repo.path("agent_completed.txt"), "w") as fh:
+            for i in range(5050):
+                fh.write("2026-10-01 | t%d | w | data repo=p work=%s wait=0\n" % (i, i if i % 3 else "-"))
+        log = pc.count_starts(self.repo)
+        r = self.repo.run("agent-file.sh", "todo", "done", "a", env=AT)
+        self.assertOk(r)
+        self.assertIn("TIME DATA: 3367 of 30\n", r.stdout)
+        on_done = [a for a in pc.names(pc.read_starts(log), "awk") if a and a[-1].endswith("agent_completed.txt")]
+        self.assertEqual(len(on_done), 1, "a 5050-line agent_completed.txt goes to one awk, not the bash loop\n"
+                         + pc.summary(pc.read_starts(log)))
+
+    # 4c: task-end raising (here: it cannot save into a read-only git dir) still releases the queued lines
+    def test_a_failing_task_end_still_releases_the_queue(self):
+        for args in (("todo", "add", "a", "small", "what a", "10"), ("todo", "add", "b", "small", "what b", "10"),
+                     ("todo", "wait", "b", "on", "queue", "--after", "a")):
+            self.assertOk(self.repo.run("agent-file.sh", *args, env=AT))
+        with open(self.repo.path(".git", "agent_owner_words.json"), "w") as fh:
+            json.dump({"a": {"words": "x"}}, fh)
+        os.chmod(self.repo.path(".git"), 0o555)
+        self.addCleanup(os.chmod, self.repo.path(".git"), 0o755)
+        r = self.repo.run("agent-file.sh", "todo", "done", "a", env=AT)
+        os.chmod(self.repo.path(".git"), 0o755)
+        self.assertOk(r)
+        self.assertIn("released: b", r.stdout.splitlines())
+        b = [l for l in self.repo.read("agent_todo.txt").splitlines() if l.startswith("b | ")]
+        self.assertEqual(len(b), 1)
+        self.assertNotIn("waiting queue", b[0])
+        self.assertNotIn("after a", b[0])
+
+
+class TestConfGetMany(ScriptCase):
+    """agent_conf.py get <key> <key> ... (the settings_read call): one "<key>=<value>" line per key in the given
+    order; an unknown key prints "<key>=", the same stderr line as a single get, status 2; a value holding a line
+    break prints the bare key (the caller asks for it alone). The usage text names the form."""
+
+    def get(self, *keys):
+        env = self.repo._env(None)
+        return subprocess.run([sys.executable, self.repo.plugin_path("bin", "agent_conf.py"), "get"] + list(keys),
+                              capture_output=True, text=True, env=env, cwd=self.repo.dir, timeout=30)
+
+    def test_one_line_per_key_in_order(self):
+        self.repo.set_conf("language", "zh")
+        r = self.get("max_usage_percent", "language")
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "max_usage_percent=80\nlanguage=zh\n", ""))
+
+    def test_an_unknown_key_is_empty_and_status_2(self):
+        r = self.get("language", "no_such_key", "max_usage_percent")
+        self.assertEqual(r.returncode, 2)
+        self.assertEqual(r.stdout, "language=en\nno_such_key=\nmax_usage_percent=80\n")
+        self.assertEqual(r.stderr, "unknown setting: no_such_key\n")
+        one = self.get("no_such_key")
+        self.assertEqual((one.returncode, one.stderr), (2, "unknown setting: no_such_key\n"))
+
+    def test_a_value_with_a_line_break_is_the_bare_key(self):
+        self.repo.set_conf("full_run_machine", "box\none")
+        self.assertEqual(self.get("full_run_machine").stdout, "box\none\n")
+        r = self.get("full_run_machine", "language")
+        self.assertEqual((r.returncode, r.stdout), (0, "full_run_machine\nlanguage=en\n"))
+
+    def test_the_usage_names_the_many_key_form(self):
+        r = subprocess.run([sys.executable, self.repo.plugin_path("bin", "agent_conf.py")], capture_output=True,
+                           text=True, env=self.repo._env(None), timeout=30)
+        self.assertIn("get <key> [<key> ...]", r.stdout + r.stderr)
+
+
 class TellCountCase(Counts, AllCase):
     def setUp(self):
         super().setUp()

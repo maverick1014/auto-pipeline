@@ -1158,6 +1158,23 @@ class Ex8TakeWhenAnyoneMay(PairCase):
         self.assertEqual(self.dispatch(self.b, "t").returncode, 0)
 
 
+class ExBarNameTakenByAnother(PairCase):
+    """script-speed FIX ORDER 1 item 1 (TELL dddf2dd3): a name holding " | " is no todo line, so it never reaches
+    the shared-todo check: King Lun cannot close Maverick's taken task t by naming it "t | small"."""
+    take = "anyone"
+
+    def test_a_bar_name_never_closes_a_task_another_took(self):
+        self.put_line(todo_line("t", owner="Maverick"))
+        self.assertIn("t is yours", self.af("todo", "take", "t").stdout)
+        self.sync(self.b)
+        r = self.af("todo", "done", "t | small", "--work", "5", "--type", "script", "--lane", "fast",
+                    cwd=self.b, ok=False)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("no todo line named: t | small", r.stderr)
+        self.assertIn(" | taken Maverick", self.line_of(self.b, "t") or "")
+        self.assertIn(" | taken Maverick", self.remote_todo())
+
+
 class Ex9TwoPeopleFinishAtOnce(PairCase):
     take = "anyone"
 
