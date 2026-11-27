@@ -14,9 +14,13 @@ CONTRACT
    "<m>m <text>" goes to the beat; another task's line is not carried; one remote command per sweep, under
    REMOTE_CMD_MAX for a 140-char path.
 2. carry_stage never moves the todo line's stage back from a stage the main manager set itself (e2e, merge):
-   while the todo line reads "stage e2e|merge since <S>", a carried line is written only when it is a STAGE line whose
-   since is later than S (the task manager started a new round). A held line's beat is not carried either.
-   Any other todo stage: carried as today.
+   while the todo line reads "stage e2e|merge since <S>", nothing is carried (stage or beat) unless ANY STAGE line of
+   the task has a since later than S (the task manager started a new round; FIX ORDER 1 of the PR REVIEW: not only
+   when that STAGE line is also the newest line); then the newest line by time is carried as in rule 1 (a heartbeat
+   after the new STAGE line wins). A heartbeat alone, or a STAGE line of the same minute as S, keeps e2e/merge.
+   Remote: the one awk command also reports the newest STAGE line's time. Any other todo stage: carried as today.
+   The remote date check takes "20<d><d>-" only (C1): an undated line ending in a word like "20 files" is undated.
+   The remote command fits a state path of 127 chars (the path limit; real paths are 55-75).
 3. The forecast of a fix round (bin/agent_board.py forecast_of, bin/agent_forecast.py forecast): a running todo line
    whose stage log has a report or e2e entry (built_work, as today) and whose stage is a build stage
    (brief register mock tests workers verify push) is in a fix round.
@@ -116,6 +120,14 @@ class TestNewestByTime(EtaCarryCase):
             self.assertIn(" | beat 99m pushing", line)
         self.both(check)
 
+    def test_a_word_like_20_at_the_end_is_not_a_date(self):
+        # C1 of the PR REVIEW: "built 20 files" must not count as a date that hides every later dated line
+        def check(env):
+            self.carry_at(env, ["STAGE alpha: tests | since 2026-11-25 11:00", "STEP 5 verify: built 20 files",
+                                "HEARTBEAT alpha: step 6 of 7, work 9m, pushing | 2026-11-25 11:30"])
+            self.assertIn(" | stage push since ", self.todo_line("alpha"))
+        self.both(check)
+
     def test_a_line_with_no_date_still_wins_over_the_lines_before_it(self):
         def check(env):
             self.carry_at(env, ["STAGE alpha: tests | since 2026-11-25 11:10", "STEP 6 push: pushed the branch"])
@@ -169,6 +181,47 @@ class TestNeverBackPastTheMainManager(EtaCarryCase):
             self.assertNotIn(" | beat ", line)
         self.both(check)
 
+    # FIX ORDER 1 (PR REVIEW B1): the TM's todo stage rewrites its STAGE line in place (near the top), heartbeats
+    # are appended below it; an old heartbeat from before the hold sits between them
+
+    def test_a_new_round_with_a_heartbeat_of_the_same_minute_carries_workers(self):
+        def check(env):
+            self.carry_at(env, ["STAGE alpha: workers | since 2026-11-25 11:20",
+                                "HEARTBEAT alpha: step 5 of 7, work 90m, verify run | 2026-11-25 11:08",
+                                "HEARTBEAT alpha: step 4 of 7, work 95m, fix order 1 | 2026-11-25 11:20"],
+                          todo_stage="e2e", since="2026-11-25 11:13")
+            line = self.todo_line("alpha")
+            self.assertIn(" | stage workers since ", line)
+            self.assertIn(" | beat 95m fix order 1", line)
+        self.both(check)
+
+    def test_a_new_round_with_a_later_heartbeat_carries_the_heartbeats_stage(self):
+        def check(env):
+            self.carry_at(env, ["STAGE alpha: workers | since 2026-11-25 11:20",
+                                "HEARTBEAT alpha: step 5 of 7, work 90m, verify run | 2026-11-25 11:08",
+                                "HEARTBEAT alpha: step 5 of 7, work 99m, fix verified | 2026-11-25 11:25"],
+                          todo_stage="e2e", since="2026-11-25 11:13")
+            line = self.todo_line("alpha")
+            self.assertIn(" | stage verify since ", line)
+            self.assertIn(" | beat 99m fix verified", line)
+        self.both(check)
+
+    def test_a_new_round_releases_merge_too(self):
+        def check(env):
+            self.carry_at(env, ["STAGE alpha: workers | since 2026-11-25 11:20",
+                                "HEARTBEAT alpha: step 5 of 7, work 99m, fix verified | 2026-11-25 11:25"],
+                          todo_stage="merge", since="2026-11-25 11:13")
+            self.assertIn(" | stage verify since ", self.todo_line("alpha"))
+        self.both(check)
+
+    def test_any_newer_stage_line_releases_the_hold_wherever_it_is(self):
+        def check(env):
+            self.carry_at(env, ["HEARTBEAT alpha: step 5 of 7, work 99m, fix verified | 2026-11-25 11:25",
+                                "STAGE alpha: workers | since 2026-11-25 11:20"],
+                          todo_stage="e2e", since="2026-11-25 11:13")
+            self.assertIn(" | stage verify since ", self.todo_line("alpha"))
+        self.both(check)
+
     def test_a_task_managers_own_stage_is_carried_as_today(self):
         def check(env):
             self.carry_at(env, ["STAGE alpha: verify | since 2026-11-25 11:20"],
@@ -215,6 +268,20 @@ class TestRemoteAnswerSplit(unittest.TestCase):
     def test_no_wake_line_and_no_stage_line(self):
         _, (v, last) = self.answer(["note: nothing yet"])
         self.assertEqual((v, last), ("", ""))
+
+
+class TestRemotePathLimit(unittest.TestCase):
+    """FIX ORDER 1 (main manager's decision on the 500-char limit): the remote command fits a state path of 127 chars
+    (the path limit; real paths are 55-75)."""
+
+    def test_a_127_char_state_path_fits(self):
+        sys.path.insert(0, tw.BIN)
+        import agent_watch
+        path = ("/Users/maverick/orca/workspaces/" + "x" * 200)[:127 - len("/agent_state.txt")]
+        self.assertEqual(len(path + "/agent_state.txt"), 127)
+        cmd = agent_watch.remote_command(path)
+        self.assertLess(len(cmd), agent_watch.REMOTE_CMD_MAX, cmd)
+        self.assertEqual(agent_watch.REMOTE_CMD_MAX, 500)
 
 
 # ---------------------------------------------------------------- rule 3: the forecast of a fix round

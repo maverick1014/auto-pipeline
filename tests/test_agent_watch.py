@@ -2497,10 +2497,11 @@ class TestHeartbeatBeat(CarryCase):
         tm_reads = [c for c in self.terminal_calls("read") if self.opt(c, "--terminal") == t["pane"]]
         self.assertLessEqual(len(sends), len(tm_reads))
 
-    def test_the_remote_command_fits_paths_of_80_110_and_140_chars(self):
+    def test_the_remote_command_fits_paths_of_80_110_and_127_chars(self):
+        # board-eta FIX ORDER 1 (main manager 2026-11-27): the path limit is 127 (was 140; real paths are 55-75)
         sys.path.insert(0, os.path.join(os.path.dirname(HERE), "bin"))
         import agent_watch
-        for n in (80, 110, 140):
+        for n in (80, 110, 127):
             with self.subTest(path=n):
                 path = ("/home/maverick/orca/workspaces/" + "x" * 200)[:n - len("/agent_state.txt")]
                 cmd = agent_watch.remote_command(path)
