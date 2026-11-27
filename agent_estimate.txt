@@ -1,6 +1,6 @@
 {
  "current": 2,
- "checked_tasks": 238,
+ "checked_tasks": 248,
  "versions": [
   {
    "version": 1,
@@ -124,6 +124,16 @@
    "current": 2,
    "current_error": 18.0,
    "new_error": 18.0,
+   "kept": 2,
+   "basis": "backtest"
+  },
+  {
+   "date": "2026-11-27",
+   "tasks": 248,
+   "new": 10,
+   "current": 2,
+   "current_error": 17.0,
+   "new_error": 17.0,
    "kept": 2,
    "basis": "backtest"
   }
