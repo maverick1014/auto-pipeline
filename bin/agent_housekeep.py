@@ -192,8 +192,11 @@ class Housekeep(object):
         res = self.file_cmd(*args)
         if res.ok:
             for text in res.out.splitlines():
-                if text.strip():
-                    self.removed.append("%s: %s" % (self.verb, text.strip()))
+                text = text.strip()
+                if text.startswith("flag: "):   # a flag, not a removal (dead-line-flag)
+                    self.flags_gone.append(text)
+                elif text:
+                    self.removed.append("%s: %s" % (self.verb, text))
         self.read_worktree_file()
         if not self.wt_lines:
             return
