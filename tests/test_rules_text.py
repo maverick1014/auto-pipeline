@@ -1761,7 +1761,7 @@ class TestPrinciplesOtherRules(unittest.TestCase):
         # the Files row "agent_repo.conf" is rules/files.md (proof.md old 568, 617)
         f = read("rules", "map.md")
         for phrase in ("bin/agent_blocks.py", "bin/agent-level.sh",
-                       "36-question quiz", "agent-file.sh next", "checks gate"):
+                       "37-question quiz", "agent-file.sh next", "checks gate"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, f)
         self.assertIn("Check deputy", read("rules", "roles.md"))
@@ -4089,3 +4089,42 @@ class TestT2T3Texts(unittest.TestCase):
         line = next(l for l in r8.splitlines() if "<task>-publish" in l)
         self.assertIn("--checks", line)
 
+
+
+class TestTheAskTest(unittest.TestCase):
+    """ask-test (owner 2026-11-27: 'why you keep stop and ask for me ?'): three lines pushed the main manager
+    to ask where P1 and W1 say decide. His request is the yes of a doc that only writes it down; destructive
+    is losing his data or work; the decide section is normally none, a question only past the ask test."""
+
+    def test_r1_his_own_words_are_the_yes_of_the_doc(self):
+        line = next(l for l in read("PRINCIPLES.md").splitlines() if l.startswith("Before the flow:"))
+        self.assertIn("the owner approves it, unless it only writes down his own words. Full flow, in order:", line)
+        doc = next(l for l in read("rules", "checks.md").splitlines() if "needs no second yes" in l)
+        for phrase in ("requirement doc", "his own words", "adds scope", "owner-level option", "goes to him first"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, doc)
+
+    def test_e1_destructive_means_his_data_or_work(self):
+        e1 = part(read("rules", "output.md"), "E1. ", "E2. ").splitlines()
+        self.assertIn("- Destructive action (loses the owner's data or work) → confirm first", e1)
+        self.assertNotIn("- Destructive action → confirm first", e1)
+
+    def test_the_decide_section_is_normally_none(self):
+        core = part(read("PRINCIPLES.md"), "## Talking to the human", "## W17.")
+        line = next(l for l in core.splitlines() if "ends with a decide section" in l)
+        self.assertEqual(line, "- Every report, job summary, recap, proposal or audit to the human ends with a "
+                               "decide section, normally none: a question must pass the ask test (H3)")
+
+    def test_h3_the_ask_test(self):
+        h3 = part(read("rules", "human.md"), "H3. ")
+        for phrase in ("The decide section is normally none", "pick a default, log it, go on",
+                       "Ask test: a question goes in only when one of these holds",
+                       "a permission check blocks the action",
+                       "it is irreversible, outward or outside the repo, and his words do not cover it",
+                       "a real product or owner-level choice",
+                       "Never a question: deleting temp files, caches or records of dead sessions",
+                       "a checkout switch with a backup first", "none loses his data or work"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, h3)
+        # the ask test comes before the "Nothing open" line it explains
+        self.assertLess(h3.index("Ask test:"), h3.index("Nothing open:"))
