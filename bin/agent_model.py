@@ -20,7 +20,6 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HEADER = re.compile(r"\s*\[([A-Za-z][A-Za-z0-9.\-]*(?:\[1m\])?)\s+(low|medium|high|xhigh|max)\]")
-READABLE = ("flag", "env", "settings.json")
 FAMILY = re.compile(r"^([a-z]+)(?:-(\d+(?:\.\d+)?))?$")
 RECORD = "agent_model_ok.json"
 
@@ -53,20 +52,37 @@ def same(a, b):
     return pa.group(1) == pb.group(1) and (not pa.group(2) or not pb.group(2) or pa.group(2) == pb.group(2))
 
 
-def below_floor(model, effort):
-    """Under the decider floor (W17): not Opus 5.5 or above or Fable, or effort low."""
-    return effort == "low" or not _conf()._meets_model_floor(norm(model))
+def below_floor(model):
+    """Under the decider floor (W17): not Opus 5.5 or above, or Fable (the model only: no effort source is
+    session-true after an in-session /effort)."""
+    return not _conf()._meets_model_floor(norm(model))
 
 
-def current(pid):
-    """(model, effort) of the session now, or None when a source is not flag, env or settings.json."""
+TAIL = 512 * 1024
+
+
+def current(transcript):
+    """The model THIS session runs now: the "model" of the latest assistant message of its transcript (the
+    tail only). None when there is no transcript or no assistant message yet (fail open)."""
     try:
-        line = _conf()._you_cli("main_manager", pid)
-    except Exception:
+        with open(transcript, "rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - TAIL))
+            lines = fh.read().decode("utf-8", "replace").splitlines()
+    except (OSError, TypeError, ValueError):
         return None
-    m = re.match(r"YOU: (\S+) (\S+) \(model: ([^,]*), effort: ([^)]*)\)", line)
-    if m and m.group(3) in READABLE and m.group(4) in READABLE and m.group(1) != "unknown":
-        return norm(m.group(1)), m.group(2)
+    for line in reversed(lines):
+        if '"assistant"' not in line:
+            continue
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            continue
+        msg = obj.get("message") if isinstance(obj, dict) else None
+        name = msg.get("model") if isinstance(msg, dict) else None
+        if obj.get("type") == "assistant" and isinstance(name, str) and name and not name.startswith("<"):
+            return norm(name)
     return None
 
 
@@ -110,14 +126,14 @@ def read_record(common):
         return None
 
 
-def holds(common, model, effort):
-    """True while the owner's MODEL OK stands for exactly this model and effort."""
+def holds(common, model):
+    """True while the owner's MODEL OK stands for this model."""
     rec = read_record(common) if common else None
-    return bool(rec and rec.get("effort") == effort and same(str(rec.get("model", "")), model))
+    return bool(rec and same(str(rec.get("model", "")), model))
 
 
-def record_ok(common, model, effort, quote, means, question, typed):
-    rec = {"model": model, "effort": effort, "quote": quote, "means": means, "typed": typed}
+def record_ok(common, model, quote, means, question, typed):
+    rec = {"model": model, "quote": quote, "means": means, "typed": typed}
     if question:
         rec["question"] = question
     tmp = os.path.join(common, RECORD + ".tmp")
@@ -135,31 +151,43 @@ def end_record(common):
 
 # ------------------------------------------------------------------ the guard's check
 
-def header_verdict(text, pid):
-    """(block, note) for an order text: block is the refusal line or None, note a one-line note or None."""
+def header_verdict(text, transcript):
+    """(block, note) for an order text: block is the refusal line or None, note a one-line note or None.
+    Only the model is compared; an unreadable model is a note, never a refusal."""
     m = HEADER.match(text or "")
     if not m:
         return None, None
-    cur = current(pid)
+    cur = current(transcript)
     if cur is None:
         return None, "board guard: your model could not be read; header not checked; allowed"
-    shown = "%s %s" % cur
-    if not same(m.group(1), cur[0]) or m.group(2) != cur[1]:
-        return ("board guard: header [%s %s] is not your model [%s]: write [%s]" % (m.group(1), m.group(2), shown, shown),
-                None)
+    if not same(m.group(1), cur):
+        return ("board guard: header [%s %s] is not your model [%s]: write [%s <your effort>]"
+                % (m.group(1), m.group(2), cur, cur), None)
     return None, None
 
 
-def below_floor_verdict(common, pid, role):
+def below_floor_verdict(common, transcript, role):
     """The refusal line for a main manager under the floor without the owner's MODEL OK, else None."""
-    cur = current(pid)
-    if role != "main" or cur is None or not below_floor(*cur) or holds(common, *cur):
+    cur = current(transcript)
+    if role != "main" or cur is None or not below_floor(cur) or holds(common, cur):
         return None
-    return ("board guard: you run [%s %s], below the floor, and the owner has not said it is intended: ask him "
+    return ("board guard: you run [%s], below the floor, and the owner has not said it is intended: ask him "
             "first (W17)" % cur)
 
 
 # ------------------------------------------------------------------ the hook
+
+def seen_path(common, sid):
+    return os.path.join(common, "agent_model_%s" % sid)
+
+
+def read_seen(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh).get("model")
+    except (OSError, ValueError, AttributeError):
+        return None
+
 
 def hook(raw):
     """Print MODEL CHANGED / BELOW FLOOR lines for one UserPromptSubmit payload."""
@@ -168,28 +196,20 @@ def hook(raw):
         return []
     sid = re.sub(r"[^A-Za-z0-9_.-]", "_", str(payload.get("session_id") or ""))
     common = common_dir(str(payload.get("cwd") or os.getcwd()))
-    cur = current(session_pid())
+    cur = current(payload.get("transcript_path"))
     if not sid or not common or cur is None:
         return []
-    path = os.path.join(common, "agent_model_%s" % sid)
-    old = None
-    try:
-        with open(path, encoding="utf-8") as fh:
-            parts = fh.read().split()
-        old = (parts[0], parts[1]) if len(parts) == 2 else None
-    except OSError:
-        pass
+    path = seen_path(common, sid)
+    old = read_seen(path)
     rec = read_record(common)
-    if rec and not (rec.get("effort") == cur[1] and same(str(rec.get("model", "")), cur[0])):
+    if rec and old is not None and old != cur and not same(str(rec.get("model", "")), cur):
         end_record(common)
-    if old == cur:
+    with open(path, "w", encoding="utf-8") as fh:   # always: `model ok` reads the newest one
+        json.dump({"model": cur}, fh)
+    if old is None or old == cur:
         return []
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write("%s %s\n" % cur)
-    if old is None:
-        return []
-    out = ["MODEL CHANGED: %s %s -> %s %s" % (old + cur)]
-    if below_floor(*cur):
+    out = ["MODEL CHANGED: %s -> %s" % (old, cur)]
+    if below_floor(cur):
         out.append("BELOW FLOOR: ask the owner first")
     return out
 

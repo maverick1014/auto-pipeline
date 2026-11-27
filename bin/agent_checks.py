@@ -1420,26 +1420,40 @@ def cmd_model_ok(ctx, a):
     quote, means, question = approval_values("model ok", opts.get("--owner-quote"), opts.get("--means"),
                                              opts.get("--question"))
     import agent_model
-    cur = agent_model.current(agent_model.session_pid())
+    cur = model_seen(ctx)
     if cur is None:
-        raise Refuse("model ok: your model and effort cannot be read (flag, env or settings.json); nothing written")
+        raise Refuse("model ok: your model is not known yet (the hook has not seen it); nothing written")
     typed = verify_owner(ctx, quote, opts.get("--time"), "model ok: owner words not verified, nothing written: ",
                          question)
     gd = common_dir(ctx["root"])
     if not gd:
         raise Refuse("model ok: not a git repo; nothing written")
-    agent_model.record_ok(gd, cur[0], cur[1], quote, means, question, typed)
-    print("MODEL OK %s %s" % cur)
+    agent_model.record_ok(gd, cur, quote, means, question, typed)
+    print("MODEL OK %s" % cur)
+
+
+def model_seen(ctx):
+    """The model the hook last saw in this session (CLAUDE_CODE_SESSION_ID), else in the newest session of the repo."""
+    import glob
+    import agent_model
+    gd = common_dir(ctx["root"])
+    if not gd:
+        return None
+    sid = re.sub(r"[^A-Za-z0-9_.-]", "_", os.environ.get("CLAUDE_CODE_SESSION_ID", ""))
+    paths = [agent_model.seen_path(gd, sid)] if sid else sorted(
+        glob.glob(os.path.join(glob.escape(gd), "agent_model_*")), key=os.path.getmtime, reverse=True)
+    return agent_model.read_seen(paths[0]) if paths else None
 
 
 def cmd_model_check(ctx, a):
-    """model check <model> <effort>: exit 0 and MODEL OK <model> <effort> while the owner's record stands for it."""
-    if len(a) != 2:
-        raise Refuse("model check: usage: model check <model> <effort>")
+    """model check <model> [<effort>]: exit 0 and MODEL OK <model> while the owner's record stands for the model
+    (the effort is not compared: no source of it is session-true)."""
+    if len(a) not in (1, 2):
+        raise Refuse("model check: usage: model check <model> [<effort>]")
     import agent_model
-    if not agent_model.holds(common_dir(ctx["root"]) or "", a[0], a[1]):
-        raise Refuse("model check: no MODEL OK of the owner for [%s %s]: do not act on it, report" % (a[0], a[1]))
-    print("MODEL OK %s %s" % (a[0], a[1]))
+    if not agent_model.holds(common_dir(ctx["root"]) or "", a[0]):
+        raise Refuse("model check: no MODEL OK of the owner for [%s]: do not act on it, report" % " ".join(a))
+    print("MODEL OK %s" % " ".join(a))
 
 
 def main(argv):

@@ -884,7 +884,7 @@ def make_context(payload):
     return ctx
 
 
-def model_header(ctx, text):
+def model_header(ctx, text, transcript):
     """(block, note) of model-floor (requirements/model-floor.md): an order's header must be the sender's current
     model and effort, and a main manager under the floor needs the owner's MODEL OK."""
     try:
@@ -897,9 +897,9 @@ def model_header(ctx, text):
             import agent_model
         finally:
             sys.dont_write_bytecode = old
-        block, note = agent_model.header_verdict(text, ctx["pid"])
+        block, note = agent_model.header_verdict(text, transcript)
         if not block and note is None and agent_model.HEADER.match(text or ""):
-            block = agent_model.below_floor_verdict(ctx["common"], ctx["pid"], ctx["role"])
+            block = agent_model.below_floor_verdict(ctx["common"], transcript, ctx["role"])
         return block, note
     except Exception:
         return None, None
@@ -951,7 +951,7 @@ def handle(payload):
             texts = [str(tin.get("prompt") or "")] if kind == "agent" else [
                 o.get("text") or o.get("body") or "" for op, o in ops if op == "send"]
             for text in texts:
-                block, note = model_header(ctx, text)
+                block, note = model_header(ctx, text, payload.get('transcript_path'))
                 if block:
                     return ("BLOCK", block)
         if kind == "bash" and not any(op in ("create", "wt_create") for op, _ in ops):
