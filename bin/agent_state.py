@@ -466,15 +466,35 @@ def build(root, lines, now):
 # ---------------------------------------------------------------- trim
 
 
-def ensure_exclude(state_dir):
+def hinted_gitdir(path):
+    """The git common dir the calling script already asked git for (agent-roots.sh exports AP_ROOTS_*), when PATH is the
+    folder it asked about, its git toplevel or the main worktree: the same answer, one git start less. None: ask git."""
     try:
-        out = subprocess.run(["git", "-C", state_dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                             capture_output=True, text=True, timeout=20)
+        gd = os.environ.get("AP_ROOTS_GITDIR")
+        if not gd or not os.path.isabs(gd):
+            return None
+        here = os.path.realpath(path)
+        for key in ("AP_ROOTS_CWD", "AP_ROOTS_ROOT", "AP_ROOTS_STATE"):
+            v = os.environ.get(key)
+            if v and os.path.realpath(v) == here:
+                return gd
     except Exception:
-        return
-    if out.returncode != 0 or not out.stdout.strip():
-        return
-    path = os.path.join(out.stdout.strip(), "info", "exclude")
+        pass
+    return None
+
+
+def ensure_exclude(state_dir):
+    gd = hinted_gitdir(state_dir)
+    if gd is None:
+        try:
+            out = subprocess.run(["git", "-C", state_dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                 capture_output=True, text=True, timeout=20)
+        except Exception:
+            return
+        if out.returncode != 0 or not out.stdout.strip():
+            return
+        gd = out.stdout.strip()
+    path = os.path.join(gd, "info", "exclude")
     try:
         old = read_bytes(path) or b""
         if EXCLUDE_LINE in [to_text(x).strip() for x in old.split(b"\n")]:

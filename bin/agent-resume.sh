@@ -18,7 +18,8 @@
 # having no orca is the normal case.
 
 set -eu
-. "$(dirname "$0")/agent-roots.sh"
+case "$0" in */*) _res_dir=${0%/*}; [ -n "$_res_dir" ] || _res_dir=/;; *) _res_dir=.;; esac
+. "$_res_dir/agent-roots.sh"
 roots_read
 
 usage() {
@@ -42,6 +43,8 @@ esac
 # The settings come from Configure (setting <key>); the sibling scripts live in PLUGIN_ROOT/bin.
 # The four agent_*.txt data files live in the main repo (ROOT), which can be a
 # different place when this script runs from inside a worktree.
+# One python3 start for all four values (runtime is read by runtime_kind below).
+settings_read max_usage_percent task_manager permission_mode runtime
 max_usage_percent=$(setting max_usage_percent) || max_usage_percent=80
 task_manager=$(setting task_manager) || task_manager=opus-5.5:high
 permission_mode=$(setting permission_mode) || permission_mode=bypassPermissions
@@ -84,55 +87,64 @@ echo
 over_cap=0
 if [ "$RAM_USED" -ge "$max_usage_percent" ] || [ "$CPU_USED" -ge "$max_usage_percent" ]; then over_cap=1; fi
 
-# ---- model name: the one the claude CLI takes, cut down from opus-5.5:xhigh style ----
-# The rule (family word for opus*, sonnet*, haiku*, fable*; anything else
-# unchanged) lives in one place, bin/agent_conf.py cli-model, so the city page
-# and this script cannot drift apart. If python3 cannot answer, fall back to
-# the spec without its ":effort" part, so a relaunch still gets a --model word.
-# The word may end in "[1m]" and the relaunch cmd is a line a zsh pane runs
-# (opus[1m] is a glob there), so the word is quoted with printf %q: a plain
-# name stays bare, a suffixed one reaches claude exactly as opus[1m].
-model_name() {
-  if ! name=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" cli-model "$1" 2>/dev/null); then
-    spec=$1
-    name="${spec%%:*}"
-  fi
-  printf '%q\n' "$name"
-}
-
-# ---- orca-only setup: live pane lookup, one runtime call. orca may be down. ----
+# ---- model name, live panes, room numbers: ONE python3 start (agent_nightly.py resume-prep) ----
+# The model word is the one the claude CLI takes, cut down from opus-5.5:xhigh style: the rule
+# (family word for opus*, sonnet*, haiku*, fable*; anything else unchanged) lives in one place,
+# bin/agent_conf.py cli_model, so the city page and this script cannot drift apart. If python3
+# cannot answer, fall back to the spec without its ":effort" part, so a relaunch still gets a
+# --model word. The word may end in "[1m]" and the relaunch cmd is a line a zsh pane runs
+# (opus[1m] is a glob there), so the word is quoted with printf %q: a plain name stays bare, a
+# suffixed one reaches claude exactly as opus[1m].
+# The live pane lookup is one runtime call (orca may be down). The memory rule: memory in use +
+# live reservations + the panes planned in this run + one pane's need <= the Max memory % limit.
+# "numbers" = "<used MB> <reserved MB> <limit MB> <pane MB>".
 orca_down=0
 ps_tsv=""
-if [ "$KIND" = "orca" ]; then
-  MODEL=$(model_name "$task_manager")
-  EFFORT=${task_manager#*:}
-
-  ps_out=$(runtime_ps 2>/dev/null) || orca_down=1
-  if [ "$orca_down" -eq 0 ]; then
-    ps_tsv=$(printf '%s' "$ps_out" | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-for w in data.get("result", {}).get("worktrees", []):
-    path = w.get("path", "")
-    agents = w.get("agents") or []
-    is_main = 1 if w.get("isMainWorktree") else 0
-    busy = 0
-    for a in agents:
-        state = a.get("state") if isinstance(a, dict) else a
-        if state in ("working", "permission"):
-            busy += 1
-    print("%s\t%d\t%d\t%d" % (path, len(agents), is_main, busy))
-')
-  fi
-
-  # No count cap (check-blocks section 25): column 2 (any agent at the path) is a live pane for
-  # live_pane(); a done pane or a main manager pane still blocks a relaunch. Whether one more pane
-  # fits is the memory rule below.
+ps_out=""
+watch_line=""
+prep_model=""
+room_nums=""
+room_ok=1
+TAB=$'\t'
+prep_args=(resume-prep)
+if [ -n "${AP_ROOTS_GITDIR:-}" ] && [ "${AP_ROOTS_CWD:-}" = "$PROJECT_CWD" ] && [ "${AP_ROOTS_GITDIR}" = "$PROJECT_GITDIR" ]; then
+  prep_args+=(--gitdir "$PROJECT_GITDIR")
 fi
-# The memory rule: memory in use + live reservations + the panes planned in this run + one pane's need
-# <= the Max memory % limit. "numbers" = "<used MB> <reserved MB> <limit MB> <pane MB>".
+if [ "$KIND" = "orca" ]; then
+  prep_args+=(--model "$task_manager")
+  ps_out=$(runtime_ps 2>/dev/null) || orca_down=1
+  [ "$orca_down" -eq 1 ] || prep_args+=(--ps)
+  [ -n "${AGENT_WATCH_LINE_DONE:-}" ] || prep_args+=(--watch "$ROOT" "$PLUGIN_ROOT")
+fi
+prep_rc=0
+if [ "$orca_down" -eq 0 ] && [ "$KIND" = "orca" ]; then
+  prep_out=$(cd "$PROJECT_ROOT" && printf '%s' "$ps_out" | python3 "$PLUGIN_ROOT/bin/agent_nightly.py" "${prep_args[@]}") || prep_rc=$?
+  # a bad ps answer ends the run, as its own python3 did
+  [ "$prep_rc" -eq 0 ] || exit "$prep_rc"
+else
+  prep_out=$(cd "$PROJECT_ROOT" && python3 "$PLUGIN_ROOT/bin/agent_nightly.py" "${prep_args[@]}" 2>/dev/null </dev/null) || prep_out=""
+fi
+while IFS= read -r _l; do
+  case "$_l" in
+    "M$TAB"*) prep_model=${_l#M"$TAB"};;
+    "P$TAB"*) _l=${_l#P"$TAB"}
+      if [ -n "$ps_tsv" ]; then ps_tsv="$ps_tsv
+$_l"; else ps_tsv=$_l; fi;;
+    "N$TAB"*) _l=${_l#N"$TAB"}; [ "${_l%%"$TAB"*}" = 0 ] && room_nums=${_l#*"$TAB"} || room_ok=0;;
+    "W$TAB"*) watch_line=${_l#W"$TAB"};;
+  esac
+done <<<"$prep_out"
+if [ "$KIND" = "orca" ]; then
+  if [ -z "$prep_model" ]; then prep_model="${task_manager%%:*}"; fi
+  printf -v MODEL '%q' "$prep_model"
+  EFFORT=${task_manager#*:}
+fi
+
+# No count cap (check-blocks section 25): column 2 (any agent at the path) is a live pane for
+# live_pane(); a done pane or a main manager pane still blocks a relaunch. Whether one more pane
+# fits is the memory rule.
 room_used=0; room_reserved=0; room_limit=0; room_pane=550; room_known=0
-if room_nums=$(cd "$PROJECT_ROOT" && "$PLUGIN_ROOT/bin/agent-room.sh" numbers 2>/dev/null </dev/null); then
+if [ "$room_ok" -eq 1 ] && [ -n "$room_nums" ]; then
   set -- $room_nums
   if [ "$#" -eq 4 ]; then
     room_used=$1; room_reserved=$2; room_limit=$3; room_pane=$4; room_known=1
@@ -145,10 +157,15 @@ need_by_hand=""
 
 live_pane() {
   path=$1
-  match=$(printf '%s\n' "$ps_tsv" | awk -F'\t' -v p="$path" '$1==p{print; exit}')
-  [ -n "$match" ] || return 1
-  n=$(printf '%s' "$match" | cut -f2)
-  [ "${n:-0}" -gt 0 ]
+  # the first row whose first column is the path; its second column is the agent count
+  local row n
+  while IFS= read -r row; do
+    [ "${row%%"$TAB"*}" = "$path" ] || continue
+    n=${row#*"$TAB"}; n=${n%%"$TAB"*}
+    [ "${n:-0}" -gt 0 ]
+    return
+  done <<<"$ps_tsv"
+  return 1
 }
 
 if [ "$KIND" = "orca" ] && [ "$orca_down" -eq 1 ]; then
@@ -163,9 +180,16 @@ if [ ! -s "$WT" ]; then
 else
   while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
-    path=$(printf '%s' "$line" | awk -F' \\| ' '{print $1}')
-    module=$(printf '%s' "$line" | awk -F' \\| ' '{print $2}')
-    status=$(printf '%s' "$line" | awk -F' \\| ' '{print $3}')
+    # the three columns, split on " | " (plain text work: no awk start per column)
+    path=${line%% | *}
+    module=""; status=""
+    case "$line" in
+      *" | "*)
+        module=${line#* | }
+        case "$module" in
+          *" | "*) status=${module#* | }; module=${module%% | *}; status=${status%% | *};;
+        esac;;
+    esac
 
     if [ "$KIND" = "orca" ]; then
       relaunched="no, status is idle"
@@ -266,7 +290,7 @@ unset AGENT_RUNTIME
 
 # ---- watch line (F1, F2): orca only; agent-start.sh prints it itself when it runs this script ----
 if [ "$KIND" = "orca" ] && [ -z "${AGENT_WATCH_LINE_DONE:-}" ]; then
-  watch_line=$(python3 "$PLUGIN_ROOT/bin/agent_watchfile.py" start-line "$ROOT" "$PLUGIN_ROOT" 2>/dev/null </dev/null) || watch_line=""
+  # (the line was worked out above, in the one resume-prep start)
   if [ -n "$watch_line" ]; then
     echo "$watch_line"
     echo
@@ -274,10 +298,17 @@ if [ "$KIND" = "orca" ] && [ -z "${AGENT_WATCH_LINE_DONE:-}" ]; then
 fi
 
 # ---- counts ----
+# lines with at least one character, counted in bash (no grep start)
+count_lines() {
+  _cl_n=0
+  while IFS= read -r _cl_l || [ -n "$_cl_l" ]; do
+    [ -z "$_cl_l" ] || _cl_n=$((_cl_n + 1))
+  done <"$1"
+}
 todo_n=0
-[ -s "$TODO" ] && todo_n=$(grep -c . "$TODO" || true)
+if [ -s "$TODO" ]; then count_lines "$TODO"; todo_n=$_cl_n; fi
 ideas_n=0
-[ -s "$IDEAS" ] && ideas_n=$(grep -c . "$IDEAS" || true)
+if [ -s "$IDEAS" ]; then count_lines "$IDEAS"; ideas_n=$_cl_n; fi
 echo "todo: ${todo_n:-0} open"
 echo "ideas: ${ideas_n:-0} waiting"
 [ -z "$CLEAN_OUT" ] || printf '%s\n' "$CLEAN_OUT"

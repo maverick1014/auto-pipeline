@@ -32,7 +32,7 @@
 # (no hook JSON on stdin) the start part is followed by the rules block.
 
 set -u
-. "$(dirname "$0")/agent-roots.sh"
+case "$0" in */*) _as_dir=${0%/*};; *) _as_dir=.;; esac; . "${_as_dir:-/}/agent-roots.sh"
 
 # ---- quiz answer key (salted hashes, one per question) ----
 SALT="auto-pipeline-quiz-v1"
@@ -177,8 +177,8 @@ if [ "${1:-}" = "--take-over" ] || [ "${1:-}" = "--release" ] || [ "${1:-}" = "-
   if ! repo_set_up; then
     echo "auto-pipeline: not set up in this repo, run /auto-pipeline:init to enable"; exit 1
   fi
-  mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
-  role_read; NOW=$(date '+%Y-%m-%d %H:%M'); REPO=$(basename "$PROJECT_ROOT")
+  [ -d "$PROJECT_GITDIR" ] || mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
+  role_read; NOW=$(date '+%Y-%m-%d %H:%M'); _ap_base "$PROJECT_ROOT"; REPO=$_AP_BASE
   if [ "$1" = "--take-over" ]; then
     if [ "$role" = spawned ]; then
       echo "REFUSED: $AGENT_ROLE is a spawned agent, never the main manager. Only a human-direct session takes over."; exit 1
@@ -263,7 +263,9 @@ quiz_set() {
   local reads q f g take
   case $QROLE in main) reads=$MAIN_READS;; task) reads=$TASK_READS;; second) reads=$SECOND_READS;; *) reads="";; esac
   QSET=""; QN=0
-  for q in $(seq 1 $N); do
+  q=0
+  while [ $q -lt $N ]; do
+    q=$((q+1))
     take=0
     if [ "$QROLE" = all ]; then take=1; else
       for f in ${QFILES[$q]}; do
@@ -532,6 +534,17 @@ if [ "${1:-}" = "--quiz" ]; then
   exit 0
 fi
 
+# hash_all <string>...: the first 16 hex digits of each string's sha-256, one per line, in ONE process
+# (python3 hashlib). Fails (status 1, nothing trusted) when python3 is missing or answers short.
+hash_all() {
+  local out
+  [ $# -gt 0 ] || return 0
+  out=$(printf '%s\n' "$@" | python3 -c 'import sys, hashlib
+for line in sys.stdin.read().split("\n")[:-1]:
+    print(hashlib.sha256(line.encode()).hexdigest()[:16])' 2>/dev/null) || return 1
+  printf '%s\n' "$out"
+}
+
 # ---- grade: only the role's questions; a wrong one names the file(s) to re-read ----
 if [ "${1:-}" = "--answer" ]; then
   ANSWER="${2:-}"
@@ -546,15 +559,38 @@ if [ "${1:-}" = "--answer" ]; then
     echo "QUIZ REFUSED: this session is $rn ($QN questions); --answer grades your own role only, --role is for --quiz"
     exit 2
   fi
-  ok=0; wrong=""
+  # per question: the first answer token "<q><a-d>" (any case); then ONE hash pass for all the letters
+  ok=0; wrong=""; ANS=(); hin=(); HL=()
+  set -f
   for q in $QSET; do
-    tok=$(printf '%s\n' $ANSWER | grep -i "^${q}[a-d]$" | head -1)
-    l=$(printf '%s' "${tok#$q}" | tr a-d A-D)
-    if [ -n "$l" ] && [ "$(h "$SALT:$q:$l")" = "${KEY[$q]}" ]; then ok=$((ok+1)); else wrong="$wrong$q "; fi
+    tok=""
+    for t in $ANSWER; do
+      case "$t" in "$q"[aAbBcCdD]) tok=$t; break;; esac
+    done
+    l=${tok#"$q"}
+    case "$l" in a) l=A;; b) l=B;; c) l=C;; d) l=D;; esac
+    ANS[$q]=$l
+    [ -z "$l" ] || hin[${#hin[@]}]="$SALT:$q:$l"
+  done
+  set +f
+  if [ ${#hin[@]} -gt 0 ]; then
+    hout=$(hash_all "${hin[@]}") || hout=""
+    while IFS= read -r l; do HL[${#HL[@]}]=$l; done <<<"$hout"
+    if [ ${#HL[@]} -ne ${#hin[@]} ]; then   # no python3, or a short answer: one hash start each, as before
+      HL=(); for l in "${hin[@]}"; do HL[${#HL[@]}]=$(h "$l"); done
+    fi
+  fi
+  hi=0
+  for q in $QSET; do
+    l=${ANS[$q]}
+    if [ -n "$l" ]; then
+      hv=${HL[$hi]}; hi=$((hi+1))
+      if [ "$hv" = "${KEY[$q]}" ]; then ok=$((ok+1)); else wrong="$wrong$q "; fi
+    else wrong="$wrong$q "; fi
   done
   if [ $ok -eq $QN ]; then
     if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
-      ( roots_read && mkdir -p "$PROJECT_GITDIR" && \
+      ( roots_read && { [ -d "$PROJECT_GITDIR" ] || mkdir -p "$PROJECT_GITDIR"; } && \
         : > "$PROJECT_GITDIR/agent_quiz_$CLAUDE_CODE_SESSION_ID" ) 2>/dev/null || true
     fi
     echo "QUIZ RESULT: $ok/$QN PASS"; echo "You may start work."; exit 0
@@ -585,11 +621,17 @@ fi
 # print_output_part: "=== rules/output.md ===" and rules/output.md from its line
 # "E1. Shape" to the end. Nothing when there is no such file or line. Never fails.
 print_output_part() {
-  local f="$PLUGIN_ROOT/rules/output.md"
+  local f="$PLUGIN_ROOT/rules/output.md" line body="" p=0
   [ -f "$f" ] || return 0
-  grep -q '^E1\. Shape' "$f" 2>/dev/null || return 0
+  # from the first line that starts with "E1. Shape" to the end (a plain read: no grep, no awk)
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ "$p" = 1 ] || case "$line" in "E1. Shape"*) p=1;; esac
+    [ "$p" = 0 ] || body="$body$line
+"
+  done < "$f" 2>/dev/null
+  [ "$p" = 1 ] || return 0
   echo "=== rules/output.md ==="
-  awk '!p && index($0, "E1. Shape") == 1 { p = 1 } p' "$f" 2>/dev/null
+  printf '%s' "$body"
   return 0
 }
 
@@ -608,11 +650,11 @@ print_rules_block() {
   if by_hand && [ -n "$qsid" ] && [ -f "$PROJECT_GITDIR/agent_quiz_$qsid" ]; then
     read_line="READ NOW: the quiz already passed in this session; a worker, deputy or reviewer reads nothing at start: its brief and its agent file name what to read"
   elif [ -n "${AGENT_ROLE:-}" ]; then
-    read_line="READ NOW (task manager): $(printf '%s' "$TASK_READS" | sed 's/ /, /g')"
+    read_line="READ NOW (task manager): ${TASK_READS// /, }"
   else
     case $role in
-      main|takeover) read_line="READ NOW (main manager): $(printf '%s' "$MAIN_READS" | sed 's/ /, /g')";;
-      *) read_line="READ NOW (human-direct session): rules/roles.md, then $(printf '%s' "$TASK_READS" | sed 's/ /, /g')";;
+      main|takeover) read_line="READ NOW (main manager): ${MAIN_READS// /, }";;
+      *) read_line="READ NOW (human-direct session): rules/roles.md, then ${TASK_READS// /, }";;
     esac
   fi
   printf '%s\n' "$read_line"
@@ -666,7 +708,7 @@ auto-pipeline: run /auto-pipeline:init once to see the permission block and the 
   fi
 fi
 
-mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
+[ -d "$PROJECT_GITDIR" ] || mkdir -p "$PROJECT_GITDIR" 2>/dev/null || true
 # a setting as a bare value ("4" from "4 (from default)"); the default when the read fails
 setting_value() {
   local v
@@ -749,7 +791,7 @@ fi
 
 # ---- role: one main manager per repo (W10) ----
 role_read; NOW=$(date '+%Y-%m-%d %H:%M')
-REPO=$(basename "$PROJECT_ROOT")
+_ap_base "$PROJECT_ROOT"; REPO=$_AP_BASE
 
 # ---- --rules: the rules block, nothing else (the second SessionStart entry) ----
 if [ "$RULES_MODE" = yes ]; then
@@ -781,6 +823,17 @@ announce_human_direct() {
   keep_worktree_copy
 }
 
+# lock_first_field: the first space-separated field of the lock file's line; "?" when it cannot be read
+lock_first_field() {
+  local line=""
+  if [ -f "$LOCK" ] && [ -r "$LOCK" ]; then
+    IFS= read -r line < "$LOCK" || true
+    printf '%s' "${line%% *}"
+  else
+    printf '?'
+  fi
+}
+
 print_role_and_project() {
   case $role in
     spawned)
@@ -789,7 +842,7 @@ print_role_and_project() {
       else
         report_how="Report to it with SendMessage."
       fi
-      echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: \"$REPO Manager\" (not listed by that name: the \"$REPO-<xx>\" row; pid $(cut -d' ' -f1 "$LOCK" 2>/dev/null || echo ?)). $report_how";;
+      echo "ROLE: $AGENT_ROLE (spawned by an agent, not human-direct). Main manager: \"$REPO Manager\" (not listed by that name: the \"$REPO-<xx>\" row; pid $(lock_first_field)). $report_how";;
     main)     lock_write "$NOW"; echo "ROLE: main manager (lock: pid $ME). Address: /rename $REPO Manager or claude --name";;
     takeover) lock_write "$NOW"; echo "ROLE: main manager. Previous main manager (pid $lpid, since $lsince) is dead. Run recovery (S7). Address: /rename $REPO Manager or claude --name";;
     closed)   closed_lines "ROLE: closed.";;
@@ -808,19 +861,27 @@ print_role_and_project() {
 }
 
 # ---- small helpers for the pointer-shaped, byte-budgeted output ----
+# the lines with at least one character: counted in plain bash up to 600 lines, a longer file by grep (one start)
 count_lines() {
+  local n=0 c=0 line
   if [ -f "$1" ]; then
-    n=$(grep -c . "$1" 2>/dev/null)
+    while IFS= read -r line || [ -n "$line" ]; do
+      [ -z "$line" ] || n=$((n+1))
+      c=$((c+1))
+      [ "$c" -le 600 ] || { n=$(grep -c . "$1" 2>/dev/null); break; }
+    done 2>/dev/null < "$1"
     printf '%s' "${n:-0}"
   else
     printf '%s' 0
   fi
 }
 
-# byte length of $1, plus a trailing newline (what `printf '%s\n' "$1"` costs)
-line_bytes() { printf '%s\n' "$1" | wc -c | tr -d ' '; }
+# byte length of $1, plus a trailing newline (what `printf '%s\n' "$1"` costs): ${#1} in the C locale counts bytes
+line_bytes() { local LC_ALL=C; printf '%s' $(( ${#1} + 1 )); }
 # byte length of $1 exactly as given (no newline added)
-text_bytes() { printf '%s' "$1" | wc -c | tr -d ' '; }
+text_bytes() { local LC_ALL=C; printf '%s' "${#1}"; }
+# bytes_sum <text>...: SUMB = the total byte length of the arguments, as given (no start, no fork)
+bytes_sum() { local LC_ALL=C _x; SUMB=0; for _x in "$@"; do SUMB=$((SUMB + ${#_x})); done; }
 
 # conf_int <key> <default>: the whole number of the setting or constant <key>, else <default>.
 conf_int() {
@@ -885,6 +946,10 @@ print_compact_lines() {
 mode_match_line() {
   local want lang
   [ -n "${SESSION_MODE:-}" ] || return 0
+  want=$(batch_perm) || return 0
+  want=${want%% (from *}
+  [ -n "$want" ] && [ "$want" != "$SESSION_MODE" ] || return 0
+  # the modes differ (the rare case): the settings script has the last word, as before
   want=$("$PLUGIN_ROOT/bin/agent-settings.sh" get permission_mode 2>/dev/null </dev/null) || return 0
   want=${want%% (from *}
   [ -n "$want" ] && [ "$want" != "$SESSION_MODE" ] || return 0
@@ -896,33 +961,84 @@ mode_match_line() {
   return 0
 }
 
+# ---- the start's python work, ONE process (agent_update.py start): the old-file move (migrate), the
+# settings this script reads, the PERMISSION text, the YOU line, the SETTINGS warnings, the sync lines, the
+# UPDATE notice with auto update apply and the statusline refresh (main manager, takeover, human-direct), the
+# WATCH line and the working branch name (main manager, takeover). Same order and same texts as the separate
+# calls it replaces; each part may fail alone. The sections come back as "@@AP:<name>@@" lines. ----
+BATCH=""; MIGRATE_TEXT=""
+B_PERM=""; B_YOU=""; B_WARN=""; B_SYNC=""; B_NOTICE=""; B_WATCH=""; B_WB=""; B_PROD=""; BT=""
+
+# batch_section <name>: the text of that section in BT; status 1 when it is not there
+batch_section() {
+  local m rest
+  BT=""
+  m="@@AP:$1@@"$'\n'
+  case "$BATCH" in *"$m"*) ;; *) return 1;; esac
+  rest=${BATCH#*"$m"}
+  BT=${rest%%"@@AP:"*}
+  return 0
+}
+
+# batch_perm: the Permission mode text "<mode> (from <where>)"; status 1 when it could not be read
+batch_perm() {
+  local m=$B_PERM
+  while [ "${m%$'\n'}" != "$m" ]; do m=${m%$'\n'}; done
+  [ -n "$m" ] || return 1
+  printf '%s' "$m"
+}
+
+run_start_batch() {
+  local rk flags keys line k v
+  case $role in
+    main|takeover) rk=main_manager;;
+    spawned) rk=${AGENT_ROLE:-}; rk=${rk//-/_}
+      case $rk in main_manager|fast_lane_deputy|merge_deputy|task_manager|worker) ;; *) rk=task_manager;; esac;;
+    *) rk=task_manager;;
+  esac
+  flags=""
+  if [ -z "${AGENT_ROLE:-}" ]; then
+    case $role in main) flags=nw;; takeover) flags=nwt;; second) flags=n;; esac
+  fi
+  keys="max_usage_percent,language,auto_resume,state_warn_lines"
+  BATCH=$(python3 "$PLUGIN_ROOT/bin/agent_update.py" start "$PROJECT_ROOT" "$STATE_DIR" "$PLUGIN_ROOT" "$rk" "$ME" "$flags" "$keys" 2>/dev/null </dev/null || true; printf 'X')
+  BATCH=${BATCH%X}
+  batch_section migrate && MIGRATE_TEXT=$BT
+  if batch_section set; then
+    while IFS= read -r line; do
+      case "$line" in *=*) ;; *) continue;; esac
+      k=${line%%=*}; v=${line#*=}
+      printf -v "_AP_S_$k" '%s' "$v"
+      case "${_AP_SET_KEYS:- }" in *" $k "*) ;; *) _AP_SET_KEYS="${_AP_SET_KEYS:- }$k ";; esac
+    done <<<"$BT"
+  fi
+  batch_section perm && B_PERM=$BT
+  batch_section you && B_YOU=$BT
+  batch_section warn && B_WARN=$BT
+  batch_section sync && B_SYNC=$BT
+  batch_section notice && B_NOTICE=$BT
+  batch_section watch && B_WATCH=$BT
+  batch_section wb && B_WB=$BT
+  batch_section prod && B_PROD=$BT
+  return 0
+}
+
 # PERMISSION, YOU, SETTINGS warnings, the migrate and sync lines (every role), then
 # (main manager / human-direct only) UPDATE, auto update apply and the statusline
 # refresh. Every call may fail: the start never breaks, never hangs.
 print_mode_lines() {
-  local pyp="$PLUGIN_ROOT/bin" m rk upd au
-  m=$("$PLUGIN_ROOT/bin/agent-settings.sh" get permission_mode 2>/dev/null </dev/null) || m=""
+  local m upd
+  m=$(batch_perm) || m=""
   [ -n "$m" ] || m="bypassPermissions (from default)"
   echo "PERMISSION: $m"
   mode_match_line
-  case $role in
-    main|takeover) rk=main_manager;;
-    spawned) rk=$(printf '%s' "${AGENT_ROLE:-}" | tr - _)
-      case $rk in main_manager|fast_lane_deputy|merge_deputy|task_manager|worker) ;; *) rk=task_manager;; esac;;
-    *) rk=task_manager;;
-  esac
-  python3 "$pyp/agent_conf.py" you "$rk" "$ME" 2>/dev/null </dev/null || true
-  PYTHONPATH="$pyp" python3 -c 'import sys, agent_conf as a
-for w in a.warnings() + a.shared_lines(sys.argv[1]): print(w)' "$PROJECT_ROOT" 2>/dev/null </dev/null || true
+  printf '%s' "$B_YOU"
+  printf '%s' "$B_WARN"
   printf '%s' "$MIGRATE_TEXT"
-  python3 "$pyp/agent_update.py" sync "$STATE_DIR" "$PROJECT_ROOT" 2>/dev/null </dev/null || true
+  printf '%s' "$B_SYNC"
   if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ] || [ "$role" = second ]; }; then
-    upd=$(python3 "$pyp/agent_update.py" notice "$PLUGIN_ROOT" 2>/dev/null </dev/null) || upd=""
+    upd=$(printf '%s' "$B_NOTICE")
     [ -n "$upd" ] && echo "$upd"
-    au=$(setting_value auto_update on)
-    case $au in off) au=off;; *) au=on;; esac
-    python3 "$pyp/agent_update.py" apply "$au" >/dev/null 2>&1 </dev/null || true
-    "$PLUGIN_ROOT/bin/agent-settings.sh" statusline refresh >/dev/null 2>&1 </dev/null || true
   fi
   return 0
 }
@@ -959,12 +1075,12 @@ print_normal_lines() {
   resources_ok "$mup" || echo "Do not start agents or heavy processes. Run $PLUGIN_ROOT/bin/agent-resources.sh relief, then re-run this script."
   echo "LANGUAGE: ${lang}. Talk to the human in this language. Code, file names and rule text stay English."
   print_mode_lines
-  local name cn
+  local name cn wline
   for name in agent_todo.txt agent_completed.txt agent_ideas.txt agent_worktree.txt; do
     cn=$(count_lines "$PROJECT_ROOT/$name")
     echo "$name: $cn lines"
     if [ "$name" = agent_worktree.txt ] && [ "$cn" -gt 0 ]; then
-      sed 's/^/  /' "$PROJECT_ROOT/$name"
+      while IFS= read -r wline || [ -n "$wline" ]; do printf '  %s\n' "$wline"; done < "$PROJECT_ROOT/$name"
     fi
   done
   print_not_moved_line
@@ -978,7 +1094,8 @@ print_normal_lines() {
 # gets "  (truncated, read the file)" as the last line of the block.
 print_state_block() {
   local budget f sn header header_bytes marker marker_bytes remaining
-  local total_phys idx line indented ibytes cut_len truncated
+  local idx line indented ibytes cut_len truncated
+  local LC_ALL=C   # ${#v} and ${v:0:n} count bytes, as the wc -c and head -c they stand for
   budget=$1
   [ "$budget" -lt 0 ] && budget=0
   f="$STATE_DIR/agent_state.txt"
@@ -988,14 +1105,14 @@ print_state_block() {
 
   header="agent_state.txt: $sn lines"
   marker="  (truncated, read the file)"
-  header_bytes=$(line_bytes "$header")
-  marker_bytes=$(line_bytes "$marker")
+  header_bytes=$(( ${#header} + 1 ))
+  marker_bytes=$(( ${#marker} + 1 ))
 
   # Budget too small for the header plus the marker: one short pointer line
   # if it fits, else the bare header if it fits, else nothing. The CAP holds.
   if [ "$budget" -lt $(( header_bytes + marker_bytes )) ]; then
     local ptr="$header, read it now (S8)"
-    if [ "$(line_bytes "$ptr")" -le "$budget" ]; then printf '%s\n' "$ptr"
+    if [ $(( ${#ptr} + 1 )) -le "$budget" ]; then printf '%s\n' "$ptr"
     elif [ "$header_bytes" -le "$budget" ]; then printf '%s\n' "$header"
     fi
     return 0
@@ -1006,9 +1123,6 @@ print_state_block() {
   remaining=$(( budget - header_bytes - marker_bytes ))
   [ "$remaining" -lt 0 ] && remaining=0
 
-  total_phys=$(awk 'END{print NR}' "$f")
-  [ -z "$total_phys" ] && total_phys=0
-
   idx=0
   truncated=0
   while IFS= read -r line || [ -n "$line" ]; do
@@ -1018,24 +1132,19 @@ print_state_block() {
       break
     fi
     indented="  $line"
-    ibytes=$(line_bytes "$indented")
+    ibytes=$(( ${#indented} + 1 ))
     if [ "$ibytes" -le "$remaining" ]; then
       printf '%s\n' "$indented"
       remaining=$(( remaining - ibytes ))
     else
       cut_len=$(( remaining - 1 ))
       if [ "$cut_len" -gt 0 ]; then
-        printf '%s' "$indented" | head -c "$cut_len"
-        printf '\n'
+        printf '%s\n' "${indented:0:$cut_len}"
       fi
       truncated=1
       break
     fi
   done < "$f"
-
-  if [ "$truncated" -eq 0 ] && [ "$idx" -lt "$total_phys" ]; then
-    truncated=1
-  fi
 
   [ "$truncated" -eq 1 ] && printf '%s\n' "$marker"
   return 0
@@ -1045,8 +1154,25 @@ ROLE_TEXT=$(print_role_and_project; printf 'X'); ROLE_TEXT=${ROLE_TEXT%X}
 
 # check-blocks section 15: the main manager starts the nightly run in the background when it is due and no watch
 # is alive (the watch's housekeep pass does it otherwise). Never waits; no full_cmd (plain, cloud): --due says no.
-if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-nightly.sh" ]; then
-  if ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_watchfile as w; sys.exit(0 if w.live(w.read_status(sys.argv[2])) else 1)' "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null; then
+# nightly_maybe_due: false only when --due is certain to say no without being asked (no python3 start): no full_cmd
+# in agent_repo.conf of the main repo (the text "full_cmd" is not in the file, or there is no file) and no
+# AGENT_NIGHTLY_CMD. Anything else (an unreadable file, ...) asks agent-nightly.sh --due as before.
+nightly_maybe_due() {
+  local body
+  [ -z "${AGENT_NIGHTLY_CMD:-}" ] || return 0
+  [ -f "$PROJECT_ROOT/agent_repo.conf" ] || return 1
+  body=$(<"$PROJECT_ROOT/agent_repo.conf") 2>/dev/null || return 0
+  case "$body" in *full_cmd*) return 0;; esac
+  return 1
+}
+# watch_live: the watch status file says a live watch runs (python3, agent_watchfile.live). With a .git directory and
+# no agent_watch.json in it the status cannot be read, so nothing is live: no python3 start.
+watch_live() {
+  if [ -d "$PROJECT_ROOT/.git" ] && [ ! -e "$PROJECT_ROOT/.git/agent_watch.json" ]; then return 1; fi
+  python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_watchfile as w; sys.exit(0 if w.live(w.read_status(sys.argv[2])) else 1)' "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null
+}
+if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; } && [ -x "$PLUGIN_ROOT/bin/agent-nightly.sh" ] && nightly_maybe_due; then
+  if ! watch_live; then
     if ( cd "$PROJECT_ROOT" 2>/dev/null && "$PLUGIN_ROOT/bin/agent-nightly.sh" --due ) >/dev/null 2>&1 </dev/null; then
       # nightly-on-machine: a repo whose full run goes to the connected machine (full_run_where, "Full run machine"):
       # --start itself places it there (or says in one line why not); no local room check, no "a machine runs it" line
@@ -1099,7 +1225,7 @@ if [ "$SRC" = compact ] && [ -n "$SID" ]; then
   COMPACT_TEXT=$(print_compact_lines; printf 'X'); COMPACT_TEXT=${COMPACT_TEXT%X}
   RULES_LINE="RULES: the core (PRINCIPLES.md) and your reading list come in the rules block; no rules block: run $PLUGIN_ROOT/bin/agent-start.sh --rules (S8)."
   WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
-  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$COMPACT_TEXT") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") ))
+  bytes_sum "$SETUP_TEXT" "$ROLE_TEXT" "$COMPACT_TEXT" "$WARN_TEXT" "$RULES_LINE"; fixed=$(( SUMB + 1 ))
   budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
   printf '%s' "$ROLE_TEXT"
   printf '%s' "$COMPACT_TEXT"
@@ -1118,7 +1244,7 @@ if [ "$SRC" = clear ] && [ -n "$SID" ]; then
   RULES_LINE="RULES: the core (PRINCIPLES.md) and your reading list come in the rules block; no rules block: run $PLUGIN_ROOT/bin/agent-start.sh --rules (S8)."
   rm -f "$PROJECT_GITDIR/agent_compact_$SID"
   WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
-  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(line_bytes "$CLEARED_LINE") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") ))
+  bytes_sum "$SETUP_TEXT" "$ROLE_TEXT" "$CLEARED_LINE" "$WARN_TEXT" "$RULES_LINE"; fixed=$(( SUMB + 2 ))
   budget=$(( CAP - fixed )); [ "$budget" -lt 0 ] && budget=0
   printf '%s' "$ROLE_TEXT"
   printf '%s\n' "$CLEARED_LINE"
@@ -1156,15 +1282,15 @@ if [ "$role" = main ] || [ "$role" = takeover ]; then
   CLEAN_TEXT=$("$PLUGIN_ROOT/bin/agent-cleanup.sh" --apply --short 2>/dev/null </dev/null || true; printf 'X'); CLEAN_TEXT=${CLEAN_TEXT%X}
 fi
 
-# the old-file move runs first, so the lines below already read the moved values
-MIGRATE_TEXT=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" migrate "$PROJECT_ROOT" 2>/dev/null </dev/null || true; printf 'X'); MIGRATE_TEXT=${MIGRATE_TEXT%X}
+# the old-file move runs first (inside the batch), so the lines below already read the moved values
+run_start_batch
 NORMAL_TEXT=$(print_normal_lines; printf 'X'); NORMAL_TEXT=${NORMAL_TEXT%X}
 WARN_TEXT=$(state_warn_text; printf 'X'); WARN_TEXT=${WARN_TEXT%X}
 # F1/F2: one WATCH line for the main manager or a takeover, orca only. The line comes from the files (no orca call);
 # the runtime probe is made only when there is a line to print.
 WATCH_TEXT=""
 if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; then
-  watch_line=$(python3 "$PLUGIN_ROOT/bin/agent_watchfile.py" start-line "$PROJECT_ROOT" "$PLUGIN_ROOT" $([ "$role" = takeover ] && echo takeover) 2>/dev/null </dev/null) || watch_line=""
+  watch_line=$(printf '%s' "$B_WATCH")
   if [ -n "$watch_line" ]; then
     watch_kind=$(. "$PLUGIN_ROOT/bin/agent-runtime.sh" && runtime_kind 2>/dev/null </dev/null) || watch_kind=""
     [ "$watch_kind" = orca ] && WATCH_TEXT="$watch_line
@@ -1175,7 +1301,8 @@ if [ -n "${NIGHTLY_LINE:-}" ]; then WATCH_TEXT="${WATCH_TEXT}${NIGHTLY_LINE}
 "; fi
 # C44: the working branch: made (and pushed) here, the checkout is never switched here. Main manager or takeover only.
 if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }; then
-  wb_name=$(python3 "$PLUGIN_ROOT/bin/agent_conf.py" working-branch "$PROJECT_ROOT" 2>/dev/null </dev/null) || wb_name=""
+  wb_name=$(printf '%s' "$B_WB")
+  wb_have=no
   if [ -n "$wb_name" ]; then
     wb_made=""
     wb_push() {
@@ -1189,20 +1316,31 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
       WATCH_TEXT="${WATCH_TEXT}working branch: not pushed: $why
 "
     }
-    if ! git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1; then
+    if git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1; then
+      wb_have=yes
+    else
       if git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/remotes/origin/$wb_name" >/dev/null 2>&1; then
         # F6: the remote has it: track it, never make it from production
-        wb_err=$(git -C "$PROJECT_ROOT" branch --track "$wb_name" "origin/$wb_name" 2>&1 >/dev/null </dev/null) \
-          && WATCH_TEXT="${WATCH_TEXT}working branch: tracking origin/$wb_name
-" \
-          || WATCH_TEXT="${WATCH_TEXT}working branch: not created: $(printf '%s' "$wb_err" | head -n 1)
+        if wb_err=$(git -C "$PROJECT_ROOT" branch --track "$wb_name" "origin/$wb_name" 2>&1 >/dev/null </dev/null); then
+          wb_have=yes
+          WATCH_TEXT="${WATCH_TEXT}working branch: tracking origin/$wb_name
 "
+        else
+          WATCH_TEXT="${WATCH_TEXT}working branch: not created: $(printf '%s' "$wb_err" | head -n 1)
+"
+        fi
       else
-        wb_prod=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import agent_conf; print(agent_conf.production_branch(sys.argv[2]))' \
-                  "$PLUGIN_ROOT/bin" "$PROJECT_ROOT" 2>/dev/null </dev/null) || wb_prod=""
+        # the production branch and whether refs/heads/<it> exists come from the batch (git was asked once)
+        wb_prod=${B_PROD%%$'\n'*}; wb_local=${B_PROD#*$'\n'}; wb_local=${wb_local%%$'\n'*}
+        [ -n "$B_PROD" ] || wb_local="?"
         wb_base=$wb_prod
-        git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_base" >/dev/null 2>&1 || wb_base="origin/$wb_prod"
+        case "$wb_local" in
+          yes) ;;
+          no) wb_base="origin/$wb_prod";;
+          *) git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_base" >/dev/null 2>&1 || wb_base="origin/$wb_prod";;
+        esac
         wb_err=$(git -C "$PROJECT_ROOT" branch "$wb_name" "$wb_base" 2>&1 >/dev/null </dev/null) && wb_rc=0 || wb_rc=$?
+        [ "$wb_rc" -ne 0 ] || wb_have=yes
         if [ -n "$wb_prod" ] && [ "$wb_rc" -eq 0 ]; then
           wb_made=$wb_prod
           if git -C "$PROJECT_ROOT" remote get-url origin >/dev/null 2>&1; then wb_push; fi
@@ -1212,7 +1350,7 @@ if [ -z "${AGENT_ROLE:-}" ] && { [ "$role" = main ] || [ "$role" = takeover ]; }
         fi
       fi
     fi
-    if git -C "$PROJECT_ROOT" rev-parse --verify -q "refs/heads/$wb_name" >/dev/null 2>&1 \
+    if [ "$wb_have" = yes ] \
        && [ "$(git -C "$PROJECT_ROOT" symbolic-ref --short -q HEAD 2>/dev/null)" != "$wb_name" ]; then
       wb_tail="switch the main checkout to $wb_name at a quiet point (no uncommitted work, no merge running): git switch $wb_name"
       if [ -n "$wb_made" ]; then WATCH_TEXT="${WATCH_TEXT}WORKING BRANCH: created $wb_name from $wb_made; $wb_tail
@@ -1238,9 +1376,10 @@ if [ "$SRC" = startup ] && { [ "$role" = main ] || [ "$role" = takeover ]; } \
    && [ "$(setting_value auto_resume on)" = on ]; then
   resume_out=$(AGENT_CLEANUP_DONE=1 AGENT_WATCH_LINE_DONE=1 "$PLUGIN_ROOT/bin/agent-resume.sh" 2>&1) || true
   header="=== auto resume ==="
-  other_fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$WATCH_TEXT") \
-                 + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
-  candidate_bytes=$(( $(line_bytes "$header") + $(text_bytes "$resume_out") + 1 ))
+  bytes_sum "$SETUP_TEXT" "$ROLE_TEXT" "$NORMAL_TEXT" "$WATCH_TEXT" "$CLEAN_TEXT" "$WARN_TEXT" "$RULES_LINE" "$QUIZ_LINE"
+  other_fixed=$(( SUMB + 2 ))
+  bytes_sum "$header" "$resume_out"
+  candidate_bytes=$(( SUMB + 2 ))
   if [ $(( other_fixed + candidate_bytes )) -gt "$CAP" ]; then
     resume_out=$(printf '%s\n' "$resume_out" | head -n 6)
     resume_out="${resume_out}
@@ -1252,8 +1391,8 @@ $resume_out
 fi
 
 calc_fixed() {
-  fixed=$(( $(text_bytes "$SETUP_TEXT") + $(text_bytes "$ROLE_TEXT") + $(text_bytes "$NORMAL_TEXT") + $(text_bytes "$WATCH_TEXT") \
-          + $(text_bytes "$CLEAN_TEXT") + $(text_bytes "$WARN_TEXT") + $(text_bytes "$RESUME_TEXT") + $(line_bytes "$RULES_LINE") + $(line_bytes "$QUIZ_LINE") ))
+  bytes_sum "$SETUP_TEXT" "$ROLE_TEXT" "$NORMAL_TEXT" "$WATCH_TEXT" "$CLEAN_TEXT" "$WARN_TEXT" "$RESUME_TEXT" "$RULES_LINE" "$QUIZ_LINE"
+  fixed=$(( SUMB + 2 ))
 }
 calc_fixed
 
@@ -1263,13 +1402,13 @@ calc_fixed
 ptr_bytes=0
 if [ -f "$STATE_DIR/agent_state.txt" ]; then
   ptr_n=$(count_lines "$STATE_DIR/agent_state.txt")
-  [ "${ptr_n:-0}" -gt 0 ] && ptr_bytes=$(line_bytes "agent_state.txt: $ptr_n lines, read it now (S8)")
+  [ "${ptr_n:-0}" -gt 0 ] && { bytes_sum "agent_state.txt: $ptr_n lines, read it now (S8)"; ptr_bytes=$(( SUMB + 1 )); }
 fi
 
 # 0. the WORKING BRANCH line (about 150 bytes) gives way to a short form when it would leave the state block
 # less than its header plus the truncated marker.
 if [ -n "${wb_name:-}" ] && [ -n "$ptr_bytes" ] && [ "$ptr_bytes" -gt 0 ] \
-   && [ $(( CAP - fixed )) -lt $(( ptr_bytes + $(line_bytes "  (truncated, read the file)") )) ] \
+   && [ $(( CAP - fixed )) -lt $(( ptr_bytes + 29 )) ] \
    && printf '%s' "$WATCH_TEXT" | grep -q '^WORKING BRANCH: '; then
   WATCH_TEXT=$(printf '%s' "$WATCH_TEXT" | sed -E 's/^WORKING BRANCH: .*$/WORKING BRANCH: git switch '"$wb_name"' at a quiet point/'; printf 'X'); WATCH_TEXT=${WATCH_TEXT%X}
   calc_fixed
