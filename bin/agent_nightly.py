@@ -11,6 +11,7 @@ AGENT_FAKE_RAM_TOTAL_MB, AGENT_FAKE_CPU, AGENT_FAKE_CORES, AGENT_FAKE_HOST, AGEN
 import base64
 import datetime
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -1281,16 +1282,18 @@ def weight_key():
     return "nightly-override" if overridden() else "nightly"
 
 
-def remote_script(token, key="nightly"):
+def remote_script(token, key="nightly", cmd_b64=""):
     """The one line the connected machine runs in its worktree. Markers carry the commit it ran and the result;
     the output itself stays in a file inside the worktree, so a long run never has to be read back.
     What is closed: the token is in this text only (never an argument, never exported, the file removes itself
     first) and every echoed line of the suite's output is cleaned of control characters and of "@", so printed
     output can never form a marker. The ORCA_* variables are unset for the suite (harmless, not a guarantee).
     Out of scope (a deliberately hostile suite): the open script, the shell history, and its own pane through
-    the orca CLI, found by folder."""
+    the orca CLI, found by folder.
+    The command (base64) is inside this text: script and command arrive together or not at all. An empty
+    command exits before BEGIN, never a green run of nothing."""
     lines = [
-        'rm -f "$0" .nightly-cmd.b64; T=%s; F=$(printf %%s "$1" | base64 -d); O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)' % token,
+        'rm -f "$0"; T=%s; F=$(printf %%s \'%s\' | base64 -d); [ -n "$F" ] || exit 1; O=$PWD/.nightly-out.log; B=$(git symbolic-ref -q --short HEAD)' % (token, cmd_b64),
         "printf '@@NIGHTLY-%s %s\\n' BEGIN \"$T\"",
         'R=$(git rev-parse HEAD)',
         '[ -n "$B" ] && git checkout -q --detach HEAD && git branch -q -D "$B"',
@@ -1389,15 +1392,19 @@ def env_seconds(name, default):
         return float(default)
 
 
-def remote_lines(token, script_b64, cmd_b64):
-    """The short lines typed into the remote shell, in order: the script and the command are written into the
-    worktree in pieces (never one long line, W16), the last line decodes and runs the script."""
-    lines = ["rm -f .nightly-run.b64 .nightly-cmd.b64"]
-    for name, text in ((".nightly-run.b64", script_b64), (".nightly-cmd.b64", cmd_b64)):
-        for i in range(0, len(text), CHUNK):
-            lines.append("printf %%s %s >> %s" % (text[i:i + CHUNK], name))
-    lines.append('base64 -d < .nightly-run.b64 > .nightly-run.sh && rm -f .nightly-run.b64 && '
-                 'bash .nightly-run.sh "$(cat .nightly-cmd.b64)"')
+def remote_lines(script_b64):
+    """The short lines typed into the remote shell, in order: ONE payload (the script with its command inside) is
+    written into the worktree in pieces (never one long line, W16). The last line checks the payload whole, its
+    byte length and its sha256 (computed here), before it decodes and runs it; on a mismatch it prints nothing,
+    so no BEGIN arrives and the caller's retry path runs."""
+    lines = ["rm -f .nightly-run.b64"]
+    for i in range(0, len(script_b64), CHUNK):
+        lines.append("printf %%s %s >> .nightly-run.b64" % script_b64[i:i + CHUNK])
+    digest = hashlib.sha256(script_b64.encode("ascii")).hexdigest()
+    lines.append('[ "$(wc -c < .nightly-run.b64 | tr -d " ")" = %d ] && '
+                 '[ "$( (sha256sum || shasum -a 256) < .nightly-run.b64 2>/dev/null | cut -c1-64)" = %s ] && '
+                 'base64 -d < .nightly-run.b64 > .nightly-run.sh && rm -f .nightly-run.b64 && '
+                 'bash .nightly-run.sh' % (len(script_b64), digest))
     return lines
 
 
@@ -1463,8 +1470,8 @@ def remote_try(root, env, commit, cmd):
         token = uuid.uuid4().hex
         # only letters, digits, + / = are typed into the remote shell: no quote of any shell can break the line
         b64 = lambda text: base64.b64encode(text.encode("utf-8")).decode("ascii")
-        lines = remote_lines(token, b64(remote_script(token, weight_key())),
-                             b64(os.environ.get("AGENT_NIGHTLY_CMD") or conf_at(root, commit, "full_cmd") or cmd))
+        full = os.environ.get("AGENT_NIGHTLY_CMD") or conf_at(root, commit, "full_cmd") or cmd
+        lines = remote_lines(b64(remote_script(token, weight_key(), b64(full))))
         wait_prompt(env, handle)
         for line in lines:
             sent, why = orca_call(["terminal", "send", "--environment", env, "--terminal", handle, "--text", line,

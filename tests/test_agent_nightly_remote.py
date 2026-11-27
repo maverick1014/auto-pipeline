@@ -19,7 +19,7 @@ from test_agent_room import NetCase  # noqa: E402
 ENV = "box-one"          # a made-up environment name: no real machine name in any test
 
 STUB = r'''#!/usr/bin/env python3
-"""Fake orca for the remote full run. State: $ORCA_STUB_DIR/remote/<env>/ (down, create_fail, ran, garbage, hang)."""
+"""Fake orca for the remote full run. State: $ORCA_STUB_DIR/remote/<env>/ (down, create_fail, ran, garbage, double, cutfirst, cutall, cutshort, cutnth, notready, noprompt, begin_only)."""
 import json, os, subprocess, sys
 
 args = sys.argv[1:]
@@ -100,8 +100,6 @@ elif verb == "terminal send":
         with open(os.path.join(R, "interrupted"), "w") as fh:
             fh.write("1")
         ok({})
-    if os.path.exists(os.path.join(R, "hang")):
-        ok({})
     text = opt("--text")
     nr = os.path.join(R, "notready")
     cut = len(text) > 1000                      # the W16 trap: a long send arrives cut, only its tail
@@ -112,6 +110,15 @@ elif verb == "terminal send":
     if os.path.exists(os.path.join(R, "cutfirst")) and text.startswith("printf"):
         os.remove(os.path.join(R, "cutfirst"))
         cut = True
+    if text.startswith("rm -f"):
+        open(os.path.join(R, "nth"), "w").write("0")     # a new try: count its printf pieces again
+    if text.startswith("printf"):
+        n = int(open(os.path.join(R, "nth")).read() or "0") + 1 if os.path.exists(os.path.join(R, "nth")) else 1
+        open(os.path.join(R, "nth"), "w").write(str(n))
+        if os.path.exists(os.path.join(R, "cutshort")) and len(text) < 400:
+            cut = True                          # only the last (short) piece is lost
+        if os.path.exists(os.path.join(R, "cutnth")) and n == int(open(os.path.join(R, "cutnth")).read()):
+            cut = True                          # only this piece is lost
     if cut:
         text = text[-30:]
     ran = os.path.join(R, "ran")
@@ -419,6 +426,47 @@ class TestSendAndStart(RemoteCase):
         self.assertEqual(len(self.creates()), 1, "no retry was needed")
         verbs = self.verbs()
         self.assertGreaterEqual(verbs[:verbs.index("terminal send")].count("terminal read"), 3, verbs)
+
+    def test_a_lost_last_piece_is_never_a_green_run(self):
+        self.machine()
+        self.flag("cutshort")
+        r = self.nightly("--start", "--wait", env=self.FAST)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertIn("the remote run never started", st["failed"][0])
+        self.assertEqual(len(self.creates()), 2)
+        self.assertEqual(self.left_over(), [])
+
+    def test_a_lost_middle_piece_is_no_begin_then_retry_then_red(self):
+        self.machine()
+        self.flag("cutnth", "2")
+        r = self.nightly("--start", "--wait", env=self.FAST)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        st = self.status_file()
+        self.assertEqual(st["result"], "red", st)
+        self.assertIn("the remote run never started", st["failed"][0])
+        self.assertEqual(len(self.creates()), 2)
+        self.assertEqual(self.left_over(), [])
+
+    def test_an_empty_command_exits_before_begin(self):
+        import agent_nightly
+        d = os.path.join(self.repo.base, "emptycmd")
+        os.makedirs(d)
+        subprocess.run(["git", "init", "-q", d], check=True)
+        with open(os.path.join(d, "s.sh"), "w") as fh:
+            fh.write(agent_nightly.remote_script("a" * 32, "nightly", ""))
+        res = subprocess.run(["bash", "s.sh"], cwd=d, capture_output=True, text=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertNotIn("NIGHTLY", res.stdout)
+
+    def test_the_last_line_checks_length_and_hash_of_the_whole_payload(self):
+        import agent_nightly
+        import hashlib
+        lines = agent_nightly.remote_lines("QUJD" * 300)
+        self.assertIn(str(len("QUJD" * 300)), lines[-1])
+        self.assertIn(hashlib.sha256(("QUJD" * 300).encode()).hexdigest(), lines[-1])
+        self.assertLess(max(len(l) for l in lines), 700)
 
     def test_the_time_limit_is_twice_the_weight_at_least_20_minutes(self):
         import agent_nightly
