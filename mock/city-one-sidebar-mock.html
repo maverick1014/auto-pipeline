@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>city-one-sidebar · 原型 v2</title>
+<link rel="icon" href="data:,">
+<style>
+/* Prototype v2 for requirements/city-one-sidebar.md (owner 2026-11-27; v1 had two blocks, the owner: "the agent list
+   direct inside the lift list design will do. no need split 2"). The tokens and the .rail / .lift / .lb / .rrow rules
+   below are copied from bin/agent-city.html. v2: ONE list on the left, the lift's floor list (its look kept); a floor
+   is a repo; a click on a floor goes there and opens that repo's team tree under its row. Views: desktop 1440 and
+   phone 390, plus "today" for comparison. Demo data only. */
+:root{
+  --paper:#ECF1FF; --panel:#FFFFFF; --panel-2:#F3F5FE; --ink:#2A2B45; --ink-2:#585D82; --ink-3:#8D91B3;
+  --line:#DCE2F6; --sky:#CFE6FF; --berry:#FF7593; --berry-deep:#D9506E; --butter:#FFD36E; --mint:#6FD4A8;
+  --focus:#4D7CFE; --guide:#B9C1E2;
+  --build-bg:#E1ECFF; --build-ink:#3160B5; --ask-bg:#FFE1E8; --ask-ink:#C2345A;
+  --rest-bg:#DAF5E8; --rest-ink:#1E8657; --walk-bg:#EDEFF7; --walk-ink:#5F6488;
+  --gov-bg:#FFF0C7; --gov-ink:#8A6000; --bgrun-bg:#ECE4FF; --bgrun-ink:#5A3EC8;
+  --round:ui-rounded,"SF Pro Rounded","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --display:"Fredoka",ui-rounded,"SF Pro Rounded","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:#C9D2EE;color:var(--ink);font:14px/1.55 var(--round)}
+
+/* ---- the mock's own frame (not part of the design) ---- */
+.mk{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 16px;background:var(--ink);color:var(--paper)}
+.mk h1{margin:0;font:700 16px/1.2 var(--display)}
+.mk .views{display:flex;gap:6px;flex-wrap:wrap}
+.mk button{all:unset;cursor:pointer;padding:6px 12px;border-radius:999px;border:1.5px solid rgba(255,255,255,.3);font:600 12.5px/1 var(--round)}
+.mk button[aria-pressed="true"]{background:var(--butter);color:#4A3500;border-color:var(--butter)}
+.mk button:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.mk .hint{font-size:12px;opacity:.8}
+.notes{max-width:1100px;margin:14px auto 0;padding:0 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}
+.notes section{background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:10px 14px;font-size:13px}
+.notes h2{margin:0 0 4px;font:700 13.5px/1.3 var(--round)}
+.notes ol,.notes ul{margin:0;padding-left:18px}
+.viewport{padding:16px;display:flex;justify-content:center}
+.devwrap{position:relative}
+.devlabel{font:600 12px/1 var(--mono);color:var(--ink-2);margin:0 0 6px}
+.device{background:var(--paper);border:2px solid var(--ink);border-radius:14px;overflow:hidden;box-shadow:0 8px 0 rgba(42,43,69,.2)}
+.device.desk{width:1440px;height:860px}
+.device.phone{width:390px;height:800px;border-radius:30px;border-width:8px}
+
+/* ---- the page itself (bin/agent-city.html rules, scoped to .device) ---- */
+.app{height:100%;padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.bar{display:flex;flex-wrap:nowrap;align-items:center;gap:10px 14px}
+.bar>*{flex:none}
+.sign{display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:18px;padding:5px 16px 5px 8px;box-shadow:0 3px 0 var(--ink)}
+.sign-icon{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:var(--butter);font:700 15px/1 var(--display)}
+.sign-name{font:700 24px/1 var(--display)}
+.sign-sub{display:block;font:600 10.5px/1.2 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.stats{display:flex;flex:1 1 auto;min-width:0;justify-content:flex-end;gap:6px;margin-left:auto;overflow-x:auto;scrollbar-width:none}
+.stat{flex:none;display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--panel);font-size:13px;color:var(--ink-2)}
+.stat b{color:var(--ink);font:700 14px/1 var(--display)}
+.stat i{width:9px;height:9px;border-radius:50%;display:block}
+.stat.wait{border-color:var(--berry);background:var(--ask-bg);color:var(--ask-ink)}
+.stat.wait b{color:var(--ask-ink)}
+.btn{font:600 13px/1 var(--round);border:1.5px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:12px;padding:0 12px;min-height:36px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.stage{position:relative;overflow:hidden;flex:1 1 0;min-height:0;--rail-w:300px;--msg-w:380px;--lift-w:168px;background:var(--sky);border-radius:20px;border:2px solid var(--ink)}
+.cam{position:absolute;right:12px;bottom:12px;z-index:4;display:flex;gap:6px;transition:right .2s}
+.cam .btn{width:38px;height:38px;padding:0;justify-content:center;background:var(--panel);font-size:18px}
+.stage.win-open .cam{right:calc(var(--msg-w) + 24px)}
+
+.you{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--berry);color:#fff;font:700 11px/1 var(--round)}
+.fold{all:unset;cursor:pointer;flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:8px;color:var(--ink-2);font:700 14px/1 var(--round)}
+.fold:hover{background:var(--panel-2);color:var(--ink)}
+.fold:focus-visible{outline:2px solid var(--focus)}
+.rc{width:10px;height:10px;border-radius:50%;background:var(--rc);flex:none;display:inline-block}
+.rail{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px);display:flex;flex-direction:column;background:var(--panel);border:2px solid var(--ink);border-radius:16px;box-shadow:0 4px 0 rgba(42,43,69,.18);overflow:hidden}
+.rail-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-bottom:1.5px solid var(--line);font-weight:700;font-size:13px}
+.rail-head .n{font:600 12px/1 var(--mono);color:var(--ink-3)}
+.rail-head .fold{margin-left:auto}
+.rail-list{overflow:auto;padding:4px 4px 8px;min-height:0}
+.grp-row{display:flex;align-items:center;gap:2px}
+.grp-h{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:6px;padding:3px 6px 3px;font:700 11.5px/1.2 var(--mono);color:var(--ink-2)}
+.grp-h .n{margin-left:auto;color:var(--ink-3);font-weight:600}
+.rail-grp{border-left:4px solid var(--rc);margin:4px 0 6px;padding-left:2px}
+.rrows{list-style:none;margin:0;padding:0}
+.rrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;flex:1 1 auto;min-width:0;display:flex;align-items:flex-start;gap:6px;padding:3px 6px;border-radius:8px;font-size:12.5px;line-height:1.35}
+.rrow:hover{background:var(--panel-2)}
+.rrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.rrow[aria-current="true"]{background:var(--ink);color:var(--paper)}
+.rrow b{font-weight:600;flex:1;min-width:5em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-3);margin-top:5px}
+.sdot.st-ask,.sdot.st-gov{background:#E0A526}
+.sdot.st-build{background:#4D7CFE}
+.sdot.st-walk{background:var(--walk-ink)}
+.sdot.st-rest{background:#2FB57A}
+.chip{display:inline-block;font:600 11px/1 var(--mono);letter-spacing:.04em;background:var(--panel-2);color:var(--ink-2);border:1.5px solid var(--line);border-radius:999px;padding:4px 8px;margin-right:2px}
+.chip.ask{background:var(--gov-bg);color:var(--gov-ink)}
+.chip.build{background:var(--build-bg);color:var(--build-ink)}
+.chip.walk{background:var(--walk-bg);color:var(--walk-ink)}
+.chip.rest{background:var(--rest-bg);color:var(--rest-ink)}
+.chip.gov{background:var(--gov-bg);color:var(--gov-ink)}
+.tree .rl{display:flex;align-items:flex-start}
+.tw{all:unset;flex:none;width:16px;height:26px;display:grid;place-items:center;color:var(--ink-3);font:700 9px/1 var(--round)}
+.tw.leaf{visibility:hidden}
+.tree ul.kids{list-style:none;margin:0 0 0 7px;padding:0}
+.tree ul.kids>li{position:relative;padding-left:7px}
+.tree ul.kids>li::before{content:"";position:absolute;left:0;top:13px;width:7px;border-top:1.5px solid var(--guide)}
+.tree ul.kids>li::after{content:"";position:absolute;left:0;top:0;bottom:0;border-left:1.5px solid var(--guide)}
+.tree ul.kids>li:last-child::after{bottom:auto;height:13.5px}
+.tab{all:unset;cursor:pointer;position:absolute;z-index:4;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0;width:30px;background:var(--panel);border:2px solid var(--ink);box-shadow:0 3px 0 rgba(42,43,69,.18);font:700 12px/1.1 var(--round);color:var(--ink)}
+.tab .v{writing-mode:vertical-rl;white-space:nowrap}
+.tab:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.rail-tab{left:0;top:12px;border-left:0;border-radius:0 12px 12px 0}
+
+/* the lift (approved look: mock/city-office-mock.html v5): dark panel, one button per floor, the current one butter */
+.lift{display:flex;flex-direction:column;background:var(--ink);color:var(--paper);border-radius:16px;padding:8px;gap:6px;box-shadow:0 4px 0 rgba(42,43,69,.25);overflow-y:auto;box-sizing:border-box}
+.lift-h{display:flex;align-items:center;justify-content:space-between;gap:6px;font:700 12px/1 var(--round);padding:2px 4px 4px;opacity:.85}
+.lift-h .arw{font:700 11px/1 var(--mono);opacity:.7}
+.lb{all:unset;cursor:pointer;box-sizing:border-box;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.14)}
+.lb:hover{background:rgba(255,255,255,.16)}
+.lb:focus-visible{outline:2.5px solid var(--focus);outline-offset:2px}
+.lb[aria-current="true"]{background:var(--butter);color:#4A3500;border-color:var(--butter)}
+.lb .no{font:700 16px/1 var(--display);min-width:28px}
+.lb .ln{min-width:0;font:600 11.5px/1.2 var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb .lc{display:inline-flex;gap:4px;align-items:center;font:600 11px/1 var(--mono);opacity:.85}
+.lb.gnd{margin-top:4px;border-style:dashed}
+
+/* NEW (v2): the lift's floor list IS the left bar. One row per floor (= one repo). The floor in view is the open one:
+   its team tree sits right under its row, inside the same dark list, on the repo's colour bar. The other floors stay one
+   row each (people count, the red "waits on you" count). The whole list scrolls when it is long. */
+.lift.side{position:absolute;left:12px;top:12px;z-index:4;width:var(--rail-w);max-height:calc(100% - 24px)}
+.lift-h .arw{margin-left:auto}
+.lift .fold{color:var(--paper);opacity:.85;width:24px;height:24px}
+.lift .fold:hover{background:rgba(255,255,255,.16);color:var(--paper)}
+.lb .ar{font-size:10px;opacity:.7;width:10px;text-align:center}
+.lift .team{margin:0 0 2px 10px;padding:3px 0 3px 3px;border-left:3px solid var(--rc)}
+.lift .rrow{color:var(--paper)}
+.lift .rrow:hover{background:rgba(255,255,255,.1)}
+.lift .rrow[aria-current="true"]{background:var(--paper);color:var(--ink)}
+.lift .tw{color:rgba(255,255,255,.55)}
+.lift .tree ul.kids>li::before{border-top-color:rgba(255,255,255,.3)}
+.lift .tree ul.kids>li::after{border-left-color:rgba(255,255,255,.3)}
+.lift .addl{all:unset;cursor:pointer;display:block;margin:4px 6px 2px 22px;padding:3px 8px;border:1.5px dashed rgba(255,255,255,.35);border-radius:8px;font:600 11.5px/1.4 var(--round);color:rgba(255,255,255,.8)}
+.lift .addl:focus-visible{outline:2px solid var(--focus)}
+.lift .none{margin:2px 6px 2px 22px;font-size:12px;opacity:.7}
+/* TODAY (comparison view only): the lift on its own, top right */
+.today .lift.alone{position:absolute;right:12px;top:96px;z-index:4;width:var(--lift-w);max-height:calc(100% - 160px);transition:right .2s}
+.today .stage.win-open .lift.alone{right:calc(var(--msg-w) + 24px)}
+
+.floorsign{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:3;display:inline-flex;align-items:center;gap:10px;background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:5px 14px 5px 6px;box-shadow:0 3px 0 rgba(42,43,69,.18);white-space:nowrap;max-width:calc(100% - 24px);transition:left .3s}
+.floorsign .fno{font:700 18px/1 var(--display);background:var(--ink);color:var(--paper);border-radius:9px;padding:5px 8px}
+.floorsign .frn{font:700 15px/1 var(--display);overflow:hidden;text-overflow:ellipsis}
+.floorsign .frs,.floorsign .fpc{font:500 12px/1 var(--round);color:var(--ink-3);white-space:nowrap}
+.stage.has-rail .floorsign{left:calc(50% + (var(--rail-w) + 12px) / 2)}
+.stage.has-rail.win-open .floorsign{left:calc(50% + (var(--rail-w) - var(--msg-w)) / 2)}
+.stage.win-open:not(.has-rail) .floorsign{left:calc(50% - (var(--msg-w) + 12px) / 2)}
+
+/* the office: a stand-in for the canvas. The look point sits in the middle of the free part of the stage (as the
+   page's view offset does); its zoom changes only by the user's own buttons, never by a click on a person. */
+.office{position:absolute;inset:0;z-index:1}
+.office svg{position:absolute;top:0;height:100%;transition:left .3s,width .3s}
+.person{cursor:pointer}
+.person .ring{fill:none;stroke:var(--ink);stroke-width:3;opacity:0}
+.person.sel .ring{opacity:1}
+.plate rect{fill:var(--panel);stroke:var(--ink);stroke-width:1.5}
+.plate text{font:600 12px var(--round);fill:var(--ink)}
+.person.sel .plate rect{fill:var(--ink)}
+.person.sel .plate text{fill:var(--paper)}
+.zoomnote{position:absolute;left:50%;bottom:62px;transform:translateX(-50%);z-index:3;background:var(--ink);color:var(--paper);border-radius:999px;padding:5px 12px;font:600 12px/1.2 var(--round);pointer-events:none;opacity:0;transition:opacity .3s}
+.zoomnote.on{opacity:.92}
+.proto{position:absolute;left:calc(var(--rail-w) + 24px);bottom:12px;z-index:3;background:var(--butter);color:#4A3500;font:600 12px/1 var(--display);padding:7px 12px;border-radius:999px;pointer-events:none}
+.stage.rail-folded .proto{left:42px}
+
+/* the person's window (desktop) / sheet (phone), as today */
+.win{position:absolute;right:12px;top:12px;bottom:12px;z-index:5;width:var(--msg-w);background:var(--panel);border:2px solid var(--ink);border-radius:20px;box-shadow:0 6px 0 rgba(42,43,69,.22);padding:14px 16px 16px;display:flex;flex-direction:column;gap:10px}
+.win-head{display:flex;align-items:center;gap:10px}
+.win-title{flex:1;min-width:0;font-weight:700;font-size:17px;line-height:1.3}
+.x{all:unset;cursor:pointer;width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--ink-2)}
+.x:hover{background:var(--panel-2)}
+.x:focus-visible{outline:2px solid var(--focus)}
+.p-facts{font:12px/1.5 var(--mono);color:var(--ink-3)}
+.chatline{background:var(--panel-2);border-radius:12px;padding:8px 10px;font-size:13px}
+
+/* ---- phone width (the page's max-width:960px / 720px rules) ---- */
+.phone .app{padding:10px 10px 12px;gap:10px}
+.phone .bar{flex-wrap:wrap;gap:8px}
+.phone .sign{padding:4px 10px 4px 6px;gap:8px}
+.phone .sign-name{font-size:17px}
+.phone .sign-sub{display:none}
+.phone .sign-icon{width:28px;height:28px}
+.phone .stats{order:9;flex:1 1 100%;margin-left:0;justify-content:flex-start}
+.phone #btnPick{margin-left:auto}
+.phone .btn{padding:0 10px}
+.phone .rail{left:0;top:0;bottom:0;max-height:none;width:min(300px,84%);border-left:0;border-radius:0 16px 16px 0}
+.phone .lift.side{left:0;top:0;bottom:0;max-height:none;width:min(300px,84%);border-radius:0 16px 16px 0}
+.phone .stage.drawer-open .win,.phone .stage.drawer-open .floorsign,.phone .stage.drawer-open .proto,.phone .stage.drawer-open .zoomnote{visibility:hidden}
+.phone .floorsign{left:42px!important;transform:none;max-width:calc(100% - 54px)}
+.phone .floorsign .frs{display:none}
+.phone .proto{left:42px}
+.phone .win{left:8px;right:8px;top:auto;bottom:8px;width:auto;height:44%}
+.phone .stage.win-open .cam{display:none}
+.phone .stage.has-rail .floorsign{left:42px}
+.scrim{position:absolute;inset:0;z-index:3;background:rgba(42,43,69,.28)}
+</style>
+</head>
+<body>
+<div class="mk" role="toolbar" aria-label="原型视图">
+  <h1>一个左侧栏 · 原型 v2</h1>
+  <div class="views">
+    <button type="button" data-view="desk" aria-pressed="true">新 · 电脑 1440</button>
+    <button type="button" data-view="phone" aria-pressed="false">新 · 手机 390</button>
+    <button type="button" data-view="today" aria-pressed="false">今天 · 电脑（对比）</button>
+  </div>
+  <span class="hint">可以点：楼层、人、«/› 折起、+ − 缩放、✕ 关闭。模拟数据。</span>
+</div>
+
+<div class="notes">
+  <section>
+    <h2>v2 改了什么（按你的意见：不分两块）</h2>
+    <ol>
+      <li>左边只有一个列表，就是电梯的楼层列表（样子不变：深色、当前楼层黄色、人数和等你的红点）。一层 = 一个 repo。</li>
+      <li>点一层：办公室换到那一层（和电梯一样），这个 repo 的在线名单（树）直接在这一行下面展开；其他楼层各占一行，只显示人数。</li>
+      <li>没有第二块名单，也没有第二个标题；右边空出来给办公室。« 折起整条栏。</li>
+      <li>点一个人：镜头不动、不放大；名牌变实心并加圈，窗口打开（这部分已做好）。</li>
+    </ol>
+  </section>
+  <section>
+    <h2>请看这几处</h2>
+    <ol>
+      <li>一次只展开当前这一层；在楼外面（G）时全部收起。</li>
+      <li>手机：栏是左边的标签。选楼层后栏不收起（这样能看到名单），选了人才收起（和今天一样）。</li>
+      <li>这个 repo 的「＋ 加 agent」放在展开的名单最后一行。</li>
+      <li>栏折起时：顶部楼层牌照常显示当前楼层，标题栏的「选楼层」照常能换层。</li>
+    </ol>
+  </section>
+</div>
+
+<div class="viewport"><div class="devwrap">
+  <p class="devlabel" id="devlabel"></p>
+  <div class="device desk" id="device">
+    <div class="app">
+      <header class="bar">
+        <div class="sign"><span class="sign-icon">A</span><div><span class="sign-name">Agent 办公楼</span><span class="sign-sub" id="signSub"></span></div></div>
+        <div class="stats" id="stats"></div>
+        <button type="button" id="btnPick" class="btn">选楼层</button>
+        <button type="button" id="logbtn" class="btn">动态</button>
+      </header>
+      <div class="stage has-rail" id="stage">
+        <div class="office" id="office"></div>
+        <div class="floorsign" id="floorSign"></div>
+        <div class="zoomnote" id="zoomnote"></div>
+        <div class="scrim" id="scrim" hidden></div>
+        <aside class="rail" id="rail" aria-label="在线" hidden>
+          <div class="rail-head"><span>在线</span><span class="n" id="rail-n"></span><span class="you" id="rail-you" hidden></span><button type="button" class="fold" id="rail-fold-today" aria-label="折起名单">«</button></div>
+          <div class="rail-list" id="rail-list"></div>
+        </aside>
+        <nav class="lift side" id="lift" aria-label="电梯和在线"></nav>
+        <nav class="lift alone" id="liftAlone" aria-label="电梯" hidden></nav>
+        <button type="button" class="tab rail-tab" id="rail-tab" aria-controls="rail" hidden><span>›</span><span class="v" id="rail-tab-t"></span></button>
+        <div class="proto">原型 · 模拟数据</div>
+        <div class="cam">
+          <button class="btn" id="zin" type="button" aria-label="放大">+</button>
+          <button class="btn" id="zout" type="button" aria-label="缩小">−</button>
+          <button class="btn" id="zfit" type="button" aria-label="回到整层">⤢</button>
+        </div>
+        <div class="win" id="win" role="dialog" aria-labelledby="win-title" hidden>
+          <div class="win-head"><div class="win-title" id="win-title"></div><button type="button" class="x" id="win-close" aria-label="关闭">✕</button></div>
+          <div class="p-facts" id="win-facts"></div>
+          <div class="chatline" id="win-line"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+/* demo data: three repo floors and the street. A person: id, name, role, state [cls, text], desk (x, y on the floor
+   drawing), kids (the tree, by parent id). */
+const FLOORS = [
+  { id:'ap', no:'3F', name:'auto-pipeline', color:'#4D7CFE', tint:'#E1ECFF', people:[
+    { id:'a1', name:'auto-pipeline Manager', st:['gov','管理'], x:330, y:190 },
+    { id:'a2', name:'city-one-sidebar Task Manager', st:['build','开发中'], x:470, y:250, up:'a1' },
+    { id:'a3', name:'Worker 1 · 点击不缩放', st:['build','写代码'], x:600, y:215, up:'a2' },
+    { id:'a4', name:'board-eta Task Manager', st:['ask','等你'], x:400, y:330, up:'a1', wait:true },
+    { id:'a5', name:'审查员 · PR REVIEW', st:['walk','走动'], x:650, y:330, up:'a4' }
+  ]},
+  { id:'sh', no:'2F', name:'shop-web', color:'#FF7593', tint:'#FFE1E8', people:[
+    { id:'s1', name:'shop-web Manager', st:['gov','管理'], x:360, y:220 },
+    { id:'s2', name:'checkout Task Manager', st:['build','开发中'], x:560, y:250, up:'s1' },
+    { id:'s3', name:'Worker 1 · 付款页', st:['rest','休息'], x:470, y:340, up:'s2' }
+  ]},
+  { id:'dc', no:'1F', name:'docs-site', color:'#2FB57A', tint:'#DAF5E8', people:[
+    { id:'d1', name:'docs-site Manager', st:['gov','管理'], x:420, y:250 },
+    { id:'d2', name:'搜索 Task Manager', st:['build','开发中'], x:580, y:300, up:'d1' }
+  ]}
+];
+const S = { view:'desk', floor:'ap', sel:null, zoom:1, railOpen:true, winOpen:false };
+const floorOf = id => FLOORS.find(f => f.id === id);
+const personOf = id => { for (const f of FLOORS) { const p = f.people.find(q => q.id === id); if (p) return [f, p]; } return [null, null]; };
+const phone = () => S.view === 'phone';
+
+/* the lift block: the same buttons as renderLift() today, top floor first, then G (the street) */
+function liftHtml(side){
+  let h = '<div class="lift-h"><span>电梯</span><span class="arw">' + FLOORS.length + ' 层</span>' +
+    (side ? '<button type="button" class="fold" id="rail-fold" aria-label="折起左边栏">«</button>' : '') + '</div>';
+  for (const f of FLOORS) {
+    const wait = f.people.filter(p => p.wait).length, open = side && S.floor === f.id;
+    h += '<button class="lb" type="button" data-floor="' + f.id + '" aria-current="' + (S.floor === f.id) + '"' + (side ? ' aria-expanded="' + open + '"' : '') +
+      ' aria-label="' + esc(f.no + ' ' + f.name) + '">' +
+      '<span class="no">' + f.no + '</span><span class="ln">' + esc(f.name) + '</span><span class="lc">' + f.people.length +
+      (wait ? '<span class="you">' + wait + '</span>' : '') + (side ? '<span class="ar">' + (open ? '▾' : '▸') + '</span>' : '') + '</span></button>';
+    // v2: the floor in view opens its repo's team right under its row
+    if (open) h += '<div class="team" style="--rc:' + f.color + '">' + (f.people.length ? '<ul class="rrows tree">' + treeHtml(f, null) + '</ul>' : '<p class="none">没人在线</p>') +
+      '<button type="button" class="addl">＋ 加 agent</button></div>';
+  }
+  h += '<button class="lb gnd" type="button" data-floor="out" aria-current="' + (S.floor === 'out') + '"><span class="no">G</span><span class="ln">楼外面</span><span class="lc"></span></button>';
+  return h;
+}
+/* the team list: one group per repo, the tree as today */
+function railHtml(){
+  let h = '';
+  for (const f of FLOORS) {
+    h += '<section class="rail-grp" style="--rc:' + f.color + '"><div class="grp-row"><button type="button" class="grp-h"><span class="rc" style="--rc:' + f.color + '"></span>' +
+      esc(f.name) + '<span class="n">' + f.people.length + '</span></button></div><ul class="rrows tree">' + treeHtml(f, null) + '</ul></section>';
+  }
+  return h;
+}
+function treeHtml(f, up){
+  return f.people.filter(p => (p.up || null) === up).map(p => {
+    const kids = treeHtml(f, p.id);
+    return '<li><div class="rl"><span class="tw' + (kids ? '' : ' leaf') + '">▼</span><button type="button" class="rrow" data-person="' + p.id + '" aria-current="' + (S.sel === p.id) + '">' +
+      '<span class="sdot st-' + p.st[0] + '"></span><b>' + esc(p.name) + '</b><span class="chip ' + p.st[0] + '">' + esc(p.st[1]) + '</span></button></div>' +
+      (kids ? '<ul class="kids">' + kids + '</ul>' : '') + '</li>';
+  }).join('');
+}
+/* the floor drawing (stand-in for the 3D floor): a floor plate, desks, people with plates. Only the zoom buttons scale it. */
+function officeHtml(){
+  if (S.floor === 'out') {
+    let h = '<svg viewBox="0 0 900 520" preserveAspectRatio="xMidYMid meet"><g transform="' + zt() + '">';
+    h += '<rect x="330" y="60" width="240" height="400" rx="10" fill="#fff" stroke="#2A2B45" stroke-width="3"/>';
+    FLOORS.forEach((f, i) => { h += '<rect x="350" y="' + (80 + i * 110) + '" width="200" height="90" rx="8" fill="' + f.tint + '" stroke="#2A2B45" stroke-width="2"/><text x="450" y="' + (132 + i * 110) + '" text-anchor="middle" style="font:700 18px var(--display);fill:#2A2B45">' + f.no + ' ' + esc(f.name) + '</text>'; });
+    return h + '<rect x="420" y="410" width="60" height="50" fill="#2A2B45"/></g></svg>';
+  }
+  const f = floorOf(S.floor);
+  let h = '<svg viewBox="0 0 900 520" preserveAspectRatio="xMidYMid meet"><g transform="' + zt() + '">';
+  h += '<polygon points="70,260 450,450 830,260 830,276 450,466 70,276" fill="#B9C1E2"/>';
+  h += '<polygon points="450,70 830,260 450,450 70,260" fill="' + f.tint + '" stroke="#2A2B45" stroke-width="3"/>';
+  h += '<rect x="120" y="236" width="44" height="44" rx="6" fill="#2A2B45" opacity=".75"/><text x="142" y="300" text-anchor="middle" style="font:600 11px var(--mono);fill:#2A2B45">电梯</text>';
+  for (const p of f.people) {
+    const sel = S.sel === p.id, label = sel ? p.name + ' · ' + p.st[1] : p.st[1], w = label.length * (sel ? 9.5 : 12) + 20;
+    h += '<rect x="' + (p.x - 28) + '" y="' + (p.y + 6) + '" width="56" height="22" rx="4" fill="#fff" stroke="#8D91B3"/>';
+    h += '<g class="person' + (sel ? ' sel' : '') + '" data-person="' + p.id + '"><circle class="ring" cx="' + p.x + '" cy="' + (p.y - 6) + '" r="22"/>' +
+      '<circle cx="' + p.x + '" cy="' + (p.y - 6) + '" r="13" fill="' + f.color + '" stroke="#2A2B45" stroke-width="2"/><circle cx="' + p.x + '" cy="' + (p.y - 24) + '" r="8" fill="#F7C9A4" stroke="#2A2B45" stroke-width="2"/>' +
+      '<g class="plate"><rect x="' + (p.x - w / 2) + '" y="' + (p.y - 62) + '" width="' + w + '" height="22" rx="11"/><text x="' + p.x + '" y="' + (p.y - 47) + '" text-anchor="middle">' + esc(label) + '</text></g></g>';
+  }
+  return h + '</g></svg>';
+}
+function zt(){ return 'translate(450 260) scale(' + S.zoom + ') translate(-450 -260)'; }
+
+function render(){
+  const dev = $('#device'), stage = $('#stage'), today = S.view === 'today';
+  dev.className = 'device ' + (phone() ? 'phone' : 'desk') + (today ? ' today' : '');
+  $('#devlabel').textContent = phone() ? '手机 390 宽 · 新' : today ? '电脑 1440 宽 · 今天（电梯在右边）' : '电脑 1440 宽 · 新（一个左侧栏）';
+  const all = FLOORS.reduce((n, f) => n + f.people.length, 0), wait = FLOORS.reduce((n, f) => n + f.people.filter(p => p.wait).length, 0);
+  $('#signSub').textContent = FLOORS.length + ' 层办公楼';
+  $('#stats').innerHTML = '<span class="stat"><i style="background:#4D7CFE"></i>开发中 <b>4</b></span><span class="stat wait">等你 <b>' + wait + '</b></span><span class="stat"><i style="background:#2FB57A"></i>休息 <b>1</b></span>';
+  // new: ONE bar, the lift's list with the open floor's team; today: the team rail left + the lift alone at the right
+  $('#lift').hidden = today || !S.railOpen; $('#rail').hidden = !today || !S.railOpen; $('#liftAlone').hidden = !today;
+  if (today) { $('#liftAlone').innerHTML = liftHtml(false); $('#rail-list').innerHTML = railHtml(); }
+  else $('#lift').innerHTML = liftHtml(true);
+  $('#rail-n').textContent = all; $('#rail-you').hidden = !wait; $('#rail-you').textContent = wait;
+  $('#rail-tab').hidden = S.railOpen;
+  const fl0 = floorOf(S.floor);
+  $('#rail-tab-t').textContent = today ? '在线 ' + all : (fl0 ? fl0.no + ' · ' : '') + '在线 ' + all;
+  $('#scrim').hidden = !(phone() && S.railOpen);
+  stage.classList.toggle('has-rail', S.railOpen && !phone());
+  stage.classList.toggle('rail-folded', !S.railOpen);
+  stage.classList.toggle('drawer-open', phone() && S.railOpen);
+  stage.classList.toggle('win-open', S.winOpen && !!S.sel);
+  // the office sits in the middle of the free part of the stage (left of the window, right of the bar)
+  $('#office').innerHTML = officeHtml();
+  const svg = $('#office svg');
+  const left = !phone() && S.railOpen ? 312 + 12 : 0, right = !phone() && S.winOpen && S.sel ? 380 + 24 : 0;
+  svg.style.left = left + 'px'; svg.style.width = 'calc(100% - ' + (left + right) + 'px)';
+  const f = floorOf(S.floor);
+  $('#floorSign').innerHTML = f ? '<span class="fno">' + f.no + '</span><i class="rc" style="--rc:' + f.color + '"></i><span class="frn">' + esc(f.name) + '</span><span class="frs">原木风 ·</span><span class="fpc">' + f.people.length + ' 人</span>'
+    : '<span class="fno">G</span><span class="frn">楼外面</span><span class="frs">' + FLOORS.length + ' 层 · 点门进去</span>';
+  // the window / sheet
+  const [, p] = personOf(S.sel);
+  $('#win').hidden = !(S.winOpen && p);
+  if (p) { $('#win-title').textContent = p.name; $('#win-facts').textContent = floorOf(personOf(p.id)[0].id).no + ' · ' + p.st[1]; $('#win-line').textContent = '（模拟）他最近的一条动态。'; }
+}
+let noteT = 0;
+function note(t){ const el = $('#zoomnote'); el.textContent = t; el.classList.add('on'); clearTimeout(noteT); noteT = setTimeout(() => el.classList.remove('on'), 1800); }
+
+/* clicks */
+document.addEventListener('click', e => {
+  const v = e.target.closest('[data-view]');
+  if (v) { S.view = v.dataset.view; S.railOpen = S.view !== 'phone'; S.winOpen = false; S.sel = null; S.zoom = 1;
+    for (const b of document.querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', b === v); render(); fit(); return; }
+  const fl = e.target.closest('[data-floor]');
+  if (fl) { S.floor = fl.dataset.floor; S.zoom = 1; S.sel = null; S.winOpen = false;
+    // v2: the bar stays open on a phone too: the floor's team opens under its row (a person pick folds it)
+    render(); return; }
+  const pr = e.target.closest('[data-person]');
+  if (pr) { const [f] = personOf(pr.dataset.person);
+    if (f.id !== S.floor) { S.floor = f.id; S.zoom = 1; }   // a row of another floor: that floor, whole-floor view
+    S.sel = pr.dataset.person; S.winOpen = true;
+    if (phone()) S.railOpen = false;
+    render(); if (S.view !== 'today') note('镜头不动 · 缩放 ' + Math.round(S.zoom * 100) + '%'); return; }
+  if (e.target.closest('#rail-fold') || e.target.closest('#rail-fold-today') || e.target.closest('#scrim')) { S.railOpen = false; render(); return; }
+  if (e.target.closest('#rail-tab')) { S.railOpen = true; render(); return; }
+  if (e.target.closest('#win-close')) { S.winOpen = false; S.sel = null; render(); note('关闭了 · 什么都没动'); return; }
+  if (e.target.closest('#zin')) { S.zoom = Math.min(2.2, S.zoom * 1.25); render(); return; }
+  if (e.target.closest('#zout')) { S.zoom = Math.max(.6, S.zoom / 1.25); render(); return; }
+  if (e.target.closest('#zfit')) { S.zoom = 1; render(); return; }
+  if (e.target.closest('#btnPick')) { S.railOpen = true; render(); return; }
+  if (e.target.closest('.addl')) { note('（原型）这里打开「加 agent」，和今天一样'); return; }
+});
+/* the desktop frame is 1440 wide: shrink it to the window (CSS zoom keeps clicks exact) */
+function fit(){
+  const dev = $('#device'), w = phone() ? 406 : 1444;
+  dev.style.zoom = Math.min(1, (innerWidth - 32) / w);
+}
+addEventListener('resize', () => { fit(); render(); });
+/* #phone / #phone-open / #today open that view directly (a link for the owner, a screenshot for the check) */
+const [hv, hopen] = location.hash.slice(1).split('-'), start = document.querySelector('[data-view="' + hv + '"]');
+if (start) start.click(); else { render(); fit(); }
+if (hopen === 'open') { S.railOpen = true; render(); }   // #phone-open: the bar opened
+</script>
+</body>
+</html>

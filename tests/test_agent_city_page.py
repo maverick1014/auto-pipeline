@@ -1679,8 +1679,8 @@ class TestWiring(unittest.TestCase):
         self.assertIn("addState.delete(", block)
 
     def test_the_rail_draws_from_the_state(self):
-        # city-rail-tree: railShut may follow addState (railHtml's 6th argument)
-        self.assertRegex(function_source("renderRail"), r"railHtml\([^;]*\baddState\b")
+        # city-rail-tree: railShut may follow addState (railHtml's 6th argument); city-one-sidebar: the one list (sideHtml)
+        self.assertRegex(function_source("renderRail"), r"sideHtml\([^;]*\baddState\b")
 
     def test_css(self):
         for sel in (".rail-none", ".grp-row", ".add-i", '.add-i[aria-disabled="true"]', ".add-line", ".spin", ".addbox",
@@ -3403,7 +3403,8 @@ class TestScene(unittest.TestCase):
         return src
 
     def test_scene_functions(self):
-        for name in ("buildFloor", "buildOutside", "enter", "goOutside", "goFloor", "renderLift", "renderFloorSign",
+        # city-one-sidebar: renderLift went, the floors are rows of the one list (sideHtml, tests/test_agent_city_one_sidebar.py)
+        for name in ("buildFloor", "buildOutside", "enter", "goOutside", "goFloor", "sideHtml", "renderFloorSign",
                      "renderPicker", "renderDesignPop", "addPerson", "placeDecor", "select"):
             self.fn(name)
 
@@ -3411,8 +3412,11 @@ class TestScene(unittest.TestCase):
         self.assertRegex(self.text, r"let view\s*=\s*'outside'")
         self.assertNotIn("camTween", self.fn("goFloor"))
 
-    def test_select_zoom_is_halved(self):
-        self.assertRegex(self.fn("select"), r"Math\.min\(cam\.dist,\s*\(fitDist\(\)\s*\+\s*9\)\s*/\s*2\)")
+    def test_select_does_not_zoom(self):
+        # city-one-sidebar (owner 2026-11-27) replaces city-office's halved select zoom (mock v5): a click on a person
+        # never zooms; the behaviour is tested in tests/test_agent_city_one_sidebar.py
+        self.assertNotRegex(self.fn("select"), r"fitDist\(\)\s*\+\s*9")
+        self.assertNotRegex(self.fn("select"), r"cam\.wantDist\s*=(?!=)")
 
     def test_decor_and_slots(self):
         m = re.search(r"const DECOR\s*=\s*\{(.*?)\n\};", self.text, re.S)
@@ -3443,7 +3447,7 @@ class TestScene(unittest.TestCase):
         self.assertEqual(sorted(found), ["vendor/three.min.js"])
 
     def test_markup(self):
-        for i in ("btnPick", "lift", "floorSign", "tags", "pickBg", "dPop", "renoBg"):
+        for i in ("btnPick", "floorSign", "tags", "pickBg", "dPop", "renoBg"):   # city-one-sidebar: no #lift (the one list)
             self.assertRegex(self.text, r'id="%s"' % i)
         for i in ("repos", "stage-top", "arr-btn", "arr-bar", "arr-ov", "rail-hid", "cap-hint", "empty-land"):
             self.assertNotRegex(self.text, r'id="%s"' % i)
@@ -4131,7 +4135,7 @@ class TestWiringP4(unittest.TestCase):
         self.assertIn("try", near)
 
     def test_render_passes_it(self):
-        self.assertRegex(function_source("renderRail") or "", r"railHtml\([^;]*\brailShut\)")
+        self.assertRegex(function_source("renderRail") or "", r"sideHtml\([^;]*\brailShut\b")   # city-one-sidebar
 
     def test_arrow_click(self):
         block = listener_block(r"\$\('#rail-list'\)", "click") or ""
@@ -5518,7 +5522,8 @@ class TestRailMarkup(unittest.TestCase):
     def test_markup_inside_the_stage(self):
         p = page()
         stage, tb = p.index('id="stage"'), p.index('class="toolbar"')
-        for bit in ('<aside class="rail" id="rail"', 'id="rail-list"', 'id="rail-n"', 'id="rail-you"', 'id="rail-fold"',
+        # city-one-sidebar: the head is the lift's (no 'waiting on you' total: each floor row has its own)
+        for bit in ('<aside class="rail" id="rail"', 'id="rail-list"', 'id="rail-n"', 'id="rail-fold"',
                     'id="rail-tab"', 'id="follow"', 'id="follow-t"', 'id="follow-stop"', 'id="win-fold"', 'id="win-tab"'):
             self.assertIn(bit, p, bit)
             self.assertTrue(stage < p.index(bit) < tb, bit + " inside #stage")
@@ -5538,8 +5543,8 @@ class TestRailWiring(unittest.TestCase):
 
     def test_render_rail(self):
         src = function_source("renderRail") or ""
-        for bit in ("railGroups(", "railHtml(", "railCount(", "selKey(", "railClosed", "railRestOpen", "lastRail",
-                    "rail.count", "railFolded"):
+        for bit in ("railGroups(", "sideHtml(", "railCount(", "selKey(", "railRestOpen", "lastRail",   # city-one-sidebar
+                    "railFolded"):
             self.assertIn(bit, src, bit)
         self.assertIn("renderRail(", function_source("renderPanel") or "")
 
