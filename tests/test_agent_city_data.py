@@ -1029,7 +1029,7 @@ class TestSending(ChatCase):
         with open(self.chat_path, "a") as fh:
             fh.write(json.dumps({"sid": "tm1", "aid": "", "kind": "prompt", "text": "go", "at": at}) + "\n")
         self.feed(line("Stop", "tm1", role="task-manager"))
-        self.state.chat_send("s:tm1", "hello", 0)
+        self.state.chat_send("s:tm1", "hello", at)   # the server passes time.time()
         self.state.chat_next("tm1", "w1", 0)
         again = self.make()
         again.feed_line(line("UserPromptSubmit", "tm1", role="task-manager"), time.monotonic())
