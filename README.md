@@ -50,6 +50,7 @@ Cloud sessions (claude.ai/code): the agent handles them with cloud-pack. Nothing
 | `/auto-pipeline:slim-markdown` | Keep the files agents read short and exact: one term per concept, the technical term instead of a long description, a proof that no rule is lost. |
 | `/auto-pipeline:teacher-teach-me` | Ask anything about this repo. A friendly teacher explains it in very simple words, from a separate agent, so your current chat goes on undisturbed. |
 | `/auto-pipeline:city` | Start the agent city visualiser and print its URL. |
+| `/auto-pipeline:flow-diagram` | Draw a flow diagram of the agents in the approved style (role tags on top, one diagram, nothing below). |
 
 You can also just type a keyword instead of the command (case does not matter):
 
@@ -63,6 +64,10 @@ You can also just type a keyword instead of the command (case does not matter):
 | `/auto-pipeline:clean-up` | clean up files, 清理文件 |
 | `/auto-pipeline:city` | open city, 看 agent |
 | `/auto-pipeline:teacher-teach-me` | teach me, explain to me, can you explain, 教我, 解释一下, 给我讲讲 |
+
+## Flow diagram
+
+The whole agent flow, from your request to the release, is one page: [`skills/flow-diagram/reference.html`](skills/flow-diagram/reference.html). Open it in a browser to read the flow. It is also the model for any new flow diagram: copy it and change the content ([`skills/flow-diagram/SKILL.md`](skills/flow-diagram/SKILL.md) says how). Update it when the flow changes.
 
 ## Change settings
 

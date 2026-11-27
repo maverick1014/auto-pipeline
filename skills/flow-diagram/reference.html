@@ -1,0 +1,222 @@
+<title>Agent 派活流程</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one column. Role legend, one flowchart that splits into the fast lane and the full lane and joins at the merge gate, the role table, the step table, what changed in 0.48.0. */
+:root {
+  --bg: #F6F7F9; --surface: #FFFFFF; --fg: #1B2230; --muted: #5B6577; --line: #D9DEE7; --arrow: #7A8496; --fg-soft: #8A93A3;
+  --c-own: #9A6B00; --c-own-bg: #FBF1D9;
+  --c-mm: #2F6FEB;  --c-mm-bg: #E7EEFD;
+  --c-tm: #B0397B;  --c-tm-bg: #F9E6F0;
+  --c-dep: #0F8B8D; --c-dep-bg: #E3F4F4;
+  --c-rev: #7C4DCC; --c-rev-bg: #F0EAFB;
+  --c-chk: #C2611A; --c-chk-bg: #FCEEE2;
+  --c-mrg: #2E8B57; --c-mrg-bg: #E4F3EA;
+  --c-pc: #5B6577;  --c-pc-bg: #ECEFF3;
+  --c-bad: #C0392B; --c-bad-bg: #FDECEA;
+  --display: "Space Grotesk", "Noto Sans SC", system-ui, sans-serif;
+  --body: "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12161D; --surface: #1A202A; --fg: #E6EAF1; --muted: #9AA5B8; --line: #2C3442; --arrow: #8792A6; --fg-soft: #6F7A8E;
+  --c-own: #E6B94F; --c-own-bg: #33290F; --c-mm: #7AA7FF; --c-mm-bg: #1A2740; --c-tm: #E58BBA; --c-tm-bg: #381A2B;
+  --c-dep: #4FC3C5; --c-dep-bg: #133032; --c-rev: #B39DF0; --c-rev-bg: #282042;
+  --c-chk: #F0A35E; --c-chk-bg: #35261A; --c-mrg: #6FCF97; --c-mrg-bg: #15301F; --c-pc: #A9B3C4; --c-pc-bg: #232A35;
+  --c-bad: #FF7B6B; --c-bad-bg: #3A1C1A; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12161D; --surface: #1A202A; --fg: #E6EAF1; --muted: #9AA5B8; --line: #2C3442; --arrow: #8792A6; --fg-soft: #6F7A8E;
+  --c-own: #E6B94F; --c-own-bg: #33290F; --c-mm: #7AA7FF; --c-mm-bg: #1A2740; --c-tm: #E58BBA; --c-tm-bg: #381A2B;
+  --c-dep: #4FC3C5; --c-dep-bg: #133032; --c-rev: #B39DF0; --c-rev-bg: #282042;
+  --c-chk: #F0A35E; --c-chk-bg: #35261A; --c-mrg: #6FCF97; --c-mrg-bg: #15301F; --c-pc: #A9B3C4; --c-pc-bg: #232A35;
+  --c-bad: #FF7B6B; --c-bad-bg: #3A1C1A; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px; }
+main { max-width: 960px; margin: 0 auto; display: grid; gap: 28px; }
+h1 { font: 700 30px/1.2 var(--display); margin: 0; text-wrap: balance; }
+h2 { font: 700 19px/1.3 var(--display); margin: 0 0 12px; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; }
+.muted { color: var(--muted); }
+
+.own { --role: var(--c-own); --tint: var(--c-own-bg); }
+.mm  { --role: var(--c-mm);  --tint: var(--c-mm-bg); }
+.tm  { --role: var(--c-tm);  --tint: var(--c-tm-bg); }
+.dep { --role: var(--c-dep); --tint: var(--c-dep-bg); }
+.rev { --role: var(--c-rev); --tint: var(--c-rev-bg); }
+.chk { --role: var(--c-chk); --tint: var(--c-chk-bg); }
+.mrg { --role: var(--c-mrg); --tint: var(--c-mrg-bg); }
+.pc  { --role: var(--c-pc);  --tint: var(--c-pc-bg); }
+.bad { --role: var(--c-bad); --tint: var(--c-bad-bg); }
+.wait { --role: var(--c-pc); --tint: var(--surface); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 99px; background: var(--tint); border: 1px solid var(--role); font-size: 13.5px; }
+.chip i { width: 9px; height: 9px; border-radius: 50%; background: var(--role); }
+.chip b { color: var(--role); font-weight: 700; }
+.chip span { color: var(--muted); }
+
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 720px; max-width: 900px; height: auto; margin: 0 auto; }
+.cap { margin-top: 10px; font-size: 13.5px; color: var(--muted); }
+.box rect { fill: var(--tint); stroke: var(--role); stroke-width: 1.5; }
+.box.bad rect, .box.wait rect { stroke-dasharray: 6 4; }
+.box circle { fill: var(--role); }
+.num { font: 700 11px var(--display); fill: var(--surface); text-anchor: middle; }
+.t1 { font: 600 14px var(--body); fill: var(--fg); }
+.t1 .rn { fill: var(--role); font-weight: 700; }
+.t2 { font: 400 12.5px var(--body); fill: var(--muted); }
+.c { text-anchor: middle; }
+.dia polygon { fill: var(--surface); stroke: var(--fg-soft); stroke-width: 1.5; }
+.dia text { font: 600 13.5px var(--body); fill: var(--fg); text-anchor: middle; }
+.ar { fill: none; stroke: var(--arrow); stroke-width: 1.6; marker-end: url(#ah); }
+.ar.no { stroke: var(--c-bad); stroke-dasharray: 5 4; marker-end: url(#ahb); }
+.mk { fill: var(--arrow); } .mkb { fill: var(--c-bad); }
+.lb { font: 600 12px var(--body); fill: var(--muted); }
+.lb.no { fill: var(--c-bad); }
+.lane { font: 700 13px var(--display); letter-spacing: .06em; fill: var(--muted); text-anchor: middle; }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; min-width: 680px; background: var(--surface); }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+th { font: 600 12px/1.4 var(--body); letter-spacing: .04em; color: var(--muted); background: var(--bg); }
+td.n { font: 700 14px var(--display); color: var(--role); white-space: nowrap; }
+td.who { white-space: nowrap; font-weight: 600; color: var(--role); }
+td.who small { display: block; font-weight: 400; color: var(--muted); }
+
+.stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.stage { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.stage .k { font: 700 13px var(--display); color: var(--c-mm); letter-spacing: .04em; }
+.stage .h { font-weight: 700; font-size: 16px; }
+.stage p { font-size: 14px; color: var(--muted); }
+.news { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.news li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 14.5px; }
+.news b { color: var(--c-mm); }
+</style>
+
+<main>
+  <header style="display:grid;gap:10px">
+    <h1>Agent 派活流程</h1>
+    <p>从你提需求，到发布上线，每个 agent 各管一段。先看范围：一个人做得完走<b>快车道</b>，要拆成几块或是新页面走<b>大任务线</b>。两条线在<b>合并关</b>汇合，检查记录齐全才合并。这是 0.48.0 的最新流程。</p>
+  </header>
+
+  <section>
+    <h2>谁是谁</h2>
+    <div class="legend">
+      <span class="chip own"><i></i><b>你</b><span>提需求 · 批准 · 说发布</span></span>
+      <span class="chip mm"><i></i><b>主管理者</b><span>Opus xhigh · 派活和把关</span></span>
+      <span class="chip tm"><i></i><b>任务管理者</b><span>大任务的负责人</span></span>
+      <span class="chip dep"><i></i><b>工人 / 快车道副手</b><span>Sonnet · 写代码</span></span>
+      <span class="chip rev"><i></i><b>审查者</b><span>Opus high · 读改动</span></span>
+      <span class="chip chk"><i></i><b>检查助手</b><span>Sonnet · 浏览器里点</span></span>
+      <span class="chip mrg"><i></i><b>合并助手</b><span>Sonnet · 合并和清理</span></span>
+      <span class="chip pc"><i></i><b>pc2</b><span>跑完整测试</span></span>
+      <span class="chip bad"><i></i><b>退回</b><span>红色虚线</span></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>整个流程</h2>
+    <div class="chart">
+<svg viewBox="0 0 900 1870" role="img" aria-label="从你提需求到发布上线的全流程：问清问题，按范围分成快车道和大任务线，在合并关汇合，再合并、报告、跑完整测试、发布、冒烟检查">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mkb" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <!-- shared start -->
+  <g class="box own"><rect x="300" y="20" width="300" height="64" rx="10"/><circle cx="322" cy="52" r="12"/><text class="num" x="322" y="56">1</text>
+    <text class="t1" x="344" y="47"><tspan class="rn">你</tspan> · 提需求</text><text class="t2" x="344" y="69">说出要做什么</text></g>
+  <path class="ar" d="M450,84 V112"/>
+  <g class="box mm"><rect x="300" y="112" width="300" height="64" rx="10"/><circle cx="322" cy="144" r="12"/><text class="num" x="322" y="148">2</text>
+    <text class="t1" x="344" y="139"><tspan class="rn">主管理者</tspan> · 写需求文档</text><text class="t2" x="344" y="161">你的原话就算批准</text></g>
+  <path class="ar" d="M450,176 V204"/>
+  <g class="box mm"><rect x="300" y="204" width="300" height="64" rx="10"/><circle cx="322" cy="236" r="12"/><text class="num" x="322" y="240">3</text>
+    <text class="t1" x="344" y="231"><tspan class="rn">主管理者</tspan> · 问清楚</text><text class="t2" x="344" y="253">开工前问完，之后不再抛问题</text></g>
+  <path class="ar" d="M450,268 V298"/>
+
+  <g class="dia"><polygon points="330,340 450,298 570,340 450,382"/><text x="450" y="345">范围多大？</text></g>
+  <path class="ar" d="M330,340 H225 V412"/><text class="lb c" x="277" y="332">一个人做得完</text>
+  <path class="ar" d="M570,340 H675 V412"/><text class="lb c" x="622" y="332">几块或新页面</text>
+
+  <text class="lane" x="225" y="396">快车道</text>
+  <text class="lane" x="675" y="396">大任务线</text>
+
+  <!-- fast lane -->
+  <g class="box dep"><rect x="75" y="412" width="300" height="64" rx="10"/><circle cx="99" cy="444" r="12"/><text class="num" x="99" y="448">F1</text>
+    <text class="t1" x="121" y="439"><tspan class="rn">快车道副手</tspan> · 先问</text><text class="t2" x="121" y="461">读完代码，只提问题</text></g>
+  <path class="ar" d="M225,476 V506"/>
+  <g class="box dep"><rect x="75" y="506" width="300" height="64" rx="10"/><circle cx="99" cy="538" r="12"/><text class="num" x="99" y="542">F2</text>
+    <text class="t1" x="121" y="533"><tspan class="rn">快车道副手</tspan> · 开发</text><text class="t2" x="121" y="555">先写测试，再写代码，推送</text></g>
+  <path class="ar" d="M225,570 V600"/>
+  <g class="box mm"><rect x="75" y="600" width="300" height="64" rx="10"/><circle cx="99" cy="632" r="12"/><text class="num" x="99" y="636">F3</text>
+    <text class="t1" x="121" y="627"><tspan class="rn">主管理者</tspan> · 自己审</text><text class="t2" x="121" y="649">不派审查者和检查助手</text></g>
+  <text class="t2 c" x="225" y="690">碰到钱、权限、删数据、</text>
+  <text class="t2 c" x="225" y="708">发布、启动脚本，才加审查者</text>
+
+  <!-- full lane -->
+  <g class="box tm"><rect x="525" y="412" width="300" height="64" rx="10"/><circle cx="549" cy="444" r="12"/><text class="num" x="549" y="448">L1</text>
+    <text class="t1" x="571" y="439"><tspan class="rn">任务管理者</tspan> · 开工报告</text><text class="t2" x="571" y="461">估时、拆分、风险、汇报点</text></g>
+  <path class="ar" d="M675,476 V506"/>
+  <g class="box tm"><rect x="525" y="506" width="300" height="64" rx="10"/><circle cx="549" cy="538" r="12"/><text class="num" x="549" y="542">L2</text>
+    <text class="t1" x="571" y="533"><tspan class="rn">任务管理者</tspan> · 先写测试</text><text class="t2" x="571" y="555">先写会失败的测试</text></g>
+  <path class="ar" d="M675,570 V600"/>
+  <g class="box dep"><rect x="525" y="600" width="300" height="64" rx="10"/><circle cx="549" cy="632" r="12"/><text class="num" x="549" y="636">L3</text>
+    <text class="t1" x="571" y="627"><tspan class="rn">工人</tspan> · 写代码</text><text class="t2" x="571" y="649">一块一个，到测试通过</text></g>
+  <path class="ar" d="M675,664 V694"/>
+  <g class="box rev"><rect x="525" y="694" width="300" height="64" rx="10"/><circle cx="549" cy="726" r="12"/><text class="num" x="549" y="730">L4</text>
+    <text class="t1" x="571" y="721"><tspan class="rn">审查者</tspan> · 读改动</text><text class="t2" x="571" y="743">对照需求，必要时加核心审查</text></g>
+  <path class="ar" d="M675,758 V788"/>
+  <g class="box chk"><rect x="525" y="788" width="300" height="64" rx="10"/><circle cx="549" cy="820" r="12"/><text class="num" x="549" y="824">L5</text>
+    <text class="t1" x="571" y="815"><tspan class="rn">检查助手</tspan> · 浏览器点</text><text class="t2" x="571" y="837">用户看得到的改动才做</text></g>
+
+  <!-- both lanes meet at the merge gate -->
+  <path class="ar" d="M225,716 V868 H450 V900"/>
+  <path class="ar" d="M675,852 V868 H450 V900"/>
+  <g class="box mm"><rect x="280" y="900" width="340" height="64" rx="10"/><circle cx="304" cy="932" r="12"/><text class="num" x="304" y="936">4</text>
+    <text class="t1" x="326" y="927"><tspan class="rn">主管理者</tspan> · 合并关</text><text class="t2" x="326" y="949">计划的检查都要有通过记录</text></g>
+  <path class="ar no" d="M280,932 H240"/><text class="lb no c" x="260" y="925">否</text>
+  <g class="box bad"><rect x="40" y="900" width="200" height="64" rx="10"/>
+    <text class="t1" x="54" y="927"><tspan class="rn">退回去修</tspan></text><text class="t2" x="54" y="949">缺哪项补哪项</text></g>
+  <path class="ar" d="M450,964 V994"/><text class="lb" x="460" y="983">齐全</text>
+
+  <g class="box mrg"><rect x="300" y="994" width="300" height="64" rx="10"/><circle cx="322" cy="1026" r="12"/><text class="num" x="322" y="1030">5</text>
+    <text class="t1" x="344" y="1021"><tspan class="rn">合并</tspan> · 清理</text><text class="t2" x="344" y="1043">快车道副手自己合，大任务交合并助手</text></g>
+  <path class="ar" d="M450,1058 V1088"/>
+  <g class="box mm"><rect x="300" y="1088" width="300" height="64" rx="10"/><circle cx="322" cy="1120" r="12"/><text class="num" x="322" y="1124">6</text>
+    <text class="t1" x="344" y="1115"><tspan class="rn">主管理者</tspan> · 向你报告</text><text class="t2" x="344" y="1137">做了什么，怎么验证的</text></g>
+  <path class="ar" d="M450,1152 V1182"/>
+
+  <g class="dia"><polygon points="330,1224 450,1182 570,1224 450,1266"/><text x="450" y="1229">这一批都合并了？</text></g>
+  <path class="ar" d="M570,1224 H630"/><text class="lb c" x="600" y="1217">否</text>
+  <g class="box wait"><rect x="630" y="1192" width="240" height="64" rx="10"/>
+    <text class="t1" x="644" y="1219"><tspan class="rn">先停在这里</tspan></text><text class="t2" x="644" y="1241">等同批的其他任务</text></g>
+  <path class="ar" d="M450,1266 V1296"/><text class="lb" x="460" y="1285">是</text>
+
+  <g class="box pc"><rect x="300" y="1296" width="300" height="64" rx="10"/><circle cx="322" cy="1328" r="12"/><text class="num" x="322" y="1332">7</text>
+    <text class="t1" x="344" y="1323"><tspan class="rn">pc2</tspan> · 完整测试</text><text class="t2" x="344" y="1345">整批合在一起测一遍</text></g>
+  <path class="ar" d="M450,1360 V1390"/>
+  <g class="dia"><polygon points="330,1432 450,1390 570,1432 450,1474"/><text x="450" y="1437">全绿？</text></g>
+  <path class="ar no" d="M330,1432 H240"/><text class="lb no c" x="285" y="1425">否</text>
+  <g class="box bad"><rect x="20" y="1400" width="220" height="64" rx="10"/>
+    <text class="t1" x="34" y="1427"><tspan class="rn">派新的修复助手</tspan></text><text class="t2" x="34" y="1449">修好后再跑一次</text></g>
+  <path class="ar no" d="M130,1400 V1328 H300"/><text class="lb no" x="138" y="1370">再跑</text>
+  <path class="ar" d="M450,1474 V1504"/><text class="lb" x="460" y="1493">是</text>
+
+  <g class="dia"><polygon points="330,1546 450,1504 570,1546 450,1588"/><text x="450" y="1551">你说发布？</text></g>
+  <path class="ar" d="M570,1546 H630"/><text class="lb c" x="600" y="1539">否</text>
+  <g class="box wait"><rect x="630" y="1514" width="240" height="64" rx="10"/>
+    <text class="t1" x="644" y="1541"><tspan class="rn">留在工作分支</tspan></text><text class="t2" x="644" y="1563">等你一句话再发布</text></g>
+  <path class="ar" d="M450,1588 V1618"/><text class="lb" x="460" y="1607">是</text>
+
+  <g class="box mrg"><rect x="300" y="1618" width="300" height="64" rx="10"/><circle cx="322" cy="1650" r="12"/><text class="num" x="322" y="1654">8</text>
+    <text class="t1" x="344" y="1645"><tspan class="rn">发布</tspan> · 上线</text><text class="t2" x="344" y="1667">升版本号，推送发布</text></g>
+  <path class="ar" d="M450,1682 V1712"/>
+  <g class="box chk"><rect x="300" y="1712" width="300" height="64" rx="10"/><circle cx="322" cy="1744" r="12"/><text class="num" x="322" y="1748">9</text>
+    <text class="t1" x="344" y="1739"><tspan class="rn">检查助手</tspan> · 冒烟</text><text class="t2" x="344" y="1761">用新版本真跑一遍</text></g>
+  <path class="ar" d="M450,1776 V1806"/>
+  <g class="box own"><rect x="300" y="1806" width="300" height="44" rx="22"/><text class="t1 c" x="450" y="1833"><tspan class="rn">你</tspan> · 重新加载插件后生效</text></g>
+</svg>
+    </div>
+    <p class="cap">左边是快车道：一个副手做完，主管理者自己审，没有检查助手和合并助手。右边是大任务线：每一段都有专人。两条线都要过第 4 步。</p>
+  </section>
+</main>
