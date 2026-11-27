@@ -69,6 +69,7 @@ COPY_BIN = [
     "agent-resources.sh",
     "agent-init.sh",
     "agent-roots.sh",
+    "agent-session-end.sh",  # session-cleanup: the SessionEnd hook
     "agent-runtime.sh",
     "agent_conf.py",
     "agent_update.py",

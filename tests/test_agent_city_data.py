@@ -2167,7 +2167,9 @@ class TestAddDesigner(OfficeCase):
         self.assertEqual((body["state"], body["name"], body["role"]), ("opening", "shop Designer", "designer"))
         folder, title, command = self.calls[0]
         self.assertEqual((folder, title), (os.path.dirname(self.shop), "shop Designer"))
-        self.assertTrue(command.startswith("AGENT_ROLE=interior-designer claude --name "), command)
+        # session-cleanup rule 7: a floors folder that is not the default one comes first, as the city home
+        self.assertTrue(command.startswith("AGENT_CITY_HOME=%s AGENT_ROLE=interior-designer claude --name "
+                                           % shlex.quote(self.base)), command)
         adding = self.events(c, "adding")
         self.assertTrue(adding and all(e.get("kind") == "designer" for e in adding))
 

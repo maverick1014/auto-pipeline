@@ -543,8 +543,10 @@ class TestHelperTaskWorktreeLine(HelperCase):
         self.set_task("SST Calculation")
         mine = [r for r in self.rows() if r.startswith(self.repo.dir + " | ")]
         self.assertEqual(len(mine), 1, self.rows())
+        # session-cleanup: the line names its session, so the session's end can remove it
         self.assertRegex(mine[0], r"^%s \| task manager, human-direct \| task: SST Calculation"
-                         r" \| since \d{4}-\d\d-\d\d \d\d:\d\d$" % re.escape(self.repo.dir))
+                         r" \| since \d{4}-\d\d-\d\d \d\d:\d\d \| pid %s \| host \S+ \| session %s$"
+                         % (re.escape(self.repo.dir), NOBODY, SID_A))
 
 
 class TestPromptHook(HelperCase):

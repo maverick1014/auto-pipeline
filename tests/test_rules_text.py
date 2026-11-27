@@ -2454,7 +2454,9 @@ class TestCityHooks(unittest.TestCase):
                         # board-trust: the launch guard, tests/test_agent_guard.py
                         and "agent-guard.sh" not in json.dumps(e)
                         # check-blocks: the board warning hook, tests/test_agent_board.py
-                        and "agent-board-warn.sh" not in json.dumps(e)]
+                        and "agent-board-warn.sh" not in json.dumps(e)
+                        # session-cleanup: the SessionEnd cleanup hook, tests/test_session_cleanup.py
+                        and "agent-session-end.sh" not in json.dumps(e)]
                 for event, entries in hooks.items()}
 
     # Interaction (tests/test_agent_city_interact.py): PermissionRequest also
