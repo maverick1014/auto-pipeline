@@ -94,6 +94,15 @@ def main_launched(repo_dir, *tasks, at=None):
                 fh.write(json.dumps({"task": t, "type": kind, "by": "main", "at": at}) + "\n")
 
 
+def deputy_launched(repo_dir, task, at=None, by="main"):
+    """gate-self-check rule 3: the guard's record of a fast-lane deputy launched for the task."""
+    at = at or time.strftime("%Y-%m-%d %H:%M")
+    gd = subprocess.run(["git", "-C", repo_dir, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                        capture_output=True, text=True, check=True).stdout.strip()
+    with open(os.path.join(gd, "agent_launches.jsonl"), "a") as fh:
+        fh.write(json.dumps({"task": task, "type": "fast-lane-deputy", "by": by, "at": at}) + "\n")
+
+
 class TestTodoAddChecks(Case):
 
     def test_checks_and_scope_fields_after_guess(self):
@@ -1127,11 +1136,15 @@ class TestFastLaneGate(TestGate):
         os.remove(self.launches_file())                      # no reviewer or check deputy was launched
         self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
 
+    def fast_lane(self):
+        self.ok("todo", "builder", "t", "t Deputy")
+        deputy_launched(self.repo.dir, "t")                  # the guard saw a fast-lane deputy launched for t
+
     def review(self, by):
         self.ok("check", "t", "PR REVIEW", "pass", "--by", by, "--evidence", "read the diff")
 
     def test_main_manager_review_passes_a_fast_lane_task_with_no_flow_or_ui_check(self):
-        self.ok("todo", "builder", "t", "t Deputy")
+        self.fast_lane()
         self.review("auto-pipeline Manager")
         r = self.gate("--checks", self.PLAN)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -1150,30 +1163,117 @@ class TestFastLaneGate(TestGate):
         self.assertIn("UI CHECK: missing", lines)
 
     def test_a_fast_lane_pr_review_by_someone_else_still_needs_a_launched_reviewer(self):
-        self.ok("todo", "builder", "t", "t Deputy")
+        self.fast_lane()
         self.review("t Reviewer")
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("PR REVIEW: no reviewer launched by the main manager for t, not accepted", r.stdout.splitlines())
 
     def test_a_task_manager_is_not_the_main_manager(self):
-        self.ok("todo", "builder", "t", "t Deputy")
+        self.fast_lane()
         self.review("t Task Manager")
         self.assertEqual(self.gate().returncode, 1)
 
     def test_the_deputy_cannot_review_its_own_work(self):
-        self.ok("todo", "builder", "t", "t Deputy")
+        self.fast_lane()
         self.review("t Deputy")
         r = self.gate()
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("PR REVIEW: pass by the builder (t Deputy), not accepted", r.stdout.splitlines())
 
     def test_core_review_stays_for_a_fast_lane_task(self):
-        self.ok("todo", "builder", "t", "t Deputy")
+        self.fast_lane()
         self.review("auto-pipeline Manager")
         r = self.gate("--checks", "CORE REVIEW")
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("CORE REVIEW: missing", r.stdout.splitlines())
+
+    def test_a_gate_change_is_never_fast_lane(self):
+        # gate-self-check example 1: the branch touches the gate; the main manager's own review is not enough
+        self.commit_push({"bin/agent_checks.py": "# a gate change\n"})
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        self.fast_lane()
+        self.review("auto-pipeline Manager")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: a gate change needs a launched reviewer", r.stdout.splitlines())
+        self.assertIn("CORE REVIEW: missing", r.stdout.splitlines())
+
+    def test_a_guard_or_promote_change_is_a_gate_change_too(self):
+        for path in ("bin/agent-guard.sh", "bin/agent_promote.py"):
+            with self.subTest(path=path):
+                self.commit_push({path: "# change %s\n" % path})
+                self.fast_lane()
+                self.review("auto-pipeline Manager")
+                r = self.gate()
+                self.assertIn("PR REVIEW: a gate change needs a launched reviewer", r.stdout.splitlines())
+
+    def test_a_gate_change_with_a_launched_reviewer_and_core_review_passes(self):
+        self.commit_push({"bin/agent_checks.py": "# a gate change\n"})
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        main_launched(self.repo.dir, "t")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read the diff")
+        self.ok("check", "t", "CORE REVIEW", "pass", "--by", "t Core Reviewer", "--evidence", "read the core")
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_a_gate_change_review_by_the_main_manager_does_not_count_even_with_a_launch(self):
+        self.commit_push({"bin/agent_checks.py": "# a gate change\n"})
+        self.passes("DIFF SCAN", "BUILD", "RELATED TESTS")
+        main_launched(self.repo.dir, "t")
+        self.review("auto-pipeline Manager")
+        self.ok("check", "t", "CORE REVIEW", "pass", "--by", "t Core Reviewer", "--evidence", "read the core")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: a gate change needs a launched reviewer", r.stdout.splitlines())
+
+    def test_a_deputy_name_without_a_launch_record_is_full_lane(self):
+        # gate-self-check example 3: a Helper built it; the todo builder name alone decides nothing
+        self.ok("todo", "builder", "t", "t Deputy")
+        self.review("auto-pipeline Manager")
+        r = self.gate("--checks", self.PLAN)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        lines = r.stdout.splitlines()
+        self.assertIn("PR REVIEW: no reviewer launched by the main manager for t, not accepted", lines)
+        self.assertIn("FLOW CHECK: missing", lines)
+
+    def test_a_deputy_record_by_someone_other_than_the_main_manager_is_not_fast_lane(self):
+        self.ok("todo", "builder", "t", "t Deputy")
+        deputy_launched(self.repo.dir, "t", by="t Task Manager")
+        self.review("auto-pipeline Manager")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_a_deputy_record_for_another_task_is_not_fast_lane(self):
+        self.ok("todo", "builder", "t", "t Deputy")
+        deputy_launched(self.repo.dir, "other")
+        self.review("auto-pipeline Manager")
+        self.assertEqual(self.gate().returncode, 1)
+
+    def test_a_task_the_main_manager_built_refuses_its_own_tool_blocks(self):
+        # gate-self-check example 4 (rule 4)
+        self.ok("todo", "builder", "t", "main")
+        main_launched(self.repo.dir, "t")
+        self.ok("check", "t", "DIFF SCAN", "pass", "--by", "auto-pipeline Manager", "--evidence", "ok")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("DIFF SCAN: pass by the builder (auto-pipeline Manager), not accepted", r.stdout.splitlines())
+
+    def test_a_task_the_main_manager_built_needs_a_launched_reviewer_not_its_own_review(self):
+        self.ok("todo", "builder", "t", "main")
+        main_launched(self.repo.dir, "t")
+        self.review("auto-pipeline Manager")
+        r = self.gate()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("PR REVIEW: pass by the builder (auto-pipeline Manager), not accepted", r.stdout.splitlines())
+
+    def test_a_task_the_main_manager_built_passes_with_blocks_from_others(self):
+        self.ok("todo", "builder", "t", "main")
+        main_launched(self.repo.dir, "t")
+        self.ok("check", "t", "PR REVIEW", "pass", "--by", "t Reviewer", "--evidence", "read it")
+        r = self.gate()
+        self.assertEqual(r.returncode, 0, r.stdout)
 
 
 class TestF3Commits(TestGate):
