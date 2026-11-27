@@ -3411,8 +3411,11 @@ class TestScene(unittest.TestCase):
         self.assertRegex(self.text, r"let view\s*=\s*'outside'")
         self.assertNotIn("camTween", self.fn("goFloor"))
 
-    def test_select_zoom_is_halved(self):
-        self.assertRegex(self.fn("select"), r"Math\.min\(cam\.dist,\s*\(fitDist\(\)\s*\+\s*9\)\s*/\s*2\)")
+    def test_select_does_not_zoom(self):
+        # city-one-sidebar (owner 2026-11-27) replaces city-office's halved select zoom (mock v5): a click on a person
+        # never zooms; the behaviour is tested in tests/test_agent_city_one_sidebar.py
+        self.assertNotRegex(self.fn("select"), r"fitDist\(\)\s*\+\s*9")
+        self.assertNotRegex(self.fn("select"), r"cam\.wantDist\s*=(?!=)")
 
     def test_decor_and_slots(self):
         m = re.search(r"const DECOR\s*=\s*\{(.*?)\n\};", self.text, re.S)
