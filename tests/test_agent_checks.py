@@ -1260,6 +1260,28 @@ class TestFastLaneGate(TestGate):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("DIFF SCAN: pass by the builder (auto-pipeline Manager), not accepted", r.stdout.splitlines())
 
+    def test_a_task_the_main_manager_built_refuses_its_own_db_check(self):
+        self.ok("todo", "builder", "t", "main")
+        main_launched(self.repo.dir, "t")
+        self.ok("check", "t", "DB CHECK", "pass", "--by", "auto-pipeline Manager", "--evidence", "ok")
+        r = self.gate("--checks", "DB CHECK")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("DB CHECK: pass by the builder (auto-pipeline Manager), not accepted", r.stdout.splitlines())
+
+    def test_a_repo_manager_builder_counts_as_the_main_manager(self):
+        self.ok("todo", "builder", "t", "auto-pipeline Manager")
+        main_launched(self.repo.dir, "t")
+        self.ok("check", "t", "DIFF SCAN", "pass", "--by", "auto-pipeline Manager", "--evidence", "ok")
+        r = self.gate()
+        self.assertIn("DIFF SCAN: pass by the builder (auto-pipeline Manager), not accepted", r.stdout.splitlines())
+
+    def test_an_owner_order_change_is_a_gate_change(self):
+        self.commit_push({"bin/agent-owner-order.sh": "# change\n"})
+        self.fast_lane()
+        self.review("auto-pipeline Manager")
+        r = self.gate()
+        self.assertIn("PR REVIEW: a gate change needs a launched reviewer", r.stdout.splitlines())
+
     def test_a_task_the_main_manager_built_needs_a_launched_reviewer_not_its_own_review(self):
         self.ok("todo", "builder", "t", "main")
         main_launched(self.repo.dir, "t")

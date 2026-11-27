@@ -10,10 +10,10 @@ Owner, 2026-11-27, on the self-audit: "for the fast lane gate issues also need t
 
 ## The rule
 
-1. A diff that touches the gate, the guard or promote (the code behind `agent-file.sh checks gate`, `agent-guard.sh`, `agent-promote.sh`; the builder lists the files it finds) is never fast lane at the gate: PR REVIEW and CORE REVIEW must come from a reviewer the main manager launched; a PR REVIEW by the main manager does not count for it.
+1. A diff that touches the gate, the guard or promote (the code behind `agent-file.sh checks gate`, `agent-guard.sh`, `agent-promote.sh`; the gate's list is `GATE_FILES`: bin/agent_checks.py, agent-file.sh, agent_guard.py, agent-guard.sh, agent_promote.py, agent-promote.sh, agent_level.py, agent-level.sh, agent-owner-order.sh, agent_owner_order.py, agent_blocks.py, hooks/hooks.json) is never fast lane at the gate: PR REVIEW and CORE REVIEW must come from a reviewer the main manager launched; a PR REVIEW by the main manager does not count for it.
 2. The gate that decides a merge is the base's gate, never the branch's own: the merge skill and the merge deputy run the gate from the main checkout (in this repo its `bin/`; elsewhere the installed plugin), never `<scratch>/bin/` of the branch.
 3. Fast lane at the gate only when the guard's launch records show a fast-lane deputy launched by the main manager for this task; a task built by a Helper, a task manager or the main manager itself is full lane there (the todo builder name alone decides nothing).
-4. A task the main manager built itself: PR REVIEW from a launched reviewer, and its builder blocks (DIFF SCAN, BUILD, RELATED TESTS, ...) written by someone other than the main manager.
+4. A task the main manager built itself: PR REVIEW from a launched reviewer, and every block but OWNER SIGN (taken from the block table) written by someone other than the main manager; a builder named `main` or `<repo> Manager` is the main manager.
 
 ## Examples
 

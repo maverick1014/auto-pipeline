@@ -1060,8 +1060,18 @@ def is_fast_lane(builders):
 
 # gate-self-check rule 1: the code behind `checks gate`, the guard and promote
 GATE_FILES = ("bin/agent_checks.py", "bin/agent-file.sh", "bin/agent_guard.py", "bin/agent-guard.sh",
-              "bin/agent_promote.py", "bin/agent-promote.sh", "bin/agent_level.py", "bin/agent-level.sh")
-TOOL_BLOCKS_OF_BUILDER = ("DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS", "EXAMPLES TEST")
+              "bin/agent_promote.py", "bin/agent-promote.sh", "bin/agent_level.py", "bin/agent-level.sh",
+              "bin/agent-owner-order.sh", "bin/agent_owner_order.py", "bin/agent_blocks.py", "hooks/hooks.json")
+
+
+def main_built_blocks():
+    """gate-self-check rule 4: every block but OWNER SIGN, from the block table (a new block is covered)."""
+    try:
+        import agent_blocks
+        names = list(agent_blocks.NAMES)
+    except Exception:
+        names = []
+    return (set(names) | set(BUILDER_BLOCKS) | {"DIFF SCAN", "BUILD", "RELATED TESTS", "GUARD TESTS", "EXAMPLES TEST"}) - {SIGN}
 
 
 def gate_change_files(d, base, head):
@@ -1257,7 +1267,7 @@ def cmd_gate(ctx, a):
     # rule 3: fast lane at the gate only when the guard saw the main manager launch a fast-lane deputy for the task
     fast = is_fast_lane(builders) and not gate_files \
         and any(t == "fast-lane-deputy" and by == "main" for (t, by, at) in launches)
-    main_built = "main" in lowb
+    main_built = any(by_main_manager(b) for b in builders)
     if fast:
         plan = [b for b in plan if b not in FAST_LANE_SKIPS]
 
@@ -1281,7 +1291,7 @@ def cmd_gate(ctx, a):
         elif b in BUILDER_BLOCKS and is_builder(r[1]):
             lines.append("%s: pass by the builder (%s), not accepted" % (b, r[1]))
             refused.append("%s by the builder" % b)
-        elif main_built and (b in BUILDER_BLOCKS or b in TOOL_BLOCKS_OF_BUILDER) and by_main_manager(r[1]):
+        elif main_built and b in main_built_blocks() and by_main_manager(r[1]):
             lines.append("%s: pass by the builder (%s), not accepted" % (b, r[1]))
             refused.append("%s by the builder" % b)
         elif gate_files and b in ("PR REVIEW", "CORE REVIEW") \
