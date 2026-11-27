@@ -177,6 +177,46 @@ class TestNeverBackPastTheMainManager(EtaCarryCase):
         self.both(check)
 
 
+class TestRemoteAnswerSplit(unittest.TestCase):
+    """Verify finding (board-eta, task manager): the remote answer "<v>|<last wake line>" keeps the line's own " | "
+    inside v (v = the first 99 chars of the winning line). bin/agent_watch.py split_fsig(rest) -> (v, last), used by
+    observe, splits it right also when the 99-char cut ends v with " |"; the wake line comes back unchanged."""
+
+    def answer(self, lines):
+        import subprocess
+        import tempfile
+        sys.path.insert(0, tw.BIN)
+        import agent_watch
+        d = tempfile.mkdtemp(prefix="eta_split_")
+        self.addCleanup(subprocess.run, ["rm", "-rf", d])
+        with open(os.path.join(d, "agent_state.txt"), "w") as fh:
+            fh.write("".join(l + "\n" for l in lines))
+        out = subprocess.run(["bash", "-c", agent_watch.remote_command(d)], capture_output=True, text=True).stdout
+        hit = [agent_watch.FSIG.match(l) for l in out.splitlines() if l.startswith("FSIG")]
+        self.assertTrue(hit and hit[0], out)
+        return agent_watch, agent_watch.split_fsig(hit[0].group(5))
+
+    def test_the_cut_at_the_lines_own_bar_keeps_the_wake_line(self):
+        pre = "HEARTBEAT t: step 5 of 7, work 30m, "
+        hb = pre + "x" * (97 - len(pre)) + " | 2026-11-27 11:08"     # its " | " starts at char 98
+        for cut in (hb, hb[:-25] + "y" + hb[-25:], hb[:-25] + "yy" + hb[-25:]):
+            with self.subTest(at=cut.index(" | ")):
+                w, (v, last) = self.answer(["DONE PASS t", cut])
+                self.assertEqual(last, "DONE PASS t")
+                self.assertEqual(w.progress_of_line(v, "t")[0], "verify")
+
+    def test_a_stage_line_keeps_its_since_and_the_wake_line(self):
+        w, (v, last) = self.answer(["QUESTION: which port? | 2026-11-27 11:00",
+                                    "STAGE t: report | since 2026-11-27 11:10"])
+        self.assertEqual(last, "QUESTION: which port? | 2026-11-27 11:00")
+        self.assertEqual(w.progress_of_line(v, "t")[0], "report")
+        self.assertEqual(w.line_time(v), "2026-11-27 11:10")
+
+    def test_no_wake_line_and_no_stage_line(self):
+        _, (v, last) = self.answer(["note: nothing yet"])
+        self.assertEqual((v, last), ("", ""))
+
+
 # ---------------------------------------------------------------- rule 3: the forecast of a fix round
 
 def fix_rows(rounds):
