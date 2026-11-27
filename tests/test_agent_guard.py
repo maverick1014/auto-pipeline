@@ -1086,7 +1086,7 @@ class TestHooks(unittest.TestCase):
         return [e for e in hooks.get(event, []) if "agent-guard.sh" in json.dumps(e)]
 
     def test_wired_once_per_event(self):
-        for event, matcher in (("PreToolUse", "Agent|Task|Bash"), ("PostToolUse", "Agent|Task|Bash"),
+        for event, matcher in (("PreToolUse", "Agent|Task|Bash|SendMessage"), ("PostToolUse", "Agent|Task|Bash"),
                                ("SubagentStart", None), ("SubagentStop", None)):
             with self.subTest(event=event):
                 e = self.entries(event)

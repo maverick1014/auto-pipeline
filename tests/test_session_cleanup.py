@@ -195,7 +195,7 @@ class TestSessionEndDead(EndCase):
         far = helper_line("/far/wt", SID, pid=dead_pid(), host="other-pc")
         old = helper_line("/old/wt", SID)          # written before this task: no pid field
         self.set_lines([far, old])
-        self.assertOk(self.end("--dead"))
+        self.assertOk(self.end("--dead", env={"AGENT_FAKE_NOW": "2026-11-27 12:00"}))   # board-fast-lane: under 12 h old stays
         self.assertEqual(self.lines(), [far, old])
 
     def test_no_session_id_only_the_line_goes(self):

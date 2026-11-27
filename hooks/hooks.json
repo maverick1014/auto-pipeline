@@ -39,7 +39,7 @@
         ]
       },
       {
-        "matcher": "Agent|Task|Bash",
+        "matcher": "Agent|Task|Bash|SendMessage",
         "hooks": [
           {
             "type": "command",
