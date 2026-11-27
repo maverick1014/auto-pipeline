@@ -815,10 +815,14 @@ class Board:
     def queue_text(self, t):
         w = self.words
         task = t["after"]
+        note = collapse(t["wnote"])
         if not task:
-            m = re.match(r"after\s+(\S+)", collapse(t["wnote"]), re.IGNORECASE)
+            m = re.match(r"after\s+(\S+)", note, re.IGNORECASE)
             task = m.group(1).rstrip(",;:.") if m else ""
-        return w["queue"] + (" · " + w["after"] % task if task else "")
+            if m:
+                note = ""      # read as the after task: not shown again
+        return (w["queue"] + (" · " + w["after"] % task if task else "")
+                + (" · " + cut_cols(note, WAIT_WHAT_COLS) if note else ""))
 
     def todo_row(self, t, wt_lines, own_dir=None):
         opened = parse_time(t["opened"]) if t["opened"] else None
@@ -889,7 +893,7 @@ class Board:
         if t["machine"]:
             where = t["machine"] + (", " + short_path(t["path"], self.home) if t["path"] else "")
         else:
-            where = self.worktree_where(t["name"], wt_lines)
+            where = "-" if kind == "queue" else self.worktree_where(t["name"], wt_lines)
             if where is None:
                 where = self.where_here(own_dir) if own_dir else "-"
         self.add(group, when, t["name"] + (" [%s]" % t["owner"] if t["owner"] else ""), t["what"] or "-", status, where,
