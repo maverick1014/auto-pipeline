@@ -358,9 +358,23 @@ def failure_lines(text):
     return ["  | " + l for l in (out or lines[-40:])]
 
 
+PER_PROCESS_LINES, TOTAL_LINES = 60, 300
+
+
+def capped(lines, left):
+    """The lines to print: at most PER_PROCESS_LINES and what is left of the run's budget
+    (left[0], reduced here); when some are not shown, one line says how many."""
+    shown = lines[:max(0, min(PER_PROCESS_LINES, left[0]))]
+    left[0] -= len(shown)
+    if len(shown) < len(lines):
+        shown.append("  | ... %d more lines cut" % (len(lines) - len(shown)))
+    return shown
+
+
 # the test processes now running, and whether a stop signal came: no new process after it
 CHILDREN, CHILDREN_LOCK, STOPPING = set(), threading.Lock(), [False]
 LOGS = [None]
+TOOLS = [None]   # the agent_test_tools_* folder this process made (its atexit does not run on a signal)
 
 
 def stop_children():
@@ -387,8 +401,9 @@ def stop_children():
 
 def on_signal(sig, frame):
     stop_children()
-    if LOGS[0]:
-        shutil.rmtree(LOGS[0], ignore_errors=True)
+    for folder in (LOGS[0], TOOLS[0]):
+        if folder:
+            shutil.rmtree(folder, ignore_errors=True)
     signal.signal(sig, signal.SIG_DFL)
     os.kill(os.getpid(), sig)
 
@@ -533,7 +548,7 @@ def main():
     ap.add_argument("--root")
     ap.add_argument("--out")
     args = ap.parse_args()
-    direct_tools()   # test-slim-3: git and python3 without the macOS xcrun shim, for every process started
+    TOOLS[0] = direct_tools()   # test-slim-3: git and python3 without the macOS xcrun shim, for every process started
     if not args.files:
         os.environ["AGENT_FULL_RUN"] = "1"
     else:
@@ -589,6 +604,7 @@ def run_all(args, tests_dir, root, names, logs):
             for s, n, key in sorted(classes, key=lambda c: (-c[0], c[2])):
                 fh.write("%.1f\t%d\t%s\n" % (s, n, key))
         bad = [r for r in rows if r[1] != 0]
+        budget = [TOTAL_LINES]
         for name, code, secs, tests, verdict, _classes in rows:
             print("%7.1f  %5d  %s%s" % (secs, tests, name, "" if code == 0 else "  " + verdict))
         print("files %d  tests %d  sum of file seconds %.0f  wall %.0f s  (-j %d)  -> %s"
@@ -596,7 +612,7 @@ def run_all(args, tests_dir, root, names, logs):
                  time.time() - start, args.j, out))
         for name, code, secs, tests, verdict, _classes in bad:
             print("FAILED %s" % name)
-            for line in failure_lines(texts.get(name, "")):
+            for line in capped(failure_lines(texts.get(name, "")), budget):
                 print(line)
         return 1 if bad else 0
 
@@ -617,6 +633,7 @@ def run_all(args, tests_dir, root, names, logs):
         with ThreadPoolExecutor(max_workers=len(groups)) as pool:
             results = list(pool.map(go, enumerate(groups)))
     failed = False
+    budget = [TOTAL_LINES]
     ran_by_file, skipped_by_file = {}, {}
     for i, mods, est, (code, secs, text, counts, _class_secs, skips) in results:
         tests, verdict = summary(text)
@@ -630,7 +647,7 @@ def run_all(args, tests_dir, root, names, logs):
             failed = True
             for block in re.findall(r"^(?:FAIL|ERROR): .*$", text, re.M):
                 print("  " + block)
-            for line in failure_lines(text):
+            for line in capped(failure_lines(text), budget):
                 print(line)
     print("wall %.0f s, %d processes (-j %d)" % (time.time() - start, len(groups), args.j))
     for n in names:
