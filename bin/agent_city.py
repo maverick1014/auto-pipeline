@@ -40,6 +40,7 @@ Python standard library only. Runs on Python 3.8+.
 """
 
 import argparse
+import contextlib
 import hashlib
 import hmac
 import http.client
@@ -960,15 +961,68 @@ CHAT_KEEP = 200
 CHAT_BUSY_EVENTS = ("UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest")
 
 
-def load_chat(path, now=None):
+try:
+    import fcntl
+except ImportError:      # no flock (not a Unix): the writers then run unlocked
+    fcntl = None
+
+
+@contextlib.contextmanager
+def _chat_file_lock(path):
+    """An exclusive flock on the sidecar PATH + ".lock" (never on the data
+    file itself: a writer that opened the old file would write into the
+    replaced one). Every writer and every rewrite of chat.jsonl holds it.
+    Never raises: when the lock cannot be taken the body runs unlocked."""
+    fd = None
+    if fcntl is not None:
+        try:
+            fd = os.open(path + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                os.fchmod(fd, 0o600)
+            except OSError:
+                pass
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        except OSError:
+            if fd is not None:
+                os.close(fd)
+            fd = None
+    try:
+        yield
+    finally:
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(fd)
+
+
+def chat_append(path, row):
+    """The only writer of chat.jsonl (the say hook, the server): one JSON
+    line, private, one os.write, under the file lock. Never raises."""
+    with _chat_file_lock(path):
+        _append_private_jsonl(path, row)
+
+
+def load_chat(path, now=None, live=()):
     """The valid lines of PATH, the last CHAT_KEEP per (sid, aid), in file
-    order; rewrites the file (tmp + rename) when it dropped any. An "end"
-    row ({"sid", "aid": "", "kind": "end", "at"}, the city's note that a
-    session ended) is kept; every row of a sid whose LAST row is an end row
-    older than CHAT_GONE_SEC before NOW (epoch seconds, default time.time())
-    goes, that end row too. Missing file -> []."""
+    order; rewrites the file (tmp + rename, under the file lock) when it
+    dropped any. An "end" row ({"sid", "aid": "", "kind": "end", "at"}, the
+    city's note that a session ended) is kept; every row of a sid whose LAST
+    row is an end row older than CHAT_GONE_SEC before NOW (epoch seconds,
+    default time.time()) goes, that end row too; so does every row of a sid
+    whose last row is older than CHAT_IDLE_SEC and that is not in LIVE.
+    Missing file -> []."""
     if now is None:
         now = time.time()
+    if not os.path.exists(path):
+        return []       # no file, no lock file either
+    with _chat_file_lock(path):
+        return _load_chat_locked(path, now, live)
+
+
+def _load_chat_locked(path, now, live):
+    """load_chat, the caller holds the file lock."""
     try:
         with open(path, encoding="utf-8") as fh:
             raw_lines = fh.readlines()
@@ -1015,7 +1069,8 @@ def load_chat(path, now=None):
         last[row["sid"]] = row
     n_valid = len(valid)
     gone = set(sid for sid, row in last.items()
-               if row["kind"] == "end" and row["at"] < now - CHAT_GONE_SEC)
+               if (row["kind"] == "end" and row["at"] < now - CHAT_GONE_SEC)
+               or (row["at"] < now - CHAT_IDLE_SEC and sid not in live))
     if gone:
         valid = [row for row in valid if row["sid"] not in gone]
 
@@ -1326,6 +1381,7 @@ def machine_resources(folder, script=None):
 HIST_KEEP = 200            # lines kept per person, the oldest go
 HIST_GONE_SEC = 86400      # a person who left more than this long ago is forgotten
 CHAT_GONE_SEC = HIST_GONE_SEC  # a session that ended more than this long ago loses its chat
+CHAT_IDLE_SEC = 7 * 86400      # so does a session, not live, whose last row is older than this
 HIST_STEPS = 3             # steps one "steps" line holds
 HIST_COMPACT_ROWS = 5000   # rows appended in one run after which a sweep writes the file compact again
 HIST_KINDS = frozenset(("started", "steps", "stuck", "qa", "toLead", "toGov", "waiting", "done", "left"))
@@ -2237,6 +2293,7 @@ class CityState:
         self._chat_tail_offset = None   # bytes of chat_path the tail thread has read (None: no tail)
         self._chat_sids_with_rows = set()  # sids that have a row in chat.jsonl
         self._chat_end_at = {}          # sid -> epoch seconds its chat's end row says (for the sweep)
+        self._chat_last_at = {}         # sid -> epoch seconds of its last chat row
         self.chat_watchers = {}       # sid -> {"current", "seen"} (chat_next's own, gov_next keeps self.watchers)
         self.listen_grace_sec = listen_grace_sec
         self._chat_waiting = {}       # page id -> watchers waiting for it now
@@ -2253,7 +2310,9 @@ class CityState:
                 self._restore_roster_locked()
 
         if self.chat_path is not None:
-            for row in load_chat(self.chat_path):
+            with self.lock:
+                live = set(sid for sid in self._sess if self._live_sid_locked(sid))
+            for row in load_chat(self.chat_path, live=live):
                 self.feed_chat(row)
 
         # A floor whose local folder is gone is dropped (see _drop_gone_locked): after the roster is
@@ -4360,15 +4419,29 @@ class CityState:
     def sweep_history(self, now):
         """Forgets every person who left more than a day before NOW (epoch
         seconds, time.time()); a person who never left stays. Also drops the
-        chat of every session whose end row is more than CHAT_GONE_SEC old
-        (page, records, rows in chat.jsonl). The server calls this every
+        chat of every session whose end row is more than CHAT_GONE_SEC old,
+        and of every one, not live, whose last row is more than CHAT_IDLE_SEC
+        old (page, records, rows in chat.jsonl). The server calls this every
         recount tick. Returns how many persons it dropped."""
         with self.lock:
             count = self.history.sweep(now)
             gone = set(sid for sid, at in self._chat_end_at.items() if now - at > CHAT_GONE_SEC)
+            gone.update(sid for sid, at in self._chat_last_at.items()
+                        if now - at > CHAT_IDLE_SEC and not self._live_sid_locked(sid))
             if gone:
                 self._drop_chat_of_locked(gone)
             return count
+
+    def _live_sid_locked(self, sid):
+        """Caller holds self.lock. Is SID a live session (a governor, or a
+        session citizen not done) in some territory?"""
+        for reducer in self.reducers.values():
+            if reducer.gov_sid == sid:
+                return True
+            record = reducer.agents.get("s:" + sid)
+            if record is not None and record["kind"] == "session" and not record["done"]:
+                return True
+        return False
 
     def _drop_chat_of_locked(self, gone):
         """Caller holds self.lock. Forgets the chat of the sids in GONE: their
@@ -4377,6 +4450,7 @@ class CityState:
         the tail then starts at the new file's end (the written offset)."""
         for sid in gone:
             self._chat_end_at.pop(sid, None)
+            self._chat_last_at.pop(sid, None)
             self._chat_sids_with_rows.discard(sid)
             page = "s:" + sid
             self.chat.pop(page, None)
@@ -4390,36 +4464,37 @@ class CityState:
             self.chat_watchers.pop(sid, None)
         if self.chat_path is None:
             return
-        try:
-            with open(self.chat_path, "rb") as fh:
-                data = fh.read()
-            st = os.stat(self.chat_path)
-        except OSError:
-            return
         unread = []
-        tail_at = self._chat_tail_offset
-        kept = []
-        pos = 0
-        for raw in data.splitlines(True):
-            start, pos = pos, pos + len(raw)
+        with _chat_file_lock(self.chat_path):
             try:
-                obj = json.loads(raw.decode("utf-8"))
-            except ValueError:
-                obj = None
-            if isinstance(obj, dict) and obj.get("sid") in gone:
-                continue
-            kept.append(raw if raw.endswith(b"\n") else raw + b"\n")
-            if tail_at is not None and start >= max(tail_at, self._chat_written_offset) and isinstance(obj, dict):
-                unread.append(obj)
-        try:
-            fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(self.chat_path) or ".", prefix=".chat-", suffix=".tmp")
-            with os.fdopen(fd, "wb") as fh:
-                fh.write(b"".join(kept))
-            os.chmod(tmp_path, stat.S_IMODE(st.st_mode))
-            os.replace(tmp_path, self.chat_path)
-            self._chat_written_offset = os.path.getsize(self.chat_path)
-        except OSError:
-            return
+                with open(self.chat_path, "rb") as fh:
+                    data = fh.read()
+                st = os.stat(self.chat_path)
+            except OSError:
+                return
+            tail_at = self._chat_tail_offset
+            kept = []
+            pos = 0
+            for raw in data.splitlines(True):
+                start, pos = pos, pos + len(raw)
+                try:
+                    obj = json.loads(raw.decode("utf-8"))
+                except ValueError:
+                    obj = None
+                if isinstance(obj, dict) and obj.get("sid") in gone:
+                    continue
+                kept.append(raw if raw.endswith(b"\n") else raw + b"\n")
+                if tail_at is not None and start >= max(tail_at, self._chat_written_offset) and isinstance(obj, dict):
+                    unread.append(obj)
+            try:
+                fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(self.chat_path) or ".", prefix=".chat-", suffix=".tmp")
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(b"".join(kept))
+                os.chmod(tmp_path, stat.S_IMODE(st.st_mode))
+                os.replace(tmp_path, self.chat_path)
+                self._chat_written_offset = os.path.getsize(self.chat_path)
+            except OSError:
+                return
         for obj in unread:
             self._feed_chat_locked(obj)
 
@@ -4449,10 +4524,11 @@ class CityState:
             if isinstance(at, bool) or not isinstance(at, (int, float)):
                 return
             self._chat_sids_with_rows.add(sid)
-            self._chat_end_at[sid] = at
-            if self._page_id_for_sid(sid, "") == "s:" + sid:
-                self._chat_page_of_sid[sid] = "s:" + sid
-                self._chat_ended_pages.add("s:" + sid)
+            if at >= self._chat_last_at.get(sid, at):
+                self._chat_end_at[sid] = at
+                if self._page_id_for_sid(sid, "") == "s:" + sid:
+                    self._chat_page_of_sid[sid] = "s:" + sid
+                    self._chat_ended_pages.add("s:" + sid)
             return
         if kind not in ("prompt", "reply", "owner"):
             return
@@ -4468,6 +4544,9 @@ class CityState:
         self._chat_sids_with_rows.add(sid)
         if at > self._chat_end_at.get(sid, at):
             del self._chat_end_at[sid]      # it came back after its end
+            self._chat_ended_pages.discard("s:" + sid)
+        if at > self._chat_last_at.get(sid, 0.0):
+            self._chat_last_at[sid] = at
         self._chat_seq += 1
         entry = {"id": self._chat_seq, "kind": kind, "text": text, "at": at}
         if kind == "owner":
@@ -4550,6 +4629,7 @@ class CityState:
         self._append_jsonl_locked(self.decisions_path, row)
         line = {"sid": sid, "aid": "", "kind": "owner", "text": entry["text"], "at": entry["at"]}
         self._chat_sids_with_rows.add(sid)
+        self._chat_last_at[sid] = max(self._chat_last_at.get(sid, 0.0), entry["at"])
         self._append_chat_path_locked(line)
         return {"state": "message", "id": entry["id"], "text": entry["text"]}
 
@@ -4566,7 +4646,7 @@ class CityState:
     def _append_chat_path_locked(self, row):
         if self.chat_path is None:
             return
-        _append_private_jsonl(self.chat_path, row)
+        chat_append(self.chat_path, row)
         try:
             self._chat_written_offset = os.path.getsize(self.chat_path)
         except OSError:
@@ -5531,20 +5611,8 @@ def _cmd_say_impl(args):
     try:
         os.makedirs(directory, exist_ok=True)
         chat_path = os.path.join(directory, "chat.jsonl")
-        data = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
-        # Private (holds conversation text) and one write per line: two
-        # sessions ending at once must never interleave (requirements/
-        # city.md, "Talking"). A pre-existing wider-permission file is
-        # tightened via fchmod on the open descriptor.
-        fd = os.open(chat_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-        try:
-            try:
-                os.fchmod(fd, 0o600)
-            except OSError:
-                pass
-            os.write(fd, data)
-        finally:
-            os.close(fd)
+        # Private, one write per line, under the file lock: chat_append.
+        chat_append(chat_path, row)
     except OSError:
         pass
     return 0

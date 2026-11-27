@@ -938,7 +938,11 @@ helper_task() {
   hpid=$(agent_pid 2>/dev/null); case "$hpid" in ''|*[!0-9]*) hpid=-;; esac
   hhost=${AGENT_FAKE_HOST:-$(hostname -s 2>/dev/null || hostname)}
   awk -F' \\| ' -v p="$PROJECT_CWD" -v t="task: $task" 'BEGIN { OFS = " | " }
-    $1 == p && $2 == "task manager, human-direct" { $3 = t; seen = 1 }
+    $1 == p && $2 == "task manager, human-direct" {
+      has = 0; val = ""
+      for (i = 3; i <= NF; i++) if ($i ~ /^session /) { has = 1; val = substr($i, 9) }
+      if (!has || val == sid) { $3 = t; seen = 1 }
+    }
     { print }
     END { if (!seen) print p, "task manager, human-direct", t, "since " now, "pid " pid, "host " host, "session " sid }' \
     pid="$hpid" host="$hhost" sid="$sid" now="$NOW" "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
@@ -952,13 +956,14 @@ session_end_files() {
   for f in "$PROJECT_GITDIR/agent_started_$sid" "$PROJECT_GITDIR/agent_rules_$sid" "$PROJECT_GITDIR/agent_compact_$sid" \
            "$PROJECT_GITDIR/agent_quiz_$sid" "$PROJECT_GITDIR/agent_stale_$sid" "$PROJECT_GITDIR/agent_autoclear_$sid" \
            "$PROJECT_GITDIR/agent_helper_task_$sid" "$PROJECT_GITDIR/agent_helper_title_$sid" "$PROJECT_GITDIR/agent_point_${sid}_"*; do
+    case "$f" in "$PROJECT_GITDIR/agent_point_${sid}_"*) case "${f#"$PROJECT_GITDIR/agent_point_${sid}_"}" in *_*) continue;; esac;; esac   # the moment has no "_": agent_point_abc_def_watch is session abc_def's
     if [ -f "$f" ] || [ -L "$f" ]; then rm -f "$f" 2>/dev/null && n=$((n + 1)); fi
   done
   rmdir "$PROJECT_GITDIR/agent_started_$sid.lock" "$PROJECT_GITDIR/agent_rules_$sid.lock" 2>/dev/null || true
   echo "$n"
 }
-# session_end_valid <sid>: letters, digits, _ and - only
-session_end_valid() { case "$1" in ''|*[!A-Za-z0-9_-]*) return 1;; esac; return 0; }
+# session_end_valid <sid>: letters, digits, _ and - only, starting with a letter or digit
+session_end_valid() { case "$1" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_-]*) return 1;; esac; return 0; }
 # session_end_lines <sid>: drop the human-direct lines naming that session; prints how many went
 session_end_lines() {
   local sid=$1 before after
@@ -1021,7 +1026,11 @@ helper_join() {
   case "$pane" in *[!A-Za-z0-9_.:-]*) pane=-;; esac
   touch "$WT"
   awk -F' \\| ' -v p="$PROJECT_CWD" -v t="$task" -v now="$NOW" -v pane="$pane" -v sid="$sid" 'BEGIN { OFS = " | " }
-    $1 == p && $2 == "task manager, human-direct" { print p, t, "working", "since " now, "pane " pane, "session " sid; seen = 1; next }
+    $1 == p && $2 == "task manager, human-direct" {
+      has = 0; val = ""
+      for (i = 3; i <= NF; i++) if ($i ~ /^session /) { has = 1; val = substr($i, 9) }
+      if (!has || val == sid) { print p, t, "working", "since " now, "pane " pane, "session " sid; seen = 1; next }
+    }
     { print }
     END { if (!seen) print p, t, "working", "since " now, "pane " pane, "session " sid }' "$WT" > "$WT.tmp" && mv "$WT.tmp" "$WT"
   echo "helper-join: $task (pane $pane, session $sid): a normal agent now; the merge of its last task closes this pane"
