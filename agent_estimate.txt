@@ -1,6 +1,6 @@
 {
  "current": 2,
- "checked_tasks": 218,
+ "checked_tasks": 228,
  "versions": [
   {
    "version": 1,
@@ -100,6 +100,16 @@
   {
    "date": "2026-11-26",
    "tasks": 218,
+   "new": 10,
+   "current": 2,
+   "current_error": 18.0,
+   "new_error": 18.0,
+   "kept": 2,
+   "basis": "backtest"
+  },
+  {
+   "date": "2026-11-27",
+   "tasks": 228,
    "new": 10,
    "current": 2,
    "current_error": 18.0,
@@ -303,7 +313,20 @@
    "p85": 84,
    "live_small": 32,
    "live_big": 51
+  },
+  {
+   "date": "2026-11-27",
+   "tasks": 228,
+   "n": 218,
+   "winner": "fit",
+   "work_bias": -0.07,
+   "work_spread": 0.92,
+   "end_bias": 0.22,
+   "end_spread": 0.95,
+   "p85": 84,
+   "live_small": 30,
+   "live_big": 51
   }
  ],
- "checked_date": "2026-11-26"
+ "checked_date": "2026-11-27"
 }
