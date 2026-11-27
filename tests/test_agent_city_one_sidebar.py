@@ -210,8 +210,9 @@ class TestSelectHasNoCameraWords(unittest.TestCase):
 # ---------------------------------------------------------------- item 1: one list (mock v2)
 SIDE_REQUIRED = ("apply", "officeState", "railGroups", "sideHtml", "floorTag", "i18n", "byId")
 
-# Two repos (tests/citypage two_territory_view): A = auto-pipeline (an area manager, a task manager, a resting deputy),
-# B = v4-plus (nobody online). Both are on this machine (here), so both have the add control.
+# Two repos (tests/citypage two_territory_view): A = auto-pipeline (an area manager, a task manager, a resting one),
+# B = v4-plus (nobody online). Both are on this machine (here), so both have the add control. The resting person is a
+# session (task-manager): a subagent role (fast-lane-deputy, worker...) never gets a rail row (railGroups skips isSub).
 SIDE_DRIVER = r"""
 const V = __payload.view, A = V.territories.find(t => t.id === __payload.ta), B = V.territories.find(t => t.id === __payload.tb);
 A.name = 'auto-pipeline'; B.name = 'v4-plus'; A.here = true; B.here = true;
@@ -220,7 +221,7 @@ const ag = (id, label, task, terr, extra) => Object.assign({ id, role: 'task-man
   tools: {}, terr, lead: '', office: null, relay: '' }, extra || {});
 apply({ type: 'snapshot', world: V, gov: { state: 'busy', terr: A.id }, governors: 1, asks: [], shows: [],
   govs: [{ terr: A.id, state: 'busy' }], agents: [ag('s:tttt0001', 'city-add-agent Task Manager', 'auto-pipeline', A.id),
-  ag('s:rrrr0002', 'fast-lane-deputy', '按钮颜色', A.id, { role: 'fast-lane-deputy' })], adding: [] });
+  ag('s:rrrr0002', 'board-eta Task Manager', 'board-eta', A.id)], adding: [] });   // a session role: a subagent role has no row
 byId('s:rrrr0002').state = 'resting';
 const G = railGroups(), none = new Set(), noAdds = new Map();
 const out = { a: A.id, b: B.id };
