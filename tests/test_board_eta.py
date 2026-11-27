@@ -329,5 +329,56 @@ class TestFirstRoundAsToday(FixCase):
         self.assertEqual(self.done_by(), "15:01 / 15:01")
 
 
+# ---------------------------------------------------------------- item 5 (scope add): a queued line's note and place
+
+import test_agent_board as tb  # noqa: E402
+
+QUEUE = "waiting queue since 2026-11-20 11:35"
+
+
+class TestQueueNote(tb.WaitCase):
+    """Item 5: the queue note shows in the Status cell, cut to fit (40 columns) like the other wait notes."""
+
+    def test_the_note_shows(self):
+        self.assertEqual(self.status(QUEUE + ": slot on pc2"), "排队 · slot on pc2")
+
+    def test_the_note_comes_after_the_after_task(self):
+        self.assertEqual(self.status(QUEUE + ": waits for the laptop | after state-trim"),
+                         "排队 · 在 state-trim 之后 · waits for the laptop")
+
+    def test_a_long_note_is_cut_to_fit(self):
+        self.assertEqual(self.status(QUEUE + ": " + "a" * 50), "排队 · " + "a" * 39 + "…")
+
+    def test_an_after_note_stays_the_after_part(self):
+        self.assertEqual(self.status(QUEUE + ": after one-watcher"), "排队 · 在 one-watcher 之后")
+
+    def test_no_note_is_the_queue_word_alone(self):
+        self.assertEqual(self.status(QUEUE), "排队")
+
+
+class TestQueuePlace(tb.WaitCase):
+    """Item 5: a queued line's Where cell is "-" until it has a todo where field."""
+
+    def test_a_worktree_line_here_does_not_stand_in(self):
+        self.worktree_lines((self.repo.dir, "x", "working"))
+        r = self.one(QUEUE + ": slot on pc2")
+        self.assertEqual(r["Where"], "-")
+
+    def test_a_running_line_keeps_its_worktree_place(self):
+        self.worktree_lines((self.repo.dir, "x", "working"))
+        self.assertTrue(self.one("")["Where"].startswith("pc2, "), self.one(""))
+
+    def test_a_todo_where_shows(self):
+        r = self.one(QUEUE + ": slot on pc2 | on pc9 /w/x")
+        self.assertEqual(r["Where"], "pc9, /w/x")
+
+    def test_the_own_folder_does_not_stand_in(self):
+        wt = self.task_worktree("x")
+        self.put(tb.BASE + " | " + QUEUE + ": slot on pc2")
+        r = self.row(self.rows("--self", cwd=wt, now=tb.NOW_NOV20_1231), task="x")
+        self.assertEqual(r["Where"], "-")
+        self.assertEqual(r["Status"], "排队 · slot on pc2")
+
+
 if __name__ == "__main__":
     unittest.main()

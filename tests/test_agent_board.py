@@ -1312,15 +1312,17 @@ class TestQueueRow(WaitCase):
                          "排队 · 在 one-watcher 之后")
 
     def test_3_3_after_wins_over_a_note(self):
+        # board-eta item 5 (main manager 2026-11-27): the note shows after the after part
         self.assertEqual(self.status("waiting queue since 2026-11-20 11:35: slot on pc2 | after state-trim"),
-                         "排队 · 在 state-trim 之后")
+                         "排队 · 在 state-trim 之后 · slot on pc2")
 
     def test_3_4_neither(self):
-        for fields in ("waiting queue since 2026-11-20 11:35",
-                       "waiting queue since 2026-11-20 11:35: slot on pc2",
-                       "waiting queue since 2026-11-20 11:35: after"):
+        # board-eta item 5: a note that names no after task is shown as it is
+        for fields, want in (("waiting queue since 2026-11-20 11:35", "排队"),
+                             ("waiting queue since 2026-11-20 11:35: slot on pc2", "排队 · slot on pc2"),
+                             ("waiting queue since 2026-11-20 11:35: after", "排队 · after")):
             with self.subTest(fields=fields):
-                self.assertEqual(self.status(fields), "排队")
+                self.assertEqual(self.status(fields), want)
 
 
 class TestWaited(WaitCase):
