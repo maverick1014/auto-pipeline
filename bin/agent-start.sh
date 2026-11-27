@@ -788,8 +788,10 @@ announce_human_direct() {
   host=${host//[[:space:]]/_}
   touch "$wt"
   # replace this session's own line (or an old line with no session field); another session's line stays
-  awk -v p="$PROJECT_CWD" -v s="$sid" -F' \\| ' \
-    '!($1 == p && $2 == "task manager, human-direct" && (!/ \| session / || (s != "-" && $NF == "session " s)))' "$wt" > "$tmp"
+  # unknown sid ("-"): the "session -" line with the same pid ("-" pid: any "session -" line)
+  awk -v p="$PROJECT_CWD" -v s="$sid" -v me="$pid" -F' \\| ' \
+    '!($1 == p && $2 == "task manager, human-direct" && (!/ \| session / || \
+      (s != "-" ? $NF == "session " s : ($NF == "session -" && (me == "-" || index($0, " | pid " me " | "))))))' "$wt" > "$tmp"
   printf '%s\n' "$PROJECT_CWD | task manager, human-direct | task: (ask the human) | since $NOW | pid $pid | host $host | session $sid" >> "$tmp"
   mv "$tmp" "$wt"
   keep_worktree_copy
